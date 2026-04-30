@@ -56,6 +56,35 @@ pub fn placeholder_url(account_id: &str) -> String {
     format!("about:blank#{}", placeholder_marker(account_id))
 }
 
+/// Extract the origin (`scheme://host[:port]`) from an absolute URL string.
+/// Used to scope `Browser.grantPermissions` — the CDP method requires an
+/// origin (no path / no fragment / no query) and rejects malformed input.
+///
+/// Returns `None` for non-`http(s)://` schemes (e.g. `about:blank`,
+/// `data:`, `blob:`) where the grant has no meaningful target, and for
+/// any input that fails to parse as an absolute URL.
+///
+/// Implementation note: uses Tauri's re-exported `url::Url` so query
+/// strings, fragments, userinfo, and IPv6 hosts are handled correctly
+/// instead of relying on raw byte counting.
+fn origin_of(url: &str) -> Option<String> {
+    let parsed = tauri::Url::parse(url).ok()?;
+    let scheme = parsed.scheme();
+    if scheme != "http" && scheme != "https" {
+        return None;
+    }
+    // `Url::host_str` is the canonical lowercased host. We only emit a
+    // bare `scheme://host[:port]` triple — no userinfo, no path, no
+    // query, no fragment — since `Browser.grantPermissions` rejects
+    // anything else as a malformed origin.
+    let host = parsed.host_str()?;
+    if let Some(port) = parsed.port() {
+        Some(format!("{scheme}://{host}:{port}"))
+    } else {
+        Some(format!("{scheme}://{host}"))
+    }
+}
+
 fn target_matches_account_url(target_url: &str, account_id: &str) -> bool {
     let marker = placeholder_marker(account_id);
     let marker_fragment = format!("#{marker}");
@@ -232,6 +261,42 @@ async fn run_session_cycle<R: Runtime>(
         account_id
     );
 
+    // The JS shim above masks `Notification.permission` so providers stop
+    // showing "enable notifications" banners, but it does NOT cause CEF's
+    // real native-toast pipeline to fire. For that we have to actually grant
+    // `notifications` for the provider's origin via the browser-level
+    // `Browser.grantPermissions` CDP method (sessionId = None routes to the
+    // browser target). With this grant, `new Notification(...)` from the
+    // page reaches the CEF helper's notify-IPC, which posts back to
+    // `forward_native_notification` in `webview_accounts`. Without it,
+    // the constructor silently no-ops and no toast ever fires (#1016).
+    if let Some(origin) = origin_of(&real_url) {
+        if let Err(e) = cdp
+            .call(
+                "Browser.grantPermissions",
+                json!({
+                    "origin": origin,
+                    "permissions": ["notifications"],
+                }),
+                None,
+            )
+            .await
+        {
+            log::warn!(
+                "[cdp-session][{}] Browser.grantPermissions(notifications) for {} failed: {}",
+                account_id,
+                origin,
+                e
+            );
+        } else {
+            log::info!(
+                "[cdp-session][{}] granted notifications for origin={}",
+                account_id,
+                origin
+            );
+        }
+    }
+
     // Enable the Page domain so `Page.loadEventFired` reaches our
     // `pump_events` callback below. Must happen BEFORE `Page.navigate` so
     // the first top-level load event for the real provider URL isn't missed.
@@ -290,6 +355,47 @@ mod tests {
         assert_eq!(
             placeholder_url("acct-42"),
             "about:blank#openhuman-acct-acct-42"
+        );
+    }
+
+    #[test]
+    fn origin_of_strips_path_query_and_fragment() {
+        assert_eq!(
+            origin_of("https://app.slack.com/client/T123/C456?foo=bar#frag"),
+            Some("https://app.slack.com".to_string())
+        );
+    }
+
+    #[test]
+    fn origin_of_preserves_explicit_port() {
+        assert_eq!(
+            origin_of("http://localhost:7788/health"),
+            Some("http://localhost:7788".to_string())
+        );
+    }
+
+    #[test]
+    fn origin_of_returns_none_for_non_http_schemes() {
+        assert_eq!(origin_of("about:blank"), None);
+        assert_eq!(origin_of("data:text/plain,hello"), None);
+        assert_eq!(origin_of("blob:https://app.slack.com/abc"), None);
+        assert_eq!(origin_of("file:///etc/hosts"), None);
+    }
+
+    #[test]
+    fn origin_of_returns_none_for_malformed_input() {
+        assert_eq!(origin_of(""), None);
+        assert_eq!(origin_of("not-a-url"), None);
+        assert_eq!(origin_of("http://"), None);
+    }
+
+    #[test]
+    fn origin_of_lowercases_host() {
+        // tauri::Url normalises to lowercase host so we never grant
+        // permissions twice for `Slack.com` vs `slack.com`.
+        assert_eq!(
+            origin_of("https://APP.SLACK.COM/client"),
+            Some("https://app.slack.com".to_string())
         );
     }
 
