@@ -248,8 +248,10 @@ const ScreenAwarenessDebugPanel = () => {
 
         {/* Platform unsupported notice */}
         {status !== null && !status.platform_supported && (
-          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-700">
-            Screen Intelligence V1 is currently supported on macOS only.
+          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 leading-relaxed">
+            Screen Awareness / Screen Intelligence capture is macOS-only today. On Windows and Linux
+            this panel is diagnostic-only for the rest of the stack—not missing permissions on your
+            machine.
           </div>
         )}
 

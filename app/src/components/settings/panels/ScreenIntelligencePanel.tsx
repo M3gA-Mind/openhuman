@@ -116,6 +116,23 @@ const ScreenIntelligencePanel = () => {
       />
 
       <div className="max-w-2xl mx-auto w-full p-4 space-y-4">
+        {status !== null && !status.platform_supported && (
+          <div
+            data-testid="screen-awareness-platform-notice"
+            className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 space-y-2 leading-relaxed">
+            <p className="font-semibold text-amber-950">Screen Awareness is macOS-only today</p>
+            <p className="text-amber-900">
+              Desktop screen capture and the macOS privacy gates (Screen Recording, Accessibility,
+              Input Monitoring) are only wired up on macOS. On Windows and Linux this is expected—it
+              is not a failed install or permissions you can fix in OpenHuman settings.
+            </p>
+            <p className="text-amber-800 text-xs">
+              The rest of the OpenHuman app works on Windows; full desktop interaction here will
+              land on other platforms when the integration ships.
+            </p>
+          </div>
+        )}
+
         {(status?.platform_supported ?? true) && (
           <PermissionsSection
             screenRecording={status?.permissions.screen_recording ?? 'unknown'}
@@ -223,13 +240,6 @@ const ScreenIntelligencePanel = () => {
             </button>
           </div>
         </section>
-
-        {status !== null && !status.platform_supported && (
-          <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-700">
-            Screen Awareness desktop capture and permission controls are currently supported on
-            macOS only.
-          </div>
-        )}
 
         {lastError && (
           <div className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-600">

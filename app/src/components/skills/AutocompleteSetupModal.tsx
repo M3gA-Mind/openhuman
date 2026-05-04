@@ -113,8 +113,9 @@ export default function AutocompleteSetupModal({ onClose }: Props) {
               </p>
 
               {!status?.platform_supported && status !== null && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-                  Auto-complete is not supported on this platform.
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 leading-relaxed">
+                  Text auto-complete uses the same macOS-only desktop integration as Screen Awareness.
+                  On Windows and Linux this is expected for now, not a configuration error.
                 </div>
               )}
 

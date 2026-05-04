@@ -36,11 +36,14 @@ const PermissionRow = ({
   isRequesting: boolean;
 }) => {
   const granted = value === 'granted';
+  const unsupported = value === 'unsupported';
   const badgeColor = granted
     ? 'bg-sage-50 text-sage-700 border-sage-200'
     : value === 'denied'
       ? 'bg-coral-50 text-coral-700 border-coral-200'
-      : 'bg-stone-100 text-stone-600 border-stone-200';
+      : unsupported
+        ? 'bg-amber-50 text-amber-800 border-amber-200'
+        : 'bg-stone-100 text-stone-600 border-stone-200';
 
   return (
     <div className="flex items-center justify-between rounded-xl border border-stone-200 bg-white px-3 py-2.5">
@@ -59,6 +62,12 @@ const PermissionRow = ({
       {granted ? (
         <span className={`rounded-md border px-2 py-0.5 text-[10px] uppercase tracking-wide ${badgeColor}`}>
           Granted
+        </span>
+      ) : unsupported ? (
+        <span
+          className={`rounded-md border px-2 py-0.5 text-[10px] uppercase tracking-wide ${badgeColor}`}
+          title="This permission type is only used on macOS for Screen Intelligence today.">
+          macOS only
         </span>
       ) : (
         <button
@@ -114,10 +123,13 @@ export default function ScreenIntelligenceSetupModal({ onClose, initialStep }: P
 
   // Auto-advance: when permissions are all granted, move past the permissions step
   useEffect(() => {
+    if (!status?.platform_supported) {
+      return;
+    }
     if (step === 'permissions' && allGranted) {
       setStep('enable');
     }
-  }, [step, allGranted]);
+  }, [step, allGranted, status?.platform_supported]);
 
   // Close on Escape key
   useEffect(() => {
@@ -188,7 +200,37 @@ export default function ScreenIntelligenceSetupModal({ onClose, initialStep }: P
         {/* Body */}
         <div className="px-5 py-4">
           {/* ─── Step 1: Permissions ─── */}
-          {step === 'permissions' && (
+          {step === 'permissions' && status !== null && !status.platform_supported && (
+            <div className="space-y-3" data-testid="si-setup-platform-unsupported">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 space-y-2 leading-relaxed">
+                <p className="font-semibold text-amber-950">Screen Intelligence is not available on this OS yet</p>
+                <p>
+                  macOS Screen Recording, Accessibility, and Input Monitoring are how we gate desktop
+                  capture there. On Windows and Linux those rows are expected to show as not
+                  applicable—it is not something you can grant in OpenHuman.
+                </p>
+                <p className="text-amber-800">
+                  Use a macOS build for this skill, or open Screen Awareness settings for more detail.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleGoToSettings}
+                  className="w-full rounded-xl border border-primary-300 bg-primary-50 px-3 py-2.5 text-sm font-medium text-primary-700 hover:bg-primary-100 transition-colors">
+                  Open Screen Awareness settings
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-full rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5 text-sm font-medium text-stone-600 hover:bg-stone-100 transition-colors">
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 'permissions' && (status === null || status.platform_supported) && (
             <div className="space-y-3">
               <p className="text-xs text-stone-500 leading-relaxed">
                 Screen Intelligence needs macOS permissions to capture your screen and provide context to your agent.

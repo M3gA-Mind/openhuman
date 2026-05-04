@@ -29,11 +29,11 @@ describe('useAutocompleteSkillStatus (5.2 — autocomplete settings status)', ()
     expect(result.current.platformUnsupported).toBe(false);
   });
 
-  it('returns Unsupported when the platform reports the runtime is unsupported', () => {
+  it('returns macOS only when the platform reports the runtime is unsupported', () => {
     mockSnapshot({ platform_supported: false, running: false, enabled: false });
     const { result } = renderHook(() => useAutocompleteSkillStatus());
     expect(result.current.connectionStatus).toBe('offline');
-    expect(result.current.statusLabel).toBe('Unsupported');
+    expect(result.current.statusLabel).toBe('macOS only');
     expect(result.current.ctaLabel).toBe('Details');
     expect(result.current.platformUnsupported).toBe(true);
   });

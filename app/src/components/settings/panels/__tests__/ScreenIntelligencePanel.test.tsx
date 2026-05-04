@@ -170,11 +170,9 @@ describe('ScreenIntelligencePanel', () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText(
-          'Screen Awareness desktop capture and permission controls are currently supported on macOS only.'
-        )
-      ).toBeInTheDocument();
+      const notice = screen.getByTestId('screen-awareness-platform-notice');
+      expect(notice).toHaveTextContent('Screen Awareness is macOS-only today');
+      expect(notice).toHaveTextContent('Windows and Linux');
     });
     expect(screen.queryByText('Permissions')).not.toBeInTheDocument();
     expect(screen.queryByText(/After granting in System Settings, click/i)).not.toBeInTheDocument();

@@ -5,19 +5,29 @@ interface PermissionsBadgeProps {
   value: string;
 }
 
+/** Raw RPC state → short badge label (unsupported is macOS-only today, not a user misconfiguration). */
+function permissionBadgeLabel(value: string): string {
+  if (value === 'unsupported') {
+    return 'macOS only';
+  }
+  return value;
+}
+
 const PermissionBadge = ({ label, value }: PermissionsBadgeProps) => {
   const colorClass =
     value === 'granted'
       ? 'bg-green-50 text-green-700 border-green-200'
       : value === 'denied'
         ? 'bg-red-50 text-red-700 border-red-200'
-        : 'bg-stone-100 text-stone-600 border-stone-200';
+        : value === 'unsupported'
+          ? 'bg-amber-50 text-amber-800 border-amber-200'
+          : 'bg-stone-100 text-stone-600 border-stone-200';
 
   return (
     <div className="flex items-center justify-between rounded-xl border border-stone-200 bg-white p-3">
       <span className="text-sm text-stone-700">{label}</span>
       <span className={`rounded-md border px-2 py-1 text-xs uppercase tracking-wide ${colorClass}`}>
-        {value}
+        {permissionBadgeLabel(value)}
       </span>
     </div>
   );

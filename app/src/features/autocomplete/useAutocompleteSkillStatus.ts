@@ -39,9 +39,9 @@ export function useAutocompleteSkillStatus(): AutocompleteSkillStatus {
     if (!status.platform_supported) {
       return {
         connectionStatus: 'offline' as SkillConnectionStatus,
-        statusDot: 'bg-stone-400',
-        statusLabel: 'Unsupported',
-        statusColor: 'text-stone-500',
+        statusDot: 'bg-amber-400',
+        statusLabel: 'macOS only',
+        statusColor: 'text-amber-700',
         ctaLabel: 'Details',
         ctaVariant: 'primary' as const,
         platformUnsupported: true,
