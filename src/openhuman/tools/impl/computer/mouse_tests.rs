@@ -1,4 +1,5 @@
 use super::*;
+use rand::SeedableRng;
 
 fn make_tool() -> MouseTool {
     MouseTool::new(Arc::new(SecurityPolicy::default()))
@@ -25,6 +26,15 @@ fn schema_enumerates_actions() {
 }
 
 #[test]
+fn schema_includes_human_like_default_true() {
+    let tool = make_tool();
+    let schema = tool.parameters_schema();
+    let human_like = &schema["properties"]["human_like"];
+    assert_eq!(human_like["type"], json!("boolean"));
+    assert_eq!(human_like["default"], json!(true));
+}
+
+#[test]
 fn permission_is_dangerous() {
     let tool = make_tool();
     assert_eq!(tool.permission_level(), PermissionLevel::Dangerous);
@@ -38,6 +48,48 @@ fn name_is_mouse() {
 #[test]
 fn coord_validation_rejects_negative() {
     assert!(validate_coord("x", -1).is_err());
+}
+
+#[test]
+fn clamp_waypoint_floors_at_zero() {
+    assert_eq!(clamp_waypoint(-1), 0);
+    assert_eq!(clamp_waypoint(-9999), 0);
+}
+
+#[test]
+fn clamp_waypoint_caps_at_max() {
+    assert_eq!(clamp_waypoint(MAX_COORD as i32), MAX_COORD as i32);
+    assert_eq!(clamp_waypoint(MAX_COORD as i32 + 100), MAX_COORD as i32);
+}
+
+#[test]
+fn clamp_waypoint_passes_through_in_range() {
+    assert_eq!(clamp_waypoint(0), 0);
+    assert_eq!(clamp_waypoint(500), 500);
+    assert_eq!(clamp_waypoint(MAX_COORD as i32 - 1), MAX_COORD as i32 - 1);
+}
+
+#[test]
+fn humanized_path_clamped_for_edge_endpoints() {
+    // Bezier control points are zero-centered Gaussians scaled by
+    // distance, so perpendicular offsets can push waypoints negative
+    // or beyond MAX_COORD even when start/end are valid edge coords.
+    // Verify the clamp covers every waypoint regardless of seed.
+    let opts = HumanPathOptions {
+        steps: 25,
+        curvature: 0.8,
+        ..HumanPathOptions::default()
+    };
+    for seed in 0u64..32 {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        let path = planned_mouse_path((0, 0), (200, 0), true, &opts, &mut rng);
+        for (x, y, _) in &path {
+            let cx = clamp_waypoint(*x);
+            let cy = clamp_waypoint(*y);
+            assert!((0..=MAX_COORD as i32).contains(&cx), "seed={seed} cx={cx}");
+            assert!((0..=MAX_COORD as i32).contains(&cy), "seed={seed} cy={cy}");
+        }
+    }
 }
 
 #[test]
@@ -165,6 +217,42 @@ fn require_xy_valid_returns_tuple() {
     let (x, y) = require_xy(&json!({"x": 100, "y": 200})).unwrap();
     assert_eq!(x, 100);
     assert_eq!(y, 200);
+}
+
+#[test]
+fn human_like_defaults_true() {
+    assert!(human_like_enabled(&json!({})).unwrap());
+}
+
+#[test]
+fn human_like_false_is_accepted() {
+    assert!(!human_like_enabled(&json!({"human_like": false})).unwrap());
+}
+
+#[test]
+fn human_like_non_bool_returns_error() {
+    assert!(human_like_enabled(&json!({"human_like": "false"})).is_err());
+}
+
+#[test]
+fn humanized_move_visits_intermediate_points() {
+    let opts = HumanPathOptions {
+        steps: 5,
+        ..HumanPathOptions::default()
+    };
+    let mut rng = rand::rngs::StdRng::seed_from_u64(3);
+    let path = planned_mouse_path((0, 0), (100, 0), true, &opts, &mut rng);
+    assert!(path.len() > 1);
+    assert_eq!((path.first().unwrap().0, path.first().unwrap().1), (0, 0));
+    assert_eq!((path.last().unwrap().0, path.last().unwrap().1), (100, 0));
+}
+
+#[test]
+fn human_like_false_skips_humanization() {
+    let opts = HumanPathOptions::default();
+    let mut rng = rand::rngs::StdRng::seed_from_u64(3);
+    let path = planned_mouse_path((0, 0), (100, 0), false, &opts, &mut rng);
+    assert_eq!(path, vec![(100, 0, 0)]);
 }
 
 // ── security: read-only autonomy blocks all actions ───────────────────────

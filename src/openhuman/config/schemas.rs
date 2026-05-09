@@ -58,6 +58,11 @@ struct AnalyticsSettingsUpdate {
 }
 
 #[derive(Debug, Deserialize)]
+struct MeetSettingsUpdate {
+    auto_orchestrator_handoff: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
 struct LocalAiSettingsUpdate {
     runtime_enabled: Option<bool>,
     usage_embeddings: Option<bool>,
@@ -108,6 +113,12 @@ struct VoiceServerSettingsUpdate {
     custom_dictionary: Option<Vec<String>>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ComposioTriggerSettingsUpdate {
+    triage_disabled: Option<bool>,
+    triage_disabled_toolkits: Option<Vec<String>>,
+}
+
 pub fn all_controller_schemas() -> Vec<ControllerSchema> {
     vec![
         schemas("get_config"),
@@ -125,6 +136,8 @@ pub fn all_controller_schemas() -> Vec<ControllerSchema> {
         schemas("workspace_onboarding_flag_set"),
         schemas("update_analytics_settings"),
         schemas("get_analytics_settings"),
+        schemas("update_meet_settings"),
+        schemas("get_meet_settings"),
         schemas("agent_server_status"),
         schemas("reset_local_data"),
         schemas("get_onboarding_completed"),
@@ -133,6 +146,8 @@ pub fn all_controller_schemas() -> Vec<ControllerSchema> {
         schemas("update_dictation_settings"),
         schemas("get_voice_server_settings"),
         schemas("update_voice_server_settings"),
+        schemas("update_composio_trigger_settings"),
+        schemas("get_composio_trigger_settings"),
     ]
 }
 
@@ -199,6 +214,14 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
             handler: handle_get_analytics_settings,
         },
         RegisteredController {
+            schema: schemas("update_meet_settings"),
+            handler: handle_update_meet_settings,
+        },
+        RegisteredController {
+            schema: schemas("get_meet_settings"),
+            handler: handle_get_meet_settings,
+        },
+        RegisteredController {
             schema: schemas("agent_server_status"),
             handler: handle_agent_server_status,
         },
@@ -229,6 +252,14 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
         RegisteredController {
             schema: schemas("update_voice_server_settings"),
             handler: handle_update_voice_server_settings,
+        },
+        RegisteredController {
+            schema: schemas("update_composio_trigger_settings"),
+            handler: handle_update_composio_trigger_settings,
+        },
+        RegisteredController {
+            schema: schemas("get_composio_trigger_settings"),
+            handler: handle_get_composio_trigger_settings,
         },
     ]
 }
@@ -507,6 +538,29 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 required: true,
             }],
         },
+        "update_meet_settings" => ControllerSchema {
+            namespace: "config",
+            function: "update_meet_settings",
+            description:
+                "Update Google Meet integration settings (currently the auto-orchestrator-handoff privacy gate).",
+            inputs: vec![optional_bool(
+                "auto_orchestrator_handoff",
+                "When true, ending a Meet call hands the transcript to the orchestrator for proactive follow-up actions.",
+            )],
+            outputs: vec![json_output("snapshot", "Updated config snapshot.")],
+        },
+        "get_meet_settings" => ControllerSchema {
+            namespace: "config",
+            function: "get_meet_settings",
+            description: "Read current Google Meet integration settings.",
+            inputs: vec![],
+            outputs: vec![FieldSchema {
+                name: "auto_orchestrator_handoff",
+                ty: TypeSchema::Bool,
+                comment: "Whether the orchestrator handoff fires on Meet call end.",
+                required: true,
+            }],
+        },
         "agent_server_status" => ControllerSchema {
             namespace: "config",
             function: "agent_server_status",
@@ -613,6 +667,49 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 comment: "Updated onboarding completed state.",
                 required: true,
             }],
+        },
+        "update_composio_trigger_settings" => ControllerSchema {
+            namespace: "config",
+            function: "update_composio_trigger_settings",
+            description:
+                "Update Composio trigger-triage settings. When triage is disabled the \
+                 local LLM is NOT invoked per trigger — events are still archived to \
+                 trigger history.",
+            inputs: vec![
+                optional_bool(
+                    "triage_disabled",
+                    "When true, skip the LLM triage turn for all Composio triggers globally.",
+                ),
+                FieldSchema {
+                    name: "triage_disabled_toolkits",
+                    ty: TypeSchema::Option(Box::new(TypeSchema::Array(Box::new(
+                        TypeSchema::String,
+                    )))),
+                    comment: "Toolkit slugs that skip LLM triage (e.g. [\"gmail\", \"slack\"]).",
+                    required: false,
+                },
+            ],
+            outputs: vec![json_output("snapshot", "Updated config snapshot.")],
+        },
+        "get_composio_trigger_settings" => ControllerSchema {
+            namespace: "config",
+            function: "get_composio_trigger_settings",
+            description: "Read current Composio trigger-triage settings.",
+            inputs: vec![],
+            outputs: vec![
+                FieldSchema {
+                    name: "triage_disabled",
+                    ty: TypeSchema::Bool,
+                    comment: "Whether the global triage-disabled flag is set.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "triage_disabled_toolkits",
+                    ty: TypeSchema::Array(Box::new(TypeSchema::String)),
+                    comment: "Toolkit slugs that skip LLM triage.",
+                    required: true,
+                },
+            ],
         },
         _ => ControllerSchema {
             namespace: "config",
@@ -796,6 +893,60 @@ fn handle_get_analytics_settings(_params: Map<String, Value>) -> ControllerFutur
     })
 }
 
+fn handle_update_meet_settings(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        log::debug!("[config][rpc] update_meet_settings enter");
+        let update = match deserialize_params::<MeetSettingsUpdate>(params) {
+            Ok(u) => u,
+            Err(err) => {
+                log::warn!("[config][rpc] update_meet_settings invalid params: {err}");
+                return Err(err);
+            }
+        };
+        log::debug!(
+            "[config][rpc] update_meet_settings patch auto_orchestrator_handoff={:?}",
+            update.auto_orchestrator_handoff
+        );
+        let patch = config_rpc::MeetSettingsPatch {
+            auto_orchestrator_handoff: update.auto_orchestrator_handoff,
+        };
+        match config_rpc::load_and_apply_meet_settings(patch).await {
+            Ok(outcome) => {
+                log::debug!("[config][rpc] update_meet_settings ok");
+                to_json(outcome)
+            }
+            Err(err) => {
+                log::warn!("[config][rpc] update_meet_settings failed: {err}");
+                Err(err)
+            }
+        }
+    })
+}
+
+fn handle_get_meet_settings(_params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async {
+        log::debug!("[config][rpc] get_meet_settings enter");
+        let config = match config_rpc::load_config_with_timeout().await {
+            Ok(c) => c,
+            Err(err) => {
+                log::warn!("[config][rpc] get_meet_settings load failed: {err}");
+                return Err(err);
+            }
+        };
+        let auto_orchestrator_handoff = config.meet.auto_orchestrator_handoff;
+        log::debug!(
+            "[config][rpc] get_meet_settings ok auto_orchestrator_handoff={auto_orchestrator_handoff}"
+        );
+        let result = serde_json::json!({
+            "auto_orchestrator_handoff": auto_orchestrator_handoff,
+        });
+        to_json(RpcOutcome::new(
+            result,
+            vec!["meet settings read".to_string()],
+        ))
+    })
+}
+
 fn handle_agent_server_status(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async { to_json(config_rpc::agent_server_status()) })
 }
@@ -851,6 +1002,49 @@ fn handle_set_onboarding_completed(params: Map<String, Value>) -> ControllerFutu
     Box::pin(async move {
         let payload = deserialize_params::<OnboardingCompletedSetParams>(params)?;
         to_json(config_rpc::set_onboarding_completed(payload.value).await?)
+    })
+}
+
+fn handle_update_composio_trigger_settings(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        log::debug!("[config][rpc] update_composio_trigger_settings enter");
+        let update = match deserialize_params::<ComposioTriggerSettingsUpdate>(params) {
+            Ok(u) => u,
+            Err(err) => {
+                log::warn!("[config][rpc] update_composio_trigger_settings invalid params: {err}");
+                return Err(err);
+            }
+        };
+        let patch = config_rpc::ComposioTriggerSettingsPatch {
+            triage_disabled: update.triage_disabled,
+            triage_disabled_toolkits: update.triage_disabled_toolkits,
+        };
+        match config_rpc::load_and_apply_composio_trigger_settings(patch).await {
+            Ok(outcome) => {
+                log::debug!("[config][rpc] update_composio_trigger_settings ok");
+                to_json(outcome)
+            }
+            Err(err) => {
+                log::warn!("[config][rpc] update_composio_trigger_settings failed: {err}");
+                Err(err)
+            }
+        }
+    })
+}
+
+fn handle_get_composio_trigger_settings(_params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async {
+        log::debug!("[config][rpc] get_composio_trigger_settings enter");
+        match config_rpc::get_composio_trigger_settings().await {
+            Ok(outcome) => {
+                log::debug!("[config][rpc] get_composio_trigger_settings ok");
+                to_json(outcome)
+            }
+            Err(err) => {
+                log::warn!("[config][rpc] get_composio_trigger_settings failed: {err}");
+                Err(err)
+            }
+        }
     })
 }
 

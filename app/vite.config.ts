@@ -131,7 +131,20 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    // `false` lets Vite pick its own loopback default; on Windows that lands
+    // on `::1` only, leaving 127.0.0.1 unbound. The Tauri dev-server proxy
+    // (vendored tauri-cef, reqwest under the hood) resolves `localhost` and
+    // can pick either stack — when it picks 127.0.0.1 the request fails,
+    // which surfaces as a blank webview / white screen because the SPA
+    // bundle never loads. `true` maps to `server.listen('0.0.0.0')` in Vite,
+    // binding **every network adapter** (loopback + LAN) so whichever stack
+    // reqwest's DNS picks for `localhost` has a listener. Side effect: the
+    // dev HMR websocket and bundled sources are reachable from other
+    // machines on the same network — fine for `tauri dev`, but on a shared
+    // or corporate Wi-Fi consider overriding with `host: 'localhost'` (and
+    // accepting the dual-stack hazard) instead. Production builds are
+    // unaffected.
+    host: host || true,
     allowedHosts: [
       "frontend-runner-openhuman-git-main-vezuresxyz.vercel.app",
     ],

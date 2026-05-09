@@ -3,6 +3,7 @@
 use serde_json::{Map, Value};
 
 use super::global::get_or_init_engine;
+use super::reflection_store;
 use super::store;
 use super::types::{EscalationStatus, TaskPatch, TaskRecurrence, TaskSource};
 use crate::core::all::{ControllerFuture, RegisteredController};
@@ -21,6 +22,9 @@ pub fn all_controller_schemas() -> Vec<ControllerSchema> {
         schemas("escalations_list"),
         schemas("escalations_approve"),
         schemas("escalations_dismiss"),
+        schemas("reflections_list"),
+        schemas("reflections_act"),
+        schemas("reflections_dismiss"),
     ]
 }
 
@@ -65,6 +69,18 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
         RegisteredController {
             schema: schemas("escalations_dismiss"),
             handler: handle_escalations_dismiss,
+        },
+        RegisteredController {
+            schema: schemas("reflections_list"),
+            handler: handle_reflections_list,
+        },
+        RegisteredController {
+            schema: schemas("reflections_act"),
+            handler: handle_reflections_act,
+        },
+        RegisteredController {
+            schema: schemas("reflections_dismiss"),
+            handler: handle_reflections_dismiss,
         },
     ]
 }
@@ -185,6 +201,58 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 "escalation_id",
                 TypeSchema::String,
                 "Escalation ID.",
+            )],
+            outputs: vec![field("result", TypeSchema::Json, "Dismissal confirmation.")],
+        },
+        // ── #623: proactive reflection layer ─────────────────────────────────
+        "reflections_list" => ControllerSchema {
+            namespace: "subconscious",
+            function: "reflections_list",
+            description: "List recent subconscious reflections (Observe + Notify). \
+                 Newest first.",
+            inputs: vec![
+                field_opt("limit", TypeSchema::U64, "Max entries (default 50)."),
+                field_opt(
+                    "since_ts",
+                    TypeSchema::F64,
+                    "Epoch seconds — only return reflections newer than this.",
+                ),
+            ],
+            outputs: vec![field(
+                "reflections",
+                TypeSchema::Json,
+                "Reflection records.",
+            )],
+        },
+        "reflections_act" => ControllerSchema {
+            namespace: "subconscious",
+            function: "reflections_act",
+            description: "Act on a reflection — creates a fresh conversation thread \
+                 and seeds it with the reflection body as the first ASSISTANT \
+                 message (with proposed_action appended if present). No LLM \
+                 turn fires — the user lands in a thread that opens with the \
+                 observation from OpenHuman, ready for them to reply. Marks \
+                 `acted_on_at`. Returns the new thread id so the frontend can \
+                 navigate to it.",
+            inputs: vec![field_req(
+                "reflection_id",
+                TypeSchema::String,
+                "Reflection ID.",
+            )],
+            outputs: vec![field(
+                "result",
+                TypeSchema::Json,
+                "{reflection_id, thread_id}.",
+            )],
+        },
+        "reflections_dismiss" => ControllerSchema {
+            namespace: "subconscious",
+            function: "reflections_dismiss",
+            description: "Dismiss a reflection card. Sets `dismissed_at`.",
+            inputs: vec![field_req(
+                "reflection_id",
+                TypeSchema::String,
+                "Reflection ID.",
             )],
             outputs: vec![field("result", TypeSchema::Json, "Dismissal confirmation.")],
         },
@@ -431,6 +499,164 @@ fn handle_escalations_dismiss(params: Map<String, Value>) -> ControllerFuture {
         to_json(RpcOutcome::single_log(
             serde_json::json!({"dismissed": escalation_id}),
             "escalation dismissed",
+        ))
+    })
+}
+
+// ── #623: proactive reflection handlers ──────────────────────────────────────
+
+fn handle_reflections_list(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+        let since_ts = params.get("since_ts").and_then(|v| v.as_f64());
+        let config = load_config().await?;
+        let reflections = store::with_connection(&config.workspace_dir, |conn| {
+            reflection_store::list_recent(conn, limit, since_ts)
+        })
+        .map_err(|e| e.to_string())?;
+        to_json(RpcOutcome::single_log(reflections, "reflections listed"))
+    })
+}
+
+fn handle_reflections_act(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let reflection_id = params
+            .get("reflection_id")
+            .and_then(|v| v.as_str())
+            .ok_or("reflection_id is required")?
+            .to_string();
+
+        let config = load_config().await?;
+        let reflection = store::with_connection(&config.workspace_dir, |conn| {
+            reflection_store::get_reflection(conn, &reflection_id)
+        })
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("reflection not found: {reflection_id}"))?;
+
+        // Spawn a fresh conversation thread for this action. Reflections never
+        // write into the user's existing threads — each act gets its own
+        // chat so the active conversation stays uncluttered. Title is the
+        // first ~60 chars of the body so it's recognisable in the thread list.
+        let thread_id = uuid::Uuid::new_v4().to_string();
+        let thread_title: String = {
+            let mut s: String = reflection
+                .body
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(60)
+                .collect();
+            if reflection.body.chars().count() > 60 {
+                s.push('…');
+            }
+            if s.trim().is_empty() {
+                format!(
+                    "Reflection: {kind}",
+                    kind = reflection.kind.as_str().replace('_', " ")
+                )
+            } else {
+                s
+            }
+        };
+        let now_iso = chrono::Utc::now().to_rfc3339();
+        crate::openhuman::memory::conversations::ensure_thread(
+            config.workspace_dir.clone(),
+            crate::openhuman::memory::conversations::CreateConversationThread {
+                id: thread_id.clone(),
+                title: thread_title,
+                created_at: now_iso.clone(),
+                parent_thread_id: None,
+                labels: Some(vec!["from_reflection".to_string()]),
+            },
+        )
+        .map_err(|e| format!("ensure_thread (reflection-spawned) failed: {e}"))?;
+
+        // Seed the new thread with the reflection as the FIRST message,
+        // sent from `assistant` (i.e. OpenHuman speaking). The frontend
+        // renders this as a regular AI message, so the user lands in a
+        // thread that already starts with the observation. They can then
+        // type their own reply — no auto LLM turn fires here. This is
+        // distinct from `start_chat`, which would have appended the
+        // reflection as a USER message and immediately triggered an
+        // orchestrator response.
+        let body_md = match reflection.proposed_action.as_deref() {
+            Some(action) if !action.trim().is_empty() => format!(
+                "{body}\n\n_Proposed action_: {action}",
+                body = reflection.body.trim(),
+                action = action.trim()
+            ),
+            _ => reflection.body.trim().to_string(),
+        };
+        let extra_metadata = serde_json::json!({
+            "reflection_id": reflection.id,
+            "kind": reflection.kind.as_str(),
+            "proposed_action": reflection.proposed_action,
+            "source_refs": reflection.source_refs,
+            "origin": "subconscious_reflection",
+        });
+        let seed_message = crate::openhuman::memory::conversations::ConversationMessage {
+            id: uuid::Uuid::new_v4().to_string(),
+            content: body_md,
+            message_type: "text".to_string(),
+            extra_metadata,
+            sender: "assistant".to_string(),
+            created_at: now_iso,
+        };
+        crate::openhuman::memory::conversations::append_message(
+            config.workspace_dir.clone(),
+            &thread_id,
+            seed_message,
+        )
+        .map_err(|e| format!("append seed reflection message failed: {e}"))?;
+
+        // Stamp acted_on_at on success. If the stamp write fails, log a
+        // warning — the new thread already exists, so a silent failure
+        // here would leave the reflection unmarked and the user could
+        // re-Act on the same card and spawn a duplicate thread. The
+        // reflection itself is still actionable from the user's
+        // perspective, so we don't want to fail the whole call.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        if let Err(e) = store::with_connection(&config.workspace_dir, |conn| {
+            reflection_store::mark_acted(conn, &reflection_id, now)
+        }) {
+            log::warn!(
+                "[subconscious] failed to stamp acted_on_at reflection={} thread={}: {e} — reflection card will reappear and a re-Act would spawn a duplicate thread",
+                reflection_id,
+                thread_id
+            );
+        }
+
+        to_json(RpcOutcome::single_log(
+            serde_json::json!({
+                "reflection_id": reflection_id,
+                "thread_id": thread_id,
+            }),
+            "reflection acted",
+        ))
+    })
+}
+
+fn handle_reflections_dismiss(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let reflection_id = params
+            .get("reflection_id")
+            .and_then(|v| v.as_str())
+            .ok_or("reflection_id is required")?
+            .to_string();
+        let config = load_config().await?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0);
+        store::with_connection(&config.workspace_dir, |conn| {
+            reflection_store::mark_dismissed(conn, &reflection_id, now)
+        })
+        .map_err(|e| e.to_string())?;
+        to_json(RpcOutcome::single_log(
+            serde_json::json!({"dismissed": reflection_id}),
+            "reflection dismissed",
         ))
     })
 }

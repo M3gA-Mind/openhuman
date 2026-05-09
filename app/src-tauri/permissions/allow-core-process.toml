@@ -7,6 +7,11 @@ allow = [
     "core_rpc_url",
     "core_rpc_token",
     "restart_core_process",
+    # `start_core_process` is invoked by BootCheckGate after the user picks
+    # Local mode, before redux-persist hydrates the rest of the app (#1316).
+    # Without this allow entry the invoke is rejected with "Command not
+    # found" and the boot gate stalls.
+    "start_core_process",
     # `restart_app` triggers `app.restart()` so CEF re-initializes against
     # the active user's `users/<id>/cef` profile after an identity flip
     # (#900). Without this allow entry, the invoke is silently denied by
@@ -69,5 +74,11 @@ allow = [
     # backing commands.
     "logs_folder_path",
     "reveal_logs_folder",
+    # Meet call: open / close a dedicated CEF webview window pointed at a
+    # https://meet.google.com/<code> URL with an isolated per-call data
+    # directory. Surfaced from Intelligence > Calls. Without these allow
+    # entries the invoke is rejected with "Command not found".
+    "meet_call_open_window",
+    "meet_call_close_window",
 ]
 deny = []

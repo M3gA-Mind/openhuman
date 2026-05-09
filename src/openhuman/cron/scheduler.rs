@@ -15,6 +15,14 @@ use tokio::time::{self, Duration};
 
 const MIN_POLL_SECONDS: u64 = 5;
 const SHELL_JOB_TIMEOUT_SECS: u64 = 120;
+const AGENT_JOB_USER_FAILURE_MESSAGE: &str = "Something went wrong. Please try again.\nThis error has been reported. You can also report it on Discord.\n<openhuman-link path=\"community/discord\">Report on Discord</openhuman-link>";
+
+fn agent_session_target_tag(target: &SessionTarget) -> &'static str {
+    match target {
+        SessionTarget::Main => "main",
+        SessionTarget::Isolated => "isolated",
+    }
+}
 
 pub async fn run(config: Config) -> Result<()> {
     // Ensure the global event bus is initialized so cron delivery events
@@ -77,15 +85,22 @@ async fn execute_job_with_retry(
     job: &CronJob,
 ) -> (bool, String) {
     let mut last_output = String::new();
+    let mut last_agent_error: Option<String> = None;
     let retries = config.reliability.scheduler_retries;
     let mut backoff_ms = config.reliability.provider_backoff_ms.max(200);
 
     for attempt in 0..=retries {
-        let (success, output) = match job.job_type {
-            JobType::Shell => run_job_command(config, security, job).await,
+        let (success, output, agent_error) = match job.job_type {
+            JobType::Shell => {
+                let (success, output) = run_job_command(config, security, job).await;
+                (success, output, None)
+            }
             JobType::Agent => run_agent_job(config, job).await,
         };
         last_output = output;
+        if agent_error.is_some() {
+            last_agent_error = agent_error;
+        }
 
         if success {
             return (true, last_output);
@@ -101,6 +116,26 @@ async fn execute_job_with_retry(
             time::sleep(Duration::from_millis(backoff_ms + jitter_ms)).await;
             backoff_ms = (backoff_ms.saturating_mul(2)).min(30_000);
         }
+    }
+
+    if matches!(job.job_type, JobType::Agent) {
+        let report_message = last_agent_error
+            .as_deref()
+            .unwrap_or_else(|| last_output.as_str());
+        crate::core::observability::report_error(
+            report_message,
+            "cron",
+            "agent_job",
+            &[
+                ("job_id", job.id.as_str()),
+                ("agent_id", job.agent_id.as_deref().unwrap_or("none")),
+                (
+                    "session_target",
+                    agent_session_target_tag(&job.session_target),
+                ),
+                ("failure", "retries_exhausted"),
+            ],
+        );
     }
 
     (false, last_output)
@@ -170,7 +205,7 @@ async fn execute_and_persist_job(
     (job.id.clone(), success, failure_message)
 }
 
-async fn run_agent_job(config: &Config, job: &CronJob) -> (bool, String) {
+async fn run_agent_job(config: &Config, job: &CronJob) -> (bool, String, Option<String>) {
     use crate::openhuman::agent::Agent;
 
     let name = job.name.clone().unwrap_or_else(|| "cron-job".to_string());
@@ -249,8 +284,13 @@ async fn run_agent_job(config: &Config, job: &CronJob) -> (bool, String) {
             } else {
                 response
             },
+            None,
         ),
-        Err(e) => (false, format!("agent job failed: {e}")),
+        Err(e) => (
+            false,
+            AGENT_JOB_USER_FAILURE_MESSAGE.to_string(),
+            Some(e.to_string()),
+        ),
     }
 }
 

@@ -38,8 +38,60 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::openhuman::memory::tree::content_store::paths::{sanitize_filename, SummaryTreeKind};
+use crate::openhuman::memory::tree::content_store::paths::{
+    sanitize_filename, slugify_source_id, SummaryTreeKind,
+};
 use crate::openhuman::memory::tree::types::{Chunk, SourceKind};
+
+/// Build the canonical Obsidian `source/<slug>` tag for a given
+/// `source_id`. Used to seed the `tags:` block on every chunk and
+/// every source-tree summary so the Obsidian graph view can filter by
+/// source.
+///
+/// Slug rules match `slugify_source_id` (lowercase ASCII, `-` separators,
+/// alphanumerics + `_` preserved) so the tag matches the on-disk
+/// `raw/<slug>/...` directory name byte-for-byte.
+pub fn source_tag(source_id: &str) -> String {
+    format!("source/{}", slugify_source_id(source_id))
+}
+
+/// Prepend the source tag to `tags`, dedup, and return the new list.
+/// Order is preserved otherwise — `source/...` always comes first so
+/// it shows up at the top of the YAML block.
+pub fn with_source_tag(source_id: &str, tags: &[String]) -> Vec<String> {
+    let st = source_tag(source_id);
+    let mut out = Vec::with_capacity(tags.len() + 1);
+    out.push(st.clone());
+    for t in tags {
+        if t != &st {
+            out.push(t.clone());
+        }
+    }
+    out
+}
+
+/// Parse the value of a top-level YAML scalar field (e.g. `source_id`,
+/// `tree_scope`, `tree_kind`) from a frontmatter string. Strips
+/// surrounding double-quotes if present so the returned slice matches
+/// what the original composer passed in. Returns `None` if the key is
+/// not present at the top level of the frontmatter.
+pub fn scan_fm_field<'a>(fm: &'a str, key: &str) -> Option<String> {
+    let prefix = format!("{key}: ");
+    for raw in fm.lines() {
+        // Skip indented lines (those are list items / nested mappings).
+        if raw.starts_with(' ') || raw.starts_with('\t') {
+            continue;
+        }
+        if let Some(rest) = raw.strip_prefix(&prefix) {
+            let trimmed = rest.trim();
+            if let Some(inner) = trimmed.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
+                return Some(inner.replace("\\\"", "\"").replace("\\\\", "\\"));
+            }
+            return Some(trimmed.to_string());
+        }
+    }
+    None
+}
 
 /// Compose the full file content (front-matter + body) for `chunk`.
 ///
@@ -78,13 +130,13 @@ fn build_front_matter(chunk: &Chunk) -> Vec<u8> {
         fm.push_str(&format!("source_ref: {}\n", yaml_scalar(&sr.value)));
     }
 
-    if meta.tags.is_empty() {
-        fm.push_str("tags: []\n");
-    } else {
-        fm.push_str("tags:\n");
-        for tag in &meta.tags {
-            fm.push_str(&format!("  - {}\n", yaml_scalar(tag)));
-        }
+    // Always seed the source tag so the Obsidian graph filter can pick
+    // up `source/<slug>` for every chunk regardless of what the
+    // ingest-side tag list contained.
+    let seeded_tags = with_source_tag(&meta.source_id, &meta.tags);
+    fm.push_str("tags:\n");
+    for tag in &seeded_tags {
+        fm.push_str(&format!("  - {}\n", yaml_scalar(tag)));
     }
 
     // Email-specific fields: participants list + Obsidian alias.
@@ -250,6 +302,26 @@ pub struct SummaryComposeInput<'a> {
     pub level: u32,
     /// Child ids (chunk_ids at L0 → L1, summary_ids for cascades).
     pub child_ids: &'a [String],
+    /// Optional per-child wikilink basename overrides, aligned with
+    /// `child_ids` by index. When `Some(basename)` is provided for a
+    /// child, the front-matter `children: [[…]]` wikilink uses that
+    /// basename instead of `sanitize_filename(child_id)`.
+    ///
+    /// Used to point chunk-level children at their **raw archive**
+    /// files when the chunk store no longer stages on-disk `.md`
+    /// files (today: email, since email chunks live as byte ranges
+    /// inside `raw/<source>/<ts_ms>_<msg>.md` instead of
+    /// `email/<scope>/<chunk_id>.md`). Without this, Obsidian
+    /// wikilinks resolve to a non-existent `[[<chunk_hash>]]`
+    /// target and the graph view stops drawing edges from L1
+    /// summaries down to leaves.
+    ///
+    /// `None` (or `Some` entries that are themselves `None`) falls
+    /// back to the default `sanitize_filename(child_id)` behaviour,
+    /// which is correct for L≥2 (children are summary ids that map
+    /// to actual `summaries/...md` files) and for legacy chunks
+    /// still staged on-disk.
+    pub child_basenames: Option<&'a [Option<String>]>,
     /// Total child count (== child_ids.len() unless truncated).
     pub child_count: usize,
     /// Start of the time range covered by this summary's children.
@@ -322,8 +394,20 @@ fn build_summary_front_matter(r: &SummaryComposeInput<'_>) -> String {
         fm.push_str("children: []\n");
     } else {
         fm.push_str("children:\n");
-        for id in r.child_ids {
-            let wikilink = format!("[[{}]]", sanitize_filename(id));
+        for (i, id) in r.child_ids.iter().enumerate() {
+            // Prefer a caller-supplied basename override (used for L1
+            // chunk children that live in the raw archive instead of
+            // the chunk-store path); fall back to the sanitised
+            // chunk/summary id.
+            let basename: String = match r
+                .child_basenames
+                .and_then(|overrides| overrides.get(i))
+                .and_then(|slot| slot.as_ref())
+            {
+                Some(b) => b.clone(),
+                None => sanitize_filename(id),
+            };
+            let wikilink = format!("[[{}]]", basename);
             fm.push_str(&format!("  - {}\n", yaml_scalar(&wikilink)));
         }
     }
@@ -337,7 +421,16 @@ fn build_summary_front_matter(r: &SummaryComposeInput<'_>) -> String {
     fm.push_str("aliases:\n");
     fm.push_str(&format!("  - {}\n", yaml_scalar(&alias)));
 
-    fm.push_str("tags: []\n");
+    // Source-tree summaries get a `source/<slug>` seed tag for graph
+    // filtering. Global / topic trees aggregate across sources, so the
+    // `source/...` tag has no single value there — leave them untagged
+    // at compose time (LLM extraction adds entity tags later).
+    if matches!(r.tree_kind, SummaryTreeKind::Source) {
+        fm.push_str("tags:\n");
+        fm.push_str(&format!("  - {}\n", yaml_scalar(&source_tag(r.tree_scope))));
+    } else {
+        fm.push_str("tags: []\n");
+    }
     fm.push_str("---\n");
     fm
 }
@@ -727,6 +820,7 @@ mod tests {
             child_ids: Box::leak(
                 vec!["child-1".to_string(), "child-2".to_string()].into_boxed_slice(),
             ),
+            child_basenames: None,
             child_count: 2,
             time_range_start: ts_start,
             time_range_end: ts_end,
@@ -757,7 +851,10 @@ mod tests {
             fm.contains("  - \"[[child-2]]\""),
             "must list child ids as Obsidian wikilinks; got:\n{fm}"
         );
-        assert!(fm.contains("tags: []"), "must start with empty tags");
+        assert!(
+            fm.contains("  - source/"),
+            "source-tree summary must seed source tag; got:\n{fm}"
+        );
         // aliases must mention the scope
         assert!(fm.contains("aliases:"), "must have aliases");
         assert!(
@@ -793,6 +890,48 @@ mod tests {
     }
 
     #[test]
+    fn child_basename_overrides_replace_chunk_id_in_wikilink() {
+        // L1 seals: each child's wikilink should point at the
+        // raw archive file basename, not the chunk_id hash. Without
+        // this override the link would be `[[<32-char hex>]]` and
+        // Obsidian wouldn't find a matching file (the chunk-store
+        // copy under `email/<scope>/...` is gone after the
+        // raw_refs migration).
+        let ts = chrono::Utc.timestamp_millis_opt(1_700_000_000_000).unwrap();
+        let child_ids = vec!["abc123hash".to_string(), "def456hash".to_string()];
+        let overrides: Vec<Option<String>> = vec![
+            Some("1700000000000_msg-id-1".into()),
+            None, // second child has no override → falls back to sanitize_filename
+        ];
+        let input = SummaryComposeInput {
+            summary_id: "summary:L1:test",
+            tree_kind: SummaryTreeKind::Source,
+            tree_id: "t1",
+            tree_scope: "gmail:alice@x.com",
+            level: 1,
+            child_ids: &child_ids,
+            child_basenames: Some(&overrides),
+            child_count: 2,
+            time_range_start: ts,
+            time_range_end: ts,
+            sealed_at: ts,
+            body: "L1 body",
+        };
+        let composed = compose_summary_md(&input);
+        let fm = &composed.front_matter;
+        // First child uses the override (raw archive basename).
+        assert!(
+            fm.contains(r#"  - "[[1700000000000_msg-id-1]]""#),
+            "first child must use override basename; got:\n{fm}"
+        );
+        // Second child has None override — fall back to chunk_id.
+        assert!(
+            fm.contains(r#"  - "[[def456hash]]""#),
+            "None override must fall back to sanitize_filename; got:\n{fm}"
+        );
+    }
+
+    #[test]
     fn structured_child_summary_id_is_sanitised_in_wikilink() {
         // Real-world case: an L2 summary lists child L1 summaries by their
         // structured id (e.g. `summary:L1:UUID`). Colons are illegal in
@@ -810,6 +949,7 @@ mod tests {
             tree_scope: "gmail:alice@x.com",
             level: 2,
             child_ids: &[child_id.to_string()],
+            child_basenames: None,
             child_count: 1,
             time_range_start: ts,
             time_range_end: ts,
@@ -870,6 +1010,7 @@ mod tests {
             tree_scope: "gmail:alice@x.com",
             level: 0,
             child_ids: &[],
+            child_basenames: None,
             child_count: 0,
             time_range_start: ts,
             time_range_end: ts,
@@ -891,6 +1032,7 @@ mod tests {
             tree_scope: "global",
             level: 1,
             child_ids: &["child-a".to_string()],
+            child_basenames: None,
             child_count: 1,
             time_range_start: ts,
             time_range_end: ts, // same as start
@@ -946,6 +1088,7 @@ mod tests {
             tree_scope: "gmail:alice@x.com",
             level: 1,
             child_ids: &["c1".to_string()],
+            child_basenames: None,
             child_count: 1,
             time_range_start: ts,
             time_range_end: ts,

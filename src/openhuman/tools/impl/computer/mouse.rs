@@ -4,13 +4,14 @@
 //! dragging, and scrolling via platform-native APIs (Core Graphics on macOS,
 //! SendInput on Windows, X11/libxdo on Linux).
 
+use super::human_path::{human_path, HumanPathOptions};
 use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 use async_trait::async_trait;
 use enigo::{Button, Coordinate, Direction, Enigo, Mouse, Settings};
 use serde_json::{json, Value};
-use std::sync::Arc;
-use tracing::{debug, info, warn};
+use std::{sync::Arc, thread, time::Duration};
+use tracing::{debug, info, trace, warn};
 
 /// Coordinate safety bound — reject values outside this range.
 const MAX_COORD: i64 = 32768;
@@ -54,9 +55,80 @@ fn require_xy(args: &Value) -> anyhow::Result<(i32, i32)> {
     Ok((x as i32, y as i32))
 }
 
+fn human_like_enabled(args: &Value) -> anyhow::Result<bool> {
+    match args.get("human_like") {
+        None => Ok(true),
+        Some(v) => v
+            .as_bool()
+            .ok_or_else(|| anyhow::anyhow!("'human_like' must be a boolean, got {v}")),
+    }
+}
+
 fn validate_coord(name: &str, value: i64) -> anyhow::Result<()> {
     if !(0..=MAX_COORD).contains(&value) {
         anyhow::bail!("'{name}' coordinate {value} is out of range (0..{MAX_COORD})");
+    }
+    Ok(())
+}
+
+/// Clamp a sampled bezier waypoint into the same screen-coord band that
+/// `validate_coord` enforces on caller-supplied endpoints. Bezier control
+/// points are zero-centered Gaussians, so perpendicular offsets can push
+/// intermediate `(x, y)` outside `0..=MAX_COORD` even when the start and
+/// end are valid — clamp before handing to `enigo.move_mouse`.
+fn clamp_waypoint(value: i32) -> i32 {
+    value.clamp(0, MAX_COORD as i32)
+}
+
+fn planned_mouse_path<R: rand::Rng>(
+    start: (i32, i32),
+    end: (i32, i32),
+    human_like: bool,
+    opts: &HumanPathOptions,
+    rng: &mut R,
+) -> Vec<(i32, i32, u64)> {
+    if human_like {
+        human_path(start, end, opts, rng)
+    } else {
+        vec![(end.0, end.1, 0)]
+    }
+}
+
+fn humanized_move(
+    enigo: &mut Enigo,
+    end_x: i32,
+    end_y: i32,
+    human_like: bool,
+) -> anyhow::Result<()> {
+    if !human_like {
+        enigo
+            .move_mouse(end_x, end_y, Coordinate::Abs)
+            .map_err(|e| anyhow::anyhow!("move_mouse failed: {e}"))?;
+        return Ok(());
+    }
+
+    let start = enigo
+        .location()
+        .map_err(|e| anyhow::anyhow!("location failed: {e}"))?;
+    let opts = HumanPathOptions::default();
+    let mut rng = rand::rng();
+    let path = planned_mouse_path(start, (end_x, end_y), true, &opts, &mut rng);
+    debug!(
+        start = ?start,
+        end = ?(end_x, end_y),
+        steps = path.len(),
+        "[mouse][humanized] generated path"
+    );
+    for (raw_x, raw_y, dwell) in path {
+        let x = clamp_waypoint(raw_x);
+        let y = clamp_waypoint(raw_y);
+        trace!(x, y, dwell_ms = dwell, "[mouse][humanized] step");
+        enigo
+            .move_mouse(x, y, Coordinate::Abs)
+            .map_err(|e| anyhow::anyhow!("move_mouse failed: {e}"))?;
+        if dwell > 0 {
+            thread::sleep(Duration::from_millis(dwell));
+        }
     }
     Ok(())
 }
@@ -116,6 +188,11 @@ impl Tool for MouseTool {
                 "scroll_y": {
                     "type": "integer",
                     "description": "Vertical scroll amount (positive = down, negative = up). For scroll action."
+                },
+                "human_like": {
+                    "type": "boolean",
+                    "description": "Default true. Set false for instant teleport (faster, but easier to fingerprint).",
+                    "default": true
                 }
             },
             "required": ["action"]
@@ -146,12 +223,11 @@ impl Tool for MouseTool {
         match action {
             "move" => {
                 let (x, y) = require_xy(&args)?;
+                let human_like = human_like_enabled(&args)?;
                 tokio::task::spawn_blocking(move || {
                     let mut enigo = Enigo::new(&Settings::default())
                         .map_err(|e| anyhow::anyhow!("Failed to create enigo instance: {e}"))?;
-                    enigo
-                        .move_mouse(x, y, Coordinate::Abs)
-                        .map_err(|e| anyhow::anyhow!("move_mouse failed: {e}"))?;
+                    humanized_move(&mut enigo, x, y, human_like)?;
                     info!(
                         tool = "mouse",
                         action = "move",
@@ -167,12 +243,11 @@ impl Tool for MouseTool {
             "click" => {
                 let (x, y) = require_xy(&args)?;
                 let button = parse_button(&args)?;
+                let human_like = human_like_enabled(&args)?;
                 tokio::task::spawn_blocking(move || {
                     let mut enigo = Enigo::new(&Settings::default())
                         .map_err(|e| anyhow::anyhow!("Failed to create enigo instance: {e}"))?;
-                    enigo
-                        .move_mouse(x, y, Coordinate::Abs)
-                        .map_err(|e| anyhow::anyhow!("move_mouse failed: {e}"))?;
+                    humanized_move(&mut enigo, x, y, human_like)?;
                     enigo
                         .button(button, Direction::Click)
                         .map_err(|e| anyhow::anyhow!("button click failed: {e}"))?;
@@ -191,12 +266,11 @@ impl Tool for MouseTool {
             "double_click" => {
                 let (x, y) = require_xy(&args)?;
                 let button = parse_button(&args)?;
+                let human_like = human_like_enabled(&args)?;
                 tokio::task::spawn_blocking(move || {
                     let mut enigo = Enigo::new(&Settings::default())
                         .map_err(|e| anyhow::anyhow!("Failed to create enigo instance: {e}"))?;
-                    enigo
-                        .move_mouse(x, y, Coordinate::Abs)
-                        .map_err(|e| anyhow::anyhow!("move_mouse failed: {e}"))?;
+                    humanized_move(&mut enigo, x, y, human_like)?;
                     enigo
                         .button(button, Direction::Click)
                         .map_err(|e| anyhow::anyhow!("button click failed: {e}"))?;
@@ -228,24 +302,21 @@ impl Tool for MouseTool {
                 validate_coord("start_y", start_y)?;
                 let (end_x, end_y) = require_xy(&args)?;
                 let button = parse_button(&args)?;
+                let human_like = human_like_enabled(&args)?;
                 let sx = start_x as i32;
                 let sy = start_y as i32;
 
                 tokio::task::spawn_blocking(move || {
                     let mut enigo = Enigo::new(&Settings::default())
                         .map_err(|e| anyhow::anyhow!("Failed to create enigo instance: {e}"))?;
-                    enigo
-                        .move_mouse(sx, sy, Coordinate::Abs)
-                        .map_err(|e| anyhow::anyhow!("move_mouse (start) failed: {e}"))?;
+                    humanized_move(&mut enigo, sx, sy, human_like)?;
                     enigo
                         .button(button, Direction::Press)
                         .map_err(|e| anyhow::anyhow!("button press failed: {e}"))?;
 
                     // After press succeeds, guarantee release even on error.
                     let drag_result: Result<(), anyhow::Error> = (|| {
-                        enigo
-                            .move_mouse(end_x, end_y, Coordinate::Abs)
-                            .map_err(|e| anyhow::anyhow!("move_mouse (end) failed: {e}"))?;
+                        humanized_move(&mut enigo, end_x, end_y, human_like)?;
                         Ok(())
                     })();
 

@@ -10,11 +10,17 @@
 
 use super::executor;
 use super::prompt;
+use super::reflection::{apply_cap, hydrate_draft, Reflection, ReflectionDraft};
+use super::reflection_store;
 use super::situation_report::build_situation_report;
+use super::source_chunk::resolve_chunks;
 use super::store;
 use super::types::{
     EscalationPriority, EvaluationResponse, SubconsciousStatus, SubconsciousTask, TaskEvaluation,
     TaskRecurrence, TaskSource, TickDecision, TickResult,
+};
+use crate::openhuman::memory::tree::chat::{
+    build_chat_provider, ChatConsumer, ChatPrompt, ChatProvider,
 };
 use crate::openhuman::memory::MemoryClientRef;
 use anyhow::Result;
@@ -22,6 +28,7 @@ use executor::ExecutionOutcome;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
@@ -69,6 +76,27 @@ impl SubconsciousEngine {
             }
         };
 
+        // Restore `last_tick_at` from `subconscious_state` so the
+        // situation-report cutoff survives process restarts. Without
+        // this every restart cold-starts the LLM, which sees the same
+        // memory-tree rows again and re-emits near-duplicate reflections
+        // (no insert-time dedupe in `persist_and_surface_reflections`).
+        // 0.0 on first run / load failure mirrors the previous default.
+        let last_tick_at = match store::with_connection(&workspace_dir, store::get_last_tick_at) {
+            Ok(v) => {
+                if v > 0.0 {
+                    info!(
+                        "[subconscious] resumed last_tick_at={v} from disk (situation report will only emit memory-tree rows newer than this)"
+                    );
+                }
+                v
+            }
+            Err(e) => {
+                warn!("[subconscious] last_tick_at load failed, falling back to 0.0: {e}");
+                0.0
+            }
+        };
+
         Self {
             workspace_dir,
             interval_minutes: heartbeat.interval_minutes.max(5),
@@ -76,7 +104,7 @@ impl SubconsciousEngine {
             enabled: heartbeat.enabled && heartbeat.inference_enabled,
             memory,
             state: Mutex::new(EngineState {
-                last_tick_at: 0.0,
+                last_tick_at,
                 total_ticks: 0,
                 consecutive_failures: 0,
                 seeded,
@@ -152,6 +180,7 @@ impl SubconsciousEngine {
         if due_tasks.is_empty() {
             debug!("[subconscious] no due tasks");
             state.last_tick_at = tick_at;
+            persist_last_tick_at(&self.workspace_dir, tick_at);
             state.total_ticks += 1;
             return Ok(TickResult {
                 tick_at,
@@ -191,13 +220,32 @@ impl SubconsciousEngine {
                 Ok(ids)
             })?;
 
-        // 3. Build situation report
-        let memory_ref = self.memory.as_ref().map(|m| m.as_ref());
+        // 3. Build situation report — memory-tree-derived sections (#623).
+        let config_for_report = match crate::openhuman::config::Config::load_or_init().await {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("[subconscious] config load for situation report failed: {e}");
+                // Without config we cannot read memory_tree tables — but we
+                // can still build the env+tasks+reflections sections by
+                // passing a default config. The signal sections will report
+                // themselves as unavailable.
+                crate::openhuman::config::Config::default()
+            }
+        };
+        // Fetch last 8 reflections for anti-double-emit context.
+        let recent_reflections = super::store::with_connection(&self.workspace_dir, |conn| {
+            super::reflection_store::list_recent(conn, 8, None)
+        })
+        .unwrap_or_else(|e| {
+            warn!("[subconscious] recent reflections load failed: {e}");
+            Vec::new()
+        });
         let report = build_situation_report(
-            memory_ref,
+            &config_for_report,
             &self.workspace_dir,
             last_tick_at,
             self.context_budget_tokens,
+            &recent_reflections,
         )
         .await;
 
@@ -207,8 +255,10 @@ impl SubconsciousEngine {
         // Release lock during LLM calls
         drop(state);
 
-        // 5. Evaluate tasks with local model
-        let evaluations = self.evaluate_tasks(&due_tasks, &report, &identity).await;
+        // 5. Evaluate tasks + emit reflections via cloud chat (#623).
+        let (evaluations, reflection_drafts) = self
+            .evaluate_tasks_and_reflections(&due_tasks, &report, &identity)
+            .await;
 
         // Check if we were superseded by a newer tick
         if self.tick_generation.load(Ordering::SeqCst) != my_generation {
@@ -236,6 +286,23 @@ impl SubconsciousEngine {
         let evaluation_failed = evaluations.iter().all(|e| {
             e.decision == TickDecision::Noop && e.reason.starts_with("Evaluation failed:")
         }) && !evaluations.is_empty();
+
+        // 6a. Persist reflections + post Notify ones (#623). Skipped on
+        //     evaluation failure since the LLM didn't produce useful
+        //     output anyway. We do NOT advance `last_tick_at` on
+        //     failure, so the next tick sees the same window.
+        if !evaluation_failed && !reflection_drafts.is_empty() {
+            // Reuse the same `config_for_report` we built for the situation
+            // report — the source-chunk resolver reads the same memory-tree
+            // tables, so a single load is enough.
+            persist_and_surface_reflections(
+                &self.workspace_dir,
+                &config_for_report,
+                reflection_drafts,
+                tick_at,
+            )
+            .await;
+        }
 
         // 7. Execute based on decisions, updating log entries in place
         let mut executed = 0;
@@ -295,6 +362,7 @@ impl SubconsciousEngine {
         } else {
             state.consecutive_failures = 0;
             state.last_tick_at = tick_at;
+            persist_last_tick_at(&self.workspace_dir, tick_at);
         }
 
         Ok(TickResult {
@@ -357,12 +425,23 @@ impl SubconsciousEngine {
 
         // Execute the task
         let identity = prompt::load_identity_context(&self.workspace_dir);
-        let memory_ref = self.memory.as_ref().map(|m| m.as_ref());
+        let config_for_report = match crate::openhuman::config::Config::load_or_init().await {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("[subconscious] approve_escalation: config load failed: {e}");
+                crate::openhuman::config::Config::default()
+            }
+        };
+        let recent_reflections = super::store::with_connection(&self.workspace_dir, |conn| {
+            super::reflection_store::list_recent(conn, 8, None)
+        })
+        .unwrap_or_default();
         let report = build_situation_report(
-            memory_ref,
+            &config_for_report,
             &self.workspace_dir,
             0.0, // fresh report for execution
             self.context_budget_tokens,
+            &recent_reflections,
         )
         .await;
 
@@ -425,77 +504,97 @@ impl SubconsciousEngine {
         }
     }
 
-    async fn evaluate_tasks(
+    /// Run the per-tick LLM call. Routes to cloud `summarization-v1` via
+    /// the memory_tree chat provider (#623). On failure returns
+    /// `(empty_evaluations, empty_drafts)` so `last_tick_at` is NOT
+    /// advanced — the next tick re-fetches from the same point.
+    async fn evaluate_tasks_and_reflections(
         &self,
         tasks: &[SubconsciousTask],
         report: &str,
         identity: &str,
-    ) -> Vec<TaskEvaluation> {
+    ) -> (Vec<TaskEvaluation>, Vec<ReflectionDraft>) {
         let prompt_text = prompt::build_evaluation_prompt(tasks, report, identity);
 
         let config = match crate::openhuman::config::Config::load_or_init().await {
             Ok(c) => c,
             Err(e) => {
                 warn!("[subconscious] config load failed: {e}");
-                return tasks
-                    .iter()
-                    .map(|t| TaskEvaluation {
-                        task_id: t.id.clone(),
-                        decision: TickDecision::Noop,
-                        reason: format!("Config load failed: {e}"),
-                    })
-                    .collect();
+                return (
+                    tasks
+                        .iter()
+                        .map(|t| TaskEvaluation {
+                            task_id: t.id.clone(),
+                            decision: TickDecision::Noop,
+                            reason: format!("Evaluation failed: config load: {e}"),
+                        })
+                        .collect(),
+                    vec![],
+                );
             }
         };
 
-        // Gate: subconscious evaluation via local AI requires the per-feature flag.
-        // When off, all tasks resolve to Noop rather than erroring.
-        // TODO: wire a cloud fallback here when use_local_for_subconscious is false.
-        if !config.local_ai.use_local_for_subconscious() {
-            tracing::info!(
-                "[subconscious] local_ai.usage.subconscious not enabled — \
-                 skipping local evaluation, all tasks → Noop (no cloud fallback configured)"
-            );
-            // Use the `Evaluation failed:` prefix so the tick-level
-            // `evaluation_failed` detector treats this exactly like an LLM
-            // failure: don't advance `last_tick_at`, don't mark anything as
-            // executed. Silent success-shaped Noop here would otherwise let
-            // the tick clock advance past unevaluated tasks.
-            return tasks
-                .iter()
-                .map(|t| TaskEvaluation {
-                    task_id: t.id.clone(),
-                    decision: TickDecision::Noop,
-                    reason: "Evaluation failed: local_ai.usage.subconscious not enabled \
-                             (no cloud fallback configured)"
-                        .to_string(),
-                })
-                .collect();
-        }
+        // Build the cloud chat provider. The subconscious tick uses
+        // `ChatConsumer::Summarise` because the per-tick payload is
+        // closer in shape to a structured-summary call than a per-chunk
+        // entity extraction. No local fallback (per #623): if cloud is
+        // unreachable, return empty results so the tick is treated as a
+        // skip rather than a malformed advance.
+        let provider: Arc<dyn ChatProvider> =
+            match build_chat_provider(&config, ChatConsumer::Summarise) {
+                Ok(p) => p,
+                Err(e) => {
+                    warn!("[subconscious] cloud chat provider init failed: {e}");
+                    return (
+                        tasks
+                            .iter()
+                            .map(|t| TaskEvaluation {
+                                task_id: t.id.clone(),
+                                decision: TickDecision::Noop,
+                                reason: format!("Evaluation failed: provider init: {e}"),
+                            })
+                            .collect(),
+                        vec![],
+                    );
+                }
+            };
 
-        let messages = vec![
-            crate::openhuman::local_ai::ops::LocalAiChatMessage {
-                role: "system".to_string(),
-                content: prompt_text,
-            },
-            crate::openhuman::local_ai::ops::LocalAiChatMessage {
-                role: "user".to_string(),
-                content: "Evaluate the due tasks. Reply with JSON only.".to_string(),
-            },
-        ];
+        let chat_prompt = ChatPrompt {
+            system: prompt_text,
+            user: "Evaluate the due tasks and surface reflections. Reply with JSON only."
+                .to_string(),
+            temperature: 0.0,
+            kind: "subconscious_tick",
+        };
 
-        match crate::openhuman::local_ai::ops::local_ai_chat(&config, messages, None).await {
-            Ok(outcome) => parse_evaluations(&outcome.value, tasks),
+        debug!(
+            "[subconscious] cloud chat call provider={} tasks={}",
+            provider.name(),
+            tasks.len()
+        );
+        match provider.chat_for_json(&chat_prompt).await {
+            Ok(raw) => {
+                let (evals, drafts) = parse_response(&raw, tasks);
+                debug!(
+                    "[subconscious] cloud chat parsed evals={} drafts={}",
+                    evals.len(),
+                    drafts.len()
+                );
+                (evals, drafts)
+            }
             Err(e) => {
-                warn!("[subconscious] evaluation failed: {e}");
-                tasks
-                    .iter()
-                    .map(|t| TaskEvaluation {
-                        task_id: t.id.clone(),
-                        decision: TickDecision::Noop,
-                        reason: format!("Evaluation failed: {e}"),
-                    })
-                    .collect()
+                warn!("[subconscious] cloud chat failed (no local fallback): {e}");
+                (
+                    tasks
+                        .iter()
+                        .map(|t| TaskEvaluation {
+                            task_id: t.id.clone(),
+                            decision: TickDecision::Noop,
+                            reason: format!("Evaluation failed: cloud chat: {e}"),
+                        })
+                        .collect(),
+                    vec![],
+                )
             }
         }
     }
@@ -681,33 +780,116 @@ impl SubconsciousEngine {
     }
 }
 
-/// Parse the local model's evaluation response into per-task decisions.
-fn parse_evaluations(text: &str, tasks: &[SubconsciousTask]) -> Vec<TaskEvaluation> {
+/// Parse the per-tick LLM response into evaluations + reflection drafts.
+///
+/// Best-effort: if the JSON has only `evaluations`, `reflections` is
+/// empty; if it's a bare evaluations array, `reflections` is empty. If
+/// nothing parses, all tasks default to Noop (with a parse-failure
+/// reason) and `reflections` is empty.
+fn parse_response(
+    text: &str,
+    tasks: &[SubconsciousTask],
+) -> (Vec<TaskEvaluation>, Vec<ReflectionDraft>) {
     let json_text = extract_json(text);
 
-    // Try parsing as EvaluationResponse
+    // 1. Full envelope (preferred).
     if let Ok(response) = serde_json::from_str::<EvaluationResponse>(json_text) {
-        if !response.evaluations.is_empty() {
-            return response.evaluations;
-        }
+        let evals = if response.evaluations.is_empty() {
+            // The LLM returned only reflections — fall through to the
+            // default-noop branch for tasks but keep reflections.
+            tasks
+                .iter()
+                .map(|t| TaskEvaluation {
+                    task_id: t.id.clone(),
+                    decision: TickDecision::Noop,
+                    reason: "No evaluation returned by model".to_string(),
+                })
+                .collect()
+        } else {
+            response.evaluations
+        };
+        return (evals, response.reflections);
     }
 
-    // Try parsing as a bare array of evaluations
+    // 2. Bare evaluations array (legacy shape pre-#623).
     if let Ok(evals) = serde_json::from_str::<Vec<TaskEvaluation>>(json_text) {
         if !evals.is_empty() {
-            return evals;
+            return (evals, vec![]);
         }
     }
 
-    warn!("[subconscious] could not parse evaluation response, defaulting all to noop");
-    tasks
+    warn!("[subconscious] could not parse LLM response, defaulting all tasks to noop");
+    let evals = tasks
         .iter()
         .map(|t| TaskEvaluation {
             task_id: t.id.clone(),
             decision: TickDecision::Noop,
             reason: "Unparseable evaluation response".to_string(),
         })
-        .collect()
+        .collect();
+    (evals, vec![])
+}
+
+/// Persist a batch of LLM-emitted reflection drafts.
+///
+/// Caps to `MAX_REFLECTIONS_PER_TICK`. Failures on individual writes
+/// are logged but do not abort the rest — the tick must finish even if
+/// one row trips an I/O error.
+///
+/// Note: prior versions of this function also auto-posted `Notify`-
+/// disposition reflections into a `system:subconscious` conversation
+/// thread. That auto-post path is removed — reflections live exclusively
+/// on the Intelligence tab. The user can spawn a fresh conversation from
+/// any reflection via the `reflections_act` RPC (drives the action button).
+async fn persist_and_surface_reflections(
+    workspace_dir: &std::path::Path,
+    config: &crate::openhuman::config::Config,
+    drafts: Vec<ReflectionDraft>,
+    now: f64,
+) -> Vec<Reflection> {
+    let (drafts, dropped) = apply_cap(drafts);
+    if dropped > 0 {
+        debug!(
+            "[subconscious] reflections cap dropped {} excess (kept {})",
+            dropped,
+            drafts.len()
+        );
+    }
+    if drafts.is_empty() {
+        return vec![];
+    }
+
+    // Hydrate drafts into full reflections with fresh ids. For each draft,
+    // resolve its `source_refs` against the live memory-tree data NOW so
+    // the snapshot freezes the LLM's actual context. The chunks ride
+    // alongside the reflection row and feed both the Intelligence-tab
+    // "Sources" disclosure and the orchestrator's system-prompt memory-
+    // context injection for any chat turn in a thread spawned from this
+    // reflection. Resolver failures degrade per-chunk to empty content
+    // (see `source_chunk::resolve_chunks`).
+    let reflections: Vec<Reflection> = drafts
+        .into_iter()
+        .map(|d| {
+            let chunks = resolve_chunks(config, &d.source_refs);
+            hydrate_draft(d, uuid::Uuid::new_v4().to_string(), now, chunks)
+        })
+        .collect();
+
+    // Persist all reflections in one connection. Idempotent inserts —
+    // duplicate ids cannot occur here because we just generated them,
+    // but the IGNORE clause makes a future retry safe.
+    if let Err(e) = store::with_connection(workspace_dir, |conn| {
+        for r in &reflections {
+            if let Err(e) = reflection_store::add_reflection(conn, r) {
+                warn!("[subconscious] reflection persist failed id={}: {e}", r.id);
+            }
+        }
+        Ok(())
+    }) {
+        warn!("[subconscious] reflection batch persist failed: {e}");
+    }
+
+    reflections
 }
 
 fn extract_json(text: &str) -> &str {
@@ -730,6 +912,19 @@ fn extract_json(text: &str) -> &str {
         &trimmed[start..end]
     } else {
         trimmed
+    }
+}
+
+/// Best-effort durability for the in-memory `last_tick_at` advance.
+/// SQLite write failures are downgraded to a warning — the in-memory
+/// value still advances and the current process keeps deduping
+/// correctly. The next restart would just cold-start as before, which
+/// is the pre-fix behaviour.
+fn persist_last_tick_at(workspace_dir: &std::path::Path, tick_at: f64) {
+    if let Err(e) =
+        store::with_connection(workspace_dir, |conn| store::set_last_tick_at(conn, tick_at))
+    {
+        warn!("[subconscious] failed to persist last_tick_at={tick_at}: {e}");
     }
 }
 

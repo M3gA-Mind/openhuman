@@ -104,7 +104,52 @@ impl CoreProcessHandle {
     }
 
     pub async fn ensure_running(&self) -> Result<(), String> {
+        // Idempotent fast path: if we already spawned the embedded server in
+        // *this* process and it's still alive on the port, the listener is
+        // us — return Ok without identifying or taking over. Without this,
+        // a second `start_core_process` call (e.g. HMR re-mounting the boot
+        // gate) sees its own port as bound, classifies the listener as
+        // "stale OpenHuman", and walks into the SIGTERM/SIGKILL takeover
+        // path against itself. (#1130 takeover is meant to recover from
+        // *external* leftover binaries, not our own in-process spawn.)
+        {
+            let guard = self.task.lock().await;
+            if let Some(task) = guard.as_ref() {
+                if !task.is_finished() && self.is_rpc_port_open().await {
+                    log::debug!(
+                        "[core] ensure_running: embedded task already running on port {} — no-op",
+                        self.port
+                    );
+                    return Ok(());
+                }
+            }
+        }
+
         if self.is_rpc_port_open().await {
+            // Idempotent fast-path: if we already own a running embedded
+            // task, the listener on this port is us — not a stale external
+            // process. Without this short-circuit, a second `ensure_running`
+            // call (from BootCheckGate re-render, React StrictMode mount, or
+            // any double-invoke of `start_core_process`) hits the
+            // `identify_listener` path, identifies the listener as
+            // OpenHuman, calls `takeover_stale_listener`, and aborts with
+            // "stale-listener pid <self> matches the Tauri host pid;
+            // refusing to self-terminate". (#1316 introduced the
+            // frontend-driven `start_core_process` invoke without
+            // hardening `ensure_running` against double-invoke.)
+            {
+                let guard = self.task.lock().await;
+                if let Some(task) = guard.as_ref() {
+                    if !task.is_finished() {
+                        log::debug!(
+                            "[core] ensure_running: embedded task already running on port {}, returning Ok (idempotent)",
+                            self.port
+                        );
+                        return Ok(());
+                    }
+                }
+            }
+
             if reuse_existing_listener_enabled() {
                 log::warn!(
                     "[core] OPENHUMAN_CORE_REUSE_EXISTING=1 — attaching to whatever is listening on port {} without identification (legacy behavior)",
@@ -517,8 +562,11 @@ fn find_pid_on_port(port: u16) -> Option<u32> {
 
 #[cfg(windows)]
 fn find_pid_on_port(port: u16) -> Option<u32> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let output = std::process::Command::new("netstat")
         .args(["-ano", "-p", "TCP"])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .ok()?;
     if !output.status.success() {

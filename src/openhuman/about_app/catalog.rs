@@ -859,6 +859,44 @@ const CAPABILITIES: &[Capability] = &[
         privacy: None,
     },
     // ── Update ──────────────────────────────────────────────────────────────
+    // ── Meet ────────────────────────────────────────────────────────────────
+    Capability {
+        id: "meet.join_call",
+        name: "Join Google Meet Calls",
+        domain: "meet",
+        category: CapabilityCategory::Channels,
+        description: "Join a Google Meet call as an anonymous guest in a dedicated CEF webview \
+                      window with an isolated profile. The agent automatically dismisses the \
+                      device-check, types its display name, and clicks Ask-to-join via CDP; the \
+                      host admits the agent from the Meet waiting room.",
+        how_to: "Intelligence > Calls",
+        status: CapabilityStatus::Beta,
+        privacy: Some(CapabilityPrivacy {
+            leaves_device: true,
+            data_kind: PrivacyDataKind::Metadata,
+            destinations: &["Google Meet"],
+        }),
+    },
+    Capability {
+        id: "meet_agent.live_loop",
+        name: "Live Meet Agent — Listen + Speak",
+        domain: "meet_agent",
+        category: CapabilityCategory::Automation,
+        description: "While the agent is in a Google Meet call, it listens to the other \
+                      participants by tapping the embedded webview's audio output, runs \
+                      VAD-segmented speech-to-text, decides whether to respond, and speaks \
+                      back through a virtual microphone the embedded Chromium reads as if \
+                      it were a real input device. No system audio permission required — \
+                      capture and playback both stay inside the CEF process.",
+        how_to: "Automatic once a Meet call is open via Intelligence > Calls.",
+        status: CapabilityStatus::Beta,
+        privacy: Some(CapabilityPrivacy {
+            leaves_device: true,
+            data_kind: PrivacyDataKind::Derived,
+            destinations: &["Google Meet", "ElevenLabs (STT/TTS via hosted backend)"],
+        }),
+    },
+    // ── Update ──────────────────────────────────────────────────────────────
     Capability {
         id: "update.check",
         name: "Check for Core Updates",

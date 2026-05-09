@@ -82,6 +82,9 @@ CREATE INDEX IF NOT EXISTS idx_mem_tree_score_dropped
     ON mem_tree_score(dropped);
 
 -- Phase 2 (#708): inverted index entity_id -> node_id for retrieval.
+-- is_user (#1365) is set at index time via the Composio identity registry
+-- (is_self_identity_any_toolkit). Default 0 so legacy rows read back as
+-- non-user until the backfill job re-tags them.
 CREATE TABLE IF NOT EXISTS mem_tree_entity_index (
     entity_id              TEXT NOT NULL,
     node_id                TEXT NOT NULL,
@@ -91,6 +94,7 @@ CREATE TABLE IF NOT EXISTS mem_tree_entity_index (
     score                  REAL NOT NULL,
     timestamp_ms           INTEGER NOT NULL,
     tree_id                TEXT,
+    is_user                INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (entity_id, node_id)
 );
 
@@ -215,6 +219,19 @@ CREATE INDEX IF NOT EXISTS idx_mem_tree_jobs_kind
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_tree_jobs_dedupe_active
     ON mem_tree_jobs(dedupe_key)
     WHERE dedupe_key IS NOT NULL AND status IN ('ready', 'running');
+
+-- Source-level ingest gate. Memory items (documents, chat batches, email
+-- threads) are append-only — once a `(source_kind, source_id)` is ingested
+-- it must not be re-ingested, otherwise its chunks flow back through
+-- extract → admit → buffer → seal and end up duplicated in the summariser
+-- tree. The first ingest claims the row; subsequent ingest_* calls for the
+-- same key short-circuit before canonicalisation.
+CREATE TABLE IF NOT EXISTS mem_tree_ingested_sources (
+    source_kind            TEXT NOT NULL,
+    source_id              TEXT NOT NULL,
+    ingested_at_ms         INTEGER NOT NULL,
+    PRIMARY KEY (source_kind, source_id)
+);
 ";
 
 /// Upsert a batch of chunks atomically.
@@ -327,7 +344,10 @@ pub(crate) fn upsert_staged_chunks_tx(
     )?;
     for s in staged {
         let chunk = &s.chunk;
-        // Store a ≤500-char preview in the `content` column; full body is on disk.
+        // SQL `content` column always carries a ≤500-char preview now
+        // — the full body either lives at `content_path` (chat /
+        // document) or is reconstructed from `raw_refs_json` byte
+        // ranges in the raw archive (email). See `read_chunk_body`.
         let preview: String = chunk.content.chars().take(500).collect();
         stmt.execute(params![
             chunk.id,
@@ -529,6 +549,49 @@ fn set_chunk_lifecycle_status_conn(conn: &Connection, chunk_id: &str, status: &s
     Ok(())
 }
 
+/// Best-effort, non-transactional check used by `ingest_*` to skip
+/// canonicalisation when a source has already been ingested. The
+/// authoritative gate is [`claim_source_ingest_tx`] inside the persist
+/// transaction — this lookup just avoids burning canonicaliser work on
+/// the obvious dup case.
+pub fn is_source_ingested(
+    config: &Config,
+    source_kind: SourceKind,
+    source_id: &str,
+) -> Result<bool> {
+    with_connection(config, |conn| {
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM mem_tree_ingested_sources \
+             WHERE source_kind = ?1 AND source_id = ?2",
+            params![source_kind.as_str(), source_id],
+            |r| r.get(0),
+        )?;
+        Ok(n > 0)
+    })
+}
+
+/// Atomically claim `(source_kind, source_id)` for ingestion. Returns
+/// `true` if the row was newly inserted (caller should proceed with the
+/// rest of the persist transaction); `false` if a previous ingest already
+/// claimed this source (caller must roll back / skip).
+///
+/// Lives inside the same transaction as the chunk + job writes so two
+/// concurrent ingests of the same source can't both pass the gate.
+pub(crate) fn claim_source_ingest_tx(
+    tx: &Transaction<'_>,
+    source_kind: SourceKind,
+    source_id: &str,
+    now_ms: i64,
+) -> Result<bool> {
+    let inserted = tx.execute(
+        "INSERT OR IGNORE INTO mem_tree_ingested_sources \
+            (source_kind, source_id, ingested_at_ms) \
+         VALUES (?1, ?2, ?3)",
+        params![source_kind.as_str(), source_id, now_ms],
+    )?;
+    Ok(inserted > 0)
+}
+
 fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<Chunk> {
     let id: String = row.get(0)?;
     let source_kind_s: String = row.get(1)?;
@@ -653,7 +716,81 @@ pub(crate) fn with_connection<T>(
     // fall back to the `content` column for those rows.
     add_column_if_missing(&conn, "mem_tree_summaries", "content_path", "TEXT")?;
     add_column_if_missing(&conn, "mem_tree_summaries", "content_sha256", "TEXT")?;
+    // Raw-archive pointer column. JSON array of {path, start, end} —
+    // used by chunks whose body comes from one or more files under
+    // `<content_root>/raw/...` (today: email). When set, `read_chunk_body`
+    // reads + concatenates those byte ranges instead of fetching from
+    // disk via `content_path` or falling back to the SQL `content`
+    // preview. Nullable so legacy chunks keep working unchanged.
+    add_column_if_missing(&conn, "mem_tree_chunks", "raw_refs_json", "TEXT")?;
+    // #1365: is_user flag on indexed entity rows. Set at write time by
+    // running the canonical id through the Composio identity registry
+    // (`is_self_identity_any_toolkit`). Default 0 so legacy rows read
+    // back as "not user" until the backfill job re-tags them.
+    add_column_if_missing(
+        &conn,
+        "mem_tree_entity_index",
+        "is_user",
+        "INTEGER NOT NULL DEFAULT 0",
+    )?;
     f(&conn)
+}
+
+/// One pointer into the raw archive. A chunk's body is reconstructed by
+/// reading each [`RawRef`] in order and joining with `"\n\n"`.
+///
+/// `start` / `end` are byte offsets into the raw `.md` file. `end =
+/// None` means "read to end of file". Both default to "the whole
+/// file" (`start = 0`, `end = None`) for the common one-message-one-chunk
+/// path; oversize-message chunks get explicit ranges so each chunk
+/// reconstructs its sub-slice.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct RawRef {
+    /// Forward-slash relative path under `<content_root>/`,
+    /// e.g. `"raw/gmail-stevent95-at-gmail-dot-com/1700000_msg-id.md"`.
+    pub path: String,
+    #[serde(default)]
+    pub start: usize,
+    #[serde(default)]
+    pub end: Option<usize>,
+}
+
+/// Stash a list of [`RawRef`] entries on a chunk row. Replaces any
+/// previous value. Used by ingest pipelines that mirror their bytes
+/// into `<content_root>/raw/...` so reads can skip the SQL preview
+/// path and pull the full body straight from the archive.
+pub fn set_chunk_raw_refs(config: &Config, chunk_id: &str, refs: &[RawRef]) -> Result<()> {
+    let json = serde_json::to_string(refs).context("serialize raw_refs")?;
+    with_connection(config, |conn| {
+        conn.execute(
+            "UPDATE mem_tree_chunks SET raw_refs_json = ?1 WHERE id = ?2",
+            params![json, chunk_id],
+        )?;
+        Ok(())
+    })
+}
+
+/// Return the raw-archive pointers stored in SQLite for `chunk_id`,
+/// or `None` if no `raw_refs_json` was recorded.
+pub fn get_chunk_raw_refs(config: &Config, chunk_id: &str) -> Result<Option<Vec<RawRef>>> {
+    with_connection(config, |conn| {
+        let row = conn
+            .query_row(
+                "SELECT raw_refs_json FROM mem_tree_chunks WHERE id = ?1",
+                params![chunk_id],
+                |r| r.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten();
+        match row {
+            Some(json) if !json.is_empty() => {
+                let refs: Vec<RawRef> =
+                    serde_json::from_str(&json).context("deserialize raw_refs_json")?;
+                Ok(Some(refs))
+            }
+            _ => Ok(None),
+        }
+    })
 }
 
 /// Return both `content_path` and `content_sha256` stored in SQLite for `chunk_id`.

@@ -1,7 +1,8 @@
-import { Player, type PlayerRef } from '@remotion/player';
-import { type ComponentType, type FC, useEffect, useMemo, useRef } from 'react';
+import { type ComponentType, type FC, useMemo } from 'react';
 
 import type { MascotFace } from './Ghosty';
+import type { MascotColor } from './mascotPalette';
+import { FrameProvider } from './yellow/frameContext';
 import type { MascotProps as YellowMascotInnerProps } from './yellow/MascotCharacter';
 import { YellowMascotIdle } from './yellow/MascotIdle';
 import { YellowMascotTalking } from './yellow/MascotTalking';
@@ -14,37 +15,47 @@ export interface YellowMascotProps {
   arm?: 'wave' | 'none';
   /** Override SVG element size; defaults to filling the parent. */
   size?: number | string;
-  /** Center opacity of the ground shadow gradient. Defaults to 0.35; bump
-   *  up when the mascot is rendered very small (floating mascot window) so
-   *  the shadow stays readable. */
+  /** Center opacity of the ground shadow gradient — pass through to MascotCharacter. */
   groundShadowOpacity?: number;
-  /** Replace the warm yellow/amber arm inner-shadow tints with darker
-   *  neutrals — for very small renders where the warm tint reads as a
-   *  bright halo instead of a shadow. */
+  /** Use the compact arm shading variant — pass through to MascotCharacter. */
   compactArmShading?: boolean;
+  /** Mascot color palette. Defaults to yellow. */
+  mascotColor?: MascotColor;
 }
 
 const FPS = 30;
-// Composition canvas matches the Remotion side (1080x1080); Player scales it.
-const CANVAS = 1080;
+// Logical canvas size reported via useVideoConfig() to the inner compositions.
+// They use width/height for layout math (e.g. transform origins). The actual
+// on-screen size comes from the wrapper div + the SVG's CSS width/height.
+const CANVAS = 1000;
 // Loop length per state. The Thinking variant we authored loops cleanly at 6s.
 const DURATION_FRAMES = FPS * 6;
 
+type ExtendedInnerProps = YellowMascotInnerProps & {
+  groundShadowOpacity?: number;
+  compactArmShading?: boolean;
+};
+
 interface Variant {
-  component: ComponentType<YellowMascotInnerProps>;
-  inputProps: YellowMascotInnerProps;
+  component: ComponentType<ExtendedInnerProps>;
+  inputProps: ExtendedInnerProps;
 }
 
-function variantForFace(face: MascotFace, arm: 'wave' | 'none'): Variant {
+function variantForFace(
+  face: MascotFace,
+  arm: 'wave' | 'none',
+  extras: Pick<YellowMascotInnerProps, 'mascotColor'>
+): Variant {
   const base: Pick<
     YellowMascotInnerProps,
-    'face' | 'recordingColor' | 'loadingColor' | 'greeting' | 'sleeping'
+    'face' | 'recordingColor' | 'loadingColor' | 'greeting' | 'sleeping' | 'mascotColor'
   > = {
     face: 'normal',
     recordingColor: '#ff3b30',
     loadingColor: '#ffffff',
     greeting: false,
     sleeping: false,
+    mascotColor: extras.mascotColor ?? 'yellow',
   };
   switch (face) {
     case 'thinking':
@@ -77,53 +88,38 @@ export const YellowMascot: FC<YellowMascotProps> = ({
   size = '100%',
   groundShadowOpacity,
   compactArmShading,
+  mascotColor = 'yellow',
 }) => {
-  const { component, inputProps } = useMemo(() => {
-    const variant = variantForFace(face, arm);
-    return {
-      component: variant.component,
-      inputProps: {
-        ...variant.inputProps,
-        ...(groundShadowOpacity !== undefined && { groundShadowOpacity }),
-        ...(compactArmShading !== undefined && { compactArmShading }),
-      },
+  const { Component, inputProps } = useMemo(() => {
+    const variant = variantForFace(face, arm, { mascotColor });
+    const merged: ExtendedInnerProps = {
+      ...variant.inputProps,
+      ...(groundShadowOpacity !== undefined ? { groundShadowOpacity } : {}),
+      ...(compactArmShading !== undefined ? { compactArmShading } : {}),
     };
-  }, [face, arm, groundShadowOpacity, compactArmShading]);
-  const playerRef = useRef<PlayerRef>(null);
-
-  // Player's `autoPlay` prop is unreliable across browsers / strict-mode mounts
-  // (autoplay policy gating, ref attaching after first paint). Kick playback
-  // explicitly once the ref is attached and again whenever the variant changes.
-  useEffect(() => {
-    const p = playerRef.current;
-    if (!p) return;
-    p.play();
-  }, [component]);
+    return { Component: variant.component, inputProps: merged };
+  }, [face, arm, mascotColor, groundShadowOpacity, compactArmShading]);
 
   return (
     <div
+      className="mascot-yellow-host"
       style={{
         width: typeof size === 'number' ? `${size}px` : size,
         aspectRatio: '1 / 1',
-        // Player draws a black background by default; transparent so the page bg shows through.
         background: 'transparent',
+        position: 'relative',
       }}
       data-face={face}>
-      <Player
-        ref={playerRef}
-        component={component as ComponentType<Record<string, unknown>>}
-        inputProps={inputProps as unknown as Record<string, unknown>}
-        durationInFrames={DURATION_FRAMES}
-        fps={FPS}
-        compositionWidth={CANVAS}
-        compositionHeight={CANVAS}
-        loop
-        autoPlay
-        controls={false}
-        clickToPlay={false}
-        doubleClickToFullscreen={false}
-        style={{ width: '100%', height: '100%', background: 'transparent' }}
-      />
+      {/* MascotCharacter sets its <svg> to a fixed pixel size derived from
+          useVideoConfig().width, then wraps it in an AbsoluteFill that fills
+          our parent. With Player gone we override that fixed size via CSS so
+          the SVG fills its container — the viewBox handles vector scaling. */}
+      <style>{`
+        .mascot-yellow-host svg { width: 100% !important; height: 100% !important; }
+      `}</style>
+      <FrameProvider fps={FPS} width={CANVAS} height={CANVAS} durationInFrames={DURATION_FRAMES}>
+        <Component {...inputProps} />
+      </FrameProvider>
     </div>
   );
 };

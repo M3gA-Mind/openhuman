@@ -31,6 +31,27 @@ function safeGetActiveUserIdSync(): string | null {
 
 let activeUserId: string | null = safeGetActiveUserIdSync();
 
+// Recover from a prior buggy build that moved `persist:coreMode` into the
+// user-scoped namespace via `migrateLegacyPersistKeys`. The unscoped key is
+// authoritative; if it's missing but a scoped copy exists, copy it back so
+// the boot picker stops re-prompting on every launch.
+(function recoverUnscopedCoreMode(): void {
+  try {
+    if (localStorage.getItem('persist:coreMode') !== null) return;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.endsWith(':persist:coreMode')) continue;
+      const value = localStorage.getItem(key);
+      if (value === null) continue;
+      localStorage.setItem('persist:coreMode', value);
+      localStorage.removeItem(key);
+      break;
+    }
+  } catch {
+    // best-effort
+  }
+})();
+
 // Gate redux-persist's rehydrate on the boot prime from main.tsx
 // (which reads the authoritative id from `~/.openhuman/active_user.toml`
 // via the Rust core). The localStorage value used at module load is
@@ -47,9 +68,18 @@ let primed = false;
  * Mark `userScopedStorage` as primed with the boot-time active user id.
  *
  * Called once by `main.tsx` after `getActiveUserIdFromCore()` returns.
- * Pass `null` for "no user logged in yet" — storage reads/writes then
- * fall through as no-ops until a real id is supplied later via
- * `setActiveUserId`.
+ * Pass `null` for "core couldn't tell us who's active" — most commonly:
+ *
+ *   1. fresh device with no local `~/.openhuman/active_user.toml`
+ *   2. cloud-mode boot where the local Rust core isn't running at all
+ *   3. transient `getActiveUserIdFromCore` failure (`.catch(() => prime(null))`)
+ *
+ * In any of those cases we **fall back** to whatever `OPENHUMAN_ACTIVE_USER_ID`
+ * already has in plain `localStorage` from a prior `setActiveUserId` write
+ * rather than wiping it. Without this fallback, `handleIdentityFlip`'s
+ * `setActiveUserId(X) → restartApp` cycle is reset on every reload (because
+ * the next boot's `prime(null)` removes X again), trapping cloud-mode users
+ * in an infinite picker → snapshot → flip → reload loop.
  *
  * Safe to call before `setActiveUserId` for an initial seed; subsequent
  * `primeActiveUserId(...)` calls have no effect (the gate is one-shot).
@@ -57,15 +87,16 @@ let primed = false;
 export function primeActiveUserId(id: string | null): void {
   if (primed) return;
   primed = true;
-  activeUserId = id;
-  try {
-    if (id) {
+  if (id) {
+    activeUserId = id;
+    try {
       localStorage.setItem(ACTIVE_USER_KEY, id);
-    } else {
-      localStorage.removeItem(ACTIVE_USER_KEY);
+    } catch {
+      // localStorage may be unavailable; in-memory ref still drives reads
     }
-  } catch {
-    // localStorage may be unavailable; in-memory ref still drives reads
+  } else {
+    // Don't wipe — keep whatever a prior session wrote.
+    activeUserId = safeGetActiveUserIdSync();
   }
   activeUserIdResolve();
 }
@@ -115,11 +146,17 @@ export function setActiveUserId(id: string | null): void {
  */
 function migrateLegacyPersistKeys(id: string): void {
   const LEGACY_PREFIXES = ['persist:'];
+  // Keys that are intentionally pre-login / un-scoped and must NOT be moved
+  // into the per-user namespace. `persist:coreMode` is the local-vs-cloud
+  // mode picker — it lives in plain localStorage so it survives across user
+  // switches, and migrating it away makes the picker re-prompt every launch.
+  const UNSCOPED_KEYS = new Set(['persist:coreMode']);
   try {
     const legacyKeys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (!key) continue;
+      if (UNSCOPED_KEYS.has(key)) continue;
       if (LEGACY_PREFIXES.some(p => key.startsWith(p))) {
         legacyKeys.push(key);
       }

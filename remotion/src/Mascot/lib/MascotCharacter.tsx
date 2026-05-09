@@ -1,26 +1,23 @@
 import React from "react";
 import { AbsoluteFill, Easing, interpolate, useCurrentFrame, useVideoConfig } from "remotion";
 import { z } from "zod";
-import { zColor } from "@remotion/zod-types";
-import { RecordingFace } from "../../Ghosty/lib/RecordingFace";
-import { LoadingFace } from "../../Ghosty/lib/LoadingFace";
+import { getMascotPalette, type MascotColor } from "./mascotPalette";
 
 export const mascotSchema = z.object({
   arm: z.enum(["wave", "none", "steady"]).default("wave"),
-  face: z.enum(["normal", "recording", "loading"]).default("normal"),
+  face: z.enum(["normal"]).default("normal"),
   talking: z.boolean().default(false),
   sleeping: z.boolean().default(false),
   thinking: z.boolean().default(false),
   greeting: z.boolean().default(false),
-  recordingColor: zColor().default("#ff3b30"),
-  loadingColor: zColor().default("#ffffff"),
+  mascotColor: z.enum(["yellow", "burgundy", "black", "navy", "green"]).default("yellow"),
 });
 
 export type MascotProps = z.infer<typeof mascotSchema>;
 
 /**
- * Mascot character — drives the custom yellow mascot SVG with the same
- * animation system as Ghosty: body bob, head-dot drift/squash, arm wave, blink.
+ * Mascot character — drives the custom yellow mascot SVG with the shared
+ * Remotion animation system: body bob, head-dot drift/squash, arm wave, blink.
  *
  * Use distinct `idPrefix` values if two instances appear in the same SVG tree
  * so filter/gradient IDs don't collide.
@@ -34,6 +31,10 @@ type ThinkingTiming = {
   thinkOutStartSec?: number;
   /** Seconds at which the thinking→idle ramp completes. Required if thinkOutStartSec is set. */
   thinkOutEndSec?: number;
+  /** Seconds at which the awake→sleep ramp begins. Default 2.5. */
+  sleepStartSec?: number;
+  /** Seconds at which the awake→sleep ramp completes. Default 4.0. */
+  sleepFullSec?: number;
 };
 
 export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & ThinkingTiming> = ({
@@ -43,14 +44,16 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
   sleeping = false,
   thinking = false,
   greeting = false,
-  recordingColor = "#ff3b30",
-  loadingColor = "#ffffff",
+  mascotColor = "yellow",
   idPrefix = "mascot",
   thinkInStartSec = 1.0,
   thinkInEndSec = 2.0,
   thinkOutStartSec,
   thinkOutEndSec,
+  sleepStartSec = 2.5,
+  sleepFullSec = 4.0,
 }) => {
+  const palette = getMascotPalette(mascotColor as MascotColor);
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
 
@@ -100,17 +103,19 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
   const blinkScale = inBlink ? 0.12 : 1;
 
   // Sleep animation — slow eye-close then floating Zzz.
-  const sleepStartFrame = sleeping ? Math.round(fps * 2.5) : 99999;
-  const sleepFullFrame  = sleeping ? Math.round(fps * 4.0) : 99999;
+  const sleepStartFrame = sleeping ? Math.round(fps * sleepStartSec) : 99999;
+  const sleepFullFrame  = sleeping ? Math.round(fps * sleepFullSec) : 99999;
   const inSleepTransition = sleeping && frame >= sleepStartFrame;
   const sleepProgress = sleeping
-    ? interpolate(frame, [sleepStartFrame, sleepFullFrame], [0, 1], {
+    ? sleepFullFrame <= sleepStartFrame
+      ? 1
+      : interpolate(frame, [sleepStartFrame, sleepFullFrame], [0, 1], {
         extrapolateLeft: "clamp",
         extrapolateRight: "clamp",
         easing: Easing.inOut(Easing.cubic),
       })
     : 0;
-  const isAsleep = sleeping && frame >= sleepFullFrame;
+  const isAsleep = sleeping && (sleepFullFrame <= sleepStartFrame || frame >= sleepFullFrame);
 
   // Eye openness: normal blink while awake, slow droop during sleep transition.
   const eyeScale = inSleepTransition ? Math.max(0, 1 - sleepProgress) : blinkScale;
@@ -143,7 +148,9 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
   const thinkOutStartFrame = hasOutRamp ? Math.round(fps * (thinkOutStartSec as number)) : 99999;
   const thinkOutEndFrame   = hasOutRamp ? Math.round(fps * (thinkOutEndSec as number))   : 99999;
   const thinkInProgress = thinking
-    ? interpolate(frame, [thinkStartFrame, thinkFullFrame], [0, 1], {
+    ? thinkFullFrame <= thinkStartFrame
+      ? 1
+      : interpolate(frame, [thinkStartFrame, thinkFullFrame], [0, 1], {
         extrapolateLeft: "clamp",
         extrapolateRight: "clamp",
         easing: Easing.inOut(Easing.cubic),
@@ -240,13 +247,13 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
             <feOffset dx="17" dy="28" />
             <feGaussianBlur stdDeviation="10.45" />
             <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix type="matrix" values="0 0 0 0 0.962384 0 0 0 0 0.860378 0 0 0 0 0.484572 0 0 0 1 0" />
+            <feColorMatrix type="matrix" values={palette.bodyHighlightMatrix} />
             <feBlend mode="normal" in2="shape" result="effect1_innerShadow" />
             <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
             <feOffset dx="-27" dy="-22" />
             <feGaussianBlur stdDeviation="29.75" />
             <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix type="matrix" values="0 0 0 0 0.797063 0 0 0 0 0.575703 0 0 0 0 0.0980312 0 0 0 1 0" />
+            <feColorMatrix type="matrix" values={palette.bodyShadowMatrix} />
             <feBlend mode="normal" in2="effect1_innerShadow" result="effect2_innerShadow" />
             <feTurbulence type="fractalNoise" baseFrequency="0.999" numOctaves={3} seed={8703} />
             <feDisplacementMap in="effect2_innerShadow" scale={8} xChannelSelector="R" yChannelSelector="G" result="displacedImage" width="100%" height="100%" />
@@ -261,13 +268,13 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
             <feOffset dx="9" dy="2" />
             <feGaussianBlur stdDeviation="5.65" />
             <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix type="matrix" values="0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0" />
+            <feColorMatrix type="matrix" values={palette.headHighlightMatrix} />
             <feBlend mode="normal" in2="shape" result="effect1_innerShadow" />
             <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
             <feOffset dx="-2" dy="-13" />
             <feGaussianBlur stdDeviation="19.7" />
             <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix type="matrix" values="0 0 0 0 0.797063 0 0 0 0 0.575703 0 0 0 0 0.0980312 0 0 0 1 0" />
+            <feColorMatrix type="matrix" values={palette.headShadowMatrix} />
             <feBlend mode="normal" in2="effect1_innerShadow" result="effect2_innerShadow" />
             <feTurbulence type="fractalNoise" baseFrequency="0.999" numOctaves={3} seed={8703} />
             <feDisplacementMap in="effect2_innerShadow" scale={8} xChannelSelector="R" yChannelSelector="G" result="displacedImage" width="100%" height="100%" />
@@ -296,13 +303,13 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
             <feOffset dx="-11" dy="28" />
             <feGaussianBlur stdDeviation="11" />
             <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix type="matrix" values="0 0 0 0 0.973501 0 0 0 0 0.909066 0 0 0 0 0.671677 0 0 0 1 0" />
+            <feColorMatrix type="matrix" values={palette.armHighlightMatrix} />
             <feBlend mode="normal" in2="shape" result="effect1_innerShadow" />
             <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
             <feOffset dx="-8" dy="1" />
             <feGaussianBlur stdDeviation="4.25" />
             <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix type="matrix" values="0 0 0 0 0.796078 0 0 0 0 0.576471 0 0 0 0 0.0980392 0 0 0 1 0" />
+            <feColorMatrix type="matrix" values={palette.armShadowMatrix} />
             <feBlend mode="normal" in2="effect1_innerShadow" result="effect2_innerShadow" />
             <feTurbulence type="fractalNoise" baseFrequency="0.999" numOctaves={3} seed={8703} />
             <feDisplacementMap in="effect2_innerShadow" scale={8} xChannelSelector="R" yChannelSelector="G" result="displacedImage" width="100%" height="100%" />
@@ -317,13 +324,13 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
             <feOffset dx="1" dy="-20" />
             <feGaussianBlur stdDeviation="7.55" />
             <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix type="matrix" values="0 0 0 0 0.973501 0 0 0 0 0.909066 0 0 0 0 0.671677 0 0 0 1 0" />
+            <feColorMatrix type="matrix" values={palette.armHighlightMatrix} />
             <feBlend mode="normal" in2="shape" result="effect1_innerShadow" />
             <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
             <feOffset dx="3" dy="-8" />
             <feGaussianBlur stdDeviation="3.55" />
             <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix type="matrix" values="0 0 0 0 0.796078 0 0 0 0 0.576471 0 0 0 0 0.0980392 0 0 0 0.8 0" />
+            <feColorMatrix type="matrix" values={palette.armShadowMatrix.replace(/ 1 0$/, " 0.8 0")} />
             <feBlend mode="normal" in2="effect1_innerShadow" result="effect2_innerShadow" />
             <feTurbulence type="fractalNoise" baseFrequency="0.999" numOctaves={3} seed={8703} />
             <feDisplacementMap in="effect2_innerShadow" scale={8} xChannelSelector="R" yChannelSelector="G" result="displacedImage" width="100%" height="100%" />
@@ -367,13 +374,13 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
             <feOffset dx="1" dy="-20" />
             <feGaussianBlur stdDeviation="7.55" />
             <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix type="matrix" values="0 0 0 0 0.973501 0 0 0 0 0.909066 0 0 0 0 0.671677 0 0 0 1 0" />
+            <feColorMatrix type="matrix" values={palette.armHighlightMatrix} />
             <feBlend mode="normal" in2="shape" result="effect1_innerShadow" />
             <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha" />
             <feOffset dx="0" dy="-8" />
             <feGaussianBlur stdDeviation="3.55" />
             <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
-            <feColorMatrix type="matrix" values="0 0 0 0 0.796078 0 0 0 0 0.576471 0 0 0 0 0.0980392 0 0 0 0.8 0" />
+            <feColorMatrix type="matrix" values={palette.armShadowMatrix.replace(/ 1 0$/, " 0.8 0")} />
             <feBlend mode="normal" in2="effect1_innerShadow" result="effect2_innerShadow" />
             <feTurbulence type="fractalNoise" baseFrequency="0.999" numOctaves={3} seed={8703} />
             <feDisplacementMap in="effect2_innerShadow" scale={8} xChannelSelector="R" yChannelSelector="G" result="displacedImage" width="100%" height="100%" />
@@ -406,13 +413,13 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
             `translate(${dotDx}, ${dotDy}) ` +
             `translate(493 145) scale(${dotSquashX} ${dotSquashY}) translate(-493 -145)`
           }>
-            <circle cx={493} cy={145} r={110} fill="#F7D145" filter={`url(#${p("f1")})`} />
+            <circle cx={493} cy={145} r={110} fill={palette.bodyFill} filter={`url(#${p("f1")})`} />
           </g>
 
           {/* Body */}
           <path
             d="M270.548 382.714C175.869 479.647 86.1402 654.573 127.915 829.517C145.272 881.371 165.202 911.976 222.935 941.975C253.337 957.772 327.5 950.5 375.544 921.664L445.394 890.456C490.742 873.851 509.572 876.412 538.5 889.192C577.029 910.413 587.5 931.5 649.207 964.222C729.487 1006.79 793.127 956.041 817.514 889.192C874.808 742.915 814.514 422.978 650.331 310.479C516.054 226.594 403.003 247.226 270.548 382.714Z"
-            fill="#F7D145"
+            fill={palette.bodyFill}
             filter={`url(#${p("f0")})`}
           />
 
@@ -421,7 +428,7 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
             <g transform={`rotate(${isGreeting ? greetArmAngle : wave}, 776, 568)`}>
               <path
                 d="M821.855 513.95C798.846 545.418 795.5 553 776.706 568C760.334 581.067 781.974 653.709 801.375 710.888C805.052 721.724 819.237 724.693 827.147 716.425C860.877 681.172 917.862 621.391 924.689 572.869C939.558 467.192 868.275 454.188 821.855 513.95Z"
-                fill="#F7D145"
+                fill={palette.bodyFill}
                 filter={`url(#${p("f4")})`}
               />
             </g>
@@ -432,7 +439,7 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
             <g transform={`rotate(${rightSteadyAngle}, 655, 709)`}>
               <path
                 d="M680.851 773.156C666.823 736.786 665.565 728.594 651.321 709.221C638.913 692.343 678.709 627.834 712.32 577.674C718.689 568.167 733.158 568.991 738.645 579.033C762.04 621.848 801.508 694.398 795.474 743.024C782.333 848.93 710.122 842.939 680.851 773.156Z"
-                fill="#F7D145"
+                fill={palette.bodyFill}
                 filter={`url(#${p("f13")})`}
               />
             </g>
@@ -442,17 +449,17 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
           <g transform={`rotate(${effectiveLeftSway}, 290, 700)`}>
             <path
               d="M257.7 773.068C271.728 736.698 272.987 728.506 287.23 709.133C299.638 692.255 259.842 627.746 226.232 577.586C219.862 568.08 205.393 568.903 199.906 578.945C176.511 621.76 137.044 694.31 143.077 742.936C156.218 848.842 228.429 842.851 257.7 773.068Z"
-              fill="#F7D145"
+              fill={palette.bodyFill}
               filter={`url(#${p("f5")})`}
             />
           </g>
 
           {/* Neck shadow details */}
           <g opacity={0.4} filter={`url(#${p("f2")})`}>
-            <path d="M450.376 270.172C464.042 264.005 502.076 255.372 544.876 270.172C598.376 288.672 415.876 288.172 450.376 270.172Z" fill="#B23C05" />
+            <path d="M450.376 270.172C464.042 264.005 502.076 255.372 544.876 270.172C598.376 288.672 415.876 288.172 450.376 270.172Z" fill={palette.neckShadowColor} />
           </g>
           <g opacity={0.4} filter={`url(#${p("f3")})`}>
-            <path d="M533.5 245.499C524.956 248.602 489.943 257.335 463.186 249.888C429.739 240.578 555.068 236.442 533.5 245.499Z" fill="#B23C05" />
+            <path d="M533.5 245.499C524.956 248.602 489.943 257.335 463.186 249.888C429.739 240.578 555.068 236.442 533.5 245.499Z" fill={palette.neckShadowColor} />
           </g>
 
           {/* Normal face — eyes, cheeks, mouth.
@@ -561,21 +568,6 @@ export const MascotCharacter: React.FC<MascotProps & { idPrefix?: string } & Thi
                   <ellipse cx={483} cy={526} rx={7} ry={4} fill="#E07070" opacity={tongueOpacity * 0.85} />
                 </g>
               )}
-            </g>
-          )}
-
-          {/* Recording face — pulsing dot, centered at (495, 495): 25px lower + 70% scale.
-              Transform: place at target center → scale → undo RecordingFace's own offset (520,555). */}
-          {face === "recording" && (
-            <g transform="translate(495, 495) scale(0.7) translate(-520, -555)">
-              <RecordingFace frame={frame} fps={fps} color={recordingColor} />
-            </g>
-          )}
-
-          {/* Loading face — spinning ring, same center/scale as recording dot (495, 495, 70%). */}
-          {face === "loading" && (
-            <g transform="translate(495, 495) scale(0.7) translate(-520, -555)">
-              <LoadingFace frame={frame} fps={fps} color={loadingColor} />
             </g>
           )}
 

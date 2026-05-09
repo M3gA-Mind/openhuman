@@ -57,10 +57,28 @@ export async function transcribeCloud(
   );
 
   const rpcStart = Date.now();
-  const result = await callCoreRpc<CloudTranscribeResult>({
-    method: 'openhuman.voice_cloud_transcribe',
-    params,
-  });
+  let result: CloudTranscribeResult;
+  try {
+    result = await callCoreRpc<CloudTranscribeResult>({
+      method: 'openhuman.voice_cloud_transcribe',
+      params,
+    });
+  } catch (err) {
+    // Issue #1289: an "unknown method" error means the bundled core
+    // sidecar is older than the frontend (e.g. a stale dev build, or a
+    // cached binary the desktop auto-update hasn't refreshed yet).
+    // The raw "unknown method: openhuman.voice_cloud_transcribe" string
+    // is opaque to end users — surface an actionable message instead.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('unknown method')) {
+      sttLog('transcribe rpc stale-sidecar path hit; rewriting unknown-method error: %s', msg);
+      throw new Error(
+        'Voice transcription is unavailable in this build. Restart the OpenHuman desktop app to pick up the latest core sidecar.'
+      );
+    }
+    sttLog('transcribe rpc failed (passthrough): %O', err);
+    throw err;
+  }
   const text = result?.text?.trim() ?? '';
   sttLog('transcribed chars=%d rpc_ms=%d', text.length, Math.round(Date.now() - rpcStart));
   return text;

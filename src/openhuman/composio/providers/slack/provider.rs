@@ -10,44 +10,36 @@
 //!
 //! 1. Load [`SyncState`] for `(slack, connection_id)`. `state.cursor` is
 //!    a JSON-encoded [`sync::ChannelCursors`] map — Slack needs a cursor
-//!    per channel, not one global watermark (Gmail's single `cursor`
-//!    string wouldn't cut it). Parse failures degrade to an empty map,
-//!    i.e. full backfill, which is safe because chunk IDs are
-//!    deterministic.
+//!    per channel. Parse failures degrade to an empty map (full backfill),
+//!    which is safe because chunk IDs are deterministic.
 //! 2. Enumerate every channel the bot can read via
 //!    [`ACTION_LIST_CONVERSATIONS`] with pagination.
 //! 3. For each channel, pull messages since the per-channel cursor (or
 //!    `now - BACKFILL_DAYS` if no cursor yet) via
 //!    [`ACTION_FETCH_HISTORY`], paginated.
-//! 4. Hand every collected message to
-//!    [`slack_ingestion::bucketer::split_closed`] — produces closed
-//!    6-hour UTC buckets + a "still open" remainder (discarded; the
-//!    next sync will re-fetch that window, which is cheap because we
-//!    advance the cursor **only** after a bucket flushes).
-//! 5. Ingest each closed bucket via
-//!    [`slack_ingestion::ops::ingest_bucket`] — canonicalise → chunk →
-//!    score (with the config's Ollama entity extractor, if set) →
-//!    persist → seal cascade (with the config's Ollama summariser).
-//! 6. Advance per-channel cursor to the latest flushed bucket's end
-//!    timestamp; save [`SyncState`].
+//! 4. Post-process each response via [`super::post_process`], enrich via
+//!    [`super::sync::extract_messages`] to produce [`SlackMessage`]s with
+//!    channel context and resolved user names.
+//! 5. Ingest all collected messages via
+//!    [`super::ingest::ingest_page_into_memory_tree`] — one `ingest_chat`
+//!    call per message, no bucketing.
+//! 6. Advance per-channel cursor to the latest successfully-ingested
+//!    message's timestamp; save [`SyncState`].
 //!
 //! ## Idempotency
 //!
-//! - `source_id = "slack:<channel>:<bucket_start_epoch>"` is stable
-//!   across runs, so chunk IDs are deterministic and re-ingest is an
-//!   UPSERT — no duplicates.
-//! - The cursor advances **only** after a bucket's `ingest_bucket`
-//!   call returns `Ok`. A crash mid-fetch means the next run re-walks
-//!   that range; a crash mid-ingest re-fetches the range too. Both are
-//!   safe by the chunk-id property above.
+//! Source id is `slack:{connection_id}` — stable per workspace. Chunk
+//! IDs are content-hashed, so re-ingest is an UPSERT.
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use super::ingest::ingest_page_into_memory_tree;
 use super::sync;
+use super::types::{SlackChannel, SlackMessage};
 use super::users::SlackUsers;
 use crate::openhuman::composio::client::ComposioClient;
 use crate::openhuman::composio::providers::sync_state::SyncState;
@@ -56,11 +48,6 @@ use crate::openhuman::composio::providers::{
     SyncReason,
 };
 use crate::openhuman::composio::types::ComposioExecuteResponse;
-use crate::openhuman::memory::slack_ingestion::bucketer::{
-    bucket_end_for, split_closed, GRACE_PERIOD,
-};
-use crate::openhuman::memory::slack_ingestion::ops::ingest_bucket;
-use crate::openhuman::memory::slack_ingestion::types::{SlackChannel, SlackMessage};
 
 /// Composio action slug for channel listing.
 const ACTION_LIST_CONVERSATIONS: &str = "SLACK_LIST_CONVERSATIONS";
@@ -68,11 +55,16 @@ const ACTION_LIST_CONVERSATIONS: &str = "SLACK_LIST_CONVERSATIONS";
 const ACTION_FETCH_HISTORY: &str = "SLACK_FETCH_CONVERSATION_HISTORY";
 /// Composio action slug for team/workspace profile fetch.
 const ACTION_FETCH_TEAM_INFO: &str = "SLACK_FETCH_TEAM_INFO";
+/// Composio action slug for Slack `auth.test` — returns the authed
+/// user's id, handle, and team. Required for self-identity capture.
+const ACTION_AUTH_TEST: &str = "SLACK_TEST_AUTH";
+/// Composio action slug for Slack `users.info` — returns the user's
+/// profile (email, real_name, avatar). Optional; needs `users:read.email`
+/// scope for the email field.
+const ACTION_USERS_INFO: &str = "SLACK_RETRIEVE_DETAILED_USER_INFORMATION";
 
 /// Default backfill window (days) applied when a channel has no
-/// cursor yet. Override via `OPENHUMAN_SLACK_BACKFILL_DAYS` env var
-/// when a different window is needed (e.g. 30 days for a fresh
-/// workspace, or 1 day for fast smoke tests).
+/// cursor yet.
 pub const BACKFILL_DAYS: i64 = 6;
 
 /// Resolve the active backfill window in days. Reads
@@ -94,58 +86,34 @@ fn backfill_days() -> i64 {
     }
 }
 
-/// Max channels listed per `SLACK_LIST_CONVERSATIONS` page. Slack caps
-/// this at 1000; 200 is a safe default.
+/// Max channels listed per `SLACK_LIST_CONVERSATIONS` page.
 const LIST_PAGE_SIZE: u32 = 200;
 
-/// Max messages per `SLACK_FETCH_CONVERSATION_HISTORY` page. With
-/// `INTER_CALL_PACING` clamping us to 3 req/min, the marginal cost of
-/// asking for 1000 vs 200 per call is just larger response payloads —
-/// and we want to drain the 30-day window in as few calls as possible
-/// to minimise total quota burn.
+/// Max messages per `SLACK_FETCH_CONVERSATION_HISTORY` page.
 const HISTORY_PAGE_SIZE: u32 = 1000;
 
-/// Stop paginating any single channel's history after this many pages
-/// so one dormant backfill can't consume the whole daily budget. With
-/// `HISTORY_PAGE_SIZE=200`, this yields ≤ 4000 messages per channel per
-/// sync — the next tick picks up the rest incrementally.
+/// Stop paginating any single channel's history after this many pages.
 const MAX_HISTORY_PAGES_PER_CHANNEL: u32 = 20;
 
 /// Stop paginating channel listings after this many pages.
 const MAX_LIST_PAGES: u32 = 10;
 
-/// Sync cadence — matches Gmail (15 minutes). Bucket flush granularity
-/// is 6 hours anyway, so tighter cadences just burn API calls.
+/// Sync cadence — matches Gmail (15 minutes).
 const SYNC_INTERVAL_SECS: u64 = 15 * 60;
 
-/// Initial backoff for rate-limit retries. Slack tier-2 endpoints
-/// (`conversations.history`, `users.list`) advertise ~50 req/min but
-/// Composio's quota appears stricter; 2s gives the bucket time to
-/// refill on a `ratelimited` response.
+/// Initial backoff for rate-limit retries.
 const RATELIMIT_INITIAL_BACKOFF: Duration = Duration::from_secs(2);
 
-/// Cap on per-retry backoff. Without a ceiling, exponential growth
-/// would push individual retries into the multi-minute range and stall
-/// the whole sync.
+/// Cap on per-retry backoff.
 const RATELIMIT_MAX_BACKOFF: Duration = Duration::from_secs(30);
 
-/// Total retries for a single rate-limited call before giving up. With
-/// 2s → 4 → 8 → 16 → 30 → 30 backoff this gives ≤ 90s of grace per
-/// call; longer than the worst Composio rate-window we've observed.
+/// Total retries for a single rate-limited call before giving up.
 const RATELIMIT_MAX_ATTEMPTS: u32 = 6;
 
 /// Fixed inter-call sleep applied after every successful execute_tool.
-/// At 20s per call we stay at 3 req/min — well below Slack's tier-2
-/// limit of 50/min and conservative enough to ride out Composio's
-/// stricter staging-tier quota replenishment. Trade-off: a full
-/// 30-day backfill across 11 channels takes 20-30 min wall-clock.
 const INTER_CALL_PACING: Duration = Duration::from_secs(20);
 
 /// Resolve the JSON dump directory from `OPENHUMAN_SLACK_DUMP_DIR`.
-/// When unset, dumping is disabled. When set, every successful Composio
-/// response is mirrored to `<dir>/<scope>/<kind>-<idx>.json` so the
-/// raw payload can be replayed into `ingest_chat` later without
-/// re-burning quota.
 fn dump_dir() -> Option<PathBuf> {
     std::env::var_os("OPENHUMAN_SLACK_DUMP_DIR").map(PathBuf::from)
 }
@@ -189,10 +157,7 @@ pub(super) fn dump_response(scope: &str, kind: &str, idx: u32, data: &Value) {
 /// inter-call pacing.
 ///
 /// Returns `(response, attempts_made)` on first success so callers can
-/// charge the daily quota meter for **every** attempt that hit Composio,
-/// not just the one that succeeded — under throttling each retry is a
-/// real billable call. The retry only fires for `ok=false,
-/// error=ratelimited` responses; other failures pass through unchanged.
+/// charge the daily quota meter for every attempt that hit Composio.
 pub(super) async fn execute_with_retry(
     client: &ComposioClient,
     slug: &str,
@@ -260,65 +225,157 @@ impl ComposioProvider for SlackProvider {
         Some(SYNC_INTERVAL_SECS)
     }
 
+    fn post_process_action_result(
+        &self,
+        slug: &str,
+        arguments: Option<&serde_json::Value>,
+        data: &mut serde_json::Value,
+    ) {
+        super::post_process::post_process(slug, arguments, data);
+    }
+
     async fn fetch_user_profile(
         &self,
         ctx: &ProviderContext,
     ) -> Result<ProviderUserProfile, String> {
         tracing::debug!(
             connection_id = ?ctx.connection_id,
-            "[composio:slack] fetch_user_profile via {ACTION_FETCH_TEAM_INFO}"
+            "[composio:slack] fetch_user_profile via {ACTION_AUTH_TEST}"
         );
 
-        let resp = ctx
+        // Step 1 — auth.test: required. Returns user_id (canonical sender
+        // id on Slack messages), the user's handle, and the team.
+        let auth_resp = ctx
             .client
-            .execute_tool(ACTION_FETCH_TEAM_INFO, Some(json!({})))
+            .execute_tool(ACTION_AUTH_TEST, Some(json!({})))
             .await
-            .map_err(|e| format!("[composio:slack] {ACTION_FETCH_TEAM_INFO} failed: {e:#}"))?;
+            .map_err(|e| format!("[composio:slack] {ACTION_AUTH_TEST} failed: {e:#}"))?;
 
-        if !resp.successful {
-            let err = resp
+        if !auth_resp.successful {
+            let err = auth_resp
                 .error
                 .clone()
                 .unwrap_or_else(|| "provider reported failure".to_string());
-            return Err(format!("[composio:slack] {ACTION_FETCH_TEAM_INFO}: {err}"));
+            return Err(format!("[composio:slack] {ACTION_AUTH_TEST}: {err}"));
         }
 
-        let data = &resp.data;
-        let display_name = pick_str(data, &["data.team.name", "data.name", "team.name", "name"]);
-        let profile_url = pick_str(data, &["data.team.url", "data.url", "team.url", "url"]);
-        let email_domain = pick_str(
-            data,
-            &[
-                "data.team.email_domain",
-                "data.email_domain",
-                "team.email_domain",
-                "email_domain",
-            ],
-        );
-        let avatar_url = pick_str(
-            data,
-            &[
-                "data.team.icon.image_132",
-                "data.team.icon.image_68",
-                "team.icon.image_132",
-            ],
-        );
+        // `auth_data` is the inner Composio payload — paths are relative
+        // to it. Slack's auth.test returns user_id/user/team/team_id at
+        // the top of `data`.
+        let auth_data = &auth_resp.data;
+        let user_id = pick_str(auth_data, &["user_id"]);
+        let handle = pick_str(auth_data, &["user"]);
+        let team_id = pick_str(auth_data, &["team_id"]);
+        let team_name = pick_str(auth_data, &["team"]);
+
+        // Step 2 — users.info: optional. Needs `users:read.email` scope
+        // for `email`; falls back to `auth.test` data on missing-scope or
+        // any other failure so the profile still carries user_id+handle.
+        let mut display_name: Option<String> = None;
+        let mut email: Option<String> = None;
+        let mut avatar_url: Option<String> = None;
+
+        if let Some(uid) = user_id.as_deref() {
+            match ctx
+                .client
+                .execute_tool(ACTION_USERS_INFO, Some(json!({ "user": uid })))
+                .await
+            {
+                Ok(info) if info.successful => {
+                    let d = &info.data;
+                    email = pick_str(d, &["user.profile.email", "profile.email"]);
+                    display_name = pick_str(
+                        d,
+                        &[
+                            "user.profile.real_name",
+                            "user.real_name",
+                            "user.profile.display_name",
+                        ],
+                    );
+                    avatar_url = pick_str(d, &["user.profile.image_192", "user.profile.image_72"]);
+                }
+                Ok(info) => {
+                    tracing::info!(
+                        connection_id = ?ctx.connection_id,
+                        error = ?info.error,
+                        "[composio:slack] {ACTION_USERS_INFO} returned non-success — \
+                         falling back to auth.test data only (likely missing users:read scope)"
+                    );
+                }
+                Err(e) => {
+                    tracing::info!(
+                        connection_id = ?ctx.connection_id,
+                        error = %e,
+                        "[composio:slack] {ACTION_USERS_INFO} call failed — \
+                         falling back to auth.test data only"
+                    );
+                }
+            }
+        }
+
+        // Step 3 — team_info: optional. Adds workspace context to `extras`
+        // (email_domain, icon) so the prompt section / UI can show it.
+        let (team_email_domain, team_icon) = match ctx
+            .client
+            .execute_tool(ACTION_FETCH_TEAM_INFO, Some(json!({})))
+            .await
+        {
+            Ok(resp) if resp.successful => {
+                let d = &resp.data;
+                let domain = pick_str(d, &["team.email_domain", "email_domain"]);
+                let icon = pick_str(d, &["team.icon.image_132", "team.icon.image_68"]);
+                (domain, icon)
+            }
+            _ => (None, None),
+        };
+
+        // Display name preference: users.info real_name > auth.test handle
+        // > team_name (last-resort so the prompt isn't empty).
+        let final_display_name = display_name
+            .clone()
+            .or_else(|| handle.clone())
+            .or_else(|| team_name.clone());
+
+        // Profile URL: users.info doesn't return one for the user
+        // directly; the workspace URL is acceptable as a navigational
+        // fallback. (Slack user profile pages are workspace-scoped and
+        // not stably linkable from auth.test alone.)
+        let profile_url = pick_str(auth_data, &["url"]);
+
+        let avatar_url = avatar_url.or(team_icon);
 
         let profile = ProviderUserProfile {
             toolkit: "slack".to_string(),
             connection_id: ctx.connection_id.clone(),
-            display_name,
-            email: None, // Slack team_info is workspace-scoped, not user-scoped
-            username: None,
+            display_name: final_display_name,
+            email,
+            // username carries the platform-canonical sender id so the
+            // self-identity matcher can compare against Slack message
+            // sender_user_id directly. Handle moves into `extras` —
+            // `expand_identity_rows` lifts it back out as IdentityKind::Handle.
+            username: user_id,
             avatar_url,
             profile_url,
-            extras: json!({ "email_domain": email_domain, "raw": data }),
+            extras: json!({
+                "handle": handle,
+                "team_id": team_id,
+                "team_name": team_name,
+                "team_email_domain": team_email_domain,
+            }),
         };
 
+        let has_email = profile.email.is_some();
+        let email_domain = profile
+            .email
+            .as_deref()
+            .and_then(|e| e.split('@').nth(1))
+            .map(|d| d.to_string());
         tracing::info!(
             connection_id = ?profile.connection_id,
-            display_name = ?profile.display_name,
-            "[composio:slack] fetched team info"
+            has_email,
+            email_domain = ?email_domain,
+            has_user_id = profile.username.is_some(),
+            "[composio:slack] fetched user profile"
         );
         Ok(profile)
     }
@@ -361,10 +418,7 @@ impl ComposioProvider for SlackProvider {
         let mut cursors = sync::decode_cursors(state.cursor.as_deref());
         let now = chrono::Utc::now();
 
-        // Pull the workspace user directory once per sync so author
-        // ids and `<@…>` mentions in message text canonicalise to
-        // human-readable names. Soft-fails to an empty cache; raw ids
-        // simply pass through in that case.
+        // Pull the workspace user directory once per sync.
         let (users, user_call_count) = SlackUsers::fetch(&ctx.client).await;
         state.record_requests(user_call_count);
         tracing::info!(
@@ -373,7 +427,7 @@ impl ComposioProvider for SlackProvider {
             "[composio:slack] users cached for this sync"
         );
 
-        // 1. Enumerate channels ────────────────────────────────────────
+        // 1. Enumerate channels.
         let channels = list_all_channels(ctx, &mut state)
             .await
             .map_err(|e| format!("[composio:slack] list_channels: {e:#}"))?;
@@ -384,15 +438,13 @@ impl ComposioProvider for SlackProvider {
             "[composio:slack] channels discovered"
         );
 
-        // Save budget state early so a panic mid-fetch doesn't leak the
-        // request counter. Cheap.
         let _ = state.save(&memory).await;
 
-        let mut total_flushed_buckets: usize = 0;
+        let mut total_messages_ingested: usize = 0;
         let mut channels_processed: usize = 0;
         let mut channels_errored: usize = 0;
 
-        // 2. Per-channel: fetch → bucket → ingest → advance cursor ────
+        // 2. Per-channel: fetch → post-process → enrich → ingest.
         for channel in &channels {
             if state.budget_exhausted() {
                 tracing::warn!(
@@ -403,9 +455,19 @@ impl ComposioProvider for SlackProvider {
                 break;
             }
 
-            match process_channel(ctx, &mut state, channel, &mut cursors, now, &users).await {
+            match process_channel(
+                ctx,
+                &mut state,
+                channel,
+                &mut cursors,
+                now,
+                &users,
+                &connection_id,
+            )
+            .await
+            {
                 Ok(n) => {
-                    total_flushed_buckets += n;
+                    total_messages_ingested += n;
                     channels_processed += 1;
                 }
                 Err(err) => {
@@ -419,8 +481,6 @@ impl ComposioProvider for SlackProvider {
                 }
             }
 
-            // Save after every channel — a crash between channels
-            // shouldn't lose already-advanced cursors.
             state.advance_cursor(sync::encode_cursors(&cursors));
             if let Err(err) = state.save(&memory).await {
                 tracing::warn!(
@@ -434,7 +494,7 @@ impl ComposioProvider for SlackProvider {
         let summary = format!(
             "slack sync: channels_processed={channels_processed} \
              channels_errored={channels_errored} \
-             buckets_flushed={total_flushed_buckets}"
+             messages_ingested={total_messages_ingested}"
         );
         tracing::info!(
             connection_id = %connection_id,
@@ -446,7 +506,7 @@ impl ComposioProvider for SlackProvider {
             toolkit: "slack".to_string(),
             connection_id: Some(connection_id),
             reason: reason.as_str().to_string(),
-            items_ingested: total_flushed_buckets,
+            items_ingested: total_messages_ingested,
             started_at_ms,
             finished_at_ms,
             summary,
@@ -463,8 +523,6 @@ impl ComposioProvider for SlackProvider {
         trigger: &str,
         _payload: &Value,
     ) -> Result<(), String> {
-        // Slack trigger names use SLACK_RECEIVE_MESSAGE / similar —
-        // match loosely so future slug changes don't silently drop this.
         if trigger.to_ascii_uppercase().contains("MESSAGE") {
             if let Err(e) = self.sync(ctx, SyncReason::Manual).await {
                 tracing::warn!(
@@ -478,8 +536,7 @@ impl ComposioProvider for SlackProvider {
 }
 
 /// Paginate through `SLACK_LIST_CONVERSATIONS` and flatten into a
-/// single `Vec<SlackChannel>`. Aborts early if the daily budget runs out
-/// partway through — callers handle the partial list gracefully.
+/// single `Vec<SlackChannel>`.
 async fn list_all_channels(
     ctx: &ProviderContext,
     state: &mut SyncState,
@@ -504,7 +561,7 @@ async fn list_all_channels(
             args["cursor"] = json!(c);
         }
 
-        let (resp, attempts) = execute_with_retry(
+        let (mut resp, attempts) = execute_with_retry(
             &ctx.client,
             ACTION_LIST_CONVERSATIONS,
             args,
@@ -514,6 +571,8 @@ async fn list_all_channels(
         state.record_requests(attempts);
         dump_response("_meta", "channels", page_num, &resp.data);
 
+        // Post-process then enrich.
+        super::post_process::post_process(ACTION_LIST_CONVERSATIONS, None, &mut resp.data);
         out.extend(sync::extract_channels(&resp.data));
         cursor = sync::extract_next_cursor(&resp.data);
         if cursor.is_none() {
@@ -523,8 +582,8 @@ async fn list_all_channels(
     Ok(out)
 }
 
-/// Pull one channel's history since its cursor, bucket it, and ingest
-/// every closed bucket. Returns the number of buckets actually flushed.
+/// Pull one channel's history since its cursor, post-process + enrich each
+/// page, then ingest all messages. Returns the number of chunks written.
 async fn process_channel(
     ctx: &ProviderContext,
     state: &mut SyncState,
@@ -532,13 +591,16 @@ async fn process_channel(
     cursors: &mut sync::ChannelCursors,
     now: chrono::DateTime<chrono::Utc>,
     users: &SlackUsers,
+    connection_id: &str,
 ) -> Result<usize, String> {
-    // Derive `oldest` — per-channel cursor if we've synced before,
-    // else `now - backfill_days()` for a fresh channel.
-    let oldest_secs = cursors
-        .get(&channel.id)
-        .copied()
-        .unwrap_or_else(|| (now - chrono::Duration::days(backfill_days())).timestamp());
+    // Cursor value is a raw Slack `ts` (`"<seconds>.<micro>"`) preserved
+    // with full precision, so multi-message-per-second channels don't
+    // replay the whole second on the next incremental fetch. When no
+    // cursor exists yet, fall back to `<backfill_window_secs>.000000`.
+    let oldest_ts = cursors.get(&channel.id).cloned().unwrap_or_else(|| {
+        let secs = (now - chrono::Duration::days(backfill_days())).timestamp();
+        format!("{secs}.000000")
+    });
 
     let mut all_messages: Vec<SlackMessage> = Vec::new();
     let mut cursor: Option<String> = None;
@@ -555,7 +617,7 @@ async fn process_channel(
 
         let mut args = json!({
             "channel": channel.id,
-            "oldest": format!("{oldest_secs}.000000"),
+            "oldest": oldest_ts.clone(),
             "inclusive": false,
             "limit": HISTORY_PAGE_SIZE,
         });
@@ -563,7 +625,7 @@ async fn process_channel(
             args["cursor"] = json!(c);
         }
 
-        let (resp, attempts) = execute_with_retry(
+        let (mut resp, attempts) = execute_with_retry(
             &ctx.client,
             ACTION_FETCH_HISTORY,
             args,
@@ -576,7 +638,9 @@ async fn process_channel(
         state.record_requests(attempts);
         dump_response(&channel.id, "history", page_num, &resp.data);
 
-        let msgs = sync::extract_messages(&resp.data, &channel.id, users);
+        // Post-process to slim envelope, then enrich with channel context + users.
+        super::post_process::post_process(ACTION_FETCH_HISTORY, None, &mut resp.data);
+        let msgs = sync::extract_messages(&resp.data, channel, users);
         tracing::debug!(
             channel = %channel.id,
             page = page_num,
@@ -601,55 +665,47 @@ async fn process_channel(
         return Ok(0);
     }
 
-    // Bucket — closed buckets ingest now; still-open ones get discarded
-    // and will be re-fetched on the next tick (cursor only advances on
-    // successful flush).
-    let (closed, remaining) = split_closed(all_messages, now, GRACE_PERIOD);
-    tracing::debug!(
+    let msg_count = all_messages.len();
+    tracing::info!(
         channel = %channel.id,
-        closed_buckets = closed.len(),
-        remaining_msgs = remaining.len(),
-        "[composio:slack] bucket split"
+        messages = msg_count,
+        "[composio:slack] ingesting channel messages"
     );
 
-    let mut flushed = 0usize;
-    let mut latest_end: Option<chrono::DateTime<chrono::Utc>> = None;
-    let connection_id = ctx.connection_id.as_deref().unwrap_or("default");
-
-    for bucket in closed {
-        match ingest_bucket(&ctx.config, channel, &bucket, "", connection_id).await {
-            Ok(res) => {
-                flushed += 1;
-                latest_end = Some(bucket.end);
-                tracing::info!(
-                    channel = %channel.id,
-                    bucket_start = %bucket.start.to_rfc3339(),
-                    chunks_written = res.chunks_written,
-                    "[composio:slack] ingested bucket"
-                );
+    match ingest_page_into_memory_tree(&ctx.config, "", connection_id, &all_messages).await {
+        Ok(chunks) => {
+            // Advance cursor to the raw `ts` of the latest successfully-
+            // ingested message. We pick "latest" by the parsed
+            // (seconds, micros) tuple — lexicographic sort on the raw
+            // string would also work for the common 10-digit-seconds
+            // workspace, but the explicit numeric compare is robust to
+            // the rare older/wider format and skips the load-bearing
+            // assumption.
+            if let Some(latest) = all_messages
+                .iter()
+                .max_by_key(|m| sync::parse_ts_components(&m.ts_raw))
+                .map(|m| m.ts_raw.clone())
+            {
+                cursors.insert(channel.id.clone(), latest);
             }
-            Err(err) => {
-                tracing::warn!(
-                    channel = %channel.id,
-                    bucket_start = %bucket.start.to_rfc3339(),
-                    error = %err,
-                    "[composio:slack] ingest failed (cursor not advanced for this bucket)"
-                );
-                // Stop processing more buckets in this channel — the
-                // next run will re-fetch from the current cursor.
-                break;
-            }
+            tracing::info!(
+                channel = %channel.id,
+                messages = msg_count,
+                chunks,
+                "[composio:slack] channel ingest done"
+            );
+            Ok(chunks)
+        }
+        Err(e) => {
+            tracing::warn!(
+                channel = %channel.id,
+                error = %e,
+                "[composio:slack] ingest_page_into_memory_tree failed (cursor not advanced)"
+            );
+            // Don't advance cursor — next sync re-fetches this range.
+            Err(format!("ingest failed for channel {}: {e:#}", channel.id))
         }
     }
-
-    if let Some(end) = latest_end {
-        cursors.insert(channel.id.clone(), end.timestamp());
-    }
-    // Ensure bucket_end_for stays referenced (future-proofing for
-    // cascade-aware flushes) without dead-code.
-    let _ = bucket_end_for;
-
-    Ok(flushed)
 }
 
 // ── Search-based backfill (one-shot) ────────────────────────────────
@@ -657,38 +713,25 @@ async fn process_channel(
 /// Composio action slug for workspace-wide message search.
 const ACTION_SEARCH_MESSAGES: &str = "SLACK_SEARCH_MESSAGES";
 
-/// Max matches per `SLACK_SEARCH_MESSAGES` page (Slack's documented cap).
+/// Max matches per `SLACK_SEARCH_MESSAGES` page.
 const SEARCH_PAGE_SIZE: u32 = 100;
 
-/// Hard cap on pages walked per backfill run. With 100 matches/page
-/// that's 5000 messages — plenty for typical 30-day windows on small
-/// workspaces. Larger backfills can run multiple times against
-/// successive sub-windows.
+/// Hard cap on pages walked per backfill run.
 const MAX_SEARCH_PAGES: u32 = 50;
 
 /// Run a one-shot historical backfill via `SLACK_SEARCH_MESSAGES` —
 /// workspace-wide paginated search instead of per-channel
-/// `conversations.history`. Better quota efficiency: each successful
-/// call returns matches across many channels at once, so partial
-/// progress translates to real coverage instead of one channel's
-/// worth.
+/// `conversations.history`. Each successful call returns matches across
+/// many channels, so partial progress translates to real coverage.
 ///
 /// Designed for the `slack-backfill` bin specifically — the periodic
-/// `SlackProvider::sync()` keeps the per-channel incremental path so
-/// it stays cheap on each tick.
+/// `SlackProvider::sync()` keeps the per-channel incremental path.
 ///
 /// Lifecycle:
-/// 1. Cache the channel directory (one `SLACK_LIST_CONVERSATIONS` call,
-///    paginated) so canonicalisation can label channels by name + know
-///    private-vs-public.
-/// 2. Cache the user directory (one `SLACK_LIST_ALL_USERS` paginated
-///    walk via [`SlackUsers::fetch`]).
-/// 3. Paginate `SLACK_SEARCH_MESSAGES` with
-///    `query = "after:<YYYY-MM-DD>"` until exhausted or page cap.
-/// 4. Group every message by `(channel_id, 6hr_bucket_start)`.
-/// 5. For each closed bucket, hand off to `ingest_bucket` (same
-///    canonicalise → chunk → score → seal-cascade path the periodic
-///    sync uses).
+/// 1. Cache the channel directory and user directory.
+/// 2. Paginate `SLACK_SEARCH_MESSAGES` until exhausted or page cap.
+/// 3. Group messages by channel_id, ingest each group via
+///    `ingest_page_into_memory_tree`. No bucketing.
 pub async fn run_backfill_via_search(
     ctx: &ProviderContext,
     backfill_days: i64,
@@ -723,16 +766,14 @@ pub async fn run_backfill_via_search(
         });
     }
 
-    // 1. Channel directory — needed for canonicalisation (name +
-    //    is_private flag come off `SlackChannel`).
+    // 1. Channel directory.
     let channels = list_all_channels(ctx, &mut state)
         .await
         .map_err(|e| format!("[composio:slack] list_channels: {e:#}"))?;
     let channel_map: HashMap<String, SlackChannel> =
         channels.into_iter().map(|c| (c.id.clone(), c)).collect();
 
-    // 2. User directory — for ID → display-name resolution + mention
-    //    rewrites.
+    // 2. User directory.
     let (users, user_call_count) = SlackUsers::fetch(&ctx.client).await;
     state.record_requests(user_call_count);
     tracing::info!(
@@ -768,7 +809,7 @@ pub async fn run_backfill_via_search(
             "sort_dir": "asc",
             "page": page,
         });
-        let (resp, attempts) = execute_with_retry(
+        let (mut resp, attempts) = execute_with_retry(
             &ctx.client,
             ACTION_SEARCH_MESSAGES,
             args,
@@ -778,7 +819,9 @@ pub async fn run_backfill_via_search(
         state.record_requests(attempts);
         dump_response("_meta", "search", page, &resp.data);
 
-        let msgs = sync::extract_search_messages(&resp.data, &users);
+        // Post-process, then enrich with channel_map + users.
+        super::post_process::post_process(ACTION_SEARCH_MESSAGES, None, &mut resp.data);
+        let msgs = sync::extract_search_messages(&resp.data, &channel_map, &users);
         if page == 1 {
             total_pages = sync::extract_search_total_pages(&resp.data).min(MAX_SEARCH_PAGES);
             tracing::info!(
@@ -797,65 +840,39 @@ pub async fn run_backfill_via_search(
     }
     let _ = state.save(&memory).await;
 
-    // 4. Group messages by (channel, 6hr-bucket-start).
-    let mut by_bucket: BTreeMap<(String, chrono::DateTime<chrono::Utc>), Vec<SlackMessage>> =
-        BTreeMap::new();
-    for msg in all_messages {
-        let bucket_start =
-            crate::openhuman::memory::slack_ingestion::bucketer::bucket_start_for(msg.timestamp);
-        by_bucket
-            .entry((msg.channel_id.clone(), bucket_start))
-            .or_default()
-            .push(msg);
-    }
-
+    // 4. Group by channel_id and ingest each group.
+    let buckets = super::ingest::bucket_by_channel(&all_messages);
+    let channel_count = buckets.len();
     tracing::info!(
         connection_id = %connection_id,
-        total_buckets = by_bucket.len(),
-        "[composio:slack] grouped messages into buckets"
+        channels = channel_count,
+        total_messages = all_messages.len(),
+        "[composio:slack] grouped messages by channel for ingest"
     );
 
-    // 5. Ingest each closed bucket.
-    let mut buckets_flushed = 0usize;
-    let mut buckets_skipped_open = 0usize;
-    let mut buckets_skipped_unknown_channel = 0usize;
-    let mut buckets_failed = 0usize;
+    let mut channels_flushed = 0usize;
+    let mut channels_failed = 0usize;
+    let mut total_chunks = 0usize;
 
-    for ((channel_id, bucket_start), mut msgs) in by_bucket {
-        let Some(channel) = channel_map.get(&channel_id) else {
-            buckets_skipped_unknown_channel += 1;
-            continue;
-        };
-        msgs.sort_by_key(|m| m.timestamp);
-        let bucket = crate::openhuman::memory::slack_ingestion::types::Bucket {
-            start: bucket_start,
-            end: bucket_end_for(bucket_start),
-            messages: msgs,
-        };
-        // Skip still-open buckets — same closed-bucket invariant the
-        // periodic sync enforces.
-        if bucket.end + crate::openhuman::memory::slack_ingestion::bucketer::GRACE_PERIOD > now {
-            buckets_skipped_open += 1;
-            continue;
-        }
-        match ingest_bucket(&ctx.config, channel, &bucket, "", &connection_id).await {
-            Ok(res) => {
-                buckets_flushed += 1;
+    for (channel_id, msgs_for_channel) in &buckets {
+        let page: Vec<SlackMessage> = msgs_for_channel.iter().map(|m| (*m).clone()).collect();
+        match ingest_page_into_memory_tree(&ctx.config, "", &connection_id, &page).await {
+            Ok(chunks) => {
+                channels_flushed += 1;
+                total_chunks += chunks;
                 tracing::info!(
-                    channel = %channel.id,
-                    bucket_start = %bucket.start.to_rfc3339(),
-                    messages = bucket.messages.len(),
-                    chunks_written = res.chunks_written,
-                    "[composio:slack] ingested bucket"
+                    channel = %channel_id,
+                    messages = page.len(),
+                    chunks,
+                    "[composio:slack] search-backfill channel ingested"
                 );
             }
             Err(err) => {
-                buckets_failed += 1;
+                channels_failed += 1;
                 tracing::warn!(
-                    channel = %channel.id,
-                    bucket_start = %bucket.start.to_rfc3339(),
+                    channel = %channel_id,
                     error = %err,
-                    "[composio:slack] ingest_bucket failed"
+                    "[composio:slack] search-backfill ingest failed"
                 );
             }
         }
@@ -863,10 +880,8 @@ pub async fn run_backfill_via_search(
 
     let finished_at_ms = sync::now_ms();
     let summary = format!(
-        "slack search-backfill: pages={page} buckets_flushed={buckets_flushed} \
-         buckets_open={buckets_skipped_open} \
-         unknown_channel={buckets_skipped_unknown_channel} \
-         failed={buckets_failed}"
+        "slack search-backfill: pages={page} channels_flushed={channels_flushed} \
+         channels_failed={channels_failed} chunks={total_chunks}"
     );
     tracing::info!(
         connection_id = %connection_id,
@@ -878,16 +893,15 @@ pub async fn run_backfill_via_search(
         toolkit: "slack".to_string(),
         connection_id: Some(connection_id),
         reason: SyncReason::Manual.as_str().to_string(),
-        items_ingested: buckets_flushed,
+        items_ingested: total_chunks,
         started_at_ms,
         finished_at_ms,
         summary,
         details: json!({
             "pages_walked": page,
-            "buckets_flushed": buckets_flushed,
-            "buckets_open": buckets_skipped_open,
-            "buckets_unknown_channel": buckets_skipped_unknown_channel,
-            "buckets_failed": buckets_failed,
+            "channels_flushed": channels_flushed,
+            "channels_failed": channels_failed,
+            "total_chunks": total_chunks,
         }),
     })
 }
@@ -916,5 +930,19 @@ mod tests {
             .iter()
             .any(|t| t.slug == "SLACK_FETCH_CONVERSATION_HISTORY"));
         assert!(tools.iter().any(|t| t.slug == "SLACK_LIST_CONVERSATIONS"));
+    }
+
+    #[test]
+    fn post_process_action_result_delegates_to_post_process_module() {
+        let provider = SlackProvider::new();
+        let mut data = serde_json::json!({
+            "channels": [{"id": "C1", "name": "eng", "is_private": false}]
+        });
+        // Calling with an unknown slug should be a no-op.
+        provider.post_process_action_result("SLACK_UNKNOWN_ACTION", None, &mut data);
+        assert!(
+            data.get("channels").is_some(),
+            "no-op slug must not mutate data"
+        );
     }
 }

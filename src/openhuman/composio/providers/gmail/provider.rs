@@ -124,37 +124,20 @@ impl ComposioProvider for GmailProvider {
             return Err(format!("[composio:gmail] {ACTION_GET_PROFILE}: {err}"));
         }
 
+        // `data` is the inner Composio payload — paths here are relative
+        // to it. (The previous `data.*` paths were dead — `pick_str`
+        // does dotted-path traversal, so `data.emailAddress` looked for
+        // a nested `data.data.emailAddress` that never exists.)
         let data = &resp.data;
-        let email = pick_str(
-            data,
-            &[
-                "data.emailAddress",
-                "data.email",
-                "emailAddress",
-                "email",
-                "data.profile.emailAddress",
-            ],
-        );
-        let display_name = pick_str(
-            data,
-            &[
-                "data.name",
-                "data.profile.name",
-                "name",
-                "displayName",
-                "data.displayName",
-            ],
-        )
-        .or_else(|| email.clone());
+        let email = pick_str(data, &["emailAddress", "email", "profile.emailAddress"]);
+        // Don't fall back to the email when no name is returned — that
+        // produces duplicated `display_name == email` rows in the
+        // identity registry (#1365). Gmail's `GMAIL_GET_PROFILE` action
+        // doesn't return a name today, so this stays None.
+        let display_name = pick_str(data, &["name", "profile.name", "displayName"]);
         let profile_url = pick_str(
             data,
-            &[
-                "data.profileUrl",
-                "data.profile_url",
-                "data.profile.url",
-                "profileUrl",
-                "profile_url",
-            ],
+            &["display_url", "profileUrl", "profile_url", "profile.url"],
         );
 
         let profile = ProviderUserProfile {
@@ -200,6 +183,23 @@ impl ComposioProvider for GmailProvider {
             return Err("[composio:gmail] memory client not ready".to_string());
         };
         let mut state = SyncState::load(&memory, "gmail", &connection_id).await?;
+
+        // Fetch the account email up-front so every chunk gets a stable
+        // per-account `source_id` (`gmail:{slug(email)}`). One HTTP
+        // round-trip per sync; if it fails we fall back to the legacy
+        // per-participants bucketing inside the ingest call so we
+        // still write *something* useful.
+        let account_email: Option<String> = match self.fetch_user_profile(ctx).await {
+            Ok(profile) => profile.email,
+            Err(e) => {
+                tracing::warn!(
+                    connection_id = %connection_id,
+                    error = ?e,
+                    "[composio:gmail] fetch_user_profile failed; ingest will fall back to per-participants source_id"
+                );
+                None
+            }
+        };
 
         // ── Step 2: check daily budget ──────────────────────────────
         if state.budget_exhausted() {
@@ -284,9 +284,21 @@ impl ComposioProvider for GmailProvider {
                 ));
             }
 
-            // ── Step 4: post-process the page (HTML→md, normalise, sanitise)
-            //    so chunk content is clean before ingest. Same pipeline the
-            //    standalone gmail-backfill-3d binary runs.
+            // ── Step 4: pull the backend's pre-rendered `markdownFormatted`
+            //    onto each message so the raw archive sees URL-shortened,
+            //    footer-stripped output. Done BEFORE post_process so the
+            //    reshape can pick up the per-message field. Then run the
+            //    usual post-process which slims the envelope and feeds
+            //    `extract_markdown_body` (which now prefers
+            //    `markdownFormatted` per message).
+            if let Some(top_md) = resp
+                .markdown_formatted
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                super::post_process::apply_response_level_markdown(&mut resp.data, top_md);
+            }
             self.post_process_action_result(ACTION_FETCH_EMAILS, Some(&args), &mut resp.data);
 
             let messages = sync::extract_messages(&resp.data);
@@ -347,7 +359,13 @@ impl ComposioProvider for GmailProvider {
             // the storage layer.
             if !new_messages.is_empty() {
                 let owner = format!("gmail-sync:{connection_id}");
-                match ingest_page_into_memory_tree(ctx.config.as_ref(), &owner, &new_messages).await
+                match ingest_page_into_memory_tree(
+                    ctx.config.as_ref(),
+                    &owner,
+                    account_email.as_deref(),
+                    &new_messages,
+                )
+                .await
                 {
                     Ok(n) => {
                         for id in &pending_synced_ids {

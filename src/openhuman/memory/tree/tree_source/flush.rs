@@ -1,10 +1,12 @@
 //! Time-based buffer flush for source trees (#709).
 //!
-//! The bucket-seal path only fires when a buffer crosses `TOKEN_BUDGET`.
-//! Low-volume sources (e.g. an email account with two threads a week) can
-//! otherwise leave leaves parked in the L0 buffer indefinitely, which
-//! hurts recall. `flush_stale_buffers` force-seals any buffer whose
-//! `oldest_at` is older than `max_age`, regardless of token count.
+//! The bucket-seal path only fires when a buffer crosses
+//! `INPUT_TOKEN_BUDGET` (token volume) or `SUMMARY_FANOUT` (item count
+//! — the L0 fallback gate). Low-volume sources (e.g. an email account
+//! with two threads a week) can still park a buffer below both
+//! thresholds indefinitely, which hurts recall.
+//! `flush_stale_buffers` force-seals any buffer whose `oldest_at` is
+//! older than `max_age`, regardless of token count or item count.
 //!
 //! This is meant to run on a cadence (e.g. daily cron). Phase 3a ships
 //! the primitive; wiring into a scheduler is not required for merge.
@@ -172,6 +174,51 @@ mod tests {
 
         let l0 = store::get_buffer(&cfg, &tree.id, 0).unwrap();
         assert!(l0.is_empty());
+    }
+
+    #[tokio::test]
+    async fn flush_does_not_force_seal_under_fanout_upper_buffer() {
+        // Regression: previously `list_stale_buffers` returned every level,
+        // and `cascade_all_from` force-sealed the first iteration regardless
+        // of `should_seal`. A stale L1 buffer with one child would seal into
+        // a degenerate L2 summary that wraps a single L1 — repeating across
+        // flush cycles produced the L7→L13 1:1:1 chain in real workspaces.
+        // Flush must restrict force-seals to L0 and let upper levels gate
+        // on `SUMMARY_FANOUT` naturally.
+        let (_tmp, cfg) = test_config();
+        let tree = get_or_create_source_tree(&cfg, "slack:#eng").unwrap();
+        let summariser = InertSummariser::new();
+
+        // Plant a stale L1 buffer holding a single (synthetic) child id.
+        // No L0 chunks — the only thing flush could touch is the L1 buffer.
+        let old_ts = Utc::now() - Duration::days(10);
+        crate::openhuman::memory::tree::store::with_connection(&cfg, |conn| {
+            let tx = conn.unchecked_transaction()?;
+            crate::openhuman::memory::tree::tree_source::store::upsert_buffer_tx(
+                &tx,
+                &crate::openhuman::memory::tree::tree_source::types::Buffer {
+                    tree_id: tree.id.clone(),
+                    level: 1,
+                    item_ids: vec!["fake-l1-child".into()],
+                    token_sum: 100,
+                    oldest_at: Some(old_ts),
+                },
+            )?;
+            tx.commit()?;
+            Ok(())
+        })
+        .unwrap();
+
+        let seals =
+            flush_stale_buffers(&cfg, Duration::days(7), &summariser, &LabelStrategy::Empty)
+                .await
+                .unwrap();
+        assert_eq!(seals, 0, "L1 stale buffer must not be force-sealed");
+        assert_eq!(store::count_summaries(&cfg, &tree.id).unwrap(), 0);
+
+        // The L1 buffer must still be intact — flush cannot touch it.
+        let l1 = store::get_buffer(&cfg, &tree.id, 1).unwrap();
+        assert_eq!(l1.item_ids, vec!["fake-l1-child".to_string()]);
     }
 
     #[tokio::test]

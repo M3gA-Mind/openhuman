@@ -45,6 +45,22 @@ fn test_job(command: &str) -> CronJob {
     }
 }
 
+#[test]
+fn agent_failure_copy_mentions_retry_reporting_and_discord() {
+    assert!(AGENT_JOB_USER_FAILURE_MESSAGE.contains("Something went wrong. Please try again."));
+    assert!(AGENT_JOB_USER_FAILURE_MESSAGE.contains("This error has been reported."));
+    assert!(AGENT_JOB_USER_FAILURE_MESSAGE.contains("Report on Discord"));
+}
+
+#[test]
+fn agent_session_target_tag_matches_expected_values() {
+    assert_eq!(agent_session_target_tag(&SessionTarget::Main), "main");
+    assert_eq!(
+        agent_session_target_tag(&SessionTarget::Isolated),
+        "isolated"
+    );
+}
+
 #[cfg(not(windows))]
 #[tokio::test]
 async fn run_job_command_success() {
@@ -203,11 +219,20 @@ async fn run_agent_job_returns_error_without_provider_key() {
     job.job_type = JobType::Agent;
     job.prompt = Some("Say hello".into());
 
-    let (success, output) = run_agent_job(&config, &job).await;
+    let (success, output, raw_error) = run_agent_job(&config, &job).await;
     assert!(!success, "Agent job without provider key should fail");
+    assert!(output.contains("Something went wrong. Please try again."));
+    assert!(output.contains("This error has been reported."));
+    assert!(output.contains("Report on Discord"));
     assert!(
-        !output.is_empty(),
-        "Expected non-empty error output from failed agent job"
+        raw_error
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty()),
+        "Expected raw agent error for observability after retries are exhausted"
+    );
+    assert!(
+        !output.contains("error sending request for url"),
+        "Expected sanitized output without raw transport details"
     );
 }
 

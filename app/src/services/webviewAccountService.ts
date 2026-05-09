@@ -12,6 +12,7 @@ import {
 import { addIntegrationNotification } from '../store/notificationSlice';
 import { fetchRespondQueue } from '../store/providerSurfaceSlice';
 import type { AccountProvider, IngestedMessage } from '../types/accounts';
+import { openhumanGetMeetSettings } from '../utils/tauriCommands/config';
 import { threadApi } from './api/threadApi';
 import { chatSend } from './chatService';
 import { callCoreRpc } from './coreRpcClient';
@@ -56,6 +57,14 @@ interface IngestPayload {
   isSeed?: boolean;
 }
 
+interface LinkedInConversationPayload {
+  chatId: string;
+  chatName?: string | null;
+  day: string; // YYYY-MM-DD UTC
+  messages: IngestMessage[];
+  isSeed?: boolean;
+}
+
 interface NotificationClickPayload {
   account_id: string;
   provider: string;
@@ -67,6 +76,9 @@ interface WebviewAccountLoadPayload {
   // `'timeout'`  — 15 s watchdog elapsed; keep hidden and show retry UI
   // `'reused'`   — warm re-open of already-loaded account; reveal synchronously
   state: 'finished' | 'timeout' | 'reused' | string;
+  // `'load'`     — native/CDP load signal caused this event
+  // `'watchdog'` — fallback watchdog caused this event
+  trigger?: 'load' | 'watchdog' | string;
   url: string;
 }
 
@@ -181,7 +193,13 @@ function handleWebviewAccountLoad(payload: WebviewAccountLoadPayload) {
     errLog('webview-account:load missing account_id — ignoring: %o', payload);
     return;
   }
-  log('load event account=%s state=%s url=%s', accountId, payload.state, payload.url);
+  log(
+    'load event account=%s state=%s trigger=%s url=%s',
+    accountId,
+    payload.state,
+    payload.trigger,
+    payload.url
+  );
   loadingAccounts.delete(accountId);
 
   const timeoutLike =
@@ -213,8 +231,9 @@ function handleWebviewAccountLoad(payload: WebviewAccountLoadPayload) {
   // the webview will have been positioned server-side by `emit_load_finished`.
   const bounds = lastBoundsByAccount.get(accountId);
   log('load finished account=%s state=%s reveal=%s', accountId, payload.state, Boolean(bounds));
+  const trigger = payload.trigger === 'watchdog' ? 'watchdog' : 'load';
   if (bounds) {
-    invoke('webview_account_reveal', { args: { account_id: accountId, bounds } })
+    invoke('webview_account_reveal', { args: { account_id: accountId, bounds, trigger } })
       .catch(err => {
         errLog('webview_account_reveal failed account=%s: %o', accountId, err);
       })
@@ -307,6 +326,23 @@ function handleRecipeEvent(evt: RecipeEventPayload) {
     // Namespace mirrors the skill-sync convention so the recall pipeline
     // can find these alongside other ingested context.
     void persistIngestToMemory(accountId, evt.provider, ingest, messages);
+    return;
+  }
+
+  if (evt.kind === 'linkedin_conversation') {
+    void persistLinkedInConversation(
+      accountId,
+      evt.payload as unknown as LinkedInConversationPayload
+    );
+    return;
+  }
+
+  if (evt.kind === 'linkedin_requests') {
+    const requests = (evt.payload as { requests: Array<{ name: string; subtitle: string | null }> })
+      .requests;
+    if (requests && requests.length > 0) {
+      log('linkedin: %d pending connection request(s) for account=%s', requests.length, accountId);
+    }
     return;
   }
 
@@ -463,6 +499,75 @@ async function persistWhatsappChatDay(accountId: string, ingest: IngestPayload):
     );
   } catch (err) {
     errLog('whatsapp memory write failed %s key=%s: %o', namespace, key, err);
+  }
+}
+
+async function persistLinkedInConversation(
+  accountId: string,
+  payload: LinkedInConversationPayload
+): Promise<void> {
+  const { chatId, day } = payload;
+  const chatName = payload.chatName ?? chatId;
+  const raw = payload.messages ?? [];
+  if (raw.length === 0) return;
+
+  // Stable namespace. Key is scoped by whether this is a full thread
+  // snapshot (isSeed=true → canonical key) or a list-panel snippet
+  // (isSeed=false → :preview suffix). This prevents a later list-poll
+  // from overwriting a richer thread transcript with a single preview line.
+  const namespace = `linkedin:${accountId}`;
+  const key = payload.isSeed ? `${chatId}:${day}` : `${chatId}:${day}:preview`;
+
+  const sorted = [...raw].sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+
+  const transcriptLines = sorted.map(m => {
+    const tsSec = m.timestamp ?? 0;
+    const hhmm = tsSec ? new Date(tsSec * 1000).toISOString().slice(11, 16) + 'Z' : '--:--';
+    const who = m.fromMe ? 'me' : (m.from ?? '?');
+    const body = (m.body ?? '').replace(/\r?\n/g, ' ').trim();
+    return `[${hhmm}] ${who}: ${body}`;
+  });
+
+  const header =
+    `# LinkedIn — ${chatName} — ${day}\n` +
+    `chat_id: ${chatId}\n` +
+    `account_id: ${accountId}\n` +
+    `messages: ${sorted.length}\n\n`;
+  const content = header + transcriptLines.join('\n');
+  const title = `LinkedIn · ${chatName} · ${day}`;
+
+  try {
+    await callCoreRpc({
+      method: 'openhuman.memory_doc_ingest',
+      params: {
+        namespace,
+        key,
+        title,
+        content,
+        source_type: 'linkedin-web',
+        priority: 'medium',
+        tags: ['linkedin', 'chat-transcript', day],
+        metadata: {
+          provider: 'linkedin',
+          account_id: accountId,
+          chat_id: chatId,
+          chat_name: chatName,
+          day,
+          message_count: sorted.length,
+          is_seed: !!payload.isSeed,
+        },
+        category: 'core',
+      },
+    });
+    log(
+      'linkedin: ingested %d msg(s) into %s key=%s (seed=%s)',
+      sorted.length,
+      namespace,
+      key,
+      !!payload.isSeed
+    );
+  } catch (err) {
+    errLog('linkedin memory write failed %s key=%s: %o', namespace, key, err);
   }
 }
 
@@ -637,7 +742,7 @@ async function flushMeetingSession(
     );
 
     if (segments.length > 0) {
-      await handoffToOrchestrator(accountId, session, endedAt, markdown, participants);
+      await maybeHandoffToOrchestrator(accountId, session, endedAt, markdown, participants);
     }
   } catch (err) {
     errLog('meet: memory write failed: %o', err);
@@ -655,6 +760,45 @@ async function flushMeetingSession(
 }
 
 /**
+ * Privacy gate (#1299) — only call `handoffToOrchestrator` when the
+ * user has explicitly opted in via the `meet.auto_orchestrator_handoff`
+ * setting. Without this gate, every Meet call ended would auto-feed the
+ * transcript to the orchestrator, which has the full Slack tool surface
+ * and would proactively post summaries to public channels (e.g.
+ * `#general`) without consent.
+ *
+ * The setting is read fresh per call rather than cached so toggle
+ * changes mid-session take effect immediately. Failure to read settings
+ * (e.g. core RPC down) is treated as opt-out — privacy-conservative.
+ */
+async function maybeHandoffToOrchestrator(
+  accountId: string,
+  session: MeetingSession,
+  endedAt: number,
+  transcriptMarkdown: string,
+  participants: Set<string>
+): Promise<void> {
+  let optedIn = false;
+  try {
+    const settings = await openhumanGetMeetSettings();
+    optedIn = settings?.result?.auto_orchestrator_handoff === true;
+  } catch (err) {
+    // Fail-closed: if we can't read the setting, do not hand off.
+    errLog('meet: failed to read meet settings, defaulting to OFF: %o', err);
+  }
+
+  if (!optedIn) {
+    log(
+      'meet: orchestrator handoff disabled (auto_orchestrator_handoff !== true), skipping for code=%s',
+      session.code
+    );
+    return;
+  }
+
+  await handoffToOrchestrator(accountId, session, endedAt, transcriptMarkdown, participants);
+}
+
+/**
  * After a meeting transcript is persisted, open a fresh thread with the
  * orchestrator agent and hand it the transcript so it can extract notes
  * (summary, decisions, action items) and proactively act on follow-ups.
@@ -662,6 +806,10 @@ async function flushMeetingSession(
  * The orchestrator IS the LLM here — there's no separate summarisation
  * call. It produces structured notes inline as part of its reply and
  * routes any actionable items to its subagents/skills.
+ *
+ * IMPORTANT: This function is the privacy-sensitive path. Callers must
+ * gate it on user opt-in via {@link maybeHandoffToOrchestrator} — do
+ * NOT invoke it directly from session-end code paths. See #1299.
  */
 async function handoffToOrchestrator(
   accountId: string,
@@ -1048,3 +1196,6 @@ async function flushMeetingIfAny(accountId: string, reason: string): Promise<voi
   activeMeetings.delete(accountId);
   await flushMeetingSession(accountId, session, Date.now(), reason);
 }
+
+/** Test-only re-exports — do NOT import outside `__tests__/`. */
+export const __testInternals = { maybeHandoffToOrchestrator };
