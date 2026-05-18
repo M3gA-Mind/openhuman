@@ -183,11 +183,6 @@ impl Tool for CsvExportTool {
 
         // Validate the relative path
         let relative_path = format!("exports/{filename}");
-        if !self.security.is_path_allowed(&relative_path) {
-            return Ok(ToolResult::error(format!(
-                "Path not allowed by security policy: {relative_path}"
-            )));
-        }
 
         let full_path = self.security.workspace_dir.join(&relative_path);
 
@@ -195,31 +190,15 @@ impl Tool for CsvExportTool {
             return Ok(ToolResult::error("Invalid path: missing parent directory"));
         };
 
-        // Ensure exports/ directory exists
+        // Ensure exports/ directory exists before canonicalization.
         tokio::fs::create_dir_all(parent).await?;
 
-        // Resolve parent AFTER creation to block symlink escapes.
-        let resolved_parent = match tokio::fs::canonicalize(parent).await {
+        // Security check: validate path string, resolve symlinks on the parent dir,
+        // confirm workspace containment. File may not exist yet, so validate_parent_path is used.
+        let resolved_target = match self.security.validate_parent_path(&relative_path).await {
             Ok(p) => p,
-            Err(e) => {
-                return Ok(ToolResult::error(format!(
-                    "Failed to resolve file path: {e}"
-                )));
-            }
+            Err(msg) => return Ok(ToolResult::error(msg)),
         };
-
-        if !self.security.is_resolved_path_allowed(&resolved_parent) {
-            return Ok(ToolResult::error(format!(
-                "Resolved path escapes workspace: {}",
-                resolved_parent.display()
-            )));
-        }
-
-        let Some(file_name) = full_path.file_name() else {
-            return Ok(ToolResult::error("Invalid path: missing file name"));
-        };
-
-        let resolved_target = resolved_parent.join(file_name);
 
         // If the target already exists and is a symlink, refuse to follow it
         if let Ok(meta) = tokio::fs::symlink_metadata(&resolved_target).await {

@@ -719,8 +719,18 @@ impl SecurityPolicy {
         }
     }
 
-    /// Check if a file path is allowed (no path traversal, within workspace)
-    pub fn is_path_allowed(&self, path: &str) -> bool {
+    fn expand_tilde(&self, path: &str) -> String {
+        if let Some(rest) = path.strip_prefix("~/") {
+            if let Some(home) = dirs::home_dir() {
+                return format!("{}/{rest}", home.display());
+            }
+        }
+        path.to_string()
+    }
+
+    /// String-only path check. Does NOT resolve symlinks.
+    /// Use `validate_path()` for any path that will be used for file I/O.
+    pub fn is_path_string_allowed(&self, path: &str) -> bool {
         // Block null bytes (can truncate paths in C-backed syscalls)
         if path.contains('\0') {
             return false;
@@ -741,15 +751,7 @@ impl SecurityPolicy {
         }
 
         // Expand tilde for comparison
-        let expanded = if let Some(stripped) = path.strip_prefix("~/") {
-            if let Some(home) = std::env::var("HOME").ok().map(PathBuf::from) {
-                home.join(stripped).to_string_lossy().to_string()
-            } else {
-                path.to_string()
-            }
-        } else {
-            path.to_string()
-        };
+        let expanded = self.expand_tilde(path);
 
         // Block absolute paths when workspace_only is set
         if self.workspace_only && Path::new(&expanded).is_absolute() {
@@ -759,15 +761,7 @@ impl SecurityPolicy {
         // Block forbidden paths using path-component-aware matching
         let expanded_path = Path::new(&expanded);
         for forbidden in &self.forbidden_paths {
-            let forbidden_expanded = if let Some(stripped) = forbidden.strip_prefix("~/") {
-                if let Some(home) = std::env::var("HOME").ok().map(PathBuf::from) {
-                    home.join(stripped).to_string_lossy().to_string()
-                } else {
-                    forbidden.clone()
-                }
-            } else {
-                forbidden.clone()
-            };
+            let forbidden_expanded = self.expand_tilde(forbidden);
             let forbidden_path = Path::new(&forbidden_expanded);
             if expanded_path.starts_with(forbidden_path) {
                 return false;
@@ -775,6 +769,83 @@ impl SecurityPolicy {
         }
 
         true
+    }
+
+    /// Validate a path for file I/O: string checks, canonicalize, workspace containment,
+    /// and forbidden-path check on the resolved path.
+    /// Returns the canonical `PathBuf` on success.
+    pub async fn validate_path(&self, path: &str) -> Result<PathBuf, String> {
+        if !self.is_path_string_allowed(path) {
+            return Err(format!("Path not allowed by security policy: {path}"));
+        }
+        let full_path = self.workspace_dir.join(path);
+        let resolved = tokio::fs::canonicalize(&full_path)
+            .await
+            .map_err(|e| format!("Failed to resolve path '{path}': {e}"))?;
+        if !self.is_resolved_path_allowed(&resolved) {
+            return Err(format!(
+                "Resolved path escapes workspace: {}",
+                resolved.display()
+            ));
+        }
+        let resolved_str = resolved.to_string_lossy();
+        for forbidden in &self.forbidden_paths {
+            let expanded = self.expand_tilde(forbidden);
+            if resolved_str.starts_with(expanded.as_str()) {
+                return Err(format!(
+                    "Resolved path is inside a forbidden directory: {}",
+                    expanded
+                ));
+            }
+        }
+        log::debug!(
+            "[security] validate_path: '{}' resolved to '{}'",
+            path,
+            resolved.display()
+        );
+        Ok(resolved)
+    }
+
+    /// Like `validate_path` but canonicalizes the parent directory.
+    /// Use for write operations where the target file may not yet exist.
+    /// Returns the canonical full path (parent resolved + filename appended).
+    pub async fn validate_parent_path(&self, path: &str) -> Result<PathBuf, String> {
+        if !self.is_path_string_allowed(path) {
+            return Err(format!("Path not allowed by security policy: {path}"));
+        }
+        let full_path = self.workspace_dir.join(path);
+        let parent = full_path
+            .parent()
+            .ok_or_else(|| format!("Invalid path (no parent): {path}"))?;
+        let resolved_parent = tokio::fs::canonicalize(parent)
+            .await
+            .map_err(|e| format!("Failed to resolve parent of '{path}': {e}"))?;
+        if !self.is_resolved_path_allowed(&resolved_parent) {
+            return Err(format!(
+                "Resolved parent path escapes workspace: {}",
+                resolved_parent.display()
+            ));
+        }
+        let resolved_str = resolved_parent.to_string_lossy();
+        for forbidden in &self.forbidden_paths {
+            let expanded = self.expand_tilde(forbidden);
+            if resolved_str.starts_with(expanded.as_str()) {
+                return Err(format!(
+                    "Resolved parent path is inside a forbidden directory: {}",
+                    expanded
+                ));
+            }
+        }
+        let file_name = full_path
+            .file_name()
+            .ok_or_else(|| format!("Invalid path (no filename): {path}"))?;
+        let result = resolved_parent.join(file_name);
+        log::debug!(
+            "[security] validate_parent_path: '{}' resolved parent to '{}'",
+            path,
+            resolved_parent.display()
+        );
+        Ok(result)
     }
 
     /// Validate that a resolved path is still inside the workspace.

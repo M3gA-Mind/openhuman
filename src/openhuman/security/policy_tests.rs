@@ -336,26 +336,26 @@ fn validate_command_handles_short_multibyte_command() {
 #[test]
 fn relative_paths_allowed() {
     let p = default_policy();
-    assert!(p.is_path_allowed("file.txt"));
-    assert!(p.is_path_allowed("src/main.rs"));
-    assert!(p.is_path_allowed("deep/nested/dir/file.txt"));
+    assert!(p.is_path_string_allowed("file.txt"));
+    assert!(p.is_path_string_allowed("src/main.rs"));
+    assert!(p.is_path_string_allowed("deep/nested/dir/file.txt"));
 }
 
 #[test]
 fn path_traversal_blocked() {
     let p = default_policy();
-    assert!(!p.is_path_allowed("../etc/passwd"));
-    assert!(!p.is_path_allowed("../../root/.ssh/id_rsa"));
-    assert!(!p.is_path_allowed("foo/../../../etc/shadow"));
-    assert!(!p.is_path_allowed(".."));
+    assert!(!p.is_path_string_allowed("../etc/passwd"));
+    assert!(!p.is_path_string_allowed("../../root/.ssh/id_rsa"));
+    assert!(!p.is_path_string_allowed("foo/../../../etc/shadow"));
+    assert!(!p.is_path_string_allowed(".."));
 }
 
 #[test]
 fn absolute_paths_blocked_when_workspace_only() {
     let p = default_policy();
-    assert!(!p.is_path_allowed("/etc/passwd"));
-    assert!(!p.is_path_allowed("/root/.ssh/id_rsa"));
-    assert!(!p.is_path_allowed("/tmp/file.txt"));
+    assert!(!p.is_path_string_allowed("/etc/passwd"));
+    assert!(!p.is_path_string_allowed("/root/.ssh/id_rsa"));
+    assert!(!p.is_path_string_allowed("/tmp/file.txt"));
 }
 
 #[test]
@@ -365,7 +365,7 @@ fn absolute_paths_allowed_when_not_workspace_only() {
         forbidden_paths: vec![],
         ..SecurityPolicy::default()
     };
-    assert!(p.is_path_allowed("/tmp/file.txt"));
+    assert!(p.is_path_string_allowed("/tmp/file.txt"));
 }
 
 #[test]
@@ -374,23 +374,23 @@ fn forbidden_paths_blocked() {
         workspace_only: false,
         ..SecurityPolicy::default()
     };
-    assert!(!p.is_path_allowed("/etc/passwd"));
-    assert!(!p.is_path_allowed("/root/.bashrc"));
-    assert!(!p.is_path_allowed("~/.ssh/id_rsa"));
-    assert!(!p.is_path_allowed("~/.gnupg/pubring.kbx"));
+    assert!(!p.is_path_string_allowed("/etc/passwd"));
+    assert!(!p.is_path_string_allowed("/root/.bashrc"));
+    assert!(!p.is_path_string_allowed("~/.ssh/id_rsa"));
+    assert!(!p.is_path_string_allowed("~/.gnupg/pubring.kbx"));
 }
 
 #[test]
 fn empty_path_allowed() {
     let p = default_policy();
-    assert!(p.is_path_allowed(""));
+    assert!(p.is_path_string_allowed(""));
 }
 
 #[test]
 fn dotfile_in_workspace_allowed() {
     let p = default_policy();
-    assert!(p.is_path_allowed(".gitignore"));
-    assert!(p.is_path_allowed(".env"));
+    assert!(p.is_path_string_allowed(".gitignore"));
+    assert!(p.is_path_string_allowed(".env"));
 }
 
 // -- from_config --------------------------------------------------
@@ -711,29 +711,29 @@ fn command_env_var_prefix_with_allowed_cmd() {
 fn path_traversal_encoded_dots() {
     let p = default_policy();
     // Literal ".." in path — always blocked
-    assert!(!p.is_path_allowed("foo/..%2f..%2fetc/passwd"));
+    assert!(!p.is_path_string_allowed("foo/..%2f..%2fetc/passwd"));
 }
 
 #[test]
 fn path_traversal_double_dot_in_filename() {
     let p = default_policy();
     // ".." in a filename (not a path component) is allowed
-    assert!(p.is_path_allowed("my..file.txt"));
+    assert!(p.is_path_string_allowed("my..file.txt"));
     // But actual traversal components are still blocked
-    assert!(!p.is_path_allowed("../etc/passwd"));
-    assert!(!p.is_path_allowed("foo/../etc/passwd"));
+    assert!(!p.is_path_string_allowed("../etc/passwd"));
+    assert!(!p.is_path_string_allowed("foo/../etc/passwd"));
 }
 
 #[test]
 fn path_with_null_byte_blocked() {
     let p = default_policy();
-    assert!(!p.is_path_allowed("file\0.txt"));
+    assert!(!p.is_path_string_allowed("file\0.txt"));
 }
 
 #[test]
 fn path_symlink_style_absolute() {
     let p = default_policy();
-    assert!(!p.is_path_allowed("/proc/self/root/etc/passwd"));
+    assert!(!p.is_path_string_allowed("/proc/self/root/etc/passwd"));
 }
 
 #[test]
@@ -742,8 +742,8 @@ fn path_home_tilde_ssh() {
         workspace_only: false,
         ..SecurityPolicy::default()
     };
-    assert!(!p.is_path_allowed("~/.ssh/id_rsa"));
-    assert!(!p.is_path_allowed("~/.gnupg/secring.gpg"));
+    assert!(!p.is_path_string_allowed("~/.ssh/id_rsa"));
+    assert!(!p.is_path_string_allowed("~/.gnupg/secring.gpg"));
 }
 
 #[test]
@@ -752,7 +752,7 @@ fn path_var_run_blocked() {
         workspace_only: false,
         ..SecurityPolicy::default()
     };
-    assert!(!p.is_path_allowed("/var/run/docker.sock"));
+    assert!(!p.is_path_string_allowed("/var/run/docker.sock"));
 }
 
 // -- Edge cases: rate limiter boundary ----------------------------
@@ -820,8 +820,8 @@ fn full_autonomy_still_respects_forbidden_paths() {
         workspace_only: false,
         ..SecurityPolicy::default()
     };
-    assert!(!p.is_path_allowed("/etc/shadow"));
-    assert!(!p.is_path_allowed("/root/.bashrc"));
+    assert!(!p.is_path_string_allowed("/etc/shadow"));
+    assert!(!p.is_path_string_allowed("/root/.bashrc"));
 }
 
 // -- Edge cases: from_config preserves tracker --------------------
@@ -857,11 +857,11 @@ fn from_config_creates_fresh_tracker() {
 fn checklist_root_path_blocked() {
     let p = default_policy();
     if cfg!(windows) {
-        assert!(!p.is_path_allowed("C:\\"));
-        assert!(!p.is_path_allowed("C:\\anything"));
+        assert!(!p.is_path_string_allowed("C:\\"));
+        assert!(!p.is_path_string_allowed("C:\\anything"));
     } else {
-        assert!(!p.is_path_allowed("/"));
-        assert!(!p.is_path_allowed("/anything"));
+        assert!(!p.is_path_string_allowed("/"));
+        assert!(!p.is_path_string_allowed("/anything"));
     }
 }
 
@@ -876,11 +876,11 @@ fn checklist_all_system_dirs_blocked() {
         "/proc", "/sys", "/var", "/tmp",
     ] {
         assert!(
-            !p.is_path_allowed(dir),
+            !p.is_path_string_allowed(dir),
             "System dir should be blocked: {dir}"
         );
         assert!(
-            !p.is_path_allowed(&format!("{dir}/subpath")),
+            !p.is_path_string_allowed(&format!("{dir}/subpath")),
             "Subpath of system dir should be blocked: {dir}/subpath"
         );
     }
@@ -899,7 +899,7 @@ fn checklist_sensitive_dotfiles_blocked() {
         "~/.config/secrets",
     ] {
         assert!(
-            !p.is_path_allowed(path),
+            !p.is_path_string_allowed(path),
             "Sensitive dotfile should be blocked: {path}"
         );
     }
@@ -908,9 +908,9 @@ fn checklist_sensitive_dotfiles_blocked() {
 #[test]
 fn checklist_null_byte_injection_blocked() {
     let p = default_policy();
-    assert!(!p.is_path_allowed("safe\0/../../../etc/passwd"));
-    assert!(!p.is_path_allowed("\0"));
-    assert!(!p.is_path_allowed("file\0"));
+    assert!(!p.is_path_string_allowed("safe\0/../../../etc/passwd"));
+    assert!(!p.is_path_string_allowed("\0"));
+    assert!(!p.is_path_string_allowed("file\0"));
 }
 
 #[test]
@@ -920,11 +920,11 @@ fn checklist_workspace_only_blocks_all_absolute() {
         ..SecurityPolicy::default()
     };
     if cfg!(windows) {
-        assert!(!p.is_path_allowed("C:\\any\\absolute\\path"));
+        assert!(!p.is_path_string_allowed("C:\\any\\absolute\\path"));
     } else {
-        assert!(!p.is_path_allowed("/any/absolute/path"));
+        assert!(!p.is_path_string_allowed("/any/absolute/path"));
     }
-    assert!(p.is_path_allowed("relative/path.txt"));
+    assert!(p.is_path_string_allowed("relative/path.txt"));
 }
 
 #[test]
@@ -1060,7 +1060,7 @@ fn resolved_path_blocks_symlink_escape() {
 fn is_path_allowed_blocks_null_bytes() {
     let policy = default_policy();
     assert!(
-        !policy.is_path_allowed("file\0.txt"),
+        !policy.is_path_string_allowed("file\0.txt"),
         "paths with null bytes must be blocked"
     );
 }
@@ -1069,11 +1069,11 @@ fn is_path_allowed_blocks_null_bytes() {
 fn is_path_allowed_blocks_url_encoded_traversal() {
     let policy = default_policy();
     assert!(
-        !policy.is_path_allowed("..%2fetc%2fpasswd"),
+        !policy.is_path_string_allowed("..%2fetc%2fpasswd"),
         "URL-encoded path traversal must be blocked"
     );
     assert!(
-        !policy.is_path_allowed("subdir%2f..%2f..%2fetc"),
+        !policy.is_path_string_allowed("subdir%2f..%2f..%2fetc"),
         "URL-encoded parent dir traversal must be blocked"
     );
 }
@@ -1214,4 +1214,100 @@ fn validate_path_within_root_blocks_symlink_escape() {
         result.is_err(),
         "symlink escaping prompt root must be blocked"
     );
+}
+
+// ── validate_path / validate_parent_path (async) ────────────────────────────
+
+#[cfg(unix)]
+#[tokio::test]
+async fn validate_path_blocks_symlink_to_outside_workspace() {
+    let workspace = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let secret = outside.path().join("secret.txt");
+    std::fs::write(&secret, "secret").unwrap();
+    let link = workspace.path().join("link.txt");
+    std::os::unix::fs::symlink(&secret, &link).unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: false,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+    assert!(policy.validate_path("link.txt").await.is_err());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn validate_path_blocks_symlink_to_forbidden_path() {
+    let workspace = tempfile::tempdir().unwrap();
+    // /etc/hostname is readable on most Unix systems
+    let link = workspace.path().join("link");
+    std::os::unix::fs::symlink("/etc/hostname", &link).unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: true,
+        forbidden_paths: vec!["/etc".to_string()],
+        ..SecurityPolicy::default()
+    };
+    assert!(policy.validate_path("link").await.is_err());
+}
+
+#[tokio::test]
+async fn validate_path_allows_regular_file_in_workspace() {
+    let workspace = tempfile::tempdir().unwrap();
+    let file = workspace.path().join("data.txt");
+    std::fs::write(&file, "hello").unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: true,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+    let result = policy.validate_path("data.txt").await;
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), file.canonicalize().unwrap());
+}
+
+#[tokio::test]
+async fn validate_path_returns_err_for_nonexistent_path() {
+    let workspace = tempfile::tempdir().unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: true,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+    assert!(policy.validate_path("does_not_exist.txt").await.is_err());
+}
+
+#[tokio::test]
+async fn validate_parent_path_allows_new_file() {
+    let workspace = tempfile::tempdir().unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: true,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+    let result = policy.validate_parent_path("newfile.txt").await;
+    assert!(result.is_ok());
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn validate_parent_path_blocks_symlinked_parent_dir() {
+    let workspace = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    let link_dir = workspace.path().join("subdir");
+    std::os::unix::fs::symlink(outside.path(), &link_dir).unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: true,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+    assert!(policy
+        .validate_parent_path("subdir/newfile.txt")
+        .await
+        .is_err());
 }
