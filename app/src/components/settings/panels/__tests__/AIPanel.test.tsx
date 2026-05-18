@@ -592,9 +592,7 @@ describe('AIPanel', () => {
     await waitFor(() => expect(vi.mocked(flushCloudProviders)).toHaveBeenCalled());
 
     // Verify it was called with openai (non-reserved) and NOT with openhuman (reserved).
-    const [flushed] = vi.mocked(flushCloudProviders).mock.calls[0] as [
-      Array<{ slug: string }>,
-    ];
+    const [flushed] = vi.mocked(flushCloudProviders).mock.calls[0] as [Array<{ slug: string }>];
     expect(flushed.some(p => p.slug === 'openai')).toBe(true);
     expect(flushed.some(p => p.slug === 'openhuman')).toBe(false);
   });
@@ -641,9 +639,7 @@ describe('AIPanel', () => {
 
     // Dialog opens and immediately triggers the model-fetch effect.
     await waitFor(() =>
-      expect(
-        screen.getByRole('dialog', { name: 'Custom routing for Chat' })
-      ).toBeInTheDocument()
+      expect(screen.getByRole('dialog', { name: 'Custom routing for Chat' })).toBeInTheDocument()
     );
 
     // Loading state: disabled select with placeholder text.
@@ -653,10 +649,7 @@ describe('AIPanel', () => {
 
   it('CustomRoutingDialog shows model dropdown with humanized labels after models load', async () => {
     vi.mocked(loadAISettings).mockResolvedValue(settingsWithOpenAI);
-    vi.mocked(listProviderModels).mockResolvedValue([
-      { id: 'gpt-4o' },
-      { id: 'test-model' },
-    ]);
+    vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-4o' }, { id: 'test-model' }]);
 
     renderWithProviders(<AIPanel />);
     await waitFor(() => expect(screen.getByText('Chat')).toBeInTheDocument());
@@ -667,9 +660,7 @@ describe('AIPanel', () => {
     fireEvent.click(within(chatRow as HTMLElement).getByText('Routing custom'));
 
     await waitFor(() =>
-      expect(
-        screen.getByRole('dialog', { name: 'Custom routing for Chat' })
-      ).toBeInTheDocument()
+      expect(screen.getByRole('dialog', { name: 'Custom routing for Chat' })).toBeInTheDocument()
     );
 
     // Success state: model select with options rendered via humanizeModelId.
@@ -701,9 +692,7 @@ describe('AIPanel', () => {
     fireEvent.click(within(chatRow as HTMLElement).getByText('Routing custom'));
 
     await waitFor(() =>
-      expect(
-        screen.getByRole('dialog', { name: 'Custom routing for Chat' })
-      ).toBeInTheDocument()
+      expect(screen.getByRole('dialog', { name: 'Custom routing for Chat' })).toBeInTheDocument()
     );
 
     // Error state: error message and Retry button visible.
