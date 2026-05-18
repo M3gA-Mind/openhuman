@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { listConnections as listComposioConnections } from '../../../../lib/composio/composioApi';
 import {
+  flushCloudProviders,
+  listProviderModels,
   loadAISettings,
   loadLocalProviderSnapshot,
   saveAISettings,
@@ -43,6 +45,7 @@ vi.mock('../../../../services/api/aiSettingsApi', () => ({
   ),
   localProvider: { download: vi.fn(), applyPreset: vi.fn() },
   flushCloudProviders: vi.fn().mockResolvedValue(undefined),
+  listProviderModels: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../hooks/useSettingsNavigation', () => ({
@@ -554,5 +557,166 @@ describe('AIPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Planner tick now' }));
     await waitFor(() => expect(screen.getByText('tick failed')).toBeInTheDocument());
+  });
+
+  // ─── flushCloudProviders eager effect ───────────────────────────────────────
+
+  it('flushCloudProviders is called with non-reserved slugs when draft providers diverge from saved', async () => {
+    // Load with no user providers — only the built-in openhuman (reserved) would be there,
+    // but here we start with an empty list so draft == saved == [].
+    vi.mocked(loadAISettings).mockResolvedValue({ ...baseSettings, cloudProviders: [] });
+    // setCloudProviderKey resolves without error → provider gets added to draft.
+    vi.mocked(setCloudProviderKey).mockResolvedValue(undefined as never);
+
+    renderWithProviders(<AIPanel />);
+
+    // Wait for panel to load — OpenAI chip shows as "Connect".
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: /Connect OpenAI/i })).toBeInTheDocument()
+    );
+
+    // Open the key dialog and submit a key.
+    fireEvent.click(screen.getByRole('switch', { name: /Connect OpenAI/i }));
+    await waitFor(() =>
+      expect(screen.getByRole('dialog', { name: /Connect OpenAI/i })).toBeInTheDocument()
+    );
+    fireEvent.change(screen.getByLabelText(/API key/i), { target: { value: 'sk-test-123' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
+
+    // Key is persisted, provider is added to draft.
+    await waitFor(() =>
+      expect(vi.mocked(setCloudProviderKey)).toHaveBeenCalledWith('openai', 'sk-test-123')
+    );
+
+    // The flushCloudProviders effect should fire because draft now has openai.
+    await waitFor(() => expect(vi.mocked(flushCloudProviders)).toHaveBeenCalled());
+
+    // Verify it was called with openai (non-reserved) and NOT with openhuman (reserved).
+    const [flushed] = vi.mocked(flushCloudProviders).mock.calls[0] as [
+      Array<{ slug: string }>,
+    ];
+    expect(flushed.some(p => p.slug === 'openai')).toBe(true);
+    expect(flushed.some(p => p.slug === 'openhuman')).toBe(false);
+  });
+
+  // ─── CustomRoutingDialog model states ───────────────────────────────────────
+
+  const settingsWithOpenAI = {
+    cloudProviders: [
+      {
+        id: 'p_openai_1',
+        slug: 'openai',
+        label: 'OpenAI',
+        endpoint: 'https://api.openai.com/v1',
+        auth_style: 'bearer' as const,
+        has_api_key: true,
+      },
+    ],
+    routing: {
+      chat: { kind: 'openhuman' as const },
+      reasoning: { kind: 'openhuman' as const },
+      agentic: { kind: 'openhuman' as const },
+      coding: { kind: 'openhuman' as const },
+      memory: { kind: 'openhuman' as const },
+      embeddings: { kind: 'openhuman' as const },
+      heartbeat: { kind: 'openhuman' as const },
+      learning: { kind: 'openhuman' as const },
+      subconscious: { kind: 'openhuman' as const },
+    },
+  };
+
+  it('CustomRoutingDialog shows loading state while fetching models', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue(settingsWithOpenAI);
+    // Never resolves during the test — keeps the loading state visible.
+    vi.mocked(listProviderModels).mockReturnValue(new Promise(() => {}));
+
+    renderWithProviders(<AIPanel />);
+    await waitFor(() => expect(screen.getByText('Chat')).toBeInTheDocument());
+
+    // Click "Routing custom" on the Chat workload row.
+    const chatRow = screen
+      .getByText('Chat')
+      .closest('[class*="flex items-center justify-between"]');
+    fireEvent.click(within(chatRow as HTMLElement).getByText('Routing custom'));
+
+    // Dialog opens and immediately triggers the model-fetch effect.
+    await waitFor(() =>
+      expect(
+        screen.getByRole('dialog', { name: 'Custom routing for Chat' })
+      ).toBeInTheDocument()
+    );
+
+    // Loading state: disabled select with placeholder text.
+    expect(screen.getByText('Loading models…')).toBeInTheDocument();
+    expect(vi.mocked(listProviderModels)).toHaveBeenCalledWith('openai');
+  });
+
+  it('CustomRoutingDialog shows model dropdown with humanized labels after models load', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue(settingsWithOpenAI);
+    vi.mocked(listProviderModels).mockResolvedValue([
+      { id: 'gpt-4o' },
+      { id: 'test-model' },
+    ]);
+
+    renderWithProviders(<AIPanel />);
+    await waitFor(() => expect(screen.getByText('Chat')).toBeInTheDocument());
+
+    const chatRow = screen
+      .getByText('Chat')
+      .closest('[class*="flex items-center justify-between"]');
+    fireEvent.click(within(chatRow as HTMLElement).getByText('Routing custom'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('dialog', { name: 'Custom routing for Chat' })
+      ).toBeInTheDocument()
+    );
+
+    // Success state: model select with options rendered via humanizeModelId.
+    // humanizeModelId('gpt-4o') = 'Gpt 4o' (4o is one word), 'test-model' = 'Test Model'.
+    await waitFor(() => {
+      const options = screen.getAllByRole('option');
+      const texts = options.map(o => o.textContent ?? '');
+      expect(texts.some(t => t.includes('gpt-4o'))).toBe(true);
+      expect(texts.some(t => t.includes('Test Model'))).toBe(true);
+    });
+
+    // "Loading models…" should no longer be present.
+    expect(screen.queryByText('Loading models…')).not.toBeInTheDocument();
+
+    // listProviderModels was called with the openai slug.
+    expect(vi.mocked(listProviderModels)).toHaveBeenCalledWith('openai');
+  });
+
+  it('CustomRoutingDialog shows error + Retry when listProviderModels rejects', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue(settingsWithOpenAI);
+    vi.mocked(listProviderModels).mockRejectedValue(new Error('network timeout'));
+
+    renderWithProviders(<AIPanel />);
+    await waitFor(() => expect(screen.getByText('Chat')).toBeInTheDocument());
+
+    const chatRow = screen
+      .getByText('Chat')
+      .closest('[class*="flex items-center justify-between"]');
+    fireEvent.click(within(chatRow as HTMLElement).getByText('Routing custom'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('dialog', { name: 'Custom routing for Chat' })
+      ).toBeInTheDocument()
+    );
+
+    // Error state: error message and Retry button visible.
+    await waitFor(() => expect(screen.getByText('network timeout')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+
+    // Clicking Retry re-triggers the model fetch.
+    vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-4o' }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    await waitFor(() => {
+      const options = screen.getAllByRole('option');
+      expect(options.some(o => (o.textContent ?? '').includes('gpt-4o'))).toBe(true);
+    });
   });
 });
