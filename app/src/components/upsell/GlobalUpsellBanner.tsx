@@ -4,8 +4,7 @@ import { openUrl } from '../../utils/openUrl';
 import UpsellBanner from './UpsellBanner';
 
 export default function GlobalUpsellBanner() {
-  const { teamUsage, isLoading, isAtLimit, isNearLimit, isFreeTier, usagePct10h, usagePct7d } =
-    useUsageState();
+  const { teamUsage, isLoading, isAtLimit, isNearLimit, isFreeTier, usagePct } = useUsageState();
 
   if (isLoading || !teamUsage) return null;
 
@@ -27,7 +26,7 @@ export default function GlobalUpsellBanner() {
   }
 
   if (isNearLimit && isFreeTier) {
-    const pct = Math.round(Math.max(usagePct10h, usagePct7d) * 100);
+    const pct = Math.round(usagePct * 100);
     return (
       <div className="relative z-20">
         <UpsellBanner

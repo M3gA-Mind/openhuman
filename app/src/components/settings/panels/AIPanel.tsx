@@ -1143,16 +1143,16 @@ const BackgroundLoopControls = ({
             <MetricTile
               label="Week remaining"
               value={usage ? formatUsd(usage.remainingUsd) : 'n/a'}
-              detail={usage ? `${formatUsd(usage.cycleLimit7day)} used` : undefined}
+              detail={usage ? `${formatUsd(usage.cycleSpentUsd)} used` : undefined}
             />
             <MetricTile
-              label="5h window"
-              value={
+              label="Cycle total spend"
+              value={usage ? formatUsd(usage.insights.totals.totalUsd) : 'n/a'}
+              detail={
                 usage
-                  ? `${formatUsd(usage.cycleLimit5hr)} / ${formatUsd(usage.fiveHourCapUsd)}`
-                  : 'n/a'
+                  ? `inference ${formatUsd(usage.insights.totals.inferenceUsd)} + integrations ${formatUsd(usage.insights.totals.integrationsUsd)}`
+                  : undefined
               }
-              detail={`resets ${formatDateTime(usage?.fiveHourResetsAt)}`}
             />
             <MetricTile
               label="Avg spend row"
