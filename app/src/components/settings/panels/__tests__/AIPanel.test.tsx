@@ -262,7 +262,9 @@ describe('AIPanel', () => {
     // Trigger a routing change so the SaveBar appears, then save.
     // Click the "Default" button specifically on the Reasoning row (which is
     // currently set to custom cloud routing) to switch it back to openhuman.
-    const reasoningRow = screen.getByText('Reasoning').closest('[class*="flex items-center justify-between"]');
+    const reasoningRow = screen
+      .getByText('Reasoning')
+      .closest('[class*="flex items-center justify-between"]');
     fireEvent.click(within(reasoningRow as HTMLElement).getByText('Default'));
 
     // SaveBar should appear.

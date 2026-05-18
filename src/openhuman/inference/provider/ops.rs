@@ -676,7 +676,10 @@ mod tests {
             .cloud_providers
             .iter()
             .find(|e| e.id == "openai" || e.slug == "openai");
-        assert!(found_by_slug.is_some(), "slug lookup must find the provider");
+        assert!(
+            found_by_slug.is_some(),
+            "slug lookup must find the provider"
+        );
         assert_eq!(found_by_slug.unwrap().id, "p_openai_xyz99");
 
         // The find predicate must still match on id.

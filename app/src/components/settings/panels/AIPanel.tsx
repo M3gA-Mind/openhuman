@@ -1697,7 +1697,9 @@ const CustomRoutingDialog = ({
                       className="text-xs text-primary-600 dark:text-primary-400 hover:underline">
                       Retry
                     </button>
-                    <span className="text-xs text-stone-400 dark:text-neutral-500">or enter model id manually:</span>
+                    <span className="text-xs text-stone-400 dark:text-neutral-500">
+                      or enter model id manually:
+                    </span>
                   </div>
                   <input
                     type="text"

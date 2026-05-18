@@ -671,7 +671,13 @@ describe('flushCloudProviders', () => {
   it('calls update_model_settings with the cloud_providers array', async () => {
     mockOpenhumanUpdateModelSettings.mockResolvedValue({});
     const providers = [
-      { id: 'p_openai_1', slug: 'openai', label: 'OpenAI', endpoint: 'https://api.openai.com/v1', auth_style: 'bearer' as const },
+      {
+        id: 'p_openai_1',
+        slug: 'openai',
+        label: 'OpenAI',
+        endpoint: 'https://api.openai.com/v1',
+        auth_style: 'bearer' as const,
+      },
     ];
     await flushCloudProviders(providers);
     expect(mockOpenhumanUpdateModelSettings).toHaveBeenCalledWith({ cloud_providers: providers });
