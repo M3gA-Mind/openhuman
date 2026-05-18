@@ -19,6 +19,7 @@ import {
   type ProviderRef as ApiProviderRef,
   clearCloudProviderKey,
   type CloudProviderView,
+  flushCloudProviders,
   listProviderModels,
   loadAISettings,
   loadLocalProviderSnapshot,
@@ -285,6 +286,32 @@ function useAISettings() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void reload();
   }, [reload]);
+
+  // Eagerly persist user-configured cloud providers whenever they diverge from
+  // the saved snapshot so listProviderModels can resolve by slug immediately
+  // after a provider is added, before the global Save. Reserved slugs
+  // ("openhuman", "ollama", "cloud", "pid") are built-ins that Rust rejects as
+  // custom providers — filter them out before flushing.
+  useEffect(() => {
+    if (loading) return;
+    const userProviders = draft.cloudProviders.filter(
+      p => !['', 'cloud', 'openhuman', 'ollama', 'pid'].includes(p.slug)
+    );
+    const savedUserProviders = saved.cloudProviders.filter(
+      p => !['', 'cloud', 'openhuman', 'ollama', 'pid'].includes(p.slug)
+    );
+    if (JSON.stringify(userProviders) === JSON.stringify(savedUserProviders)) return;
+    const wire = userProviders.map(p => ({
+      id: p.id,
+      slug: p.slug,
+      label: p.label,
+      endpoint: p.endpoint,
+      auth_style: p.authStyle,
+    }));
+    flushCloudProviders(wire).catch(err =>
+      console.warn('[ai-settings] eager cloud_providers flush failed:', err)
+    );
+  }, [draft.cloudProviders, loading, saved.cloudProviders]);
 
   const isDirty = JSON.stringify(saved) !== JSON.stringify(draft);
 
