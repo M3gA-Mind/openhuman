@@ -19,6 +19,7 @@ import AIPanel from '../AIPanel';
 
 vi.mock('../../../../services/api/aiSettingsApi', () => ({
   ALL_WORKLOADS: [
+    'chat',
     'reasoning',
     'agentic',
     'coding',
@@ -41,6 +42,7 @@ vi.mock('../../../../services/api/aiSettingsApi', () => ({
         : `${r.providerSlug}:${r.model}`
   ),
   localProvider: { download: vi.fn(), applyPreset: vi.fn() },
+  flushCloudProviders: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../hooks/useSettingsNavigation', () => ({
@@ -75,6 +77,7 @@ const baseSettings = {
     },
   ],
   routing: {
+    chat: { kind: 'openhuman' as const },
     reasoning: { kind: 'openhuman' as const },
     agentic: { kind: 'openhuman' as const },
     coding: { kind: 'openhuman' as const },
@@ -199,10 +202,11 @@ describe('AIPanel', () => {
     await waitFor(() => expect(screen.getAllByText(/OpenHuman/i).length).toBeGreaterThan(0));
   });
 
-  it('renders all eight workload labels', async () => {
+  it('renders all nine workload labels', async () => {
     renderWithProviders(<AIPanel />);
-    await waitFor(() => expect(screen.getByText('Reasoning')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Chat')).toBeInTheDocument());
     for (const label of [
+      'Chat',
       'Reasoning',
       'Agentic',
       'Coding',
@@ -231,6 +235,7 @@ describe('AIPanel', () => {
         },
       ],
       routing: {
+        chat: { kind: 'openhuman' as const },
         reasoning: {
           kind: 'cloud' as const,
           providerSlug: 'anthropic',
@@ -255,9 +260,10 @@ describe('AIPanel', () => {
     await waitFor(() => expect(screen.getAllByText(/Anthropic/i).length).toBeGreaterThan(0));
 
     // Trigger a routing change so the SaveBar appears, then save.
-    // Click the "Default" button on the Reasoning row to change routing.
-    const defaultButtons = screen.getAllByText('Default');
-    fireEvent.click(defaultButtons[0]);
+    // Click the "Default" button specifically on the Reasoning row (which is
+    // currently set to custom cloud routing) to switch it back to openhuman.
+    const reasoningRow = screen.getByText('Reasoning').closest('[class*="flex items-center justify-between"]');
+    fireEvent.click(within(reasoningRow as HTMLElement).getByText('Default'));
 
     // SaveBar should appear.
     await waitFor(() => expect(screen.getByText(/unsaved change/i)).toBeInTheDocument());
@@ -330,6 +336,7 @@ describe('AIPanel', () => {
         },
       ],
       routing: {
+        chat: { kind: 'openhuman' as const },
         reasoning: { kind: 'cloud' as const, providerSlug: 'openai', model: 'gpt-4o' },
         agentic: { kind: 'cloud' as const, providerSlug: 'openai', model: 'gpt-4o-mini' },
         coding: { kind: 'openhuman' as const },
