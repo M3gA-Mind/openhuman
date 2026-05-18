@@ -110,7 +110,13 @@ export function useUsageState(): UsageState {
 
   const usagePct =
     teamUsage && teamUsage.cycleBudgetUsd > 0.01
-      ? Math.min(1, (teamUsage.cycleBudgetUsd - teamUsage.remainingUsd) / teamUsage.cycleBudgetUsd)
+      ? Math.max(
+          0,
+          Math.min(
+            1,
+            (teamUsage.cycleBudgetUsd - teamUsage.remainingUsd) / teamUsage.cycleBudgetUsd
+          )
+        )
       : 0;
 
   const isBudgetExhausted = teamUsage

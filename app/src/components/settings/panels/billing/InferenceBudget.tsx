@@ -12,6 +12,18 @@ interface InferenceBudgetProps {
 
 const fmtUsd = (n: number): string => `$${(n ?? 0).toFixed(2)}`;
 
+const formatCycleEnds = (iso: string): string => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'n/a';
+  // Use UTC so a UTC-midnight cycle end doesn't shift a day in the user's TZ.
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+};
+
 const InferenceBudget = ({ teamUsage, isLoadingCredits }: InferenceBudgetProps) => (
   <div className="rounded-2xl border border-stone-200 bg-white p-3 space-y-3">
     <div className="flex items-center justify-between">
@@ -40,9 +52,9 @@ const InferenceBudget = ({ teamUsage, isLoadingCredits }: InferenceBudgetProps) 
                       : 'bg-primary-500'
                 }`}
                 style={{
-                  width: `${Math.min(
-                    100,
-                    (teamUsage.remainingUsd / teamUsage.cycleBudgetUsd) * 100
+                  width: `${Math.max(
+                    0,
+                    Math.min(100, (teamUsage.remainingUsd / teamUsage.cycleBudgetUsd) * 100)
                   )}%`,
                 }}
               />
@@ -52,7 +64,7 @@ const InferenceBudget = ({ teamUsage, isLoadingCredits }: InferenceBudgetProps) 
                 Spent {fmtUsd(teamUsage.cycleSpentUsd)} this cycle
               </span>
               <span className="text-[11px] text-stone-500">
-                Cycle ends {new Date(teamUsage.cycleEndsAt).toLocaleDateString('en-US')}
+                Cycle ends {formatCycleEnds(teamUsage.cycleEndsAt)}
               </span>
             </div>
             {teamUsage.remainingUsd <= 0 && (
