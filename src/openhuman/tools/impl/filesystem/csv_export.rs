@@ -184,21 +184,18 @@ impl Tool for CsvExportTool {
         // Validate the relative path
         let relative_path = format!("exports/{filename}");
 
-        let full_path = self.security.workspace_dir.join(&relative_path);
-
-        let Some(parent) = full_path.parent() else {
-            return Ok(ToolResult::error("Invalid path: missing parent directory"));
-        };
-
-        // Ensure exports/ directory exists before canonicalization.
-        tokio::fs::create_dir_all(parent).await?;
-
-        // Security check: validate path string, resolve symlinks on the parent dir,
-        // confirm workspace containment. File may not exist yet, so validate_parent_path is used.
+        // Security check first: validate path string, resolve symlinks, confirm workspace
+        // containment. validate_parent_path walks up to the deepest existing ancestor so
+        // it does not require the exports/ directory to exist yet.
         let resolved_target = match self.security.validate_parent_path(&relative_path).await {
             Ok(p) => p,
             Err(msg) => return Ok(ToolResult::error(msg)),
         };
+
+        // Create exports/ directory only at the validated, resolved location.
+        if let Some(resolved_parent) = resolved_target.parent() {
+            tokio::fs::create_dir_all(resolved_parent).await?;
+        }
 
         // If the target already exists and is a symlink, refuse to follow it
         if let Ok(meta) = tokio::fs::symlink_metadata(&resolved_target).await {

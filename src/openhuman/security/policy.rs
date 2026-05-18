@@ -788,13 +788,28 @@ impl SecurityPolicy {
                 resolved.display()
             ));
         }
-        let resolved_str = resolved.to_string_lossy();
+        // Check forbidden paths using canonical path-component-aware comparison.
+        // Relative forbidden entries are resolved against the workspace root.
+        // Absolute entries whose prefix IS the workspace root are skipped — the
+        // workspace containment check above already guarantees the path is safe.
+        let workspace_root = self
+            .workspace_dir
+            .canonicalize()
+            .unwrap_or_else(|_| self.workspace_dir.clone());
         for forbidden in &self.forbidden_paths {
-            let expanded = self.expand_tilde(forbidden);
-            if resolved_str.starts_with(expanded.as_str()) {
+            let forbidden_path = PathBuf::from(self.expand_tilde(forbidden));
+            let forbidden_resolved = if forbidden_path.is_absolute() {
+                if workspace_root.starts_with(&forbidden_path) {
+                    continue;
+                }
+                forbidden_path
+            } else {
+                workspace_root.join(forbidden_path)
+            };
+            if resolved.starts_with(&forbidden_resolved) {
                 return Err(format!(
                     "Resolved path is inside a forbidden directory: {}",
-                    expanded
+                    forbidden_resolved.display()
                 ));
             }
         }
@@ -808,6 +823,8 @@ impl SecurityPolicy {
 
     /// Like `validate_path` but canonicalizes the parent directory.
     /// Use for write operations where the target file may not yet exist.
+    /// Does NOT require the parent directory to exist — walks up to the deepest
+    /// existing ancestor and checks that for symlink escapes.
     /// Returns the canonical full path (parent resolved + filename appended).
     pub async fn validate_parent_path(&self, path: &str) -> Result<PathBuf, String> {
         if !self.is_path_string_allowed(path) {
@@ -817,29 +834,69 @@ impl SecurityPolicy {
         let parent = full_path
             .parent()
             .ok_or_else(|| format!("Invalid path (no parent): {path}"))?;
-        let resolved_parent = tokio::fs::canonicalize(parent)
-            .await
-            .map_err(|e| format!("Failed to resolve parent of '{path}': {e}"))?;
-        if !self.is_resolved_path_allowed(&resolved_parent) {
-            return Err(format!(
-                "Resolved parent path escapes workspace: {}",
-                resolved_parent.display()
-            ));
-        }
-        let resolved_str = resolved_parent.to_string_lossy();
-        for forbidden in &self.forbidden_paths {
-            let expanded = self.expand_tilde(forbidden);
-            if resolved_str.starts_with(expanded.as_str()) {
-                return Err(format!(
-                    "Resolved parent path is inside a forbidden directory: {}",
-                    expanded
-                ));
-            }
-        }
         let file_name = full_path
             .file_name()
             .ok_or_else(|| format!("Invalid path (no filename): {path}"))?;
+
+        // Walk up to the deepest existing ancestor so we can canonicalize without
+        // requiring the full parent path to exist yet. This catches symlink escapes
+        // in existing path components even when deeper dirs are not created yet.
+        let mut existing_ancestor = parent.to_path_buf();
+        loop {
+            if existing_ancestor.exists() {
+                break;
+            }
+            match existing_ancestor.parent() {
+                Some(p) => existing_ancestor = p.to_path_buf(),
+                None => break,
+            }
+        }
+        let canonical_ancestor = tokio::fs::canonicalize(&existing_ancestor)
+            .await
+            .map_err(|e| format!("Failed to resolve parent of '{path}': {e}"))?;
+        if !self.is_resolved_path_allowed(&canonical_ancestor) {
+            return Err(format!(
+                "Resolved parent path escapes workspace: {}",
+                canonical_ancestor.display()
+            ));
+        }
+
+        // Build resolved result: canonical_ancestor + suffix from existing_ancestor to parent + filename.
+        // Since is_path_string_allowed blocked "..", all components between the ancestor
+        // and the intended parent are newly created dirs — no symlinks possible there.
+        let relative_suffix = parent
+            .strip_prefix(&existing_ancestor)
+            .unwrap_or(std::path::Path::new(""));
+        let resolved_parent = canonical_ancestor.join(relative_suffix);
         let result = resolved_parent.join(file_name);
+
+        // Forbidden path check using canonical path-component-aware comparison.
+        // Relative entries are resolved against the workspace root. Absolute entries
+        // whose prefix IS the workspace root are skipped (all workspace paths are under them).
+        let workspace_root = self
+            .workspace_dir
+            .canonicalize()
+            .unwrap_or_else(|_| self.workspace_dir.clone());
+        for forbidden in &self.forbidden_paths {
+            let forbidden_path = PathBuf::from(self.expand_tilde(forbidden));
+            let forbidden_resolved = if forbidden_path.is_absolute() {
+                if workspace_root.starts_with(&forbidden_path) {
+                    continue;
+                }
+                forbidden_path
+            } else {
+                workspace_root.join(forbidden_path)
+            };
+            if canonical_ancestor.starts_with(&forbidden_resolved)
+                || result.starts_with(&forbidden_resolved)
+            {
+                return Err(format!(
+                    "Resolved parent path is inside a forbidden directory: {}",
+                    forbidden_resolved.display()
+                ));
+            }
+        }
+
         log::debug!(
             "[security] validate_parent_path: '{}' resolved parent to '{}'",
             path,
