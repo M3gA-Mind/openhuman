@@ -1219,7 +1219,8 @@ const en: TranslationMap = {
   'app.localAiDownload.preparing': 'Preparing...',
   'app.openhumanLink.accounts.continueWith': 'Continue with {label} sign-in',
   'app.openhumanLink.accounts.done': 'Done',
-  'app.openhumanLink.accounts.intro': 'Connect your apps to give OpenHuman access to your accounts.',
+  'app.openhumanLink.accounts.intro':
+    'Connect your apps to give OpenHuman access to your accounts.',
   'app.openhumanLink.accounts.webviewNote':
     'Your credentials stay on this device and are never shared.',
   'app.openhumanLink.billing.openDashboard': 'Open dashboard',
@@ -1365,7 +1366,8 @@ const en: TranslationMap = {
   'conversations.toolTimeline.workerThread': 'worker thread',
   'daemon.serviceBlockingGate.body':
     'Retrying in the background. This usually resolves in a few seconds.',
-  'daemon.serviceBlockingGate.downloadHint': 'If this keeps happening, download the latest version.',
+  'daemon.serviceBlockingGate.downloadHint':
+    'If this keeps happening, download the latest version.',
   'daemon.serviceBlockingGate.downloadLatest': 'Download Latest Version',
   'daemon.serviceBlockingGate.retryCore': 'Retry Core',
   'daemon.serviceBlockingGate.retryFailed':
@@ -1428,7 +1430,8 @@ const en: TranslationMap = {
   'intelligence.tasks.activeBoardOne': '1 active board across conversations',
   'intelligence.tasks.activeBoardOther': '{count} active boards across conversations',
   'intelligence.tasks.empty': 'No agent task boards yet',
-  'intelligence.tasks.emptyHint': 'Task boards appear here when your agent is running multi-step jobs.',
+  'intelligence.tasks.emptyHint':
+    'Task boards appear here when your agent is running multi-step jobs.',
   'intelligence.tasks.failedToLoad': 'Failed to load',
   'intelligence.tasks.live': 'live',
   'intelligence.tasks.loadingBoards': 'Loading task boards…',
@@ -1555,7 +1558,8 @@ const en: TranslationMap = {
   'rewards.referralSection.statusCompleted': 'Completed',
   'rewards.referralSection.statusExpired': 'Expired',
   'rewards.referralSection.statusJoined': 'Joined',
-  'rewards.referralSection.subtitle': 'Share your code and earn credits for every friend who joins.',
+  'rewards.referralSection.subtitle':
+    'Share your code and earn credits for every friend who joins.',
   'rewards.referralSection.title': 'Invite friends, earn credits',
   'rewards.referralSection.totalEarned': 'Total earned',
   'rewards.referralSection.yourCode': 'Your code',
@@ -1625,7 +1629,8 @@ const en: TranslationMap = {
   'settings.billing.autoRecharge.saveSettings': 'Save Settings',
   'settings.billing.autoRecharge.saving': 'Saving…',
   'settings.billing.autoRecharge.setDefault': 'Set as default',
-  'settings.billing.autoRecharge.subtitle': 'Top up your credits automatically when your balance runs low.',
+  'settings.billing.autoRecharge.subtitle':
+    'Top up your credits automatically when your balance runs low.',
   'settings.billing.autoRecharge.title': 'Enable Auto-Recharge',
   'settings.billing.autoRecharge.toggleAriaLabel': 'Toggle auto-recharge',
   'settings.billing.autoRecharge.weeklyLimit': 'Weekly spending limit',
@@ -1637,7 +1642,8 @@ const en: TranslationMap = {
   'settings.billing.inferenceBudget.cycleEnds': 'Cycle ends',
   'settings.billing.inferenceBudget.exhausted': 'Exhausted',
   'settings.billing.inferenceBudget.loadError': 'Failed to load budget information.',
-  'settings.billing.inferenceBudget.noBudgetDesc': 'No recurring budget configured for this period.',
+  'settings.billing.inferenceBudget.noBudgetDesc':
+    'No recurring budget configured for this period.',
   'settings.billing.inferenceBudget.noRecurringBudget': 'No recurring budget',
   'settings.billing.inferenceBudget.remaining': 'Remaining',
   'settings.billing.inferenceBudget.tenHourCap': '10-hour cap',
@@ -1723,7 +1729,8 @@ const en: TranslationMap = {
   'settings.localModel.deviceCapability.customModelIds': 'Custom model IDs',
   'settings.localModel.deviceCapability.detected': 'Detected',
   'settings.localModel.deviceCapability.disabled': 'Disabled',
-  'settings.localModel.deviceCapability.disabledDesc': 'Local AI is off. All inference uses the cloud.',
+  'settings.localModel.deviceCapability.disabledDesc':
+    'Local AI is off. All inference uses the cloud.',
   'settings.localModel.deviceCapability.downloadingModels': '(downloading models)',
   'settings.localModel.deviceCapability.downloadingSetupDesc':
     'Downloading the OllamaSetup installer (~2 GB) and unpacking it. This can take a minute on first install.',
@@ -1911,7 +1918,8 @@ const en: TranslationMap = {
   'skills.install.timeoutLabel': 'Timeout',
   'skills.install.title': 'Install skill from URL',
   'skills.install.urlLabel': 'Skill URL',
-  'skills.meetingBots.bannerDesc': 'OpenHuman joins calls silently and handles notes and follow-ups automatically.',
+  'skills.meetingBots.bannerDesc':
+    'OpenHuman joins calls silently and handles notes and follow-ups automatically.',
   'skills.meetingBots.bannerTitle': 'Send OpenHuman to your next meeting',
   'skills.meetingBots.busyTitle': 'OpenHuman is busy',
   'skills.meetingBots.comingSoon': '{label} coming soon',
@@ -1922,7 +1930,8 @@ const en: TranslationMap = {
   'skills.meetingBots.joiningTitle': 'OpenHuman is joining the meeting',
   'skills.meetingBots.meetingLink': 'Meeting link',
   'skills.meetingBots.modalAriaLabel': 'Send OpenHuman to a meeting',
-  'skills.meetingBots.modalDesc': 'OpenHuman will join as a silent participant and help with notes and follow-ups.',
+  'skills.meetingBots.modalDesc':
+    'OpenHuman will join as a silent participant and help with notes and follow-ups.',
   'skills.meetingBots.modalTitle': 'Send OpenHuman to a meeting',
   'skills.meetingBots.newBadge': 'New',
   'skills.meetingBots.sendTo': 'Send to {label}',
@@ -1947,7 +1956,8 @@ const en: TranslationMap = {
   'skills.setup.autocomplete.stylePreset': 'Style preset',
   'skills.setup.autocomplete.stylePresetValue': 'Balanced (configurable later)',
   'skills.setup.autocomplete.title': 'Text Auto-Complete',
-  'skills.setup.screenIntel.activeDesc': 'Screen Intelligence is running and reading your active window.',
+  'skills.setup.screenIntel.activeDesc':
+    'Screen Intelligence is running and reading your active window.',
   'skills.setup.screenIntel.activeTitle': 'Screen Intelligence is Enabled',
   'skills.setup.screenIntel.advancedSettings': 'Advanced settings',
   'skills.setup.screenIntel.allGranted': 'All permissions granted',
