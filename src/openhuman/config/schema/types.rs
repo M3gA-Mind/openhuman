@@ -212,6 +212,10 @@ pub struct Config {
     #[serde(default)]
     pub primary_cloud: Option<String>,
 
+    /// Provider string for direct conversational chat (simple back-and-forth).
+    #[serde(default)]
+    pub chat_provider: Option<String>,
+
     /// Provider string for the main reasoning / chat workload.
     #[serde(default)]
     pub reasoning_provider: Option<String>,
@@ -382,6 +386,7 @@ impl Config {
     /// for migration only.
     pub fn workload_local_model(&self, workload: &str) -> Option<String> {
         let raw = match workload {
+            "chat" => self.chat_provider.as_deref(),
             "reasoning" => self.reasoning_provider.as_deref(),
             "agentic" => self.agentic_provider.as_deref(),
             "coding" => self.coding_provider.as_deref(),
@@ -532,6 +537,7 @@ impl Default for Config {
             local_ai: LocalAiConfig::default(),
             cloud_providers: Vec::new(),
             primary_cloud: None,
+            chat_provider: None,
             reasoning_provider: None,
             agentic_provider: None,
             coding_provider: None,
