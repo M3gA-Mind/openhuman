@@ -19,9 +19,11 @@ import {
   type ProviderRef as ApiProviderRef,
   clearCloudProviderKey,
   type CloudProviderView,
+  listProviderModels,
   loadAISettings,
   loadLocalProviderSnapshot,
   type LocalProviderSnapshot,
+  type ModelInfo,
   saveAISettings,
   setCloudProviderKey,
 } from '../../../services/api/aiSettingsApi';
@@ -60,6 +62,7 @@ type OllamaState = 'disabled' | 'missing' | 'stopped' | 'starting' | 'running' |
 type OllamaModel = { id: string; sizeBytes: number; family: string };
 
 type WorkloadId =
+  | 'chat'
   | 'reasoning'
   | 'agentic'
   | 'coding'
@@ -110,6 +113,7 @@ const BUILTIN_PROVIDER_META: Record<string, { tone: string; label: string }> = {
 };
 
 const WORKLOADS: Workload[] = [
+  { id: 'chat', group: 'chat', label: 'Chat', description: 'Direct conversational back-and-forth' },
   {
     id: 'reasoning',
     group: 'chat',
@@ -173,6 +177,7 @@ const WORKLOADS: Workload[] = [
 type AISettings = { cloudProviders: CloudProvider[]; routing: RoutingMap };
 
 const EMPTY_ROUTING: RoutingMap = {
+  chat: { kind: 'openhuman' },
   reasoning: { kind: 'openhuman' },
   agentic: { kind: 'openhuman' },
   coding: { kind: 'openhuman' },
@@ -217,6 +222,7 @@ function toPanelRoutingFromApi(api: ApiAISettings): { panel: AISettings } {
   // ApiProviderRef and ProviderRef share the same shape — pass through directly.
   const liftRef = (r: ApiProviderRef): ProviderRef => r;
   const routing: RoutingMap = {
+    chat: liftRef(api.routing.chat),
     reasoning: liftRef(api.routing.reasoning),
     agentic: liftRef(api.routing.agentic),
     coding: liftRef(api.routing.coding),
@@ -240,6 +246,7 @@ function toApiSettings(panel: AISettings): ApiAISettings {
       has_api_key: p.maskedKey.startsWith('••••'),
     })),
     routing: {
+      chat: panel.routing.chat,
       reasoning: panel.routing.reasoning,
       agentic: panel.routing.agentic,
       coding: panel.routing.coding,
@@ -275,6 +282,7 @@ function useAISettings() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void reload();
   }, [reload]);
 
@@ -315,6 +323,7 @@ function useOllamaStatus() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
     const id = window.setInterval(() => void refresh(), 5000);
     return () => window.clearInterval(id);
@@ -768,6 +777,7 @@ const BackgroundLoopControls = ({
   }, [commitSettings]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
 
@@ -1484,6 +1494,10 @@ interface CustomRoutingDialogProps {
 
 type CustomDialogSource = { kind: 'cloud'; providerSlug: string } | { kind: 'local' };
 
+function humanizeModelId(id: string): string {
+  return id.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 const CustomRoutingDialog = ({
   workload,
   initial,
@@ -1519,9 +1533,55 @@ const CustomRoutingDialog = ({
     }
     return localModels[0]?.id ?? '';
   });
+  const [cloudModels, setCloudModels] = useState<ModelInfo[]>([]);
+  const [cloudModelsLoading, setCloudModelsLoading] = useState(false);
+  const [cloudModelsError, setCloudModelsError] = useState<string | null>(null);
+  const [modelsKey, setModelsKey] = useState(0);
 
   const selectedCloud =
     source?.kind === 'cloud' ? customCloud.find(c => c.slug === source.providerSlug) : undefined;
+
+  // Fetch available models whenever the selected cloud provider changes.
+  const selectedSlug = source?.kind === 'cloud' ? source.providerSlug : null;
+  useEffect(() => {
+    if (!selectedSlug) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setCloudModels([]);
+      setCloudModelsError(null);
+      return;
+    }
+    const provider = customCloud.find(c => c.slug === selectedSlug);
+    if (!provider) {
+      setCloudModels([]);
+      setCloudModelsError(null);
+      return;
+    }
+    let active = true;
+    setCloudModelsLoading(true);
+    setCloudModels([]);
+    setCloudModelsError(null);
+    console.debug('[ai-settings] fetching models for provider', provider.slug);
+    listProviderModels(provider.slug)
+      .then(ms => {
+        if (!active) return;
+        console.debug('[ai-settings] fetched', ms.length, 'models for', provider.slug);
+        setCloudModels(ms);
+        setCloudModelsLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[ai-settings] listProviderModels failed for', provider.slug, ':', msg);
+        setCloudModelsError(msg);
+        setCloudModelsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+    // customCloud is stable for the dialog's lifetime (prop doesn't change mid-open)
+    // modelsKey is the manual retry trigger
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSlug, modelsKey]);
 
   const canSave = source !== null && model.trim().length > 0;
 
@@ -1616,6 +1676,50 @@ const CustomRoutingDialog = ({
                   {localModels.map(m => (
                     <option key={m.id} value={m.id}>
                       {m.id}
+                    </option>
+                  ))}
+                </select>
+              ) : cloudModelsLoading ? (
+                <select
+                  disabled
+                  className="rounded-lg border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-400 dark:text-neutral-500 opacity-60 cursor-wait">
+                  <option>Loading models…</option>
+                </select>
+              ) : cloudModelsError ? (
+                <div className="space-y-1.5">
+                  <div className="rounded-lg border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300 font-mono break-all">
+                    {cloudModelsError}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setModelsKey(k => k + 1)}
+                      className="text-xs text-primary-600 dark:text-primary-400 hover:underline">
+                      Retry
+                    </button>
+                    <span className="text-xs text-stone-400 dark:text-neutral-500">or enter model id manually:</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={model}
+                    onChange={e => setModel(e.target.value)}
+                    placeholder={selectedCloud ? `${selectedCloud.slug} model id` : 'model-id'}
+                    className="w-full rounded-lg border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm font-mono text-stone-900 dark:text-neutral-100 placeholder-stone-400 dark:placeholder-neutral-500 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  />
+                </div>
+              ) : cloudModels.length > 0 ? (
+                <select
+                  value={model}
+                  onChange={e => setModel(e.target.value)}
+                  className="rounded-lg border border-stone-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500">
+                  {!model && <option value="">Select a model…</option>}
+                  {/* Keep existing value selectable even if the provider no longer lists it */}
+                  {model && !cloudModels.some(m => m.id === model) && (
+                    <option value={model}>{model}</option>
+                  )}
+                  {cloudModels.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {humanizeModelId(m.id)} — {m.id}
                     </option>
                   ))}
                 </select>

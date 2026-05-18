@@ -45,6 +45,7 @@ import {
 // ─── Domain types — what the AIPanel consumes ──────────────────────────────
 
 export type WorkloadId =
+  | 'chat'
   | 'reasoning'
   | 'agentic'
   | 'coding'
@@ -54,7 +55,7 @@ export type WorkloadId =
   | 'learning'
   | 'subconscious';
 
-export const CHAT_WORKLOADS: WorkloadId[] = ['reasoning', 'agentic', 'coding'];
+export const CHAT_WORKLOADS: WorkloadId[] = ['chat', 'reasoning', 'agentic', 'coding'];
 export const BACKGROUND_WORKLOADS: WorkloadId[] = [
   'memory',
   'embeddings',
@@ -173,6 +174,7 @@ export async function loadAISettings(): Promise<AISettings> {
   });
 
   const routing: Record<WorkloadId, ProviderRef> = {
+    chat: parseProviderString(config.chat_provider),
     reasoning: parseProviderString(config.reasoning_provider),
     agentic: parseProviderString(config.agentic_provider),
     coding: parseProviderString(config.coding_provider),
@@ -261,22 +263,35 @@ export async function clearCloudProviderKey(slug: string): Promise<void> {
 }
 
 /**
+ * Eagerly write the cloud_providers list to the core config.
+ *
+ * Called immediately when providers are added/edited/removed so that
+ * `listProviderModels` can resolve the provider by id without waiting for
+ * the user to click the global Save button.  API keys are NOT included here
+ * (they're written via `setCloudProviderKey` on their own path).
+ */
+export async function flushCloudProviders(providers: CloudProviderCreds[]): Promise<void> {
+  if (!isTauri()) return;
+  await openhumanUpdateModelSettings({ cloud_providers: providers });
+}
+
+/**
  * Fetch the model list from a configured cloud provider's /models API.
- * Returns an empty array on error (callers should handle gracefully).
+ * `providerId` may be either the provider's opaque id or its slug — Rust
+ * accepts both. Prefer passing the slug so lookup works before the provider
+ * config has been persisted to disk (i.e. before the user clicks Save).
+ * Throws on error so callers can surface retry UI. Returns [] when not
+ * running in Tauri (browser dev mode has no RPC bridge).
  */
 export async function listProviderModels(providerId: string): Promise<ModelInfo[]> {
   if (!isTauri()) {
     return [];
   }
-  try {
-    const res = await callCoreRpc<{ result: { models: ModelInfo[] } }>({
-      method: 'openhuman.inference_list_models',
-      params: { provider_id: providerId },
-    });
-    return res?.result?.models ?? [];
-  } catch {
-    return [];
-  }
+  const res = await callCoreRpc<{ result: { models: ModelInfo[] } }>({
+    method: 'openhuman.inference_list_models',
+    params: { provider_id: providerId },
+  });
+  return res?.result?.models ?? [];
 }
 
 // ─── Local provider façade (Ollama install / detect / model manage) ───────
