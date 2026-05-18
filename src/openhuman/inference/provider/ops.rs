@@ -42,9 +42,9 @@ pub async fn list_configured_models(
     let entry = config
         .cloud_providers
         .iter()
-        .find(|e| e.id == provider_id)
+        .find(|e| e.id == provider_id || e.slug == provider_id)
         .cloned()
-        .ok_or_else(|| format!("no cloud provider with id '{}' found", provider_id))?;
+        .ok_or_else(|| format!("no cloud provider with id or slug '{}' found", provider_id))?;
 
     let base = entry.endpoint.trim_end_matches('/');
     let models_url = format!("{}/models", base);
@@ -650,6 +650,42 @@ pub fn canonical_china_provider_name(_name: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_configured_models_accepts_slug() {
+        // list_configured_models should find a provider by slug when the caller
+        // passes a slug instead of the opaque random id. This lets the frontend
+        // call the RPC before the provider config has been persisted (where only
+        // the slug is stable).
+        use crate::openhuman::config::schema::cloud_providers::{AuthStyle, CloudProviderCreds};
+        use crate::openhuman::config::Config;
+
+        let mut config = Config::default();
+        config.cloud_providers.push(CloudProviderCreds {
+            id: "p_openai_xyz99".to_string(),
+            slug: "openai".to_string(),
+            label: "OpenAI".to_string(),
+            endpoint: "https://api.openai.com/v1".to_string(),
+            auth_style: AuthStyle::Bearer,
+            legacy_type: None,
+            default_model: None,
+        });
+
+        // The find predicate must match on slug.
+        let found_by_slug = config
+            .cloud_providers
+            .iter()
+            .find(|e| e.id == "openai" || e.slug == "openai");
+        assert!(found_by_slug.is_some(), "slug lookup must find the provider");
+        assert_eq!(found_by_slug.unwrap().id, "p_openai_xyz99");
+
+        // The find predicate must still match on id.
+        let found_by_id = config
+            .cloud_providers
+            .iter()
+            .find(|e| e.id == "p_openai_xyz99" || e.slug == "p_openai_xyz99");
+        assert!(found_by_id.is_some(), "id lookup must still work");
+    }
 
     #[test]
     fn factory_backend() {
