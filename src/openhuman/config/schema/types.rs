@@ -375,7 +375,7 @@ impl Config {
     /// when the workload is routed to Ollama.
     ///
     /// Recognised workload names:
-    /// `"reasoning"`, `"agentic"`, `"coding"`, `"memory"`, `"embeddings"`,
+    /// `"chat"`, `"reasoning"`, `"agentic"`, `"coding"`, `"memory"`, `"embeddings"`,
     /// `"heartbeat"`, `"learning"`, `"subconscious"`.
     ///
     /// Returns `None` when the provider isn't `"ollama:<model>"` (including
