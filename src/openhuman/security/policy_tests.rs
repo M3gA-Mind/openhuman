@@ -1336,3 +1336,23 @@ async fn validate_path_blocks_symlink_to_relative_forbidden_entry() {
     // Symlink that resolves into the forbidden dir is also blocked.
     assert!(policy.validate_path("link/token.txt").await.is_err());
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn validate_parent_path_blocks_forbidden_path() {
+    // Covers lines 888-896: the forbidden-path check inside validate_parent_path.
+    let workspace = tempfile::tempdir().unwrap();
+    let secrets_dir = workspace.path().join("secrets");
+    std::fs::create_dir_all(&secrets_dir).unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: true,
+        forbidden_paths: vec!["secrets".to_string()],
+        ..SecurityPolicy::default()
+    };
+    // Writing a new file directly into the forbidden dir must be blocked.
+    assert!(policy
+        .validate_parent_path("secrets/output.csv")
+        .await
+        .is_err());
+}
