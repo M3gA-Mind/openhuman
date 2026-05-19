@@ -7,6 +7,7 @@
 //! crate gaining field access.
 
 use crate::openhuman::agent::dispatcher::ToolDispatcher;
+use crate::openhuman::agent::harness::archivist::ArchivistHook;
 use crate::openhuman::agent::hooks::PostTurnHook;
 use crate::openhuman::agent::memory_loader::MemoryLoader;
 use crate::openhuman::agent::progress::AgentProgress;
@@ -161,6 +162,12 @@ pub struct Agent {
     /// dormant on session startup and only fires when integrations
     /// actually change mid-conversation.
     pub(super) last_seen_integrations_hash: u64,
+    /// Optional reference to the `ArchivistHook` registered in
+    /// `post_turn_hooks`. Kept separately so the turn loop can call
+    /// `flush_open_segment` at session-memory-extraction time (the
+    /// closest available signal to "session is ending") to finalize the
+    /// trailing open segment with an LLM recap + embedding.
+    pub(super) archivist_hook: Option<Arc<ArchivistHook>>,
     /// Names of every tool currently in [`Agent::tools`] that was
     /// produced by [`crate::openhuman::tools::orchestrator_tools::collect_orchestrator_tools`]
     /// (i.e. `delegate_<toolkit>` skill tools and archetype-delegation
@@ -220,6 +227,18 @@ pub struct AgentBuilder {
     /// to a `SubagentPayloadSummarizer` instance.
     pub(super) payload_summarizer:
         Option<Arc<dyn crate::openhuman::agent::harness::payload_summarizer::PayloadSummarizer>>,
+    /// Optional reference to the production `ArchivistHook`. Set when
+    /// `config.learning.episodic_capture_enabled` is true. Used to call
+    /// `flush_open_segment` at the closest available session-end signal.
+    pub(super) archivist_hook: Option<Arc<ArchivistHook>>,
+    /// Phase 1.5 — when `true` AND `archivist_hook` is `Some`, the
+    /// `ContextManager`'s summarizer is wrapped with a
+    /// `SegmentRecapSummarizer` that routes compaction through the
+    /// archivist's rolling segment recap (one summarizer, soft-fallback).
+    /// When `false` (or archivist absent), the plain `ProviderSummarizer`
+    /// is used and Phase 1.5 is completely absent from the hot path.
+    /// Default: `true` (mirrors `LearningConfig::unified_compaction_enabled`).
+    pub(super) unified_compaction_enabled: bool,
 }
 
 impl Default for AgentBuilder {
