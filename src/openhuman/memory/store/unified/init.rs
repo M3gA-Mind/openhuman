@@ -148,6 +148,23 @@ impl UnifiedMemory {
             }
         }
 
+        // Phase 3 indexes: idempotently restore performance indexes removed in #1616.
+        // New installs get these from PROFILE_INIT_SQL; existing DBs get them here,
+        // after PHASE3_COLUMNS_SQL has ensured the columns exist.
+        {
+            use super::profile::PHASE3_INDEXES_SQL;
+            for sql in PHASE3_INDEXES_SQL {
+                match conn.execute_batch(sql) {
+                    Ok(_) => tracing::debug!("[profile:init] index applied: {sql}"),
+                    Err(e) => {
+                        tracing::warn!(
+                            "[profile:init] index creation failed (non-fatal): {sql}: {e}"
+                        );
+                    }
+                }
+            }
+        }
+
         // Idempotent legacy-namespace migration.
         //
         // Older writes via MemoryStoreTool packed the intended namespace into
