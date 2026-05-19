@@ -56,7 +56,8 @@ pub(crate) fn ollama_base_url_from_config(config: &crate::openhuman::config::Con
     }
     let resolved = ollama_base_url();
     log::debug!(
-        "[local_ai] ollama_base_url_from_config: config base_url absent, resolved -> {resolved}"
+        "[local_ai] ollama_base_url_from_config: config base_url absent, resolved -> {}",
+        redact_ollama_base_url(&resolved)
     );
     resolved
 }
@@ -97,7 +98,14 @@ pub(crate) fn validate_ollama_url(raw: &str) -> Result<String, String> {
     }
 
     // Normalize to scheme://host[:port] — strip any path component.
-    let mut normalized = format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""));
+    // host_str() strips IPv6 brackets (returns "::1" not "[::1]"), so re-add them.
+    let host = parsed.host_str().unwrap_or("");
+    let host_formatted = if host.contains(':') {
+        format!("[{host}]")
+    } else {
+        host.to_string()
+    };
+    let mut normalized = format!("{}://{}", parsed.scheme(), host_formatted);
     if let Some(port) = parsed.port() {
         normalized.push(':');
         normalized.push_str(&port.to_string());
@@ -590,6 +598,14 @@ mod tests {
     fn validate_ollama_url_rejects_empty() {
         assert!(validate_ollama_url("").is_err());
         assert!(validate_ollama_url("   ").is_err());
+    }
+
+    #[test]
+    fn validate_ollama_url_handles_ipv6() {
+        assert_eq!(
+            validate_ollama_url("http://[::1]:11434"),
+            Ok("http://[::1]:11434".to_string())
+        );
     }
 
     // ── redact_ollama_base_url ────────────────────────────────────────
