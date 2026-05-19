@@ -98,12 +98,12 @@ pub(crate) fn validate_ollama_url(raw: &str) -> Result<String, String> {
     }
 
     // Normalize to scheme://host[:port] — strip any path component.
-    // host_str() strips IPv6 brackets (returns "::1" not "[::1]"), so re-add them.
-    let host = parsed.host_str().unwrap_or("");
-    let host_formatted = if host.contains(':') {
-        format!("[{host}]")
-    } else {
-        host.to_string()
+    // Use the Host enum so IPv6 addresses are always re-bracketed correctly,
+    // regardless of whether host_str() includes brackets in a given url-crate version.
+    let host_formatted = match parsed.host() {
+        Some(url::Host::Ipv6(addr)) => format!("[{addr}]"),
+        Some(h) => h.to_string(),
+        None => String::new(),
     };
     let mut normalized = format!("{}://{}", parsed.scheme(), host_formatted);
     if let Some(port) = parsed.port() {
