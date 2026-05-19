@@ -35,6 +35,77 @@ pub(crate) fn ollama_base_url() -> String {
     DEFAULT_OLLAMA_BASE_URL.to_string()
 }
 
+/// Returns the effective Ollama base URL, with `config.local_ai.base_url`
+/// taking highest priority over env vars.
+///
+/// Priority (highest to lowest):
+/// 1. `config.local_ai.base_url` if `Some` and non-empty (after trim)
+/// 2. `OPENHUMAN_OLLAMA_BASE_URL` env var
+/// 3. `OLLAMA_HOST` env var
+/// 4. [`DEFAULT_OLLAMA_BASE_URL`]
+pub(crate) fn ollama_base_url_from_config(config: &crate::openhuman::config::Config) -> String {
+    if let Some(ref url) = config.local_ai.base_url {
+        let trimmed = url.trim().trim_end_matches('/');
+        if !trimmed.is_empty() {
+            log::debug!(
+                "[local_ai] ollama_base_url_from_config: using config base_url -> {trimmed}"
+            );
+            return trimmed.to_string();
+        }
+    }
+    let resolved = ollama_base_url();
+    log::debug!(
+        "[local_ai] ollama_base_url_from_config: config base_url absent, resolved -> {resolved}"
+    );
+    resolved
+}
+
+/// Validate and normalize a user-supplied Ollama URL.
+///
+/// - Trims whitespace and strips trailing slashes.
+/// - Must have an `http://` or `https://` scheme.
+/// - Must have a non-empty host.
+/// - Rejects URLs with credentials (`user:pass@`).
+/// - Rejects query strings and fragments.
+/// - Strips any path component beyond root, normalizing to `scheme://host:port`.
+///
+/// Returns the normalized URL on success or an error message on failure.
+pub(crate) fn validate_ollama_url(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err("URL must not be empty".to_string());
+    }
+    if !trimmed.starts_with("http://") && !trimmed.starts_with("https://") {
+        return Err("URL must start with http:// or https://".to_string());
+    }
+    let parsed = reqwest::Url::parse(trimmed).map_err(|e| format!("Invalid URL: {e}"))?;
+
+    if parsed.host_str().map(|h| h.is_empty()).unwrap_or(true) {
+        return Err("URL must have a non-empty host".to_string());
+    }
+
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err("URL must not contain credentials (user:pass@host)".to_string());
+    }
+
+    if parsed.query().is_some() {
+        return Err("URL must not contain a query string".to_string());
+    }
+    if parsed.fragment().is_some() {
+        return Err("URL must not contain a fragment".to_string());
+    }
+
+    // Normalize to scheme://host[:port] — strip any path component.
+    let mut normalized = format!("{}://{}", parsed.scheme(), parsed.host_str().unwrap_or(""));
+    if let Some(port) = parsed.port() {
+        normalized.push(':');
+        normalized.push_str(&port.to_string());
+    }
+
+    log::debug!("[local_ai] validate_ollama_url: raw={trimmed:?} -> normalized={normalized:?}");
+    Ok(normalized)
+}
+
 /// Back-compat constant kept at its original value for callers that
 /// reference it directly. New callers should use [`ollama_base_url`].
 pub(crate) const OLLAMA_BASE_URL: &str = DEFAULT_OLLAMA_BASE_URL;
@@ -431,5 +502,78 @@ mod tests {
         let _g1 = OllamaEnvGuard::clear();
         let _g2 = OllamaEnvGuard::set_var(OLLAMA_HOST_VAR, "myhost:11434/");
         assert_eq!(ollama_base_url(), "http://myhost:11434");
+    }
+
+    // ── ollama_base_url_from_config ───────────────────────────────────
+
+    fn make_config_with_base_url(url: Option<&str>) -> crate::openhuman::config::Config {
+        let mut config = crate::openhuman::config::Config::default();
+        config.local_ai.base_url = url.map(|s| s.to_string());
+        config
+    }
+
+    #[test]
+    fn ollama_base_url_from_config_takes_priority_over_env() {
+        let _lock = test_lock();
+        let _g = OllamaEnvGuard::set("http://127.0.0.1:55555");
+        let config = make_config_with_base_url(Some("http://192.168.1.5:11434"));
+        assert_eq!(
+            ollama_base_url_from_config(&config),
+            "http://192.168.1.5:11434"
+        );
+    }
+
+    #[test]
+    fn ollama_base_url_from_config_falls_back_when_none() {
+        let _lock = test_lock();
+        let _g = OllamaEnvGuard::set("http://127.0.0.1:55555");
+        let config = make_config_with_base_url(None);
+        assert_eq!(
+            ollama_base_url_from_config(&config),
+            "http://127.0.0.1:55555"
+        );
+    }
+
+    // ── validate_ollama_url ───────────────────────────────────────────
+
+    #[test]
+    fn validate_ollama_url_accepts_http() {
+        assert_eq!(
+            validate_ollama_url("http://localhost:11434"),
+            Ok("http://localhost:11434".to_string())
+        );
+    }
+
+    #[test]
+    fn validate_ollama_url_accepts_https() {
+        assert_eq!(
+            validate_ollama_url("https://remote-ollama.example.com:11434"),
+            Ok("https://remote-ollama.example.com:11434".to_string())
+        );
+    }
+
+    #[test]
+    fn validate_ollama_url_rejects_no_scheme() {
+        assert!(validate_ollama_url("localhost:11434").is_err());
+        assert!(validate_ollama_url("ftp://localhost:11434").is_err());
+    }
+
+    #[test]
+    fn validate_ollama_url_rejects_credentials() {
+        assert!(validate_ollama_url("http://user:pass@localhost:11434").is_err());
+    }
+
+    #[test]
+    fn validate_ollama_url_strips_path_and_normalizes() {
+        assert_eq!(
+            validate_ollama_url("http://192.168.1.5:11434/api/tags"),
+            Ok("http://192.168.1.5:11434".to_string())
+        );
+    }
+
+    #[test]
+    fn validate_ollama_url_rejects_empty() {
+        assert!(validate_ollama_url("").is_err());
+        assert!(validate_ollama_url("   ").is_err());
     }
 }

@@ -33,6 +33,8 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 - **`OPENHUMAN_LOCAL_AI_TIER` env var** overrides the selected tier at config load time (in `load.rs`).
 - **Frontend tier selector** is in `LocalModelPanel.tsx` under Settings > Local AI Model. Uses `coreRpcClient` to call 3 RPC methods: `local_ai_device_profile`, `local_ai_presets`, `local_ai_apply_preset`.
 - **Default config maps to Medium tier** (`gemma3:4b-it-qat`). If someone changes `model_ids.rs` defaults, they should keep `presets.rs` in sync.
+- **`ollama_base_url()` previously ignored `config.local_ai.base_url`** — It only read env vars. Fixed in feat/ollama-external-server-url by adding `ollama_base_url_from_config(config)`. Any new Ollama URL resolution must go through the config-aware helper, not the env-only one.
+- **`LocalModelDebugPanel.tsx` must seed URL from config on mount** — Previously initialized `ollamaBaseUrlInput` to the hardcoded default and only loaded the persisted URL when diagnostics ran. Fix: `useEffect` on mount calls `openhumanGetConfig()` and sets state from `config.local_ai.base_url`. Pattern to follow for any settings field backed by Rust config.
 
 ## Core process (in-process, no sidecar)
 
@@ -149,6 +151,7 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 - **`pnpm typecheck` script was renamed** — Check `app/package.json` for the current name; as of issue #830 work, use `pnpm workspace openhuman-app compile` for tsc checks.
 - **PR #745 (command palette) merged without its deps** — `@radix-ui/react-dialog`, `cmdk`, and `@testing-library/user-event` are missing from `package.json`. Install them if tsc fails after syncing main.
 - **Pre-push hooks fail on upstream lint warnings** — ESLint warns on `setState` in effects and unused `eslint-disable` directives inherited from upstream. Use `--no-verify` only when the lint errors are pre-existing upstream issues, not new code.
+- **`pnpm test:coverage` ENOENT on `coverage/.tmp/coverage-0.json`** — Race condition in coverage file collection; flaky, not reproducible every run. Use `pnpm debug unit` instead — runs Vitest without coverage, faster and reliable for iteration.
 
 ## Mascot Native Window (macOS)
 
@@ -188,3 +191,35 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 - **`pnpm core:stage`** — no-op (sidecar removed in PR #1061). Use `pnpm dev:app` for full Tauri+core dev.
 - **Kill stuck processes** — `lsof -i :7788` then `kill <PID>`. Useful when `dev:app` reports a stale listener and you want to force a fresh boot rather than relying on the handle's auto-recovery.
 - **Skills runtime removed** — the QuickJS / `rquickjs` runtime is gone; `src/openhuman/skills/` is metadata-only ("Legacy skill metadata helpers retained after QuickJS runtime removal"). Skill execution surfaces are being rebuilt; don't assume a `.skill` can run end-to-end without checking the current code.
+
+## Project Board & Issue Queries
+
+- **Project #2 paginates at 100 items** — Board has 627+ items. Use GraphQL cursor pagination to find all open P0 issues; a single query only returns the first 100.
+- **jq regex `\s+` causes parse errors** — Use plain `test("#NNNN")` to check if a PR/issue body references an issue number. `\s+` in jq regex triggers parse errors.
+- **Most open P0s are security or Linux AppImage GLIBC issues** — When triaging P0s, filter for those categories first.
+- **Project #2 shows only closed items on the board view** — Use `gh issue list --repo tinyhumansai/openhuman --state open --assignee ""` to find unassigned open issues instead of querying the project board.
+- **Check linked PRs via timeline API, not body regex** — `gh api repos/tinyhumansai/openhuman/issues/$N/timeline --paginate | jq '[.[] | select(.event == "cross-referenced" and .source.issue.state == "open")] | length'` is more reliable than searching issue body text for PR references.
+
+## Git Submodules
+
+- **`tauri-cef` and `tauri-plugin-notification` are git submodules** — When upstream/main updates them, fix with `git submodule update --remote --checkout`, not by manually patching the vendored crate.
+
+## Pre-existing Test Failures
+
+- **`composio::action_tool::tests::factory_routes_through_direct_when_mode_is_direct` fails in `cargo test -p openhuman`** — Pre-existing failure unrelated to WhatsApp or any recent branch work. Do not attempt to fix unless explicitly tasked. Also intermittently flaky when run as part of the full suite — see "Pre-existing Flaky Tests" section.
+
+## Workflow Gate (must not skip)
+
+- **Steps 4–6 of `workflow/00-full-workflow.md` are mandatory before committing** — Step 4: architectobot verify. Step 5: full checks (`pnpm test:coverage`, `pnpm build`, `bash scripts/install.sh --dry-run`, PR quality scripts). Step 6: memory-keeper. Skipping any of these violates the workflow contract.
+- **Encode architectobot answers in the codecrusher prompt** — When the architectobot plan includes clarifying questions and the user approves specific answers, embed those decisions as explicit constraints in the codecrusher prompt so the agent doesn't re-ask.
+
+## Security Policy
+
+- **Path validation entry point** — `src/openhuman/security/policy.rs` exposes `validate_path` / `validate_parent_path`. All file I/O path validation must go through this API. `is_path_string_allowed()` is a string-only first pass, not sufficient on its own.
+- **validate_parent_path before create_dir_all** — For write operations, `validate_parent_path` MUST be called before any `create_dir_all` call. Calling it after allows symlink attacks to create directories outside the workspace before the security check fires (Issue #1927).
+- **Tool callers must use `validate_path` / `validate_parent_path`** — All tool implementations under `src/openhuman/tools/impl/filesystem/` must use these functions, not the legacy `is_path_allowed` / `is_resolved_path_allowed`.
+- **Security policy test filter** — Run only security policy tests with: `cargo test -p openhuman -- "security::policy"`. Runs the 100 tests in `src/openhuman/security/policy_tests.rs` cleanly.
+
+## Pre-existing Flaky Tests
+
+- **`composio::action_tool` and `agent::harness::session::turn` intermittent failures** — These tests fail randomly when run as part of the full suite (likely shared state or timing), but pass individually. Not related to security/policy changes. Do not treat as blockers for security-module PRs.

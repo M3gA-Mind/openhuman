@@ -1,6 +1,7 @@
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::local::ollama::{
-    ns_to_tps, ollama_base_url, OllamaGenerateOptions, OllamaGenerateRequest,
+    ns_to_tps, ollama_base_url, ollama_base_url_from_config, OllamaGenerateOptions,
+    OllamaGenerateRequest,
 };
 use crate::openhuman::inference::local::provider::{provider_from_config, LocalAiProvider};
 use crate::openhuman::inference::model_ids;
@@ -22,12 +23,20 @@ fn redact_ollama_base_url(raw: &str) -> String {
         .unwrap_or_else(|_| "<invalid-endpoint>".to_string())
 }
 
-fn external_ollama_request_error(prefix: &str, error: &reqwest::Error) -> String {
-    let safe_base_url = redact_ollama_base_url(&ollama_base_url());
+fn external_ollama_request_error_with_url(
+    prefix: &str,
+    error: &reqwest::Error,
+    base_url: &str,
+) -> String {
+    let safe_base_url = redact_ollama_base_url(base_url);
     format!(
         "{prefix}: OpenHuman routes inference through an external Ollama endpoint. \
          Make sure Ollama is already running and reachable at {safe_base_url} ({error})"
     )
+}
+
+fn external_ollama_request_error(prefix: &str, error: &reqwest::Error) -> String {
+    external_ollama_request_error_with_url(prefix, error, &ollama_base_url())
 }
 
 #[cfg(test)]
@@ -301,13 +310,16 @@ impl LocalAiService {
             ),
         };
 
+        let base_url = ollama_base_url_from_config(config);
         let response = self
             .http
-            .post(format!("{}/api/chat", ollama_base_url()))
+            .post(format!("{base_url}/api/chat"))
             .json(&body)
             .send()
             .await
-            .map_err(|e| external_ollama_request_error("ollama chat request failed", &e))?;
+            .map_err(|e| {
+                external_ollama_request_error_with_url("ollama chat request failed", &e, &base_url)
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -551,13 +563,19 @@ impl LocalAiService {
             }),
         };
 
+        let base_url = ollama_base_url_from_config(config);
+        log::debug!(
+            "[local_ai:infer] inference_with_temperature_internal: using base_url={base_url}"
+        );
         let response = self
             .http
-            .post(format!("{}/api/generate", ollama_base_url()))
+            .post(format!("{base_url}/api/generate"))
             .json(&body)
             .send()
             .await
-            .map_err(|e| external_ollama_request_error("ollama request failed", &e))?;
+            .map_err(|e| {
+                external_ollama_request_error_with_url("ollama request failed", &e, &base_url)
+            })?;
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();

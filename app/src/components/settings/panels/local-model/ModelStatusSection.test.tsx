@@ -25,6 +25,11 @@ const defaultProps = {
   etaText: '',
   statusTone: (_state: string) => '',
   runtimeEnabled: true,
+  ollamaBaseUrlInput: 'http://localhost:11434',
+  isTestingConnection: false,
+  connectionTestResult: null,
+  isSavingUrl: false,
+  savedOllamaBaseUrl: 'http://localhost:11434',
   onRefreshStatus: vi.fn(),
   onTriggerDownload: vi.fn(),
   onSetOllamaPath: vi.fn(),
@@ -33,6 +38,10 @@ const defaultProps = {
   onToggleErrorDetail: vi.fn(),
   onRunDiagnostics: vi.fn(),
   onRepairAction: vi.fn(),
+  onSetOllamaBaseUrlInput: vi.fn(),
+  onTestConnection: vi.fn(),
+  onSaveOllamaBaseUrl: vi.fn(),
+  onResetOllamaBaseUrl: vi.fn(),
 };
 
 const makeDiagnostics = (overrides: Partial<LocalAiDiagnostics> = {}): LocalAiDiagnostics => ({
@@ -327,5 +336,93 @@ describe('ModelStatusSection diagnostics', () => {
     expect(screen.queryByRole('button', { name: 'Install Ollama' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Set Path' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Ollama docs' })).toBeTruthy();
+  });
+});
+
+describe('ModelStatusSection — Ollama server URL', () => {
+  it('renders the URL input with the default value', () => {
+    render(<ModelStatusSection {...defaultProps} />);
+    const input = screen.getByPlaceholderText('http://localhost:11434') as HTMLInputElement;
+    expect(input).toBeTruthy();
+    expect(input.value).toBe('http://localhost:11434');
+  });
+
+  it('shows a validation error for a bad URL', () => {
+    render(
+      <ModelStatusSection
+        {...defaultProps}
+        ollamaBaseUrlInput="not-a-url"
+        savedOllamaBaseUrl="http://localhost:11434"
+      />
+    );
+    expect(screen.getByText(/http:\/\/ or https:\/\//i)).toBeTruthy();
+  });
+
+  it('disables Save when URL is unchanged', () => {
+    render(
+      <ModelStatusSection
+        {...defaultProps}
+        ollamaBaseUrlInput="http://localhost:11434"
+        savedOllamaBaseUrl="http://localhost:11434"
+      />
+    );
+    const saveBtn = screen.getByRole('button', { name: 'Save' });
+    expect((saveBtn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('enables Save when URL has changed and is valid', () => {
+    render(
+      <ModelStatusSection
+        {...defaultProps}
+        ollamaBaseUrlInput="http://192.168.1.5:11434"
+        savedOllamaBaseUrl="http://localhost:11434"
+      />
+    );
+    const saveBtn = screen.getByRole('button', { name: 'Save' });
+    expect((saveBtn as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('shows reachable status after a successful test', () => {
+    render(
+      <ModelStatusSection
+        {...defaultProps}
+        connectionTestResult={{ reachable: true, models_count: 3 }}
+      />
+    );
+    expect(screen.getByText(/Reachable/)).toBeTruthy();
+    expect(screen.getByText(/3 models/)).toBeTruthy();
+  });
+
+  it('shows unreachable status after a failed test', () => {
+    render(
+      <ModelStatusSection
+        {...defaultProps}
+        connectionTestResult={{ reachable: false, error: 'connection refused', models_count: null }}
+      />
+    );
+    expect(screen.getByText(/Unreachable/)).toBeTruthy();
+    expect(screen.getByText(/connection refused/)).toBeTruthy();
+  });
+
+  it('calls onTestConnection when Test Connection is clicked', async () => {
+    const onTestConnection = vi.fn();
+    render(
+      <ModelStatusSection
+        {...defaultProps}
+        ollamaBaseUrlInput="http://localhost:11434"
+        onTestConnection={onTestConnection}
+      />
+    );
+    const testBtn = screen.getByRole('button', { name: /Test Connection/ });
+    testBtn.click();
+    expect(onTestConnection).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onResetOllamaBaseUrl when Reset to default is clicked', () => {
+    const onResetOllamaBaseUrl = vi.fn();
+    render(<ModelStatusSection {...defaultProps} onResetOllamaBaseUrl={onResetOllamaBaseUrl} />);
+    const resetBtn = screen.getByRole('button', { name: /Reset to default/ });
+    resetBtn.click();
+    expect(onResetOllamaBaseUrl).toHaveBeenCalledTimes(1);
   });
 });
