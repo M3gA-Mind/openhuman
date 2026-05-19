@@ -48,7 +48,8 @@ pub(crate) fn ollama_base_url_from_config(config: &crate::openhuman::config::Con
         let trimmed = url.trim().trim_end_matches('/');
         if !trimmed.is_empty() {
             log::debug!(
-                "[local_ai] ollama_base_url_from_config: using config base_url -> {trimmed}"
+                "[local_ai] ollama_base_url_from_config: using config base_url -> {}",
+                redact_ollama_base_url(trimmed)
             );
             return trimmed.to_string();
         }
@@ -104,6 +105,20 @@ pub(crate) fn validate_ollama_url(raw: &str) -> Result<String, String> {
 
     log::debug!("[local_ai] validate_ollama_url: raw={trimmed:?} -> normalized={normalized:?}");
     Ok(normalized)
+}
+
+/// Strips userinfo, query, and fragment from `raw` so logs and error messages
+/// don't leak `user:pass@host`-style credentials embedded in the endpoint.
+pub(crate) fn redact_ollama_base_url(raw: &str) -> String {
+    reqwest::Url::parse(raw)
+        .map(|mut url| {
+            let _ = url.set_username("");
+            let _ = url.set_password(None);
+            url.set_query(None);
+            url.set_fragment(None);
+            url.to_string()
+        })
+        .unwrap_or_else(|_| "<invalid-endpoint>".to_string())
 }
 
 /// Back-compat constant kept at its original value for callers that
@@ -575,5 +590,28 @@ mod tests {
     fn validate_ollama_url_rejects_empty() {
         assert!(validate_ollama_url("").is_err());
         assert!(validate_ollama_url("   ").is_err());
+    }
+
+    // ── redact_ollama_base_url ────────────────────────────────────────
+
+    #[test]
+    fn redact_strips_userinfo_query_and_fragment() {
+        assert_eq!(
+            redact_ollama_base_url("http://user:pass@host:11434/api?token=abc#frag"),
+            "http://host:11434/api"
+        );
+    }
+
+    #[test]
+    fn redact_keeps_plain_url() {
+        assert_eq!(
+            redact_ollama_base_url("http://127.0.0.1:11434/"),
+            "http://127.0.0.1:11434/"
+        );
+    }
+
+    #[test]
+    fn redact_handles_invalid_url() {
+        assert_eq!(redact_ollama_base_url("not a url"), "<invalid-endpoint>");
     }
 }

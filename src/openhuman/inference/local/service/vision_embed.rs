@@ -1,8 +1,8 @@
 use crate::openhuman::agent::multimodal;
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::local::ollama::{
-    ollama_base_url_from_config, OllamaEmbedRequest, OllamaEmbedResponse, OllamaGenerateOptions,
-    OllamaGenerateRequest,
+    ollama_base_url_from_config, redact_ollama_base_url, OllamaEmbedRequest, OllamaEmbedResponse,
+    OllamaGenerateOptions, OllamaGenerateRequest,
 };
 use crate::openhuman::inference::model_ids;
 use crate::openhuman::inference::presets::{self, VisionMode};
@@ -157,7 +157,10 @@ impl LocalAiService {
         let _gate_permit = crate::openhuman::scheduler_gate::wait_for_capacity().await;
 
         let embed_base = ollama_base_url_from_config(config);
-        log::debug!("[local_ai:embed] embed: using base_url={embed_base}");
+        log::debug!(
+            "[local_ai:embed] embed: using base_url={}",
+            redact_ollama_base_url(&embed_base)
+        );
         let response = self
             .http
             .post(format!("{embed_base}/api/embed"))

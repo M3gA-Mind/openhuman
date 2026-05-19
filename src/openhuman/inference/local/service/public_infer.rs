@@ -1,27 +1,13 @@
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::local::ollama::{
-    ns_to_tps, ollama_base_url, ollama_base_url_from_config, OllamaGenerateOptions,
-    OllamaGenerateRequest,
+    ns_to_tps, ollama_base_url, ollama_base_url_from_config, redact_ollama_base_url,
+    OllamaGenerateOptions, OllamaGenerateRequest,
 };
 use crate::openhuman::inference::local::provider::{provider_from_config, LocalAiProvider};
 use crate::openhuman::inference::model_ids;
 use crate::openhuman::inference::parse::sanitize_inline_completion;
 
 use super::LocalAiService;
-
-fn redact_ollama_base_url(raw: &str) -> String {
-    // Strip userinfo, query, and fragment so error payloads + logs don't
-    // leak `user:pass@host` style credentials embedded in the endpoint.
-    reqwest::Url::parse(raw)
-        .map(|mut url| {
-            let _ = url.set_username("");
-            let _ = url.set_password(None);
-            url.set_query(None);
-            url.set_fragment(None);
-            url.to_string()
-        })
-        .unwrap_or_else(|_| "<invalid-endpoint>".to_string())
-}
 
 fn external_ollama_request_error_with_url(
     prefix: &str,
@@ -37,32 +23,6 @@ fn external_ollama_request_error_with_url(
 
 fn external_ollama_request_error(prefix: &str, error: &reqwest::Error) -> String {
     external_ollama_request_error_with_url(prefix, error, &ollama_base_url())
-}
-
-#[cfg(test)]
-mod redact_tests {
-    use super::redact_ollama_base_url;
-
-    #[test]
-    fn redact_strips_userinfo_query_and_fragment() {
-        assert_eq!(
-            redact_ollama_base_url("http://user:pass@host:11434/api?token=abc#frag"),
-            "http://host:11434/api"
-        );
-    }
-
-    #[test]
-    fn redact_keeps_plain_url() {
-        assert_eq!(
-            redact_ollama_base_url("http://127.0.0.1:11434/"),
-            "http://127.0.0.1:11434/"
-        );
-    }
-
-    #[test]
-    fn redact_handles_invalid_url() {
-        assert_eq!(redact_ollama_base_url("not a url"), "<invalid-endpoint>");
-    }
 }
 
 impl LocalAiService {
