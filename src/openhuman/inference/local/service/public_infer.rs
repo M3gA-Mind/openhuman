@@ -565,7 +565,8 @@ impl LocalAiService {
 
         let base_url = ollama_base_url_from_config(config);
         log::debug!(
-            "[local_ai:infer] inference_with_temperature_internal: using base_url={base_url}"
+            "[local_ai:infer] inference_with_temperature_internal: using base_url={}",
+            redact_ollama_base_url(&base_url)
         );
         let response = self
             .http

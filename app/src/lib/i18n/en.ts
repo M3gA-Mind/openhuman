@@ -1803,6 +1803,7 @@ const en: TranslationMap = {
   'settings.localModel.status.ollamaBinaryPath': 'Ollama binary path',
   'localModel.ollamaServer.helperText': 'Example: http://192.168.1.5:11434',
   'localModel.ollamaServer.label': 'Ollama Server URL',
+  'localModel.ollamaServer.modelCount': 'models',
   'localModel.ollamaServer.placeholder': 'http://localhost:11434',
   'localModel.ollamaServer.reachable': 'Reachable',
   'localModel.ollamaServer.resetButton': 'Reset to default',

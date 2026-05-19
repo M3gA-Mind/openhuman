@@ -111,7 +111,7 @@ const ModelStatusSection = ({
   const urlValidation = validateOllamaUrl(ollamaBaseUrlInput);
   const urlChanged = ollamaBaseUrlInput !== savedOllamaBaseUrl;
   const canSave = urlValidation.valid && urlChanged && !isSavingUrl;
-  const canTest = ollamaBaseUrlInput.trim().length > 0 && !isTestingConnection;
+  const canTest = urlValidation.valid && !isTestingConnection;
 
   if (showInstallOllamaCta) {
     return (
@@ -200,7 +200,7 @@ const ModelStatusSection = ({
               <span>{connectionTestResult.reachable ? '✓' : '✗'}</span>
               <span>
                 {connectionTestResult.reachable
-                  ? `${t('localModel.ollamaServer.reachable')}${typeof connectionTestResult.models_count === 'number' ? ` (${connectionTestResult.models_count} models)` : ''}`
+                  ? `${t('localModel.ollamaServer.reachable')}${typeof connectionTestResult.models_count === 'number' ? ` (${connectionTestResult.models_count} ${t('localModel.ollamaServer.modelCount')})` : ''}`
                   : `${t('localModel.ollamaServer.unreachable')}${connectionTestResult.error ? `: ${connectionTestResult.error}` : ''}`}
               </span>
             </div>

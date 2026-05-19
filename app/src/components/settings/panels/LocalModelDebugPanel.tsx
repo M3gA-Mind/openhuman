@@ -316,8 +316,10 @@ const LocalModelDebugPanel = () => {
       const result = await openhumanLocalAiDiagnostics();
       setDiagnostics(result);
       if (result.ollama_base_url) {
-        setOllamaBaseUrlInput(result.ollama_base_url);
-        setSavedOllamaBaseUrl(result.ollama_base_url);
+        const reported = result.ollama_base_url;
+        // Only overwrite the input if the user hasn't made unsaved edits.
+        setOllamaBaseUrlInput(prev => (prev === savedOllamaBaseUrl ? reported : prev));
+        setSavedOllamaBaseUrl(reported);
       }
     } catch (err) {
       setDiagnosticsError(err instanceof Error ? err.message : 'Diagnostics failed');
@@ -348,7 +350,10 @@ const LocalModelDebugPanel = () => {
     setIsSavingUrl(true);
     try {
       await openhumanUpdateLocalAiSettings({ base_url: ollamaBaseUrlInput });
-      log('[local_ai:ui] saved ollama base_url=%s', ollamaBaseUrlInput);
+      log(
+        '[local_ai:ui] saved ollama base_url=%s',
+        ollamaBaseUrlInput.replace(/\/\/[^@]*@/, '//***@')
+      );
       setSavedOllamaBaseUrl(ollamaBaseUrlInput);
     } catch (err) {
       setStatusError(err instanceof Error ? err.message : 'Failed to save URL');
