@@ -47,8 +47,11 @@ pub fn auth_key_for_slug(slug: &str) -> String {
 ///
 /// Used to guard against stale `default_model` values (e.g. set by older UI
 /// versions) that the backend would reject with HTTP 400.  The known tiers are
-/// the constants in `crate::openhuman::config`; `hint:*` prefixed strings are
-/// also accepted because the factory translates them before sending.
+/// the constants in `crate::openhuman::config`; the four `hint:*` strings that
+/// `make_openhuman_backend` actually translates are also accepted.  An
+/// unrecognized `hint:*` value is intentionally rejected so the factory falls
+/// back to the platform default instead of forwarding an untranslated string
+/// to the backend.
 pub(crate) fn is_known_openhuman_tier(model: &str) -> bool {
     use crate::openhuman::config::{
         MODEL_AGENTIC_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
@@ -61,7 +64,11 @@ pub(crate) fn is_known_openhuman_tier(model: &str) -> bool {
             | MODEL_AGENTIC_V1
             | MODEL_CODING_V1
             | MODEL_REASONING_QUICK_V1
-    ) || model.starts_with("hint:")
+            | "hint:reasoning"
+            | "hint:chat"
+            | "hint:agentic"
+            | "hint:coding"
+    )
 }
 
 /// Return the configured provider string for a named workload role.

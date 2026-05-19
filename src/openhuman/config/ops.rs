@@ -432,19 +432,19 @@ pub async fn apply_model_settings(
         };
     }
     if let Some(model) = update.default_model {
-        config.default_model = if model.trim().is_empty() {
+        let trimmed = model.trim();
+        config.default_model = if trimmed.is_empty() {
             None
         } else {
-            Some(model)
+            Some(trimmed.to_string())
         };
         if let Some(ref m) = config.default_model {
-            let trimmed = m.trim();
-            if !crate::openhuman::inference::provider::factory::is_known_openhuman_tier(trimmed) {
+            if !crate::openhuman::inference::provider::factory::is_known_openhuman_tier(m) {
                 log::warn!(
                     "[config][model-settings] default_model '{}' is not a recognized \
                      OpenHuman backend tier — it will be replaced with the platform \
                      default at inference time.",
-                    trimmed
+                    m
                 );
             }
         }

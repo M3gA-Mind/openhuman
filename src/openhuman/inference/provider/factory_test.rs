@@ -474,10 +474,11 @@ fn known_tiers_pass() {
 }
 
 #[test]
-fn hint_prefix_passes() {
+fn known_hints_pass() {
     assert!(is_known_openhuman_tier("hint:reasoning"));
     assert!(is_known_openhuman_tier("hint:chat"));
-    assert!(is_known_openhuman_tier("hint:anything"));
+    assert!(is_known_openhuman_tier("hint:agentic"));
+    assert!(is_known_openhuman_tier("hint:coding"));
 }
 
 #[test]
@@ -487,6 +488,24 @@ fn invalid_models_fail() {
     assert!(!is_known_openhuman_tier("gpt-4o"));
     assert!(!is_known_openhuman_tier(""));
     assert!(!is_known_openhuman_tier("reasoning-v2"));
+    // Unrecognized `hint:*` values must NOT be accepted — the factory only
+    // translates the four hints above, so any other `hint:*` string would
+    // otherwise be forwarded to the backend and rejected with HTTP 400.
+    assert!(!is_known_openhuman_tier("hint:garbage"));
+    assert!(!is_known_openhuman_tier("hint:reasoning-quick"));
+    assert!(!is_known_openhuman_tier("hint:"));
+}
+
+#[test]
+fn make_openhuman_backend_falls_back_for_unknown_hint() {
+    let mut config = Config::default();
+    config.default_model = Some("hint:garbage".to_string());
+    let (_, model) = make_openhuman_backend(&config).expect("factory should succeed");
+    assert_eq!(
+        model,
+        crate::openhuman::config::MODEL_REASONING_V1,
+        "unknown hint:* values must fall back to MODEL_REASONING_V1, not be forwarded"
+    );
 }
 
 #[test]
