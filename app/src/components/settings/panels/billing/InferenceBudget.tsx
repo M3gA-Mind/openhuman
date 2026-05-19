@@ -165,7 +165,7 @@ const DailyChart = ({ points }: { points: TeamUsageDailyPoint[] }) => {
           return (
             <div
               key={p.date}
-              className="flex-1 flex flex-col-reverse"
+              className="flex-1 h-full flex flex-col-reverse"
               title={`${p.date}: ${fmtUsd(p.totalUsd)}`}>
               <div className="bg-primary-400" style={{ height: `${inferenceHeight}%` }} />
               <div className="bg-amber-400" style={{ height: `${integrationsHeight}%` }} />
@@ -194,9 +194,9 @@ const TopModels = ({ rows }: { rows: TeamUsageModelRow[] }) => (
       <p className="text-[11px] text-stone-500">No inference usage this cycle.</p>
     ) : (
       <ul className="space-y-0.5">
-        {rows.map(r => (
+        {rows.map((r, i) => (
           <li
-            key={`${r.provider}::${r.model}`}
+            key={`${r.provider}::${r.model}::${i}`}
             className="flex items-center justify-between text-[11px]">
             <span className="text-stone-700 truncate mr-2">{r.model || r.provider}</span>
             <span className="text-stone-500 flex-shrink-0">
@@ -218,9 +218,9 @@ const TopIntegrations = ({ rows }: { rows: TeamUsageIntegrationRow[] }) => (
       <p className="text-[11px] text-stone-500">No integration usage this cycle.</p>
     ) : (
       <ul className="space-y-0.5">
-        {rows.map(r => (
+        {rows.map((r, i) => (
           <li
-            key={`${r.provider}::${r.action}`}
+            key={`${r.provider}::${r.action}::${i}`}
             className="flex items-center justify-between text-[11px]">
             <span className="text-stone-700 truncate mr-2">
               {r.provider}

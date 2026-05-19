@@ -315,7 +315,7 @@ function normalizeModelRow(raw: unknown): TeamUsageModelRow {
     model: typeof r.model === 'string' ? r.model : '',
     provider: typeof r.provider === 'string' ? r.provider : '',
     spentUsd: normalizeUsd(r.spentUsd),
-    calls: normalizeUsd(r.calls),
+    calls: Math.round(Number(r.calls) || 0),
   };
 }
 
@@ -325,7 +325,7 @@ function normalizeIntegrationRow(raw: unknown): TeamUsageIntegrationRow {
     provider: typeof r.provider === 'string' ? r.provider : '',
     action: typeof r.action === 'string' ? r.action : '',
     spentUsd: normalizeUsd(r.spentUsd),
-    calls: normalizeUsd(r.calls),
+    calls: Math.round(Number(r.calls) || 0),
   };
 }
 
@@ -351,8 +351,8 @@ function normalizeInsights(
       inferenceUsd: normalizeUsd(totals.inferenceUsd),
       integrationsUsd: normalizeUsd(totals.integrationsUsd),
       totalUsd: normalizeUsd(totals.totalUsd),
-      inferenceCalls: normalizeUsd(totals.inferenceCalls),
-      integrationCalls: normalizeUsd(totals.integrationCalls),
+      inferenceCalls: Math.round(Number(totals.inferenceCalls) || 0),
+      integrationCalls: Math.round(Number(totals.integrationCalls) || 0),
     },
     dailySeries,
     topModels,
