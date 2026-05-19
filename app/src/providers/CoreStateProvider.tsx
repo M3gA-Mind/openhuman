@@ -45,6 +45,7 @@ const log = debugFactory('core-state');
 const POLL_MS = 2000;
 const MAX_BOOTSTRAP_RETRIES = 5;
 const SUPPRESS_POLL_WARNING_AT = MAX_BOOTSTRAP_RETRIES + 1;
+const BACKOFF_POLL_MS = 10_000;
 
 /** Extract only non-sensitive fields from an RPC/fetch error. */
 function sanitizeError(error: unknown): { message?: string; code?: string; status?: number } {
@@ -67,10 +68,10 @@ export function coreStatePollFailureWarningMessage(failureCount: number): string
     return null;
   }
   if (failureCount <= MAX_BOOTSTRAP_RETRIES) {
-    return `[core-state] poll failed (attempt ${failureCount}/${MAX_BOOTSTRAP_RETRIES}):`;
+    return `[core-state] bootstrap poll failed (attempt ${failureCount}/${MAX_BOOTSTRAP_RETRIES}):`;
   }
   if (failureCount === SUPPRESS_POLL_WARNING_AT) {
-    return '[core-state] poll failed repeatedly; suppressing further warnings until core state recovers:';
+    return '[core-state] bootstrap budget exhausted; continuing with backoff. Suppressing further warnings until recovery:';
   }
   return null;
 }
@@ -473,12 +474,14 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
     void load();
     let timeoutId: number | null = null;
     const scheduleNext = () => {
+      const delay =
+        bootstrapFailCountRef.current >= MAX_BOOTSTRAP_RETRIES ? BACKOFF_POLL_MS : POLL_MS;
       timeoutId = window.setTimeout(async () => {
         await doRefresh();
         if (!cancelled) {
           scheduleNext();
         }
-      }, POLL_MS);
+      }, delay);
     };
     scheduleNext();
 
