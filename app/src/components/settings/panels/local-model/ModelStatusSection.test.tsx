@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { LocalAiDiagnostics } from '../../../../utils/tauriCommands';
@@ -424,5 +424,54 @@ describe('ModelStatusSection — Ollama server URL', () => {
     const resetBtn = screen.getByRole('button', { name: /Reset to default/ });
     resetBtn.click();
     expect(onResetOllamaBaseUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onSetOllamaBaseUrlInput when the URL input changes', () => {
+    const onSetOllamaBaseUrlInput = vi.fn();
+    render(
+      <ModelStatusSection {...defaultProps} onSetOllamaBaseUrlInput={onSetOllamaBaseUrlInput} />
+    );
+    const input = screen.getByPlaceholderText('http://localhost:11434');
+    fireEvent.change(input, { target: { value: 'http://192.168.1.5:11434' } });
+    expect(onSetOllamaBaseUrlInput).toHaveBeenCalledWith('http://192.168.1.5:11434');
+  });
+
+  it('shows spinner when isTestingConnection is true', () => {
+    render(<ModelStatusSection {...defaultProps} isTestingConnection={true} />);
+    const testBtn = screen.getByRole('button', { name: /Test Connection/i });
+    expect(testBtn.querySelector('.animate-spin')).toBeTruthy();
+  });
+
+  it('shows reachable result with model count when models_count is a number', () => {
+    render(
+      <ModelStatusSection
+        {...defaultProps}
+        connectionTestResult={{ reachable: true, models_count: 7 }}
+      />
+    );
+    expect(screen.getByText(/Reachable/)).toBeTruthy();
+    expect(screen.getByText(/7 models/)).toBeTruthy();
+  });
+
+  it('shows unreachable result with error text when reachable is false', () => {
+    render(
+      <ModelStatusSection
+        {...defaultProps}
+        connectionTestResult={{ reachable: false, error: 'dial tcp refused', models_count: null }}
+      />
+    );
+    expect(screen.getByText(/Unreachable/)).toBeTruthy();
+    expect(screen.getByText(/dial tcp refused/)).toBeTruthy();
+  });
+
+  it('shows validation error message for an invalid URL', () => {
+    render(
+      <ModelStatusSection
+        {...defaultProps}
+        ollamaBaseUrlInput="ftp://bad-scheme"
+        savedOllamaBaseUrl="http://localhost:11434"
+      />
+    );
+    expect(screen.getByText(/http:\/\/ or https:\/\//i)).toBeTruthy();
   });
 });

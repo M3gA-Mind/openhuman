@@ -70,4 +70,10 @@ describe('validateOllamaUrl', () => {
     expect(result.valid).toBe(true);
     expect(result.normalized).toBe('https://example.com');
   });
+
+  it('rejects a URL that starts with http:// but is not parseable', () => {
+    const result = validateOllamaUrl('http:// has spaces');
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/invalid url format/i);
+  });
 });
