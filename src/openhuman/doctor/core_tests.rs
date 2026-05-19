@@ -85,8 +85,6 @@ fn check_memory_tree_db_warns_when_db_missing() {
 /// should push an `Ok` item.
 #[test]
 fn check_memory_tree_db_ok_when_accessible() {
-    // Clear the connection cache so this test gets a fresh init.
-    crate::openhuman::memory::tree::store::clear_connection_cache();
     let tmp = TempDir::new().expect("tempdir");
     let cfg = test_config_in(&tmp);
 

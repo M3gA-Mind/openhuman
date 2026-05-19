@@ -784,6 +784,26 @@ fn check_memory_tree_db(config: &Config, items: &mut Vec<DiagnosticItem>) {
     let cat = "memory_tree_db";
     let db_path = config.workspace_dir.join("memory_tree").join("chunks.db");
 
+    // ── Stale side-files (checked even when chunks.db is absent) ────
+    let base_name = db_path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let shm = db_path.with_file_name(format!("{base_name}-shm"));
+    let wal = db_path.with_file_name(format!("{base_name}-wal"));
+    for sidecar in [&shm, &wal] {
+        if sidecar.exists() {
+            items.push(DiagnosticItem::warn(
+                cat,
+                format!(
+                    "stale SQLite side-file present (may indicate unclean shutdown): {}",
+                    sidecar.display()
+                ),
+            ));
+        }
+    }
+
     // ── File existence ──────────────────────────────────────────────
     if !db_path.exists() {
         items.push(DiagnosticItem::warn(
@@ -794,27 +814,6 @@ fn check_memory_tree_db(config: &Config, items: &mut Vec<DiagnosticItem>) {
             ),
         ));
         return;
-    }
-
-    // ── Stale SHM side-file ─────────────────────────────────────────
-    let shm = {
-        let mut p = db_path.clone();
-        let name = p
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned();
-        p.set_file_name(format!("{name}-shm"));
-        p
-    };
-    if shm.exists() {
-        items.push(DiagnosticItem::warn(
-            cat,
-            format!(
-                "stale WAL SHM file present (may indicate unclean shutdown): {}",
-                shm.display()
-            ),
-        ));
     }
 
     // ── Probe connection ─────────────────────────────────────────────

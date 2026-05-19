@@ -753,6 +753,13 @@ impl CircuitBreaker {
             *self.last_trip.lock() = Some(Instant::now());
             return true;
         }
+        // Re-arm the cooldown on each subsequent failure while already tripped
+        // so that a failed post-cooldown retry restarts the 30 s window instead
+        // of leaving the stale timestamp in place (which would let `is_open`
+        // return false immediately and allow unlimited retries).
+        if self.tripped.load(Ordering::Relaxed) {
+            *self.last_trip.lock() = Some(Instant::now());
+        }
         false
     }
 
