@@ -545,7 +545,7 @@ impl BackendOAuthClient {
                     && url.path().contains("/channels/")
                     && url.path().contains("/messages/")
                 {
-                    tracing::warn!(
+                    tracing::debug!(
                         domain = "backend_api",
                         operation = "authed_json",
                         "[backend_api] channel-message 404 on {} {} — path not matched by \
