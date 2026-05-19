@@ -3,6 +3,7 @@ use std::fs;
 use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use log::{debug, warn};
@@ -34,6 +35,7 @@ static APP_STATE_FILE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 static CURRENT_USER_CACHE: Lazy<Mutex<Option<CachedCurrentUser>>> = Lazy::new(|| Mutex::new(None));
 static RUNTIME_SNAPSHOT_CACHE: Lazy<Mutex<Option<CachedRuntimeSnapshot>>> =
     Lazy::new(|| Mutex::new(None));
+static SNAPSHOT_REQ_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone)]
 struct CachedRuntimeSnapshot {
@@ -411,13 +413,14 @@ pub fn peek_cached_current_user_identity() -> Option<crate::openhuman::agent::pr
     }
 }
 
-async fn build_runtime_snapshot(config: &Config) -> RuntimeSnapshot {
+async fn build_runtime_snapshot(config: &Config, req_id: u64) -> RuntimeSnapshot {
     {
         let cache = RUNTIME_SNAPSHOT_CACHE.lock();
         if let Some(entry) = cache.as_ref() {
             if entry.fetched_at.elapsed() < RUNTIME_SNAPSHOT_TTL {
                 debug!(
-                    "{LOG_PREFIX} build_runtime_snapshot: returning cached snapshot age_ms={}",
+                    "{LOG_PREFIX} build_runtime_snapshot: returning cached snapshot req_id={} age_ms={}",
+                    req_id,
                     entry.fetched_at.elapsed().as_millis()
                 );
                 return entry.snapshot.clone();
@@ -491,7 +494,8 @@ async fn build_runtime_snapshot(config: &Config) -> RuntimeSnapshot {
 
     let total_ms = t0.elapsed().as_millis();
     debug!(
-        "{LOG_PREFIX} build_runtime_snapshot timings si_ms={} local_ai_ms={} autocomplete_ms={} service_ms={} total_ms={}",
+        "{LOG_PREFIX} build_runtime_snapshot timings req_id={} si_ms={} local_ai_ms={} autocomplete_ms={} service_ms={} total_ms={}",
+        req_id,
         screen_intelligence.1,
         local_ai.1,
         autocomplete.1,
@@ -515,6 +519,7 @@ async fn build_runtime_snapshot(config: &Config) -> RuntimeSnapshot {
 }
 
 pub async fn snapshot() -> Result<RpcOutcome<AppStateSnapshot>, String> {
+    let req_id = SNAPSHOT_REQ_COUNTER.fetch_add(1, Ordering::Relaxed);
     let t_total = Instant::now();
 
     let t_config = Instant::now();
@@ -555,15 +560,16 @@ pub async fn snapshot() -> Result<RpcOutcome<AppStateSnapshot>, String> {
     let t_runtime = Instant::now();
     let runtime = match tokio::time::timeout(
         RUNTIME_SNAPSHOT_TIMEOUT,
-        build_runtime_snapshot(&config),
+        build_runtime_snapshot(&config, req_id),
     )
     .await
     {
         Ok(snapshot) => snapshot,
         Err(_) => {
             warn!(
-                "{LOG_PREFIX} build_runtime_snapshot timed out after {}s; returning degraded runtime snapshot",
-                RUNTIME_SNAPSHOT_TIMEOUT.as_secs()
+                "{LOG_PREFIX} build_runtime_snapshot timed out after {}s req_id={}; returning degraded runtime snapshot",
+                RUNTIME_SNAPSHOT_TIMEOUT.as_secs(),
+                req_id
             );
             degraded_runtime_snapshot(&config)
         }
@@ -572,12 +578,13 @@ pub async fn snapshot() -> Result<RpcOutcome<AppStateSnapshot>, String> {
 
     let total_ms = t_total.elapsed().as_millis();
     debug!(
-        "{LOG_PREFIX} snapshot timings config_ms={} auth_ms={} local_state_ms={} runtime_ms={} total_ms={}",
-        config_ms, auth_ms, local_state_ms, runtime_ms, total_ms
+        "{LOG_PREFIX} snapshot timings req_id={} config_ms={} auth_ms={} local_state_ms={} runtime_ms={} total_ms={}",
+        req_id, config_ms, auth_ms, local_state_ms, runtime_ms, total_ms
     );
 
     debug!(
-        "{LOG_PREFIX} snapshot auth={} onboarding={} chat_onboarding={} analytics={} meet_handoff={} si_active={} local_ai_state={} autocomplete_phase={} service_state={:?}",
+        "{LOG_PREFIX} snapshot req_id={} auth={} onboarding={} chat_onboarding={} analytics={} meet_handoff={} si_active={} local_ai_state={} autocomplete_phase={} service_state={:?}",
+        req_id,
         auth.is_authenticated,
         config.onboarding_completed,
         config.chat_onboarding_completed,
