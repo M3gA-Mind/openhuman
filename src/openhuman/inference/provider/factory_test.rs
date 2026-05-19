@@ -454,3 +454,67 @@ fn verify_session_active_called_for_custom_provider_not_for_openhuman() {
         "verify_session_active must reject config without session",
     );
 }
+
+// ── is_known_openhuman_tier ───────────────────────────────────────────────────
+
+#[test]
+fn known_tiers_pass() {
+    for tier in [
+        "reasoning-v1",
+        "chat-v1",
+        "agentic-v1",
+        "coding-v1",
+        "reasoning-quick-v1",
+    ] {
+        assert!(
+            is_known_openhuman_tier(tier),
+            "expected tier '{tier}' to be recognized"
+        );
+    }
+}
+
+#[test]
+fn hint_prefix_passes() {
+    assert!(is_known_openhuman_tier("hint:reasoning"));
+    assert!(is_known_openhuman_tier("hint:chat"));
+    assert!(is_known_openhuman_tier("hint:anything"));
+}
+
+#[test]
+fn invalid_models_fail() {
+    assert!(!is_known_openhuman_tier("deepseek-v4-pro"));
+    assert!(!is_known_openhuman_tier("claude-opus-4-7"));
+    assert!(!is_known_openhuman_tier("gpt-4o"));
+    assert!(!is_known_openhuman_tier(""));
+    assert!(!is_known_openhuman_tier("reasoning-v2"));
+}
+
+#[test]
+fn make_openhuman_backend_falls_back_for_invalid_model() {
+    // An invalid default_model must not be forwarded to the backend.
+    // The factory must silently fall back to reasoning-v1 (the platform default).
+    let mut config = Config::default();
+    config.default_model = Some("deepseek-v4-pro".to_string());
+    let (_, model) = make_openhuman_backend(&config).expect("factory should succeed");
+    assert_eq!(
+        model,
+        crate::openhuman::config::MODEL_REASONING_V1,
+        "invalid default_model should fall back to MODEL_REASONING_V1"
+    );
+}
+
+#[test]
+fn make_openhuman_backend_keeps_valid_tier() {
+    let mut config = Config::default();
+    config.default_model = Some("chat-v1".to_string());
+    let (_, model) = make_openhuman_backend(&config).expect("factory should succeed");
+    assert_eq!(model, "chat-v1");
+}
+
+#[test]
+fn make_openhuman_backend_keeps_reasoning_quick() {
+    let mut config = Config::default();
+    config.default_model = Some("reasoning-quick-v1".to_string());
+    let (_, model) = make_openhuman_backend(&config).expect("factory should succeed");
+    assert_eq!(model, "reasoning-quick-v1");
+}

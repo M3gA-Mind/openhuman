@@ -43,6 +43,27 @@ pub fn auth_key_for_slug(slug: &str) -> String {
     format!("provider:{slug}")
 }
 
+/// Return whether `model` is a recognized OpenHuman backend tier name.
+///
+/// Used to guard against stale `default_model` values (e.g. set by older UI
+/// versions) that the backend would reject with HTTP 400.  The known tiers are
+/// the constants in `crate::openhuman::config`; `hint:*` prefixed strings are
+/// also accepted because the factory translates them before sending.
+pub(crate) fn is_known_openhuman_tier(model: &str) -> bool {
+    use crate::openhuman::config::{
+        MODEL_AGENTIC_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
+        MODEL_REASONING_V1,
+    };
+    matches!(
+        model,
+        MODEL_REASONING_V1
+            | MODEL_CHAT_V1
+            | MODEL_AGENTIC_V1
+            | MODEL_CODING_V1
+            | MODEL_REASONING_QUICK_V1
+    ) || model.starts_with("hint:")
+}
+
 /// Return the configured provider string for a named workload role.
 ///
 /// Returns `"openhuman"` when the workload has no explicit override.
@@ -218,13 +239,30 @@ fn make_openhuman_backend(config: &Config) -> anyhow::Result<(Box<dyn Provider>,
         options.secrets_encrypt
     );
     // Translate `hint:<tier>` model strings into the OpenHuman backend's
-    // canonical tier names.
+    // canonical tier names.  For any remaining string that is not a known
+    // tier, fall back to the default rather than forwarding it to the backend
+    // (which would return HTTP 400).  This guards against stale `default_model`
+    // values written by older UI versions (e.g. "deepseek-v4-pro",
+    // "claude-opus-4-7") that persist across app updates.
     let model = match model.strip_prefix("hint:") {
         Some("reasoning") => crate::openhuman::config::MODEL_REASONING_V1.to_string(),
         Some("chat") => crate::openhuman::config::MODEL_CHAT_V1.to_string(),
         Some("agentic") => crate::openhuman::config::MODEL_AGENTIC_V1.to_string(),
         Some("coding") => crate::openhuman::config::MODEL_CODING_V1.to_string(),
-        _ => model,
+        _ => {
+            if is_known_openhuman_tier(&model) {
+                model
+            } else {
+                log::warn!(
+                    "[providers][chat-factory] model '{}' is not a recognized OpenHuman \
+                     backend tier (valid: reasoning-v1, chat-v1, agentic-v1, coding-v1, \
+                     reasoning-quick-v1); falling back to '{}'",
+                    model,
+                    crate::openhuman::config::MODEL_REASONING_V1,
+                );
+                crate::openhuman::config::MODEL_REASONING_V1.to_string()
+            }
+        }
     };
     let p = Box::new(OpenHumanBackendProvider::new(
         config.api_url.as_deref(),

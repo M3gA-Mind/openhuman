@@ -437,6 +437,17 @@ pub async fn apply_model_settings(
         } else {
             Some(model)
         };
+        if let Some(ref m) = config.default_model {
+            let trimmed = m.trim();
+            if !crate::openhuman::inference::provider::factory::is_known_openhuman_tier(trimmed) {
+                log::warn!(
+                    "[config][model-settings] default_model '{}' is not a recognized \
+                     OpenHuman backend tier — it will be replaced with the platform \
+                     default at inference time.",
+                    trimmed
+                );
+            }
+        }
     }
     if let Some(temp) = update.default_temperature {
         config.default_temperature = temp;
