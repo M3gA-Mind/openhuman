@@ -1,10 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import type {
-  TeamUsage,
-  TeamUsageInsights,
-} from '../../../../services/api/creditsApi';
+import type { TeamUsage, TeamUsageInsights } from '../../../../services/api/creditsApi';
 import InferenceBudget from '../billing/InferenceBudget';
 
 function buildInsights(overrides: Partial<TeamUsageInsights> = {}): TeamUsageInsights {
@@ -74,10 +71,7 @@ describe('InferenceBudget', () => {
     });
 
     it('renders cycle-spent and cycle-ends date', () => {
-      const usage = buildTeamUsage({
-        cycleSpentUsd: 5,
-        cycleEndsAt: '2026-05-31T00:00:00.000Z',
-      });
+      const usage = buildTeamUsage({ cycleSpentUsd: 5, cycleEndsAt: '2026-05-31T00:00:00.000Z' });
       render(<InferenceBudget teamUsage={usage} isLoadingCredits={false} />);
       expect(screen.getByText(/Spent \$5\.00 this cycle/i)).toBeInTheDocument();
       expect(screen.getByText(/Cycle ends/i)).toBeInTheDocument();
@@ -92,9 +86,7 @@ describe('InferenceBudget', () => {
     it('shows coral exhausted warning when remainingUsd <= 0', () => {
       const usage = buildTeamUsage({ remainingUsd: 0, cycleSpentUsd: 10 });
       render(<InferenceBudget teamUsage={usage} isLoadingCredits={false} />);
-      expect(
-        screen.getByText(/Included subscription usage is exhausted/i)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Included subscription usage is exhausted/i)).toBeInTheDocument();
     });
   });
 
@@ -108,7 +100,9 @@ describe('InferenceBudget', () => {
     it('renders the pay-as-you-go notice card', () => {
       const usage = buildTeamUsage({ cycleBudgetUsd: 0 });
       render(<InferenceBudget teamUsage={usage} isLoadingCredits={false} />);
-      expect(screen.getByText(/does not include a recurring weekly inference budget/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/does not include a recurring weekly inference budget/i)
+      ).toBeInTheDocument();
     });
   });
 
@@ -122,7 +116,13 @@ describe('InferenceBudget', () => {
 
     it('does not render discount banner when discountVsPayAsYouGoPercent === 0', () => {
       const usage = buildTeamUsage({
-        plan: { plan: 'FREE', name: 'Free', marginPercent: 0, payAsYouGoMarginPercent: 0, discountVsPayAsYouGoPercent: 0 },
+        plan: {
+          plan: 'FREE',
+          name: 'Free',
+          marginPercent: 0,
+          payAsYouGoMarginPercent: 0,
+          discountVsPayAsYouGoPercent: 0,
+        },
       });
       render(<InferenceBudget teamUsage={usage} isLoadingCredits={false} />);
       expect(screen.queryByText(/cheaper per call/i)).not.toBeInTheDocument();
@@ -143,7 +143,13 @@ describe('InferenceBudget', () => {
     it('renders call counts formatted with toLocaleString', () => {
       const usage = buildTeamUsage({
         insights: buildInsights({
-          totals: { inferenceUsd: 3, integrationsUsd: 2, totalUsd: 5, inferenceCalls: 1000, integrationCalls: 200 },
+          totals: {
+            inferenceUsd: 3,
+            integrationsUsd: 2,
+            totalUsd: 5,
+            inferenceCalls: 1000,
+            integrationCalls: 200,
+          },
         }),
       });
       render(<InferenceBudget teamUsage={usage} isLoadingCredits={false} />);

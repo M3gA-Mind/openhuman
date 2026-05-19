@@ -1028,12 +1028,7 @@ describe('Conversations — worker thread back-to-parent navigation (#1624)', ()
 
   // Covers line 1871: t('chat.budgetComplete') — cycleBudgetUsd=0 exhausted branch
   it('renders budgetComplete copy when cycleBudgetUsd=0 and budget is exhausted', async () => {
-    const teamUsage = {
-      cycleBudgetUsd: 0,
-      remainingUsd: 0,
-      cycleSpentUsd: 0,
-      cycleEndsAt: null,
-    };
+    const teamUsage = { cycleBudgetUsd: 0, remainingUsd: 0, cycleSpentUsd: 0, cycleEndsAt: null };
 
     mockUseUsageState.mockReturnValue({
       teamUsage,

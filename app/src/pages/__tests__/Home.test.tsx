@@ -19,9 +19,7 @@ vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
 const mockUseUsageState = vi.hoisted(() =>
   vi.fn(() => ({ shouldShowBudgetCompletedMessage: false }))
 );
-vi.mock('../../hooks/useUsageState', () => ({
-  useUsageState: mockUseUsageState,
-}));
+vi.mock('../../hooks/useUsageState', () => ({ useUsageState: mockUseUsageState }));
 
 // Default: return 'ok' so most tests see the normal state. The
 // blocking-state selector is the only thing this mock is asked to

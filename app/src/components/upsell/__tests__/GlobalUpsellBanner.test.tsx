@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import GlobalUpsellBanner from '../GlobalUpsellBanner';
+
 const mockUseUsageState = vi.hoisted(() =>
   vi.fn(() => ({
     teamUsage: null as null | object,
@@ -12,9 +14,7 @@ const mockUseUsageState = vi.hoisted(() =>
   }))
 );
 
-vi.mock('../../../hooks/useUsageState', () => ({
-  useUsageState: mockUseUsageState,
-}));
+vi.mock('../../../hooks/useUsageState', () => ({ useUsageState: mockUseUsageState }));
 
 vi.mock('../../../utils/openUrl', () => ({ openUrl: vi.fn() }));
 
@@ -26,8 +26,6 @@ vi.mock('../UpsellBanner', () => ({
     </div>
   ),
 }));
-
-import GlobalUpsellBanner from '../GlobalUpsellBanner';
 
 const baseUsage = { cycleSpentUsd: 0, cycleBudgetUsd: 10, remainingUsd: 0 };
 
