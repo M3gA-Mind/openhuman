@@ -158,7 +158,7 @@ impl Tool for ImageInfoTool {
         // Security check: validate path string, resolve symlinks, confirm workspace containment.
         let resolved = match self.security.validate_path(path_str).await {
             Ok(p) => p,
-            Err(msg) => return Ok(ToolResult::error(format!("Path not allowed: {msg}"))),
+            Err(msg) => return Ok(ToolResult::error(msg)),
         };
 
         let metadata = tokio::fs::metadata(&resolved)

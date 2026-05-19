@@ -1311,3 +1311,28 @@ async fn validate_parent_path_blocks_symlinked_parent_dir() {
         .await
         .is_err());
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn validate_path_blocks_symlink_to_relative_forbidden_entry() {
+    // Regression: relative forbidden entries (e.g. "secrets") must match after
+    // canonicalization. Before the fix, "secrets" was never resolved against the
+    // workspace root, so workspace/link -> workspace/secrets/ passed the check.
+    let workspace = tempfile::tempdir().unwrap();
+    let secrets_dir = workspace.path().join("secrets");
+    std::fs::create_dir_all(&secrets_dir).unwrap();
+    let secret_file = secrets_dir.join("token.txt");
+    std::fs::write(&secret_file, "s3cr3t").unwrap();
+    let link = workspace.path().join("link");
+    std::os::unix::fs::symlink(&secrets_dir, &link).unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: true,
+        forbidden_paths: vec!["secrets".to_string()],
+        ..SecurityPolicy::default()
+    };
+    // Direct path into the forbidden dir is blocked.
+    assert!(policy.validate_path("secrets/token.txt").await.is_err());
+    // Symlink that resolves into the forbidden dir is also blocked.
+    assert!(policy.validate_path("link/token.txt").await.is_err());
+}
