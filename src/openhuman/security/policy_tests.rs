@@ -1356,3 +1356,57 @@ async fn validate_parent_path_blocks_forbidden_path() {
         .await
         .is_err());
 }
+
+// ── tilde expansion in validate_path / validate_parent_path ──────────────────
+
+#[cfg(unix)]
+#[tokio::test]
+async fn validate_path_expands_tilde_before_workspace_join() {
+    // ~/... must be resolved against the real home dir, not literally joined onto
+    // workspace_dir. With workspace_only:false and no forbidden entries, is_path_string_allowed
+    // passes ~/file. After tilde expansion the file is outside the temp workspace, so we
+    // expect "Resolved path escapes workspace" — not "Failed to resolve path" (which would
+    // indicate the literal ~/... was appended to workspace_dir and canonicalize failed there).
+    let workspace = tempfile::tempdir().unwrap();
+    let home = dirs::home_dir().unwrap();
+    let target = home.join("openhuman_tilde_validate_path_test.txt");
+    std::fs::write(&target, "test").unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: false,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+    let err = policy
+        .validate_path("~/openhuman_tilde_validate_path_test.txt")
+        .await
+        .unwrap_err();
+    let _ = std::fs::remove_file(&target);
+    assert!(
+        err.contains("Resolved path escapes workspace"),
+        "expected workspace-escape error (tilde correctly expanded); got: {err}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn validate_parent_path_expands_tilde_before_workspace_join() {
+    // Same as above but for validate_parent_path: writing ~/new_file.txt in
+    // non-workspace-only mode must escape-check via the real home path, not a literal ~/
+    // inside workspace_dir.
+    let workspace = tempfile::tempdir().unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: false,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+    let err = policy
+        .validate_parent_path("~/openhuman_tilde_validate_parent_test.txt")
+        .await
+        .unwrap_err();
+    assert!(
+        err.contains("Resolved parent path escapes workspace"),
+        "expected workspace-escape error (tilde correctly expanded); got: {err}"
+    );
+}

@@ -778,7 +778,12 @@ impl SecurityPolicy {
         if !self.is_path_string_allowed(path) {
             return Err(format!("Path not allowed by security policy: {path}"));
         }
-        let full_path = self.workspace_dir.join(path);
+        let expanded = self.expand_tilde(path);
+        let full_path = if Path::new(&expanded).is_absolute() {
+            PathBuf::from(&expanded)
+        } else {
+            self.workspace_dir.join(&expanded)
+        };
         let resolved = tokio::fs::canonicalize(&full_path)
             .await
             .map_err(|e| format!("Failed to resolve path '{path}': {e}"))?;
@@ -788,31 +793,10 @@ impl SecurityPolicy {
                 resolved.display()
             ));
         }
-        // Check forbidden paths using canonical path-component-aware comparison.
-        // Relative forbidden entries are resolved against the workspace root.
-        // Absolute entries whose prefix IS the workspace root are skipped — the
-        // workspace containment check above already guarantees the path is safe.
-        let workspace_root = self
-            .workspace_dir
-            .canonicalize()
+        let workspace_root = tokio::fs::canonicalize(&self.workspace_dir)
+            .await
             .unwrap_or_else(|_| self.workspace_dir.clone());
-        for forbidden in &self.forbidden_paths {
-            let forbidden_path = PathBuf::from(self.expand_tilde(forbidden));
-            let forbidden_resolved = if forbidden_path.is_absolute() {
-                if workspace_root.starts_with(&forbidden_path) {
-                    continue;
-                }
-                forbidden_path
-            } else {
-                workspace_root.join(forbidden_path)
-            };
-            if resolved.starts_with(&forbidden_resolved) {
-                return Err(format!(
-                    "Resolved path is inside a forbidden directory: {}",
-                    forbidden_resolved.display()
-                ));
-            }
-        }
+        self.check_resolved_against_forbidden(&resolved, &workspace_root)?;
         log::debug!(
             "[security] validate_path: '{}' resolved to '{}'",
             path,
@@ -830,7 +814,12 @@ impl SecurityPolicy {
         if !self.is_path_string_allowed(path) {
             return Err(format!("Path not allowed by security policy: {path}"));
         }
-        let full_path = self.workspace_dir.join(path);
+        let expanded = self.expand_tilde(path);
+        let full_path = if Path::new(&expanded).is_absolute() {
+            PathBuf::from(&expanded)
+        } else {
+            self.workspace_dir.join(&expanded)
+        };
         let parent = full_path
             .parent()
             .ok_or_else(|| format!("Invalid path (no parent): {path}"))?;
@@ -870,32 +859,11 @@ impl SecurityPolicy {
         let resolved_parent = canonical_ancestor.join(relative_suffix);
         let result = resolved_parent.join(file_name);
 
-        // Forbidden path check using canonical path-component-aware comparison.
-        // Relative entries are resolved against the workspace root. Absolute entries
-        // whose prefix IS the workspace root are skipped (all workspace paths are under them).
-        let workspace_root = self
-            .workspace_dir
-            .canonicalize()
+        let workspace_root = tokio::fs::canonicalize(&self.workspace_dir)
+            .await
             .unwrap_or_else(|_| self.workspace_dir.clone());
-        for forbidden in &self.forbidden_paths {
-            let forbidden_path = PathBuf::from(self.expand_tilde(forbidden));
-            let forbidden_resolved = if forbidden_path.is_absolute() {
-                if workspace_root.starts_with(&forbidden_path) {
-                    continue;
-                }
-                forbidden_path
-            } else {
-                workspace_root.join(forbidden_path)
-            };
-            if canonical_ancestor.starts_with(&forbidden_resolved)
-                || result.starts_with(&forbidden_resolved)
-            {
-                return Err(format!(
-                    "Resolved parent path is inside a forbidden directory: {}",
-                    forbidden_resolved.display()
-                ));
-            }
-        }
+        self.check_resolved_against_forbidden(&canonical_ancestor, &workspace_root)?;
+        self.check_resolved_against_forbidden(&result, &workspace_root)?;
 
         log::debug!(
             "[security] validate_parent_path: '{}' resolved parent to '{}'",
@@ -916,6 +884,34 @@ impl SecurityPolicy {
             .canonicalize()
             .unwrap_or_else(|_| self.workspace_dir.clone());
         resolved.starts_with(workspace_root)
+    }
+
+    /// Check `resolved` against every entry in `forbidden_paths`, resolving relative
+    /// entries against `workspace_root`. Absolute entries whose prefix IS the workspace
+    /// root are skipped — the workspace containment check already covers them.
+    fn check_resolved_against_forbidden(
+        &self,
+        resolved: &Path,
+        workspace_root: &Path,
+    ) -> Result<(), String> {
+        for forbidden in &self.forbidden_paths {
+            let forbidden_path = PathBuf::from(self.expand_tilde(forbidden));
+            let forbidden_resolved = if forbidden_path.is_absolute() {
+                if workspace_root.starts_with(&forbidden_path) {
+                    continue;
+                }
+                forbidden_path
+            } else {
+                workspace_root.join(forbidden_path)
+            };
+            if resolved.starts_with(&forbidden_resolved) {
+                return Err(format!(
+                    "Resolved path is inside a forbidden directory: {}",
+                    forbidden_resolved.display()
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Check if autonomy level permits any action at all
