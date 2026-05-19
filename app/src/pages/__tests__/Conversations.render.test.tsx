@@ -1025,4 +1025,93 @@ describe('Conversations — worker thread back-to-parent navigation (#1624)', ()
     // helper — verify it was kicked off for the parent thread.
     expect(mockGetThreadMessages).toHaveBeenCalledWith('t-parent');
   });
+
+  // Covers line 1871: t('chat.budgetComplete') — cycleBudgetUsd=0 exhausted branch
+  it('renders budgetComplete copy when cycleBudgetUsd=0 and budget is exhausted', async () => {
+    const teamUsage = {
+      cycleBudgetUsd: 0,
+      remainingUsd: 0,
+      cycleSpentUsd: 0,
+      cycleEndsAt: null,
+    };
+
+    mockUseUsageState.mockReturnValue({
+      teamUsage,
+      currentPlan: null,
+      currentTier: 'PRO' as const,
+      isFreeTier: false,
+      usagePct: 1.0,
+      isNearLimit: true,
+      isAtLimit: true,
+      isBudgetExhausted: true,
+      shouldShowBudgetCompletedMessage: true,
+      isLoading: false,
+      refresh: vi.fn(),
+    });
+
+    await act(async () => {
+      await renderConversations({ thread: emptyThreadState });
+    });
+
+    // cycleBudgetUsd=0 → false branch of cycleBudgetUsd > 0 ternary → budgetComplete key
+    expect(screen.getByText(/Your included budget is complete/i)).toBeInTheDocument();
+  });
+
+  // Covers line 1910: cycleEndsAt truthy branch inside cycle-pill tooltip
+  it('renders reset time in cycle-pill tooltip when cycleEndsAt is set', async () => {
+    const teamUsage = {
+      cycleBudgetUsd: 10,
+      remainingUsd: 5,
+      cycleSpentUsd: 5,
+      cycleEndsAt: '2026-06-01T00:00:00.000Z',
+    };
+
+    mockUseUsageState.mockReturnValue({
+      teamUsage,
+      currentPlan: null,
+      currentTier: 'PRO' as const,
+      isFreeTier: false,
+      usagePct: 0.5,
+      isNearLimit: false,
+      isAtLimit: false,
+      isBudgetExhausted: false,
+      shouldShowBudgetCompletedMessage: false,
+      isLoading: false,
+      refresh: vi.fn(),
+    });
+
+    await act(async () => {
+      await renderConversations({ thread: emptyThreadState });
+    });
+
+    // Tooltip is hidden via CSS but present in DOM; cycleEndsAt truthy → reset span renders
+    expect(screen.getByText('Cycle')).toBeInTheDocument();
+    // The tooltip resets span contains "resets" text (covers line 1910 conditional)
+    const resetSpans = document.querySelectorAll('[class*="text-stone-400"]');
+    expect(resetSpans.length).toBeGreaterThan(0);
+  });
+
+  // Covers lines 1903-1904: loading animation span when isLoading=true, teamUsage=null
+  it('renders loading pulse span in cycle-pill area when isLoading=true', async () => {
+    mockUseUsageState.mockReturnValue({
+      teamUsage: null,
+      currentPlan: null,
+      currentTier: 'FREE' as const,
+      isFreeTier: true,
+      usagePct: 0,
+      isNearLimit: false,
+      isAtLimit: false,
+      isBudgetExhausted: false,
+      shouldShowBudgetCompletedMessage: false,
+      isLoading: true,
+      refresh: vi.fn(),
+    });
+
+    await act(async () => {
+      await renderConversations({ thread: emptyThreadState });
+    });
+
+    // Loading span with animate-pulse is present when teamUsage=null and loading
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
+  });
 });

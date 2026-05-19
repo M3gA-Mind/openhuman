@@ -375,4 +375,53 @@ describe('normalizeTeamUsage', () => {
     expect(result.cycleSpentUsd).toBe(17);
     expect(mockCallCoreCommand).toHaveBeenCalledWith('openhuman.team_get_usage');
   });
+
+  it('normalizes insights sub-rows with missing fields to safe defaults', () => {
+    const result = normalizeTeamUsage({
+      insights: {
+        period: { startDate: '2026-05-01', endDate: '2026-05-31' },
+        totals: {},
+        // Rows with missing optional fields — exercises normalizeDailyPoint,
+        // normalizeModelRow, and normalizeIntegrationRow default branches.
+        dailySeries: [{ date: '2026-05-01' }],
+        topModels: [{ provider: 'anthropic' }],
+        topIntegrations: [{ provider: 'gmail' }],
+      },
+    });
+
+    expect(result.insights.dailySeries).toHaveLength(1);
+    expect(result.insights.dailySeries[0].inferenceUsd).toBe(0);
+    expect(result.insights.dailySeries[0].integrationsUsd).toBe(0);
+    expect(result.insights.dailySeries[0].totalUsd).toBe(0);
+
+    expect(result.insights.topModels).toHaveLength(1);
+    expect(result.insights.topModels[0].model).toBe('');
+    expect(result.insights.topModels[0].provider).toBe('anthropic');
+    expect(result.insights.topModels[0].spentUsd).toBe(0);
+    expect(result.insights.topModels[0].calls).toBe(0);
+
+    expect(result.insights.topIntegrations).toHaveLength(1);
+    expect(result.insights.topIntegrations[0].action).toBe('');
+    expect(result.insights.topIntegrations[0].spentUsd).toBe(0);
+    expect(result.insights.topIntegrations[0].calls).toBe(0);
+  });
+
+  it('normalizes plan summary with missing fields to safe defaults', () => {
+    const result = normalizeTeamUsage({ plan: { name: 'Custom' } });
+    expect(result.plan.plan).toBe('FREE');
+    expect(result.plan.name).toBe('Custom');
+    expect(result.plan.marginPercent).toBe(0);
+    expect(result.plan.payAsYouGoMarginPercent).toBe(0);
+    expect(result.plan.discountVsPayAsYouGoPercent).toBe(0);
+  });
+
+  it('normalizes insights period using cycle dates as fallback when period is absent', () => {
+    const result = normalizeTeamUsage({
+      cycleStartDate: '2026-05-01T00:00:00Z',
+      cycleEndsAt: '2026-05-31T00:00:00Z',
+      insights: { totals: {}, dailySeries: [], topModels: [], topIntegrations: [] },
+    });
+    expect(result.insights.period.startDate).toBe('2026-05-01T00:00:00Z');
+    expect(result.insights.period.endDate).toBe('2026-05-31T00:00:00Z');
+  });
 });
