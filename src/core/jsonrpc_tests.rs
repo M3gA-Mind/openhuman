@@ -565,25 +565,86 @@ fn parse_json_params_reports_error_message() {
 
 #[test]
 fn is_session_expired_error_matches_401_unauthorized() {
+    // Issue #2286: only OpenHuman backend path 401s (HTTP-method prefix) should
+    // match, not generic 401/Unauthorized strings.
     assert!(is_session_expired_error(
+        "GET /teams failed (401 Unauthorized): {\"success\":false}"
+    ));
+    assert!(is_session_expired_error(
+        "POST /auth/token failed (401 Unauthorized): session expired"
+    ));
+    assert!(is_session_expired_error(
+        "DELETE /sessions/abc failed (401 Unauthorized): unauthorized"
+    ));
+    // Generic 401+unauthorized strings without HTTP-method prefix must NOT match.
+    assert!(!is_session_expired_error(
         "backend returned 401 Unauthorized"
     ));
-    assert!(is_session_expired_error("401 UNAUTHORIZED"));
-    assert!(is_session_expired_error("got 401 and unauthorized body"));
+    assert!(!is_session_expired_error("401 UNAUTHORIZED"));
+    assert!(!is_session_expired_error("got 401 and unauthorized body"));
 }
 
 #[test]
 fn is_session_expired_error_requires_both_401_and_unauthorized() {
     // 401 alone is not sufficient — could be HTTP/3.01 nonsense or
-    // unrelated text. We require the string "unauthorized" too.
+    // unrelated text. We require the string "unauthorized" too, plus HTTP-method
+    // prefix for the 401 path.
     assert!(!is_session_expired_error("server returned 401"));
     assert!(!is_session_expired_error("unauthorized without code"));
 }
 
 #[test]
+fn is_session_expired_error_matches_openhuman_backend_path_401() {
+    // OpenHuman backend calls via authed_json use the format:
+    // "{METHOD} /path failed (401 Unauthorized): {body}"
+    assert!(is_session_expired_error(
+        "GET /teams failed (401 Unauthorized): {\"success\":false}"
+    ));
+    assert!(is_session_expired_error(
+        "POST /auth/token failed (401 Unauthorized): session expired"
+    ));
+    assert!(is_session_expired_error(
+        "GET /teams/me/usage failed (401 Unauthorized): unauthorized"
+    ));
+    assert!(is_session_expired_error(
+        "PUT /profile failed (401 Unauthorized): token expired"
+    ));
+    assert!(is_session_expired_error(
+        "PATCH /settings failed (401 Unauthorized): unauthorized"
+    ));
+}
+
+#[test]
+fn is_session_expired_error_does_not_match_discord_api_error() {
+    // Issue #2286: Discord bot token 401 must not clear the user session.
+    assert!(!is_session_expired_error(
+        "Discord API error: Discord list guilds failed (401): Unauthorized"
+    ));
+    assert!(!is_session_expired_error(
+        "Discord API error: Discord get bot user failed (401): bad token"
+    ));
+}
+
+#[test]
+fn is_session_expired_error_does_not_match_byo_key_provider_401() {
+    // BYO-key provider 401 should not clear the user session.
+    assert!(!is_session_expired_error(
+        "OpenAI API error (401 Unauthorized): invalid api key"
+    ));
+    assert!(!is_session_expired_error(
+        "Anthropic API error (401 Unauthorized): authentication error"
+    ));
+    assert!(!is_session_expired_error(
+        "Composio v3 API error: HTTP 401: Unauthorized"
+    ));
+}
+
+#[test]
 fn is_session_expired_error_matches_invalid_token_case_insensitive() {
-    assert!(is_session_expired_error("Invalid Token"));
-    assert!(is_session_expired_error("got an invalid token here"));
+    // "invalid token" is no longer a session-expiry trigger (issue #2286):
+    // it was too broad and caught Discord/OAuth provider token errors.
+    assert!(!is_session_expired_error("Invalid Token"));
+    assert!(!is_session_expired_error("got an invalid token here"));
 }
 
 #[test]
