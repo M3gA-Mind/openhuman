@@ -20,7 +20,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: hoisted.invoke }));
 
 vi.mock('../../../utils/tauriCommands/common', () => ({ isTauri: hoisted.isTauri }));
 
-vi.mock('../../hooks/useSettingsNavigation', () => ({
+vi.mock('../hooks/useSettingsNavigation', () => ({
   useSettingsNavigation: () => ({
     navigateToSettings: vi.fn(),
     navigateBack: vi.fn(),
@@ -194,7 +194,7 @@ describe('McpServerPanel — binary path error', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/Binary not found — run: cargo build --bin openhuman-core/i)
+        screen.getByText(/OpenHuman binary not found/i)
       ).toBeInTheDocument();
     });
   });

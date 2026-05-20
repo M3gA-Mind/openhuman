@@ -502,13 +502,14 @@ const fr5: TranslationMap = {
   'settings.mcpServer.copied': 'Copied!',
   'settings.mcpServer.openConfigFile': 'Open Config File',
   'settings.mcpServer.binaryPathNotFound':
-    'Binary not found — run: cargo build --bin openhuman-core',
+    'OpenHuman binary not found. If running from source, build with: cargo build --bin openhuman-core',
   'settings.mcpServer.openConfigError': 'Failed to open config file',
   'settings.mcpServer.clientClaudeDesktop': 'Claude Desktop',
   'settings.mcpServer.clientCursor': 'Cursor',
   'settings.mcpServer.clientCodex': 'Codex',
   'settings.mcpServer.clientZed': 'Zed',
   'settings.mcpServer.configFilePath': 'Config file',
+  'settings.mcpServer.clientSelectorAriaLabel': 'MCP client selector',
 };
 
 export default fr5;

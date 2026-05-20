@@ -1,10 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
+import debug from 'debug';
 import { useEffect, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import { isTauri } from '../../../utils/tauriCommands/common';
 import SettingsHeader from '../components/SettingsHeader';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
+
+const log = debug('mcp-server-panel');
 
 // ---------------------------------------------------------------------------
 // Types
@@ -96,23 +99,31 @@ const McpServerPanel = () => {
 
   // Resolve the binary path on mount.
   useEffect(() => {
-    console.debug('[McpServerPanel] resolving mcp binary path');
+    log('resolving mcp binary path');
     invoke<McpBinaryInfo>('mcp_resolve_binary_path')
       .then(info => {
-        console.debug('[McpServerPanel] mcp binary resolved:', info.path, 'os:', info.os);
+        log('mcp binary resolved: %s os: %s', info.path, info.os);
         setBinaryInfo(info);
         setBinaryError(null);
       })
       .catch(err => {
         const msg = err instanceof Error ? err.message : String(err);
-        console.debug('[McpServerPanel] mcp binary resolution failed:', msg);
+        log('mcp binary resolution failed: %s', msg);
         setBinaryError(msg);
         setBinaryInfo(null);
       });
   }, []);
 
   const binaryPath = binaryInfo?.path ?? null;
-  const os = binaryInfo?.os ?? 'macos';
+  // When binary resolution fails, fall back to navigator.userAgent so Windows/Linux
+  // users see the correct config file path instead of the macOS default.
+  const os =
+    binaryInfo?.os ??
+    (/win/i.test(navigator.userAgent) && !/mac/i.test(navigator.userAgent)
+      ? 'windows'
+      : /linux/i.test(navigator.userAgent)
+        ? 'linux'
+        : 'macos');
   const displayPath = binaryPath ?? t('settings.mcpServer.binaryPathNotFound');
   const snippet = buildSnippet(activeClient, displayPath);
   const configPath = configFilePathFor(activeClient, os);
@@ -191,7 +202,7 @@ const McpServerPanel = () => {
         </div>
 
         {/* Client selector tabs */}
-        <div className="flex gap-1 mb-4 flex-wrap" role="tablist" aria-label="MCP client selector">
+        <div className="flex gap-1 mb-4 flex-wrap" role="tablist" aria-label={t('settings.mcpServer.clientSelectorAriaLabel')}>
           {clients.map(client => (
             <button
               key={client.id}
