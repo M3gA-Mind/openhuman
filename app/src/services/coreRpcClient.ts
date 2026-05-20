@@ -123,7 +123,14 @@ export function classifyRpcError(
   // The HTTP method prefix distinguishes these from downstream provider 401s.
   // Fix for issue #2286: only match when the message starts with an HTTP verb
   // followed by a path — this excludes "Discord API error:", "OpenAI API error:", etc.
-  if (/^(GET|POST|PUT|DELETE|PATCH)\s+\/[^\s].*\(401\b.*Unauthorized\)/i.test(message))
+  // HEAD and OPTIONS intentionally excluded — authed_json only uses these five verbs.
+  // Aligned with Rust is_session_expired_error: starts-with-verb check + separate
+  // contains checks for "401" and "unauthorized" (case-insensitive).
+  if (
+    /^(GET|POST|PUT|DELETE|PATCH)\s+\//.test(message) &&
+    /401/.test(message) &&
+    /unauthorized/i.test(message)
+  )
     return 'auth_expired';
   // Downstream provider/integration 401 — NOT user session expiry.
   // e.g. "Discord API error: Discord list guilds failed (401): Unauthorized"

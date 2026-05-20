@@ -194,10 +194,11 @@ pub async fn invoke_method(state: AppState, method: &str, params: Value) -> Resu
                 },
             );
         } else if is_downstream_provider_auth_error(msg) {
+            let redacted = crate::openhuman::inference::provider::ops::sanitize_api_error(msg);
             log::info!(
                 "[jsonrpc] downstream provider auth failure for method='{}' (not session expiry) — {}",
                 method,
-                msg
+                redacted
             );
         }
     }
@@ -253,6 +254,8 @@ fn is_session_expired_error(msg: &str) -> bool {
     // OpenHuman backend path 401s via `authed_json`:
     // format is "{METHOD} /path failed (401 Unauthorized): {body}"
     // The HTTP-method prefix distinguishes these from provider-prefixed errors.
+    // HEAD and OPTIONS are intentionally excluded — `authed_json` only issues
+    // the five listed verbs (GET/POST/PUT/DELETE/PATCH) for REST JSON endpoints.
     if (lower.contains("401") && lower.contains("unauthorized"))
         && (msg.starts_with("GET /")
             || msg.starts_with("POST /")
