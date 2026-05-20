@@ -235,7 +235,7 @@ pub fn mcp_open_client_config(client: String) -> Result<(), String> {
                 )
             })?;
         }
-        std::fs::write(&path, b"")
+        std::fs::write(&path, b"{}")
             .map_err(|e| format!("failed to create config file {}: {e}", path.display()))?;
         log::debug!(
             "[mcp_commands] mcp_open_client_config: created empty file at {}",
