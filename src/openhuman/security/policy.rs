@@ -768,7 +768,90 @@ impl SecurityPolicy {
             }
         }
 
+        // Symlink-safe check (#1927). The string-level checks above can be
+        // bypassed by creating a symlink inside the workspace that points to
+        // a forbidden tree (e.g. `evil -> /etc/shadow`). Canonicalize the
+        // path and re-validate `workspace_only` containment + forbidden_paths
+        // against the resolved location.
+        if let Some(canonical) = self.try_canonicalize_under_workspace(path) {
+            let workspace_root = self
+                .workspace_dir
+                .canonicalize()
+                .unwrap_or_else(|_| self.workspace_dir.clone());
+            if self.workspace_only && !canonical.starts_with(&workspace_root) {
+                log::trace!(
+                    "[security:policy] path blocked: symlink escapes workspace (requested={}, resolved={}, workspace={})",
+                    path,
+                    canonical.display(),
+                    workspace_root.display()
+                );
+                return false;
+            }
+            // If the resolved path stays inside the workspace, trust the
+            // workspace boundary over forbidden_paths — otherwise a workspace
+            // that lives under e.g. `/tmp` (common in tests and sandboxes)
+            // would block every legitimate access. forbidden_paths is meant
+            // to catch escapes *outside* the workspace, which the workspace
+            // containment check above already validates.
+            let inside_workspace = canonical.starts_with(&workspace_root);
+            if !inside_workspace {
+                for forbidden in &self.forbidden_paths {
+                    let forbidden_expanded = if let Some(stripped) = forbidden.strip_prefix("~/") {
+                        std::env::var("HOME")
+                            .ok()
+                            .map(|h| PathBuf::from(h).join(stripped))
+                            .unwrap_or_else(|| PathBuf::from(forbidden))
+                    } else {
+                        PathBuf::from(forbidden)
+                    };
+                    let forbidden_canonical = forbidden_expanded
+                        .canonicalize()
+                        .unwrap_or(forbidden_expanded);
+                    if canonical.starts_with(&forbidden_canonical) {
+                        log::trace!(
+                        "[security:policy] path blocked: symlink resolves to forbidden tree (requested={}, resolved={}, forbidden={})",
+                        path,
+                        canonical.display(),
+                        forbidden_canonical.display()
+                    );
+                        return false;
+                    }
+                }
+            }
+        }
+
         true
+    }
+
+    /// Resolve a user-supplied path under the workspace, canonicalizing it
+    /// (or its parent) when present on disk. Used by [`Self::is_path_string_allowed`]
+    /// to defend against symlink-based escapes that pass the string-level
+    /// checks. Returns `None` only when neither the path nor its parent can
+    /// be resolved on disk — in that case the caller falls back to the
+    /// string-level checks alone (which is the safe default for fresh paths
+    /// whose entire chain does not yet exist).
+    fn try_canonicalize_under_workspace(&self, path: &str) -> Option<PathBuf> {
+        let expanded = if let Some(stripped) = path.strip_prefix("~/") {
+            std::env::var("HOME")
+                .ok()
+                .map(|h| PathBuf::from(h).join(stripped))?
+        } else {
+            PathBuf::from(path)
+        };
+        let absolute = if expanded.is_absolute() {
+            expanded
+        } else {
+            self.workspace_dir.join(&expanded)
+        };
+        if let Ok(canonical) = absolute.canonicalize() {
+            return Some(canonical);
+        }
+        // Path itself does not exist (e.g. a write-to-new-file call). Try
+        // canonicalizing the parent + appending the basename so we still
+        // catch parent chains that resolve via symlink to a forbidden tree.
+        let parent = absolute.parent()?;
+        let name = absolute.file_name()?;
+        parent.canonicalize().ok().map(|p| p.join(name))
     }
 
     /// Validate a path for file I/O: string checks, canonicalize, workspace containment,
@@ -778,7 +861,12 @@ impl SecurityPolicy {
         if !self.is_path_string_allowed(path) {
             return Err(format!("Path not allowed by security policy: {path}"));
         }
-        let full_path = self.workspace_dir.join(path);
+        let expanded = self.expand_tilde(path);
+        let full_path = if Path::new(&expanded).is_absolute() {
+            PathBuf::from(&expanded)
+        } else {
+            self.workspace_dir.join(&expanded)
+        };
         let resolved = tokio::fs::canonicalize(&full_path)
             .await
             .map_err(|e| format!("Failed to resolve path '{path}': {e}"))?;
@@ -788,31 +876,10 @@ impl SecurityPolicy {
                 resolved.display()
             ));
         }
-        // Check forbidden paths using canonical path-component-aware comparison.
-        // Relative forbidden entries are resolved against the workspace root.
-        // Absolute entries whose prefix IS the workspace root are skipped — the
-        // workspace containment check above already guarantees the path is safe.
-        let workspace_root = self
-            .workspace_dir
-            .canonicalize()
+        let workspace_root = tokio::fs::canonicalize(&self.workspace_dir)
+            .await
             .unwrap_or_else(|_| self.workspace_dir.clone());
-        for forbidden in &self.forbidden_paths {
-            let forbidden_path = PathBuf::from(self.expand_tilde(forbidden));
-            let forbidden_resolved = if forbidden_path.is_absolute() {
-                if workspace_root.starts_with(&forbidden_path) {
-                    continue;
-                }
-                forbidden_path
-            } else {
-                workspace_root.join(forbidden_path)
-            };
-            if resolved.starts_with(&forbidden_resolved) {
-                return Err(format!(
-                    "Resolved path is inside a forbidden directory: {}",
-                    forbidden_resolved.display()
-                ));
-            }
-        }
+        self.check_resolved_against_forbidden(&resolved, &workspace_root)?;
         log::debug!(
             "[security] validate_path: '{}' resolved to '{}'",
             path,
@@ -830,7 +897,12 @@ impl SecurityPolicy {
         if !self.is_path_string_allowed(path) {
             return Err(format!("Path not allowed by security policy: {path}"));
         }
-        let full_path = self.workspace_dir.join(path);
+        let expanded = self.expand_tilde(path);
+        let full_path = if Path::new(&expanded).is_absolute() {
+            PathBuf::from(&expanded)
+        } else {
+            self.workspace_dir.join(&expanded)
+        };
         let parent = full_path
             .parent()
             .ok_or_else(|| format!("Invalid path (no parent): {path}"))?;
@@ -870,32 +942,11 @@ impl SecurityPolicy {
         let resolved_parent = canonical_ancestor.join(relative_suffix);
         let result = resolved_parent.join(file_name);
 
-        // Forbidden path check using canonical path-component-aware comparison.
-        // Relative entries are resolved against the workspace root. Absolute entries
-        // whose prefix IS the workspace root are skipped (all workspace paths are under them).
-        let workspace_root = self
-            .workspace_dir
-            .canonicalize()
+        let workspace_root = tokio::fs::canonicalize(&self.workspace_dir)
+            .await
             .unwrap_or_else(|_| self.workspace_dir.clone());
-        for forbidden in &self.forbidden_paths {
-            let forbidden_path = PathBuf::from(self.expand_tilde(forbidden));
-            let forbidden_resolved = if forbidden_path.is_absolute() {
-                if workspace_root.starts_with(&forbidden_path) {
-                    continue;
-                }
-                forbidden_path
-            } else {
-                workspace_root.join(forbidden_path)
-            };
-            if canonical_ancestor.starts_with(&forbidden_resolved)
-                || result.starts_with(&forbidden_resolved)
-            {
-                return Err(format!(
-                    "Resolved parent path is inside a forbidden directory: {}",
-                    forbidden_resolved.display()
-                ));
-            }
-        }
+        self.check_resolved_against_forbidden(&canonical_ancestor, &workspace_root)?;
+        self.check_resolved_against_forbidden(&result, &workspace_root)?;
 
         log::debug!(
             "[security] validate_parent_path: '{}' resolved parent to '{}'",
@@ -916,6 +967,34 @@ impl SecurityPolicy {
             .canonicalize()
             .unwrap_or_else(|_| self.workspace_dir.clone());
         resolved.starts_with(workspace_root)
+    }
+
+    /// Check `resolved` against every entry in `forbidden_paths`, resolving relative
+    /// entries against `workspace_root`. Absolute entries whose prefix IS the workspace
+    /// root are skipped — the workspace containment check already covers them.
+    fn check_resolved_against_forbidden(
+        &self,
+        resolved: &Path,
+        workspace_root: &Path,
+    ) -> Result<(), String> {
+        for forbidden in &self.forbidden_paths {
+            let forbidden_path = PathBuf::from(self.expand_tilde(forbidden));
+            let forbidden_resolved = if forbidden_path.is_absolute() {
+                if workspace_root.starts_with(&forbidden_path) {
+                    continue;
+                }
+                forbidden_path
+            } else {
+                workspace_root.join(forbidden_path)
+            };
+            if resolved.starts_with(&forbidden_resolved) {
+                return Err(format!(
+                    "Resolved path is inside a forbidden directory: {}",
+                    forbidden_resolved.display()
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Check if autonomy level permits any action at all

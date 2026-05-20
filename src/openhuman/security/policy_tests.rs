@@ -393,6 +393,91 @@ fn dotfile_in_workspace_allowed() {
     assert!(p.is_path_string_allowed(".env"));
 }
 
+// -- is_path_allowed — symlink safety (#1927) ---------------------
+
+#[cfg(unix)]
+#[test]
+fn symlink_inside_workspace_escaping_outside_is_blocked() {
+    use std::os::unix::fs::symlink;
+
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let outside = tempfile::tempdir().expect("outside tempdir");
+    let target = outside.path().join("secret.txt");
+    std::fs::write(&target, "secret").expect("write secret");
+
+    let link = workspace.path().join("evil");
+    symlink(&target, &link).expect("create symlink");
+
+    let p = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: true,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+
+    // String-level checks pass: "evil" has no "..", isn't absolute, and is
+    // not in forbidden_paths. The canonicalize step must catch the symlink
+    // pointing outside the workspace root.
+    assert!(
+        !p.is_path_string_allowed("evil"),
+        "symlink that escapes the workspace must be blocked"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_to_forbidden_tree_is_blocked() {
+    use std::os::unix::fs::symlink;
+
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let forbidden = tempfile::tempdir().expect("forbidden tempdir");
+    let target = forbidden.path().join("secret");
+    std::fs::write(&target, "x").expect("write secret");
+
+    let link = workspace.path().join("link-to-forbidden");
+    symlink(&target, &link).expect("create symlink");
+
+    let p = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        // Disable workspace_only so the assertion isolates the forbidden_paths
+        // path (the symlink escapes the workspace, which would also trip
+        // workspace_only — but here we want to prove the forbidden_paths
+        // check itself canonicalizes).
+        workspace_only: false,
+        forbidden_paths: vec![forbidden.path().to_string_lossy().to_string()],
+        ..SecurityPolicy::default()
+    };
+
+    // The string "link-to-forbidden" does not start with the forbidden
+    // tempdir path, so the string-level check passes. Canonical resolution
+    // must catch that it resolves into the forbidden tree.
+    assert!(
+        !p.is_path_string_allowed("link-to-forbidden"),
+        "symlink that resolves into a forbidden tree must be blocked"
+    );
+}
+
+#[test]
+fn write_to_not_yet_existing_path_in_workspace_still_allowed() {
+    // After adding the symlink-safe canonicalize step, writing to a
+    // not-yet-existing path inside the workspace must still pass — the
+    // parent-dir fallback canonicalizes the parent and confirms it is
+    // inside the workspace root.
+    let workspace = tempfile::tempdir().expect("workspace tempdir");
+    let p = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: true,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+
+    assert!(p.is_path_string_allowed("new-file.txt"));
+    // Whole parent chain missing too — helper returns None, and we fall
+    // back to the string-level checks (which would pass for a
+    // workspace-relative non-traversal path).
+    assert!(p.is_path_string_allowed("not-yet-existing/subdir/file.txt"));
+}
+
 // -- from_config --------------------------------------------------
 
 #[test]
@@ -1355,4 +1440,58 @@ async fn validate_parent_path_blocks_forbidden_path() {
         .validate_parent_path("secrets/output.csv")
         .await
         .is_err());
+}
+
+// ── tilde expansion in validate_path / validate_parent_path ──────────────────
+
+#[cfg(unix)]
+#[tokio::test]
+async fn validate_path_expands_tilde_before_workspace_join() {
+    // ~/... must be resolved against the real home dir, not literally joined onto
+    // workspace_dir. With workspace_only:false and no forbidden entries, is_path_string_allowed
+    // passes ~/file. After tilde expansion the file is outside the temp workspace, so we
+    // expect "Resolved path escapes workspace" — not "Failed to resolve path" (which would
+    // indicate the literal ~/... was appended to workspace_dir and canonicalize failed there).
+    let workspace = tempfile::tempdir().unwrap();
+    let home = dirs::home_dir().unwrap();
+    let target = home.join("openhuman_tilde_validate_path_test.txt");
+    std::fs::write(&target, "test").unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: false,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+    let err = policy
+        .validate_path("~/openhuman_tilde_validate_path_test.txt")
+        .await
+        .unwrap_err();
+    let _ = std::fs::remove_file(&target);
+    assert!(
+        err.contains("Resolved path escapes workspace"),
+        "expected workspace-escape error (tilde correctly expanded); got: {err}"
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn validate_parent_path_expands_tilde_before_workspace_join() {
+    // Same as above but for validate_parent_path: writing ~/new_file.txt in
+    // non-workspace-only mode must escape-check via the real home path, not a literal ~/
+    // inside workspace_dir.
+    let workspace = tempfile::tempdir().unwrap();
+    let policy = SecurityPolicy {
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: false,
+        forbidden_paths: vec![],
+        ..SecurityPolicy::default()
+    };
+    let err = policy
+        .validate_parent_path("~/openhuman_tilde_validate_parent_test.txt")
+        .await
+        .unwrap_err();
+    assert!(
+        err.contains("Resolved parent path escapes workspace"),
+        "expected workspace-escape error (tilde correctly expanded); got: {err}"
+    );
 }
