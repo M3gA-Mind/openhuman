@@ -87,6 +87,7 @@ impl AgentBuilder {
             omit_profile: None,
             omit_memory_md: None,
             payload_summarizer: None,
+            tool_policy: None,
             archivist_hook: None,
             unified_compaction_enabled: true,
         }
@@ -326,6 +327,18 @@ impl AgentBuilder {
         self
     }
 
+    /// Installs pre-execution policy middleware for tool calls.
+    ///
+    /// The default policy allows all calls. Custom policies can deny a call
+    /// before `Tool::execute_with_options` runs.
+    pub fn tool_policy(
+        mut self,
+        policy: Arc<dyn crate::openhuman::agent::tool_policy::ToolPolicy>,
+    ) -> Self {
+        self.tool_policy = Some(policy);
+        self
+    }
+
     /// Attach the production [`ArchivistHook`] instance so the session
     /// turn loop can call [`ArchivistHook::flush_open_segment`] at
     /// session-wind-down time, guaranteeing the trailing open segment is
@@ -553,6 +566,9 @@ impl AgentBuilder {
             omit_profile: self.omit_profile.unwrap_or(true),
             omit_memory_md: self.omit_memory_md.unwrap_or(true),
             payload_summarizer: self.payload_summarizer,
+            tool_policy: self.tool_policy.unwrap_or_else(|| {
+                Arc::new(crate::openhuman::agent::tool_policy::AllowAllToolPolicy)
+            }),
             last_seen_integrations_hash: 0,
             archivist_hook: self.archivist_hook,
             synthesized_tool_names: std::collections::HashSet::new(),
@@ -1122,6 +1138,16 @@ impl Agent {
                     crate::openhuman::memory::ToolMemoryCaptureHook::new(memory.clone(), true),
                 ));
                 log::info!("[learning] tool_memory_capture hook registered");
+            }
+
+            if config.learning.tool_memory_capture_enabled {
+                post_turn_hooks.push(Arc::new(
+                    crate::openhuman::agent_experience::AgentExperienceCaptureHook::new(
+                        memory.clone(),
+                        true,
+                    ),
+                ));
+                log::info!("[learning] agent_experience_capture hook registered");
             }
         }
 
