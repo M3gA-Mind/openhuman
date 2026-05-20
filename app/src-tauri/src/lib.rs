@@ -16,6 +16,7 @@ mod gmessages_scanner;
 mod imessage_scanner;
 #[cfg(target_os = "macos")]
 mod mascot_native_window;
+mod mcp_commands;
 mod meet_audio;
 mod meet_call;
 mod meet_scanner;
@@ -2955,7 +2956,9 @@ pub fn run() {
             meet_call::meet_call_close_window,
             companion_commands::register_companion_hotkey,
             companion_commands::unregister_companion_hotkey,
-            companion_commands::companion_activate
+            companion_commands::companion_activate,
+            mcp_commands::mcp_resolve_binary_path,
+            mcp_commands::mcp_open_client_config
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

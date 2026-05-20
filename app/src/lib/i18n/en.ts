@@ -1936,6 +1936,27 @@ const en: TranslationMap = {
   'settings.developerMenu.integrationTriggers.title': 'Integration Triggers',
   'settings.developerMenu.integrationTriggers.desc':
     'Configure AI triage settings for Composio integration triggers',
+  'settings.developerMenu.mcpServer.title': 'MCP Server',
+  'settings.developerMenu.mcpServer.desc':
+    'Configure external MCP clients to connect to OpenHuman',
+  'settings.mcpServer.title': 'MCP Server',
+  'settings.mcpServer.toolsSectionTitle': 'Available Tools',
+  'settings.mcpServer.toolsSectionDesc':
+    'Tools exposed via the MCP stdio server when running openhuman-core mcp',
+  'settings.mcpServer.configSectionTitle': 'Client Configuration',
+  'settings.mcpServer.configSectionDesc':
+    'Select your MCP client to generate the correct configuration snippet',
+  'settings.mcpServer.copySnippet': 'Copy to Clipboard',
+  'settings.mcpServer.copied': 'Copied!',
+  'settings.mcpServer.openConfigFile': 'Open Config File',
+  'settings.mcpServer.binaryPathNotFound':
+    'Binary not found — run: cargo build --bin openhuman-core',
+  'settings.mcpServer.openConfigError': 'Failed to open config file',
+  'settings.mcpServer.clientClaudeDesktop': 'Claude Desktop',
+  'settings.mcpServer.clientCursor': 'Cursor',
+  'settings.mcpServer.clientCodex': 'Codex',
+  'settings.mcpServer.clientZed': 'Zed',
+  'settings.mcpServer.configFilePath': 'Config file',
   'settings.appearance.menuDesc': 'Pick light, dark, or match your system theme',
   'settings.appearance.title': 'Appearance',
   'settings.appearance.themeHeading': 'Theme',

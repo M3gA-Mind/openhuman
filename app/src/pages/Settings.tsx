@@ -14,6 +14,7 @@ import ComposioTriagePanel from '../components/settings/panels/ComposioTriagePan
 import ConnectionsPanel from '../components/settings/panels/ConnectionsPanel';
 import CronJobsPanel from '../components/settings/panels/CronJobsPanel';
 import DeveloperOptionsPanel from '../components/settings/panels/DeveloperOptionsPanel';
+import McpServerPanel from '../components/settings/panels/McpServerPanel';
 import LocalModelDebugPanel from '../components/settings/panels/LocalModelDebugPanel';
 import MascotPanel from '../components/settings/panels/MascotPanel';
 import MemoryDataPanel from '../components/settings/panels/MemoryDataPanel';
@@ -352,6 +353,7 @@ const Settings = () => {
         <Route path="companion" element={wrapSettingsPage(<CompanionPanel />)} />
         {/* Developer Options */}
         <Route path="developer-options" element={wrapSettingsPage(<DeveloperOptionsPanel />)} />
+        <Route path="mcp-server" element={wrapSettingsPage(<McpServerPanel />)} />
         <Route
           path="notification-routing"
           element={wrapSettingsPage(<NotificationRoutingPanel />)}
