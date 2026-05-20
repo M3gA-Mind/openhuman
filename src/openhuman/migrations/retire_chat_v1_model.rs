@@ -103,9 +103,6 @@ mod tests {
         let stats = run(&mut config).expect("migration should succeed");
 
         assert!(!stats.default_model_remapped);
-        assert_eq!(
-            config.default_model.as_deref(),
-            Some("reasoning-quick-v1")
-        );
+        assert_eq!(config.default_model.as_deref(), Some("reasoning-quick-v1"));
     }
 }
