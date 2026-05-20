@@ -1937,8 +1937,7 @@ const en: TranslationMap = {
   'settings.developerMenu.integrationTriggers.desc':
     'Configure AI triage settings for Composio integration triggers',
   'settings.developerMenu.mcpServer.title': 'MCP Server',
-  'settings.developerMenu.mcpServer.desc':
-    'Configure external MCP clients to connect to OpenHuman',
+  'settings.developerMenu.mcpServer.desc': 'Configure external MCP clients to connect to OpenHuman',
   'settings.mcpServer.title': 'MCP Server',
   'settings.mcpServer.toolsSectionTitle': 'Available Tools',
   'settings.mcpServer.toolsSectionDesc':

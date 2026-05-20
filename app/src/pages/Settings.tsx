@@ -14,9 +14,9 @@ import ComposioTriagePanel from '../components/settings/panels/ComposioTriagePan
 import ConnectionsPanel from '../components/settings/panels/ConnectionsPanel';
 import CronJobsPanel from '../components/settings/panels/CronJobsPanel';
 import DeveloperOptionsPanel from '../components/settings/panels/DeveloperOptionsPanel';
-import McpServerPanel from '../components/settings/panels/McpServerPanel';
 import LocalModelDebugPanel from '../components/settings/panels/LocalModelDebugPanel';
 import MascotPanel from '../components/settings/panels/MascotPanel';
+import McpServerPanel from '../components/settings/panels/McpServerPanel';
 import MemoryDataPanel from '../components/settings/panels/MemoryDataPanel';
 import MemoryDebugPanel from '../components/settings/panels/MemoryDebugPanel';
 import MessagingPanel from '../components/settings/panels/MessagingPanel';

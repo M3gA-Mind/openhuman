@@ -82,14 +82,17 @@ fn resolve_binary_path() -> Result<PathBuf, String> {
             }
         }
 
-        let exe = std::env::current_exe()
-            .map_err(|e| format!("current_exe failed: {e}"))?;
+        let exe = std::env::current_exe().map_err(|e| format!("current_exe failed: {e}"))?;
         let start = exe
             .parent()
             .ok_or_else(|| "current_exe has no parent directory".to_string())?;
 
-        let candidate = find_debug_binary_walking_up(start)
-            .ok_or_else(|| format!("could not find target/debug/{bin_name} walking up from {}", start.display()))?;
+        let candidate = find_debug_binary_walking_up(start).ok_or_else(|| {
+            format!(
+                "could not find target/debug/{bin_name} walking up from {}",
+                start.display()
+            )
+        })?;
 
         log::debug!(
             "[mcp_commands] mcp_resolve_binary_path: dev binary found at {}",
@@ -99,8 +102,7 @@ fn resolve_binary_path() -> Result<PathBuf, String> {
     }
 
     // Release mode: sibling binary.
-    let exe = std::env::current_exe()
-        .map_err(|e| format!("current_exe failed: {e}"))?;
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe failed: {e}"))?;
 
     #[cfg(target_os = "macos")]
     let candidate = {
@@ -167,10 +169,11 @@ pub fn config_path_for_client(client: &str, os: &str) -> Result<PathBuf, String>
         }
         ("claude-desktop", "windows") => {
             // %APPDATA%\Claude\claude_desktop_config.json
-            let appdata = std::env::var("APPDATA").unwrap_or_else(|_| {
-                home.join("AppData/Roaming").display().to_string()
-            });
-            PathBuf::from(appdata).join("Claude").join("claude_desktop_config.json")
+            let appdata = std::env::var("APPDATA")
+                .unwrap_or_else(|_| home.join("AppData/Roaming").display().to_string());
+            PathBuf::from(appdata)
+                .join("Claude")
+                .join("claude_desktop_config.json")
         }
         ("claude-desktop", _) => {
             // Linux and other Unix
@@ -179,9 +182,8 @@ pub fn config_path_for_client(client: &str, os: &str) -> Result<PathBuf, String>
 
         // Cursor
         ("cursor", "windows") => {
-            let userprofile = std::env::var("USERPROFILE").unwrap_or_else(|_| {
-                home.display().to_string()
-            });
+            let userprofile =
+                std::env::var("USERPROFILE").unwrap_or_else(|_| home.display().to_string());
             PathBuf::from(userprofile).join(".cursor").join("mcp.json")
         }
         ("cursor", _) => home.join(".cursor/mcp.json"),
@@ -190,13 +192,10 @@ pub fn config_path_for_client(client: &str, os: &str) -> Result<PathBuf, String>
         ("codex", _) => home.join(".codex/config.json"),
 
         // Zed
-        ("zed", "macos") => {
-            home.join("Library/Application Support/Zed/settings.json")
-        }
+        ("zed", "macos") => home.join("Library/Application Support/Zed/settings.json"),
         ("zed", "windows") => {
-            let appdata = std::env::var("APPDATA").unwrap_or_else(|_| {
-                home.join("AppData/Roaming").display().to_string()
-            });
+            let appdata = std::env::var("APPDATA")
+                .unwrap_or_else(|_| home.join("AppData/Roaming").display().to_string());
             PathBuf::from(appdata).join("Zed").join("settings.json")
         }
         ("zed", _) => home.join(".config/zed/settings.json"),
@@ -229,8 +228,12 @@ pub fn mcp_open_client_config(client: String) -> Result<(), String> {
     // Ensure the file exists so the editor has something to open.
     if !path.exists() {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("failed to create config directory {}: {e}", parent.display()))?;
+            std::fs::create_dir_all(parent).map_err(|e| {
+                format!(
+                    "failed to create config directory {}: {e}",
+                    parent.display()
+                )
+            })?;
         }
         std::fs::write(&path, b"")
             .map_err(|e| format!("failed to create config file {}: {e}", path.display()))?;
@@ -275,8 +278,8 @@ mod tests {
 
     #[test]
     fn config_path_claude_desktop_macos() {
-        let path = config_path_for_client("claude-desktop", "macos")
-            .expect("should resolve on macos");
+        let path =
+            config_path_for_client("claude-desktop", "macos").expect("should resolve on macos");
         let s = path.display().to_string();
         assert!(
             s.contains("Library/Application Support/Claude/claude_desktop_config.json"),
@@ -286,10 +289,13 @@ mod tests {
 
     #[test]
     fn config_path_claude_desktop_linux() {
-        let path = config_path_for_client("claude-desktop", "linux")
-            .expect("should resolve on linux");
+        let path =
+            config_path_for_client("claude-desktop", "linux").expect("should resolve on linux");
         let s = path.display().to_string();
-        assert!(s.contains(".config/Claude/claude_desktop_config.json"), "unexpected path: {s}");
+        assert!(
+            s.contains(".config/Claude/claude_desktop_config.json"),
+            "unexpected path: {s}"
+        );
     }
 
     #[test]
@@ -312,7 +318,10 @@ mod tests {
             let path = config_path_for_client("codex", os)
                 .unwrap_or_else(|_| panic!("should resolve for os={os}"));
             let s = path.display().to_string();
-            assert!(s.ends_with(".codex/config.json"), "unexpected path for os={os}: {s}");
+            assert!(
+                s.ends_with(".codex/config.json"),
+                "unexpected path for os={os}: {s}"
+            );
         }
     }
 
@@ -330,7 +339,10 @@ mod tests {
     fn config_path_zed_linux() {
         let path = config_path_for_client("zed", "linux").expect("should resolve");
         let s = path.display().to_string();
-        assert!(s.contains(".config/zed/settings.json"), "unexpected path: {s}");
+        assert!(
+            s.contains(".config/zed/settings.json"),
+            "unexpected path: {s}"
+        );
     }
 
     #[test]
@@ -369,7 +381,9 @@ mod tests {
                 // Acceptable in a clean CI checkout where the binary hasn't
                 // been built yet. The error must be descriptive.
                 assert!(
-                    e.contains("openhuman-core") || e.contains("current_exe") || e.contains("target"),
+                    e.contains("openhuman-core")
+                        || e.contains("current_exe")
+                        || e.contains("target"),
                     "error message should reference the binary or path: {e}"
                 );
             }

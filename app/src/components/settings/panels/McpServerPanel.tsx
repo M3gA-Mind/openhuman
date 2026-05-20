@@ -66,16 +66,7 @@ function configFilePathFor(client: McpClient, os: string): string {
 function buildSnippet(client: McpClient, binaryPath: string): string {
   if (client === 'zed') {
     return JSON.stringify(
-      {
-        context_servers: {
-          openhuman: {
-            command: {
-              path: binaryPath,
-              args: ['mcp'],
-            },
-          },
-        },
-      },
+      { context_servers: { openhuman: { command: { path: binaryPath, args: ['mcp'] } } } },
       null,
       2
     );
@@ -83,14 +74,7 @@ function buildSnippet(client: McpClient, binaryPath: string): string {
 
   // Claude Desktop, Cursor, Codex
   return JSON.stringify(
-    {
-      mcpServers: {
-        openhuman: {
-          command: binaryPath,
-          args: ['mcp'],
-        },
-      },
-    },
+    { mcpServers: { openhuman: { command: binaryPath, args: ['mcp'] } } },
     null,
     2
   );
@@ -207,10 +191,7 @@ const McpServerPanel = () => {
         </div>
 
         {/* Client selector tabs */}
-        <div
-          className="flex gap-1 mb-4 flex-wrap"
-          role="tablist"
-          aria-label="MCP client selector">
+        <div className="flex gap-1 mb-4 flex-wrap" role="tablist" aria-label="MCP client selector">
           {clients.map(client => (
             <button
               key={client.id}

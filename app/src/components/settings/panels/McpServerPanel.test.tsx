@@ -14,18 +14,11 @@ import { renderWithProviders } from '../../../test/test-utils';
 // Hoisted mocks — must be defined before any imports that trigger the module
 // ---------------------------------------------------------------------------
 
-const hoisted = vi.hoisted(() => ({
-  invoke: vi.fn(),
-  isTauri: vi.fn(() => true),
-}));
+const hoisted = vi.hoisted(() => ({ invoke: vi.fn(), isTauri: vi.fn(() => true) }));
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: hoisted.invoke,
-}));
+vi.mock('@tauri-apps/api/core', () => ({ invoke: hoisted.invoke }));
 
-vi.mock('../../../utils/tauriCommands/common', () => ({
-  isTauri: hoisted.isTauri,
-}));
+vi.mock('../../../utils/tauriCommands/common', () => ({ isTauri: hoisted.isTauri }));
 
 vi.mock('../../hooks/useSettingsNavigation', () => ({
   useSettingsNavigation: () => ({
@@ -49,10 +42,7 @@ async function importPanel() {
 
 function setupClipboard() {
   const writeText = vi.fn().mockResolvedValue(undefined);
-  Object.defineProperty(navigator, 'clipboard', {
-    configurable: true,
-    value: { writeText },
-  });
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
   return writeText;
 }
 
