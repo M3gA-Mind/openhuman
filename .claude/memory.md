@@ -41,6 +41,8 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 - **`OPENHUMAN_LOCAL_AI_TIER` env var** overrides the selected tier at config load time (in `load.rs`).
 - **Frontend tier selector** is in `LocalModelPanel.tsx` under Settings > Local AI Model. Uses `coreRpcClient` to call 3 RPC methods: `local_ai_device_profile`, `local_ai_presets`, `local_ai_apply_preset`.
 - **Default config maps to Medium tier** (`gemma3:4b-it-qat`). If someone changes `model_ids.rs` defaults, they should keep `presets.rs` in sync.
+- **`ollama_base_url()` previously ignored `config.local_ai.base_url`** — It only read env vars. Fixed in feat/ollama-external-server-url by adding `ollama_base_url_from_config(config)`. Any new Ollama URL resolution must go through the config-aware helper, not the env-only one.
+- **`LocalModelDebugPanel.tsx` must seed URL from config on mount** — Previously initialized `ollamaBaseUrlInput` to the hardcoded default and only loaded the persisted URL when diagnostics ran. Fix: `useEffect` on mount calls `openhumanGetConfig()` and sets state from `config.local_ai.base_url`. Pattern to follow for any settings field backed by Rust config.
 
 ## Core process (in-process, no sidecar)
 
@@ -167,6 +169,7 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 - **`tauri-cef` submodule update can fix missing Tauri runtime modules** — e.g. updating to f75bc21f5 added the missing `tauri_runtime_cef::audio` module that was causing pre-push hook compile failures on the Tauri shell. When the shell fails to compile with a missing module error, check if the submodule needs updating.
 - **`git add` must run from repo root** — Staging paths like `app/public/...` with `git add` from inside `app/` won't match. Always run `git add` from `/Users/megamind/tinyhuman/openhuman-claude`.
 - **Brand kit assets live at `app/public/brand/`** — Copied there during session work; original source is in `~/Downloads/Brand kit/`. Not auto-synced; re-copy manually if Downloads content changes.
+- **`pnpm test:coverage` ENOENT on `coverage/.tmp/coverage-0.json`** — Race condition in coverage file collection; flaky, not reproducible every run. Use `pnpm debug unit` instead — runs Vitest without coverage, faster and reliable for iteration.
 
 ## Mascot Native Window (macOS)
 
@@ -223,3 +226,34 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 - **`service::status` is sync — must use `spawn_blocking`** — `crate::openhuman::service::status(config)` may shell out to `launchctl`. Wrap it in `tokio::task::spawn_blocking` when called from an async context.
 - **`autocomplete::global_engine().status()` calls `Config::load_or_init()` internally** — Avoid this inside snapshot code. Use the new `status_with_config(config)` method which accepts an already-loaded config.
 - **Per-stage snapshot timeouts** — `AUTH_FETCH_TIMEOUT = 5s` and `RUNTIME_SNAPSHOT_TIMEOUT = 10s` are constants in `ops.rs`; they sum to 15s, well under the 30s frontend RPC timeout.
+## Project Board & Issue Queries
+
+- **Project #2 paginates at 100 items** — Board has 627+ items. Use GraphQL cursor pagination to find all open P0 issues; a single query only returns the first 100.
+- **jq regex `\s+` causes parse errors** — Use plain `test("#NNNN")` to check if a PR/issue body references an issue number. `\s+` in jq regex triggers parse errors.
+- **Most open P0s are security or Linux AppImage GLIBC issues** — When triaging P0s, filter for those categories first.
+- **Project #2 shows only closed items on the board view** — Use `gh issue list --repo tinyhumansai/openhuman --state open --assignee ""` to find unassigned open issues instead of querying the project board.
+- **Check linked PRs via timeline API, not body regex** — `gh api repos/tinyhumansai/openhuman/issues/$N/timeline --paginate | jq '[.[] | select(.event == "cross-referenced" and .source.issue.state == "open")] | length'` is more reliable than searching issue body text for PR references.
+
+## Git Submodules
+
+- **`tauri-cef` and `tauri-plugin-notification` are git submodules** — When upstream/main updates them, fix with `git submodule update --remote --checkout`, not by manually patching the vendored crate.
+
+## Pre-existing Test Failures
+
+- **`composio::action_tool::tests::factory_routes_through_direct_when_mode_is_direct` fails in `cargo test -p openhuman`** — Pre-existing failure unrelated to WhatsApp or any recent branch work. Do not attempt to fix unless explicitly tasked. Also intermittently flaky when run as part of the full suite — see "Pre-existing Flaky Tests" section.
+
+## Workflow Gate (must not skip)
+
+- **Steps 4–6 of `workflow/00-full-workflow.md` are mandatory before committing** — Step 4: architectobot verify. Step 5: full checks (`pnpm test:coverage`, `pnpm build`, `bash scripts/install.sh --dry-run`, PR quality scripts). Step 6: memory-keeper. Skipping any of these violates the workflow contract.
+- **Encode architectobot answers in the codecrusher prompt** — When the architectobot plan includes clarifying questions and the user approves specific answers, embed those decisions as explicit constraints in the codecrusher prompt so the agent doesn't re-ask.
+
+## Security Policy
+
+- **Path validation entry point** — `src/openhuman/security/policy.rs` exposes `validate_path` / `validate_parent_path`. All file I/O path validation must go through this API. `is_path_string_allowed()` is a string-only first pass, not sufficient on its own.
+- **validate_parent_path before create_dir_all** — For write operations, `validate_parent_path` MUST be called before any `create_dir_all` call. Calling it after allows symlink attacks to create directories outside the workspace before the security check fires (Issue #1927).
+- **Tool callers must use `validate_path` / `validate_parent_path`** — All tool implementations under `src/openhuman/tools/impl/filesystem/` must use these functions, not the legacy `is_path_allowed` / `is_resolved_path_allowed`.
+- **Security policy test filter** — Run only security policy tests with: `cargo test -p openhuman -- "security::policy"`. Runs the 100 tests in `src/openhuman/security/policy_tests.rs` cleanly.
+
+## Pre-existing Flaky Tests
+
+- **`composio::action_tool` and `agent::harness::session::turn` intermittent failures** — These tests fail randomly when run as part of the full suite (likely shared state or timing), but pass individually. Not related to security/policy changes. Do not treat as blockers for security-module PRs.
