@@ -202,7 +202,10 @@ const McpServerPanel = () => {
         </div>
 
         {/* Client selector tabs */}
-        <div className="flex gap-1 mb-4 flex-wrap" role="tablist" aria-label={t('settings.mcpServer.clientSelectorAriaLabel')}>
+        <div
+          className="flex gap-1 mb-4 flex-wrap"
+          role="tablist"
+          aria-label={t('settings.mcpServer.clientSelectorAriaLabel')}>
           {clients.map(client => (
             <button
               key={client.id}
