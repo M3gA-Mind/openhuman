@@ -246,17 +246,22 @@ fn make_openhuman_backend(config: &Config) -> anyhow::Result<(Box<dyn Provider>,
         options.secrets_encrypt
     );
     // Translate `hint:<tier>` model strings into the OpenHuman backend's
-    // canonical tier names.  For any remaining string that is not a known
-    // tier, fall back to the default rather than forwarding it to the backend
-    // (which would return HTTP 400).  This guards against stale `default_model`
-    // values written by older UI versions (e.g. "deepseek-v4-pro",
-    // "claude-opus-4-7") that persist across app updates.
+    // canonical tier names.  Unrecognised `hint:*` strings (e.g. `hint:reaction`
+    // for lightweight models) are forwarded as-is — the backend is authoritative
+    // over which hint values it accepts, and the web-chat model_override path
+    // uses these verbatim.  Only non-hint strings that are not a known canonical
+    // tier (stale `default_model` values written by older UI versions, e.g.
+    // "deepseek-v4-pro", "claude-opus-4-7") fall back to the platform default.
     let model = match model.strip_prefix("hint:") {
         Some("reasoning") => crate::openhuman::config::MODEL_REASONING_V1.to_string(),
         Some("chat") => crate::openhuman::config::MODEL_CHAT_V1.to_string(),
         Some("agentic") => crate::openhuman::config::MODEL_AGENTIC_V1.to_string(),
         Some("coding") => crate::openhuman::config::MODEL_CODING_V1.to_string(),
-        _ => {
+        Some(_) => {
+            // Unrecognised hint — forward verbatim; the backend decides validity.
+            model
+        }
+        None => {
             if is_known_openhuman_tier(&model) {
                 model
             } else {

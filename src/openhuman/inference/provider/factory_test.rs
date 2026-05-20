@@ -497,15 +497,17 @@ fn invalid_models_fail() {
 }
 
 #[test]
-fn make_openhuman_backend_falls_back_for_unknown_hint() {
-    let mut config = Config::default();
-    config.default_model = Some("hint:garbage".to_string());
-    let (_, model) = make_openhuman_backend(&config).expect("factory should succeed");
-    assert_eq!(
-        model,
-        crate::openhuman::config::MODEL_REASONING_V1,
-        "unknown hint:* values must fall back to MODEL_REASONING_V1, not be forwarded"
-    );
+fn make_openhuman_backend_forwards_unknown_hint_verbatim() {
+    // Unrecognised hint:* strings (e.g. hint:reaction for lightweight models)
+    // must be forwarded to the backend unchanged. The backend is authoritative
+    // over which hint values it accepts; the factory only translates the four
+    // canonical hints (reasoning/chat/agentic/coding).
+    for hint in ["hint:reaction", "hint:garbage", "hint:summarization"] {
+        let mut config = Config::default();
+        config.default_model = Some(hint.to_string());
+        let (_, model) = make_openhuman_backend(&config).expect("factory should succeed");
+        assert_eq!(model, hint, "hint '{hint}' should pass through unchanged");
+    }
 }
 
 #[test]
