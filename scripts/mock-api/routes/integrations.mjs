@@ -312,7 +312,8 @@ export function handleIntegrations(ctx) {
           ? parsedBody.tool
           : "";
     // composioExecuteFails → inject error response
-    if (mockBehavior.composioExecuteFails === "1") {
+    // Knob values: '400' or '1' → HTTP 400; '500' → HTTP 500
+    if (mockBehavior.composioExecuteFails === "400" || mockBehavior.composioExecuteFails === "1") {
       json(res, 400, {
         success: false,
         error: "Mock execute failure",
@@ -367,7 +368,11 @@ export function handleIntegrations(ctx) {
     method === "DELETE" &&
     /^\/agent-integrations\/composio\/connections\/[^/]+\/?$/.test(url)
   ) {
-    if (mockBehavior.composioDeleteFails === "1") {
+    if (mockBehavior.composioDeleteFails === "400") {
+      json(res, 400, { success: false, error: "Mock connection delete failure" });
+      return true;
+    }
+    if (mockBehavior.composioDeleteFails === "500" || mockBehavior.composioDeleteFails === "1") {
       json(res, 500, { success: false, error: "Mock connection delete failure" });
       return true;
     }
@@ -384,8 +389,9 @@ export function handleIntegrations(ctx) {
       { id: "c1", toolkit: "gmail", status: "ACTIVE" },
     ]);
     const next = conns.filter((c) => c.id !== connId);
+    const deleted = next.length !== conns.length;
     setMockBehavior("composioConnections", JSON.stringify(next));
-    json(res, 200, { success: true, data: { deleted: true } });
+    json(res, 200, { success: true, data: { deleted } });
     return true;
   }
 
@@ -394,7 +400,11 @@ export function handleIntegrations(ctx) {
     method === "POST" &&
     /^\/agent-integrations\/composio\/sync\/?$/.test(url)
   ) {
-    if (mockBehavior.composioSyncFails === "1") {
+    if (mockBehavior.composioSyncFails === "400") {
+      json(res, 400, { success: false, error: "Mock sync failure" });
+      return true;
+    }
+    if (mockBehavior.composioSyncFails === "500" || mockBehavior.composioSyncFails === "1") {
       json(res, 500, { success: false, error: "Mock sync failure" });
       return true;
     }

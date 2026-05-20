@@ -104,10 +104,9 @@ describe('Gmail (Composio) connector flow', () => {
     clearRequestLog();
     await callOpenhumanRpc('openhuman.composio_sync', { toolkit: TOOLKIT_SLUG });
     const log = getRequestLog();
-    const syncReq = log.find(r => r.url.includes('/composio/sync'));
-    if (syncReq) {
-      console.log(`${LOG} PASS: composio_sync routed (status ${syncReq.statusCode})`);
-    }
+    const syncReq = log.find(r => r.method === 'POST' && r.url.includes('/composio/sync'));
+    expect(syncReq).toBeDefined();
+    console.log(`${LOG} PASS: composio_sync routed (status ${syncReq.statusCode})`);
     await assertSessionNotNuked();
   });
 
@@ -121,10 +120,9 @@ describe('Gmail (Composio) connector flow', () => {
     });
     const log = getRequestLog();
     const execReq = log.find(r => r.url.includes('/composio/execute'));
-    if (execReq) {
-      expect(execReq.method).toBe('POST');
-      console.log(`${LOG} PASS: composio_execute routed`);
-    }
+    expect(execReq).toBeDefined();
+    expect(execReq.method).toBe('POST');
+    console.log(`${LOG} PASS: composio_execute routed`);
   });
 
   it('GMAIL_FETCH_EMAILS returning 400 shows user-friendly error, not blank screen (#1296)', async function () {
@@ -201,9 +199,8 @@ describe('Gmail (Composio) connector flow', () => {
     const deleteReq = log.find(
       r => r.method === 'DELETE' && r.url.includes('/composio/connections/')
     );
-    if (deleteReq) {
-      console.log(`${LOG} PASS: disconnect routed DELETE`);
-    }
+    expect(deleteReq).toBeDefined();
+    console.log(`${LOG} PASS: disconnect routed DELETE`);
     await assertSessionNotNuked();
   });
 });

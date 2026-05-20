@@ -119,6 +119,9 @@ describe('Discord (Composio) connector flow', () => {
     this.timeout(30_000);
     clearRequestLog();
     await callOpenhumanRpc('openhuman.composio_sync', { toolkit: TOOLKIT_SLUG });
+    const syncLog = getRequestLog();
+    const syncReq = syncLog.find(r => r.method === 'POST' && r.url.includes('/composio/sync'));
+    expect(syncReq).toBeDefined();
     await assertSessionNotNuked();
     console.log(`${LOG} PASS: sync does not nuke session`);
   });
@@ -133,7 +136,8 @@ describe('Discord (Composio) connector flow', () => {
     });
     const log = getRequestLog();
     const execReq = log.find(r => r.url.includes('/composio/execute'));
-    if (execReq) expect(execReq.method).toBe('POST');
+    expect(execReq).toBeDefined();
+    expect(execReq.method).toBe('POST');
     await assertSessionNotNuked();
     console.log(`${LOG} PASS: execute routed`);
   });
@@ -159,7 +163,7 @@ describe('Discord (Composio) connector flow', () => {
     console.log(`${LOG} PASS: expired auth does not log user out`);
   });
 
-  it('unrelated 401 on composio route does not nuke session', async function () {
+  it('unrelated 4xx on composio route does not nuke session', async function () {
     this.timeout(60_000);
     injectComposioFault(400);
     await callOpenhumanRpc('openhuman.composio_execute', {
@@ -182,7 +186,8 @@ describe('Discord (Composio) connector flow', () => {
     const deleteReq = log.find(
       r => r.method === 'DELETE' && r.url.includes('/composio/connections/')
     );
-    if (deleteReq) console.log(`${LOG} PASS: disconnect routed DELETE`);
+    expect(deleteReq).toBeDefined();
+    console.log(`${LOG} PASS: disconnect routed DELETE`);
     await assertSessionNotNuked();
   });
 });

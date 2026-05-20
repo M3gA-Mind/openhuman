@@ -121,16 +121,10 @@ describe('GitHub Composio connector flow', () => {
     clearRequestLog();
 
     await callOpenhumanRpc('openhuman.composio_sync', { toolkit: TOOLKIT_SLUG });
-    // sync may not be a top-level RPC; if the method is unknown the mock
-    // returns ok=false — that is expected for unimplemented methods but the
-    // HTTP call must not crash the session.
     const log = getRequestLog();
-    const syncReq = log.find(r => r.url.includes('/composio/sync'));
-    if (syncReq) {
-      console.log(`${LOG} PASS: composio_sync routed to mock (status ${syncReq.statusCode})`);
-    } else {
-      console.log(`${LOG} INFO: composio_sync did not hit /composio/sync — RPC may be batched`);
-    }
+    const syncReq = log.find(r => r.method === 'POST' && r.url.includes('/composio/sync'));
+    expect(syncReq).toBeDefined();
+    console.log(`${LOG} PASS: composio_sync routed to mock (status ${syncReq.statusCode})`);
     // Session must remain alive regardless
     await assertSessionNotNuked();
   });
@@ -146,13 +140,9 @@ describe('GitHub Composio connector flow', () => {
     });
     const log = getRequestLog();
     const execReq = log.find(r => r.url.includes('/composio/execute'));
-    if (execReq) {
-      expect(execReq.method).toBe('POST');
-      console.log(`${LOG} PASS: composio_execute routed to mock`);
-    } else {
-      console.log(`${LOG} INFO: composio_execute not observed in request log — checking RPC ok`);
-      // The RPC itself may succeed via an alternate path
-    }
+    expect(execReq).toBeDefined();
+    expect(execReq.method).toBe('POST');
+    console.log(`${LOG} PASS: composio_execute routed to mock`);
   });
 
   it('trigger catalog lists available GitHub triggers', async function () {
@@ -215,16 +205,12 @@ describe('GitHub Composio connector flow', () => {
     clearRequestLog();
 
     await callOpenhumanRpc('openhuman.composio_delete_connection', { connection_id: 'c-github-1' });
-    // delete may succeed or return unknown method — check HTTP layer
     const log = getRequestLog();
     const deleteReq = log.find(
       r => r.method === 'DELETE' && r.url.includes('/composio/connections/')
     );
-    if (deleteReq) {
-      console.log(`${LOG} PASS: disconnect routed DELETE to mock`);
-    } else {
-      console.log(`${LOG} INFO: disconnect call not observed at HTTP layer`);
-    }
+    expect(deleteReq).toBeDefined();
+    console.log(`${LOG} PASS: disconnect routed DELETE to mock`);
     await assertSessionNotNuked();
   });
 });

@@ -77,10 +77,7 @@ describe('Jira Composio connector flow', () => {
     await navigateToSkills();
     await waitForText(CONNECTOR_NAME, 10_000);
     const modal = await openConnectorModal(CONNECTOR_NAME);
-    if (!modal) {
-      console.log(`${LOG} modal not opened — skipping subdomain field check`);
-      return;
-    }
+    expect(modal).toBeTruthy();
     // The Jira connect modal should render a subdomain input per toolkitRequiredFields.ts
     // It uses data-testid="composio-required-subdomain"
     const hasSubdomainInput = await browser
@@ -95,12 +92,8 @@ describe('Jira Composio connector flow', () => {
         );
       })
       .catch(() => false);
-    // We assert softly — the UI may not be reachable on all hosts
-    if (hasSubdomainInput) {
-      console.log(`${LOG} PASS: subdomain input field visible in Jira modal`);
-    } else {
-      console.log(`${LOG} INFO: subdomain field not detected — skipping hard assert`);
-    }
+    expect(hasSubdomainInput).toBe(true);
+    console.log(`${LOG} PASS: subdomain input field visible in Jira modal`);
     // Close modal by pressing Escape
     await browser.keys(['Escape']).catch(() => {});
     await assertSessionNotNuked();
@@ -141,6 +134,9 @@ describe('Jira Composio connector flow', () => {
     this.timeout(30_000);
     clearRequestLog();
     await callOpenhumanRpc('openhuman.composio_sync', { toolkit: TOOLKIT_SLUG });
+    const syncLog = getRequestLog();
+    const syncReq = syncLog.find(r => r.method === 'POST' && r.url.includes('/composio/sync'));
+    expect(syncReq).toBeDefined();
     await assertSessionNotNuked();
     console.log(`${LOG} PASS: sync does not nuke session`);
   });
@@ -155,7 +151,8 @@ describe('Jira Composio connector flow', () => {
     });
     const log = getRequestLog();
     const execReq = log.find(r => r.url.includes('/composio/execute'));
-    if (execReq) expect(execReq.method).toBe('POST');
+    expect(execReq).toBeDefined();
+    expect(execReq.method).toBe('POST');
     console.log(`${LOG} PASS: execute routed`);
   });
 
@@ -201,7 +198,8 @@ describe('Jira Composio connector flow', () => {
     const deleteReq = log.find(
       r => r.method === 'DELETE' && r.url.includes('/composio/connections/')
     );
-    if (deleteReq) console.log(`${LOG} PASS: disconnect routed DELETE`);
+    expect(deleteReq).toBeDefined();
+    console.log(`${LOG} PASS: disconnect routed DELETE`);
     await assertSessionNotNuked();
   });
 });

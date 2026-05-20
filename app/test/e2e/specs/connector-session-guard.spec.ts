@@ -145,7 +145,7 @@ describe('Composio connector session guard (cross-cutting, #2286)', () => {
     );
 
     await navigateToSkills();
-    await browser.pause(2_000);
+    await waitForWebView(15_000);
 
     await assertSessionNotNuked();
     console.log(`${LOG} PASS: FAILED connections on Skills page do not log user out`);
@@ -161,7 +161,7 @@ describe('Composio connector session guard (cross-cutting, #2286)', () => {
     );
 
     await navigateToSkills();
-    await browser.pause(2_000);
+    await waitForWebView(15_000);
 
     await assertSessionNotNuked();
     console.log(`${LOG} PASS: EXPIRED connections on Skills page do not log user out`);

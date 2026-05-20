@@ -123,9 +123,9 @@ export async function assertModalPhase(
     await browser.pause(400);
   }
 
-  // Soft assertion — log but don't fail; the UI may legitimately not expose
-  // all markers on all platforms.
-  console.log(`${LOG} modal phase "${phase}" not confirmed within timeout — continuing`);
+  throw new Error(
+    `assertModalPhase: phase "${phase}" for "${name}" not confirmed within ${timeout}ms — no marker found in [${markers.join(', ')}]`
+  );
 }
 
 /**
@@ -151,11 +151,12 @@ export async function assertSessionNotNuked(timeout = 20_000): Promise<void> {
  * knobs to trigger the given status code.
  *
  * Supported status codes: 400, 500.
+ * The mock route handlers interpret knob value '400' → HTTP 400 and '500' → HTTP 500.
  */
 export function injectComposioFault(statusCode: 400 | 500): void {
-  const value = String(statusCode === 500 ? '500' : '1');
+  const value = String(statusCode);
   setMockBehavior('composioExecuteFails', value);
-  setMockBehavior('composioDeleteFails', value === '500' ? '1' : value);
-  setMockBehavior('composioSyncFails', '1');
+  setMockBehavior('composioDeleteFails', value);
+  setMockBehavior('composioSyncFails', value);
   console.log(`${LOG} injected composio fault: status=${statusCode}`);
 }

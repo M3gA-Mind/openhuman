@@ -93,6 +93,9 @@ describe('YouTube Composio connector flow', () => {
     this.timeout(30_000);
     clearRequestLog();
     await callOpenhumanRpc('openhuman.composio_sync', { toolkit: TOOLKIT_SLUG });
+    const syncLog = getRequestLog();
+    const syncReq = syncLog.find(r => r.method === 'POST' && r.url.includes('/composio/sync'));
+    expect(syncReq).toBeDefined();
     await assertSessionNotNuked();
     console.log(`${LOG} PASS: sync does not nuke session`);
   });
@@ -107,7 +110,8 @@ describe('YouTube Composio connector flow', () => {
     });
     const log = getRequestLog();
     const execReq = log.find(r => r.url.includes('/composio/execute'));
-    if (execReq) expect(execReq.method).toBe('POST');
+    expect(execReq).toBeDefined();
+    expect(execReq.method).toBe('POST');
     console.log(`${LOG} PASS: execute routed`);
   });
 
@@ -127,7 +131,8 @@ describe('YouTube Composio connector flow', () => {
     await navigateToSkills();
     await waitForText(CONNECTOR_NAME, 10_000);
     const modal = await openConnectorModal(CONNECTOR_NAME);
-    if (modal) await assertModalPhase('expired', CONNECTOR_NAME);
+    expect(modal).toBeTruthy();
+    await assertModalPhase('expired', CONNECTOR_NAME);
     await assertSessionNotNuked();
     console.log(`${LOG} PASS: expired auth does not log user out`);
   });
@@ -155,7 +160,8 @@ describe('YouTube Composio connector flow', () => {
     const deleteReq = log.find(
       r => r.method === 'DELETE' && r.url.includes('/composio/connections/')
     );
-    if (deleteReq) console.log(`${LOG} PASS: disconnect routed DELETE`);
+    expect(deleteReq).toBeDefined();
+    console.log(`${LOG} PASS: disconnect routed DELETE`);
     await assertSessionNotNuked();
   });
 });
