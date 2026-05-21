@@ -687,6 +687,11 @@ VITE_WRAPPER_UNIX="$WRAPPER_DIR_UNIX/run-vite.bat"
   printf '"%s" "%s" %%*\r\n' "$NODE_EXE_WIN" "$VITE_JS_WIN"
 } > "$VITE_WRAPPER_UNIX"
 VITE_WRAPPER_WIN="$(cygpath -w "$VITE_WRAPPER_UNIX" 2>/dev/null || printf '%s' "$VITE_WRAPPER_UNIX")"
+if [[ "$VITE_WRAPPER_WIN" == *" "* ]]; then
+  echo "[run-dev-win] wrapper path contains spaces: $VITE_WRAPPER_WIN" >&2
+  echo "[run-dev-win] set TEMP/TMP to a space-free path (e.g. C:\\Temp) and retry." >&2
+  exit 1
+fi
 echo "[run-dev-win] vite wrapper at: $VITE_WRAPPER_WIN"
 BEFORE_DEV_CMD="${VITE_WRAPPER_WIN//\\/\\\\}"
 CONFIG_OVERRIDE="{\"build\":{\"beforeDevCommand\":\"$BEFORE_DEV_CMD\""
