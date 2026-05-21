@@ -441,13 +441,14 @@ pub fn build_runtime_proxy_client(service_key: &str) -> reqwest::Client {
         return client;
     }
 
-    // Native TLS so the OS trust store wins for outbound calls to
-    // api.tinyhumans.ai / composio / channel providers. See
-    // [`crate::api::rest`] for the broader rationale.
-    let builder = apply_runtime_proxy_to_builder(
-        reqwest::Client::builder().use_native_tls(),
-        service_key,
-    );
+    // TLS backend: Windows uses native (schannel) so the OS cert store
+    // is honored — see [`crate::api::rest`]. macOS / Linux keep rustls.
+    let raw = reqwest::Client::builder();
+    #[cfg(target_os = "windows")]
+    let raw = raw.use_native_tls();
+    #[cfg(not(target_os = "windows"))]
+    let raw = raw.use_rustls_tls();
+    let builder = apply_runtime_proxy_to_builder(raw, service_key);
     let client = builder.build().unwrap_or_else(|error| {
         tracing::warn!(service_key, "Failed to build proxied client: {error}");
         reqwest::Client::new()
@@ -467,11 +468,14 @@ pub fn build_runtime_proxy_client_with_timeouts(
         return client;
     }
 
-    let builder = reqwest::Client::builder()
-        .use_native_tls()
+    let raw = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .connect_timeout(std::time::Duration::from_secs(connect_timeout_secs));
-    let builder = apply_runtime_proxy_to_builder(builder, service_key);
+    #[cfg(target_os = "windows")]
+    let raw = raw.use_native_tls();
+    #[cfg(not(target_os = "windows"))]
+    let raw = raw.use_rustls_tls();
+    let builder = apply_runtime_proxy_to_builder(raw, service_key);
     let client = builder.build().unwrap_or_else(|error| {
         tracing::warn!(
             service_key,

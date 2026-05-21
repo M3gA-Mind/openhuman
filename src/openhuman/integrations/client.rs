@@ -100,8 +100,16 @@ impl IntegrationClient {
         // has historically failed on staging TLS handshakes while
         // rustls succeeds — so the integrations client was the odd one
         // out with raw "error sending request" failures.
-        let http_client = reqwest::Client::builder()
-            .use_rustls_tls()
+        // Windows: native TLS (schannel) so the OS cert store is honored
+        // — needed when corporate TLS interception re-signs certs with a
+        // private CA. macOS / Linux: keep rustls (preserves the staging
+        // handshake compatibility documented above).
+        let http_builder = reqwest::Client::builder();
+        #[cfg(target_os = "windows")]
+        let http_builder = http_builder.use_native_tls();
+        #[cfg(not(target_os = "windows"))]
+        let http_builder = http_builder.use_rustls_tls();
+        let http_client = http_builder
             .http1_only()
             .timeout(Duration::from_secs(60))
             .connect_timeout(Duration::from_secs(15))

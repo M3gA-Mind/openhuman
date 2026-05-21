@@ -78,13 +78,21 @@ fn build_backend_reqwest_client() -> Result<Client> {
         );
     }
 
-    // Use the platform TLS stack (schannel/SecureTransport/OpenSSL) so the
-    // OS trust store is honored — needed when running behind corporate
-    // TLS-inspecting proxies that present a re-signed cert from a CA only
-    // trusted by the OS, not by rustls's bundled webpki-roots.
-    Client::builder()
-        .default_headers(default_headers)
-        .use_native_tls()
+    // TLS backend selection:
+    //   - Windows: schannel (native-tls) so the Windows cert store is
+    //     honored, including any corporate CA installed by AV / TLS-
+    //     inspecting proxies that re-sign certs with a private root.
+    //     rustls + webpki-roots only knows Mozilla CAs and fails such
+    //     environments with `UnknownIssuer`.
+    //   - macOS / Linux: keep rustls + webpki-roots — these platforms
+    //     don't hit the corporate-MITM scenario in normal distribution,
+    //     and rustls avoids the OpenSSL runtime dependency on Linux.
+    let builder = Client::builder().default_headers(default_headers);
+    #[cfg(target_os = "windows")]
+    let builder = builder.use_native_tls();
+    #[cfg(not(target_os = "windows"))]
+    let builder = builder.use_rustls_tls();
+    builder
         .http1_only()
         .timeout(Duration::from_secs(120))
         .connect_timeout(Duration::from_secs(15))

@@ -23,9 +23,13 @@ fn shared_http_client() -> reqwest::Client {
     SHARED_HTTP_CLIENT
         .get_or_init(|| {
             tracing::debug!("[searxng] initializing shared HTTP client");
-            reqwest::Client::builder()
-                .use_rustls_tls()
-                .build()
+            // Windows: native TLS for OS cert store; else: keep rustls.
+            let b = reqwest::Client::builder();
+            #[cfg(target_os = "windows")]
+            let b = b.use_native_tls();
+            #[cfg(not(target_os = "windows"))]
+            let b = b.use_rustls_tls();
+            b.build()
                 .expect("failed to build shared SearXNG HTTP client")
         })
         .clone()

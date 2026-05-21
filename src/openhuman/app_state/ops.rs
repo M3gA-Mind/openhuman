@@ -263,9 +263,14 @@ fn save_stored_app_state(config: &Config, state: &StoredAppState) -> Result<(), 
 }
 
 fn build_client() -> Result<Client, String> {
-    // Native TLS so the OS trust store is honored — see [`crate::api::rest`].
-    Client::builder()
-        .use_native_tls()
+    // Windows: native TLS so the OS trust store is honored — see
+    // [`crate::api::rest`]. Other platforms keep rustls.
+    let builder = Client::builder();
+    #[cfg(target_os = "windows")]
+    let builder = builder.use_native_tls();
+    #[cfg(not(target_os = "windows"))]
+    let builder = builder.use_rustls_tls();
+    builder
         .http1_only()
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
