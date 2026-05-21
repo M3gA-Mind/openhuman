@@ -620,26 +620,42 @@ fi
 #    between bash → cargo-tauri → cmd. The default in tauri.conf.json
 #    is `"pnpm run dev"` (bare name) which depends on PATH.
 #  - overrides `devUrl` when OPENHUMAN_DEV_PORT is non-default.
-# Point beforeDevCommand at vite directly, not through `pnpm run dev`.
+# Point beforeDevCommand at vite via a wrapper batch file in a
+# space-free temp directory.
 #
-# cargo-tauri runs the beforeDevCommand from the tauri project dir
-# (`app/src-tauri/`), so any `pnpm run dev` invocation inherits that
-# cwd. Pnpm then prepends `./node_modules/.bin` to PATH for the script
-# child — but `./` resolves against the inherited cwd, i.e.
-# `app/src-tauri/node_modules/.bin`, which doesn't exist. The result is
-# "'vite' is not recognized" inside cmd.
+# Why a wrapper instead of the absolute path directly:
+#   cargo-tauri runs beforeDevCommand as `cmd.exe /S /C <string>`. Rust's
+#   argv-to-cmd argument escaping strips literal double-quotes from the
+#   string, so if our `<string>` is `"E:\Office Files\…\vite.CMD"`,
+#   cmd ends up parsing `E:\Office` as the program name and the rest as
+#   arguments — "'E:\Office' is not recognized". 8.3 short-name fallback
+#   also fails when 8dot3name is disabled on the drive (as it is on this
+#   workspace's E: drive).
 #
-# Skip pnpm altogether and reference the vite shim via its absolute
-# Windows path. Same effect as `pnpm run dev`, no path-resolution
-# dependency on whichever cwd cargo-tauri chose.
+#   The fix is to call the spacey path from INSIDE a .bat file, where we
+#   can quote it however we want without involving cargo-tauri's outer
+#   escaping. The wrapper lives under %TEMP% (which is normally
+#   space-free) so its own path doesn't need quoting either.
 VITE_BIN_UNIX="$APP_DIR/node_modules/.bin/vite.CMD"
 if [[ ! -f "$VITE_BIN_UNIX" ]]; then
   echo "[run-dev-win] vite shim not found at $VITE_BIN_UNIX" >&2
-  echo "[run-dev-win] Did `pnpm install` run? Aborting." >&2
+  echo "[run-dev-win] Did 'pnpm install' run? Aborting." >&2
   exit 1
 fi
 VITE_BIN_WIN="$(cygpath -w "$VITE_BIN_UNIX" 2>/dev/null || printf '%s' "$VITE_BIN_UNIX")"
-BEFORE_DEV_CMD="${VITE_BIN_WIN//\\/\\\\}"
+
+WRAPPER_DIR_UNIX="$(cygpath -u "${TEMP:-${TMP:-/tmp}}" 2>/dev/null || echo /tmp)/openhuman-dev"
+mkdir -p "$WRAPPER_DIR_UNIX"
+VITE_WRAPPER_UNIX="$WRAPPER_DIR_UNIX/run-vite.bat"
+# Single-quoted heredoc keeps the .bat body literal (no MSYS path
+# rewrites, no variable expansion).
+{
+  printf '@echo off\r\n'
+  printf 'call "%s" %%*\r\n' "$VITE_BIN_WIN"
+} > "$VITE_WRAPPER_UNIX"
+VITE_WRAPPER_WIN="$(cygpath -w "$VITE_WRAPPER_UNIX" 2>/dev/null || printf '%s' "$VITE_WRAPPER_UNIX")"
+echo "[run-dev-win] vite wrapper at: $VITE_WRAPPER_WIN"
+BEFORE_DEV_CMD="${VITE_WRAPPER_WIN//\\/\\\\}"
 CONFIG_OVERRIDE="{\"build\":{\"beforeDevCommand\":\"$BEFORE_DEV_CMD\""
 if (( DEV_PORT != 1420 )); then
   echo "[run-dev-win] OPENHUMAN_DEV_PORT=$DEV_PORT — overriding tauri devUrl"
