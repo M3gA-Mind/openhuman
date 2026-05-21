@@ -620,15 +620,26 @@ fi
 #    between bash → cargo-tauri → cmd. The default in tauri.conf.json
 #    is `"pnpm run dev"` (bare name) which depends on PATH.
 #  - overrides `devUrl` when OPENHUMAN_DEV_PORT is non-default.
-PNPM_EXE_WIN="$(cygpath -w "$PNPM_EXE" 2>/dev/null || printf '%s' "$PNPM_EXE")"
-# JSON-escape the Windows path's backslashes for embedding in the -c arg.
-# No embedded double-quotes around the path: cargo-tauri spawns
-# `cmd.exe /S /C <command>` and Rust's argv escaping rewrites quoted
-# tokens to `\"…\"`, which cmd then treats as a literal filename. None
-# of the pnpm install paths we resolve have spaces (`@pnpm+exe/10.10.0`
-# is dot- and plus-laden but space-free), so a bare path is safe.
-PNPM_EXE_JSON="${PNPM_EXE_WIN//\\/\\\\}"
-BEFORE_DEV_CMD="$PNPM_EXE_JSON run dev"
+# Point beforeDevCommand at vite directly, not through `pnpm run dev`.
+#
+# cargo-tauri runs the beforeDevCommand from the tauri project dir
+# (`app/src-tauri/`), so any `pnpm run dev` invocation inherits that
+# cwd. Pnpm then prepends `./node_modules/.bin` to PATH for the script
+# child — but `./` resolves against the inherited cwd, i.e.
+# `app/src-tauri/node_modules/.bin`, which doesn't exist. The result is
+# "'vite' is not recognized" inside cmd.
+#
+# Skip pnpm altogether and reference the vite shim via its absolute
+# Windows path. Same effect as `pnpm run dev`, no path-resolution
+# dependency on whichever cwd cargo-tauri chose.
+VITE_BIN_UNIX="$APP_DIR/node_modules/.bin/vite.CMD"
+if [[ ! -f "$VITE_BIN_UNIX" ]]; then
+  echo "[run-dev-win] vite shim not found at $VITE_BIN_UNIX" >&2
+  echo "[run-dev-win] Did `pnpm install` run? Aborting." >&2
+  exit 1
+fi
+VITE_BIN_WIN="$(cygpath -w "$VITE_BIN_UNIX" 2>/dev/null || printf '%s' "$VITE_BIN_UNIX")"
+BEFORE_DEV_CMD="${VITE_BIN_WIN//\\/\\\\}"
 CONFIG_OVERRIDE="{\"build\":{\"beforeDevCommand\":\"$BEFORE_DEV_CMD\""
 if (( DEV_PORT != 1420 )); then
   echo "[run-dev-win] OPENHUMAN_DEV_PORT=$DEV_PORT — overriding tauri devUrl"
