@@ -85,7 +85,7 @@ export function storeRpcUrl(url: string): void {
   try {
     if (url && url.trim().length > 0) {
       localStorage.setItem(RPC_URL_STORAGE_KEY, url.trim());
-      console.debug('[configPersistence] Stored RPC URL:', { url: url.trim() });
+      console.debug('[configPersistence] Stored RPC URL:', url.trim());
     } else {
       // Allow clearing the stored URL to reset to default
       localStorage.removeItem(RPC_URL_STORAGE_KEY);
@@ -255,7 +255,7 @@ export function getStoredCoreMode(): 'local' | 'cloud' | null {
 export function storeCoreMode(mode: 'local' | 'cloud'): void {
   try {
     localStorage.setItem(CORE_MODE_STORAGE_KEY, mode);
-    console.debug('[configPersistence] Stored core mode:', { mode });
+    console.debug('[configPersistence] Stored core mode:', mode);
   } catch {
     console.warn('[configPersistence] Unable to store core mode in localStorage');
   }
