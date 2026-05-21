@@ -507,6 +507,13 @@ PATH_PREFIX="/c/Program Files/CMake/bin:$(dirname "$NINJA_EXE")"
 if [[ -n "${CEF_RUNTIME_PATH:-}" ]]; then
   PATH_PREFIX="$PATH_PREFIX:$CEF_RUNTIME_PATH"
 fi
+# Ensure the workspace node_modules/.bin is on PATH so pnpm's child
+# spawns (e.g. `pnpm tauri dev` → `tauri.CMD`) can resolve the shims.
+# Pnpm normally prepends `./node_modules/.bin` for script execution, but
+# when the script body is `tauri "dev"` and the child shell is cmd.exe
+# under the long bash→cmd→bash chain, the relative entry sometimes
+# resolves against the wrong cwd and tauri.CMD is not found.
+PATH_PREFIX="$APP_DIR/node_modules/.bin:$PATH_PREFIX"
 export PATH="$PATH_PREFIX:$PATH"
 
 "$PNPM_EXE" tauri:ensure
