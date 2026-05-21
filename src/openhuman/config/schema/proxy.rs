@@ -476,9 +476,12 @@ pub fn build_runtime_proxy_client_with_timeouts(
             service_key,
             "Failed to build proxied timeout client: {error}"
         );
-        // Apply the same platform TLS selection on the fallback path so the
-        // error-path client also honors the Windows cert store.
-        let fb = crate::openhuman::tls::tls_client_builder();
+        // Apply the same platform TLS selection and timeouts on the fallback
+        // path so the error-path client also honors the Windows cert store
+        // and remains bounded.
+        let fb = crate::openhuman::tls::tls_client_builder()
+            .timeout(std::time::Duration::from_secs(timeout_secs))
+            .connect_timeout(std::time::Duration::from_secs(connect_timeout_secs));
         fb.build().unwrap_or_default()
     });
     set_runtime_proxy_cached_client(cache_key, client.clone());
