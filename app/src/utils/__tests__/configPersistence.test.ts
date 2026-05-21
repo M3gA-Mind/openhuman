@@ -94,9 +94,9 @@ describe('configPersistence', () => {
       storeRpcUrl('http://localhost:9000/rpc');
       const calls = spy.mock.calls.flat();
       // Must NOT log an object like { url: '...' } — that renders as [object Object]
-      const hasObjectArg = calls.some((arg) => typeof arg === 'object' && arg !== null);
+      const hasObjectArg = calls.some(arg => typeof arg === 'object' && arg !== null);
       expect(hasObjectArg).toBe(false);
-      const urlArg = calls.find((arg) => typeof arg === 'string' && arg.includes('localhost'));
+      const urlArg = calls.find(arg => typeof arg === 'string' && arg.includes('localhost'));
       expect(urlArg).toBe('http://localhost:9000/rpc');
       spy.mockRestore();
     });
