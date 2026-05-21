@@ -622,8 +622,13 @@ fi
 #  - overrides `devUrl` when OPENHUMAN_DEV_PORT is non-default.
 PNPM_EXE_WIN="$(cygpath -w "$PNPM_EXE" 2>/dev/null || printf '%s' "$PNPM_EXE")"
 # JSON-escape the Windows path's backslashes for embedding in the -c arg.
+# No embedded double-quotes around the path: cargo-tauri spawns
+# `cmd.exe /S /C <command>` and Rust's argv escaping rewrites quoted
+# tokens to `\"…\"`, which cmd then treats as a literal filename. None
+# of the pnpm install paths we resolve have spaces (`@pnpm+exe/10.10.0`
+# is dot- and plus-laden but space-free), so a bare path is safe.
 PNPM_EXE_JSON="${PNPM_EXE_WIN//\\/\\\\}"
-BEFORE_DEV_CMD="\\\"$PNPM_EXE_JSON\\\" run dev"
+BEFORE_DEV_CMD="$PNPM_EXE_JSON run dev"
 CONFIG_OVERRIDE="{\"build\":{\"beforeDevCommand\":\"$BEFORE_DEV_CMD\""
 if (( DEV_PORT != 1420 )); then
   echo "[run-dev-win] OPENHUMAN_DEV_PORT=$DEV_PORT — overriding tauri devUrl"
