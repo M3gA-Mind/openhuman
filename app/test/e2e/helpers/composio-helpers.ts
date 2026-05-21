@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Shared helpers for Composio connector E2E specs.
  *
@@ -70,6 +69,7 @@ export async function openConnectorModal(name: string, timeout = 15_000): Promis
   // Click the connector card by name
   const cardEl = await waitForText(name, timeout);
   await cardEl.click();
+  // @ts-expect-error -- browser global is injected by WDIO at runtime, not typed in this env
   await browser.pause(1_500);
 
   // Wait for any of the standard modal header patterns
@@ -82,6 +82,7 @@ export async function openConnectorModal(name: string, timeout = 15_000): Promis
         return candidate;
       }
     }
+    // @ts-expect-error -- browser global is injected by WDIO at runtime, not typed in this env
     await browser.pause(400);
   }
 
@@ -120,6 +121,7 @@ export async function assertModalPhase(
         return;
       }
     }
+    // @ts-expect-error -- browser global is injected by WDIO at runtime, not typed in this env
     await browser.pause(400);
   }
 

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * E2E: Cross-cutting session guard for Composio connector routes.
  *

@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * E2E: Gmail (Composio) connector flow.
  *
@@ -106,7 +105,7 @@ describe('Gmail (Composio) connector flow', () => {
     const log = getRequestLog();
     const syncReq = log.find(r => r.method === 'POST' && r.url.includes('/composio/sync'));
     expect(syncReq).toBeDefined();
-    console.log(`${LOG} PASS: composio_sync routed (status ${syncReq.statusCode})`);
+    console.log(`${LOG} PASS: composio_sync routed (status ${syncReq?.statusCode})`);
     await assertSessionNotNuked();
   });
 
@@ -121,7 +120,7 @@ describe('Gmail (Composio) connector flow', () => {
     const log = getRequestLog();
     const execReq = log.find(r => r.url.includes('/composio/execute'));
     expect(execReq).toBeDefined();
-    expect(execReq.method).toBe('POST');
+    expect(execReq!.method).toBe('POST');
     console.log(`${LOG} PASS: composio_execute routed`);
   });
 

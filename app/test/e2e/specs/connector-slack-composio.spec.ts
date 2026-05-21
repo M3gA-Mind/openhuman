@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * E2E: Slack (Composio) connector flow.
  */
@@ -111,7 +110,7 @@ describe('Slack (Composio) connector flow', () => {
     const log = getRequestLog();
     const execReq = log.find(r => r.url.includes('/composio/execute'));
     expect(execReq).toBeDefined();
-    expect(execReq.method).toBe('POST');
+    expect(execReq!.method).toBe('POST');
     console.log(`${LOG} PASS: execute routed`);
   });
 

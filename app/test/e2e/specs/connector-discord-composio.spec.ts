@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * E2E: Discord (Composio) connector flow.
  *
@@ -78,6 +77,7 @@ describe('Discord (Composio) connector flow', () => {
     const cardEl = await waitForText(CONNECTOR_NAME, 10_000);
     try {
       await cardEl.click();
+      // @ts-expect-error -- browser global is injected by WDIO at runtime, not typed in this env
       await browser.pause(2_000);
     } catch (err) {
       console.log(`${LOG} card click threw: ${err} — still asserting session`);
@@ -137,7 +137,7 @@ describe('Discord (Composio) connector flow', () => {
     const log = getRequestLog();
     const execReq = log.find(r => r.url.includes('/composio/execute'));
     expect(execReq).toBeDefined();
-    expect(execReq.method).toBe('POST');
+    expect(execReq!.method).toBe('POST');
     await assertSessionNotNuked();
     console.log(`${LOG} PASS: execute routed`);
   });
