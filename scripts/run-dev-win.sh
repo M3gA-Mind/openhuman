@@ -613,9 +613,23 @@ if [[ ! -x "$CARGO_TAURI_EXE" ]]; then
   echo "[run-dev-win] tauri:ensure should have installed it. Aborting." >&2
   exit 1
 fi
+
+# Build a tauri.conf.json `-c` JSON merge that:
+#  - pins `beforeDevCommand` to the absolute pnpm path so cargo-tauri's
+#    cmd.exe child can find pnpm regardless of any PATH stripping
+#    between bash → cargo-tauri → cmd. The default in tauri.conf.json
+#    is `"pnpm run dev"` (bare name) which depends on PATH.
+#  - overrides `devUrl` when OPENHUMAN_DEV_PORT is non-default.
+PNPM_EXE_WIN="$(cygpath -w "$PNPM_EXE" 2>/dev/null || printf '%s' "$PNPM_EXE")"
+# JSON-escape the Windows path's backslashes for embedding in the -c arg.
+PNPM_EXE_JSON="${PNPM_EXE_WIN//\\/\\\\}"
+BEFORE_DEV_CMD="\\\"$PNPM_EXE_JSON\\\" run dev"
+CONFIG_OVERRIDE="{\"build\":{\"beforeDevCommand\":\"$BEFORE_DEV_CMD\""
 if (( DEV_PORT != 1420 )); then
   echo "[run-dev-win] OPENHUMAN_DEV_PORT=$DEV_PORT — overriding tauri devUrl"
-  "$CARGO_TAURI_EXE" dev -c "{\"build\":{\"devUrl\":\"http://localhost:$DEV_PORT\"}}"
-else
-  "$CARGO_TAURI_EXE" dev
+  CONFIG_OVERRIDE+=",\"devUrl\":\"http://localhost:$DEV_PORT\""
 fi
+CONFIG_OVERRIDE+="}}"
+
+echo "[run-dev-win] tauri config override: $CONFIG_OVERRIDE"
+"$CARGO_TAURI_EXE" dev -c "$CONFIG_OVERRIDE"
