@@ -76,7 +76,7 @@ async-trait = "0.1"
 chacha20poly1305 = "0.10"
 hex = "0.4"
 tokio-util = { version = "0.7", features = ["rt", "io"] }
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures = "0.3"
 rusqlite = { version = "0.37", features = ["bundled"] }
 chrono = { version = "0.4", features = ["serde"] }
