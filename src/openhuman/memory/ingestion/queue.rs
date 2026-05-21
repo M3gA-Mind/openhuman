@@ -250,8 +250,6 @@ mod tests {
     #[tokio::test]
     async fn submit_when_full_returns_false() {
         let state = IngestionState::new();
-        let (tx, _rx) = mpsc::channel::<IngestionJob>(1);
-        // Fill the channel slot with a dummy send so it's full.
         let (tx2, rx2) = mpsc::channel::<IngestionJob>(1);
         drop(rx2); // closed channel — worker gone
 
