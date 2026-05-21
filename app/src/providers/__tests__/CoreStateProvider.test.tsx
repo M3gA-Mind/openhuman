@@ -567,9 +567,7 @@ describe('CoreStateProvider — identity-change cache clearing', () => {
     // Arm the suppress window so core-rpc-auth-expired is silenced.
     await act(async () => {
       window.dispatchEvent(
-        new CustomEvent('core-state:suppress-reauth', {
-          detail: { until: Date.now() + 30_000 },
-        })
+        new CustomEvent('core-state:suppress-reauth', { detail: { until: Date.now() + 30_000 } })
       );
     });
 
@@ -606,9 +604,7 @@ describe('CoreStateProvider — identity-change cache clearing', () => {
       );
     });
     await act(async () => {
-      window.dispatchEvent(
-        new CustomEvent('core-state:suppress-reauth', { detail: { until: 0 } })
-      );
+      window.dispatchEvent(new CustomEvent('core-state:suppress-reauth', { detail: { until: 0 } }));
     });
 
     // auth-expired after suppress cleared must call logout.
