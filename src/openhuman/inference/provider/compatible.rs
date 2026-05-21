@@ -290,7 +290,9 @@ impl OpenAiCompatibleProvider {
 
             return builder.build().unwrap_or_else(|error| {
                 tracing::warn!("Failed to build proxied timeout client with user-agent: {error}");
-                Client::new()
+                crate::openhuman::tls::tls_client_builder()
+                    .build()
+                    .unwrap_or_default()
             });
         }
 
@@ -304,7 +306,9 @@ impl OpenAiCompatibleProvider {
         );
         builder.build().unwrap_or_else(|error| {
             tracing::warn!("Failed to build proxied timeout client: {error}");
-            Client::new()
+            crate::openhuman::tls::tls_client_builder()
+                .build()
+                .unwrap_or_default()
         })
     }
 
