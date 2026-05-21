@@ -78,21 +78,11 @@ fn build_backend_reqwest_client() -> Result<Client> {
         );
     }
 
-    // TLS backend selection:
-    //   - Windows: schannel (native-tls) so the Windows cert store is
-    //     honored, including any corporate CA installed by AV / TLS-
-    //     inspecting proxies that re-sign certs with a private root.
-    //     rustls + webpki-roots only knows Mozilla CAs and fails such
-    //     environments with `UnknownIssuer`.
-    //   - macOS / Linux: keep rustls + webpki-roots — these platforms
-    //     don't hit the corporate-MITM scenario in normal distribution,
-    //     and rustls avoids the OpenSSL runtime dependency on Linux.
-    let builder = Client::builder().default_headers(default_headers);
-    #[cfg(target_os = "windows")]
-    let builder = builder.use_native_tls();
-    #[cfg(not(target_os = "windows"))]
-    let builder = builder.use_rustls_tls();
-    builder
+    // Platform-appropriate TLS backend: Windows → schannel (honors the OS
+    // cert store, required for corporate TLS-inspection proxies); macOS /
+    // Linux → rustls. See [`crate::openhuman::tls::tls_client_builder`].
+    crate::openhuman::tls::tls_client_builder()
+        .default_headers(default_headers)
         .http1_only()
         .timeout(Duration::from_secs(120))
         .connect_timeout(Duration::from_secs(15))

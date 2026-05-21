@@ -441,17 +441,15 @@ pub fn build_runtime_proxy_client(service_key: &str) -> reqwest::Client {
         return client;
     }
 
-    // TLS backend: Windows uses native (schannel) so the OS cert store
-    // is honored — see [`crate::api::rest`]. macOS / Linux keep rustls.
-    let raw = reqwest::Client::builder();
-    #[cfg(target_os = "windows")]
-    let raw = raw.use_native_tls();
-    #[cfg(not(target_os = "windows"))]
-    let raw = raw.use_rustls_tls();
-    let builder = apply_runtime_proxy_to_builder(raw, service_key);
+    // Platform-appropriate TLS backend — see [`crate::openhuman::tls`].
+    let builder =
+        apply_runtime_proxy_to_builder(crate::openhuman::tls::tls_client_builder(), service_key);
     let client = builder.build().unwrap_or_else(|error| {
         tracing::warn!(service_key, "Failed to build proxied client: {error}");
-        reqwest::Client::new()
+        // Apply the same platform TLS selection on the fallback path so the
+        // error-path client also honors the Windows cert store.
+        let fb = crate::openhuman::tls::tls_client_builder();
+        fb.build().unwrap_or_default()
     });
     set_runtime_proxy_cached_client(cache_key, client.clone());
     client
@@ -468,20 +466,20 @@ pub fn build_runtime_proxy_client_with_timeouts(
         return client;
     }
 
-    let raw = reqwest::Client::builder()
+    // Platform-appropriate TLS backend — see [`crate::openhuman::tls`].
+    let raw = crate::openhuman::tls::tls_client_builder()
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .connect_timeout(std::time::Duration::from_secs(connect_timeout_secs));
-    #[cfg(target_os = "windows")]
-    let raw = raw.use_native_tls();
-    #[cfg(not(target_os = "windows"))]
-    let raw = raw.use_rustls_tls();
     let builder = apply_runtime_proxy_to_builder(raw, service_key);
     let client = builder.build().unwrap_or_else(|error| {
         tracing::warn!(
             service_key,
             "Failed to build proxied timeout client: {error}"
         );
-        reqwest::Client::new()
+        // Apply the same platform TLS selection on the fallback path so the
+        // error-path client also honors the Windows cert store.
+        let fb = crate::openhuman::tls::tls_client_builder();
+        fb.build().unwrap_or_default()
     });
     set_runtime_proxy_cached_client(cache_key, client.clone());
     client

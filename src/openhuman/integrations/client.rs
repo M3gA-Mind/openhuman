@@ -92,24 +92,11 @@ impl IntegrationClient {
         // to fix up the input so the regression is observable in logs.
         let backend_url = sanitize_backend_url(&backend_url);
 
-        // Match the TLS config used by `BackendOAuthClient` in
-        // `src/api/rest.rs`: force rustls + HTTP/1.1 so we get the same
-        // consistent cross-platform behaviour every other backend-proxied
-        // domain (billing, team, webhooks, referral, …) already relies
-        // on. The default builder picks up native-tls on macOS, which
-        // has historically failed on staging TLS handshakes while
-        // rustls succeeds — so the integrations client was the odd one
-        // out with raw "error sending request" failures.
-        // Windows: native TLS (schannel) so the OS cert store is honored
-        // — needed when corporate TLS interception re-signs certs with a
-        // private CA. macOS / Linux: keep rustls (preserves the staging
-        // handshake compatibility documented above).
-        let http_builder = reqwest::Client::builder();
-        #[cfg(target_os = "windows")]
-        let http_builder = http_builder.use_native_tls();
-        #[cfg(not(target_os = "windows"))]
-        let http_builder = http_builder.use_rustls_tls();
-        let http_client = http_builder
+        // Platform-appropriate TLS backend — see [`crate::openhuman::tls`].
+        // Windows uses schannel (native-tls) to honor the OS cert store;
+        // macOS / Linux keep rustls which avoids the OpenSSL runtime dep and
+        // has historically been more reliable on staging TLS handshakes.
+        let http_client = crate::openhuman::tls::tls_client_builder()
             .http1_only()
             .timeout(Duration::from_secs(60))
             .connect_timeout(Duration::from_secs(15))

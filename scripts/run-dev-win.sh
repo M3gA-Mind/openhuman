@@ -630,6 +630,15 @@ fi
 # `ensure-tauri-cli.sh` already installed the vendored CEF-aware
 # cargo-tauri at `$REPO_ROOT/.cache/cargo-install/bin/cargo-tauri.exe`,
 # so we can invoke that binary directly and skip the wrapper layer.
+#
+# Historical note: a previous version of this script ran a PATH
+# deduplication loop (collapsing repeated entries that MSYS→Windows
+# conversion stacked during vcvars / Git-Bash re-runs / pnpm layering).
+# That loop was needed because the overflowing env block left child
+# processes with an EMPTY PATH — even `where.exe` was gone, causing
+# "'pnpm' is not recognized". Direct cargo-tauri.exe invocation with
+# absolute paths in the .bat wrapper makes the env block size irrelevant:
+# beforeDevCommand no longer needs PATH at all.
 CARGO_TAURI_EXE="$REPO_ROOT/.cache/cargo-install/bin/cargo-tauri.exe"
 if [[ ! -x "$CARGO_TAURI_EXE" ]]; then
   echo "[run-dev-win] cargo-tauri.exe not found at $CARGO_TAURI_EXE" >&2

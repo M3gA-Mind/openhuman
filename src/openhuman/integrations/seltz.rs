@@ -64,13 +64,8 @@ impl SeltzSearchTool {
         timeout_secs: u64,
     ) -> Self {
         let timeout = timeout_secs.max(1);
-        // Windows: native TLS for OS cert store; else: keep rustls.
-        let http_builder = reqwest::Client::builder();
-        #[cfg(target_os = "windows")]
-        let http_builder = http_builder.use_native_tls();
-        #[cfg(not(target_os = "windows"))]
-        let http_builder = http_builder.use_rustls_tls();
-        let http_client = http_builder
+        // Platform-appropriate TLS backend — see [`crate::openhuman::tls`].
+        let http_client = crate::openhuman::tls::tls_client_builder()
             .http1_only()
             .timeout(Duration::from_secs(timeout))
             .connect_timeout(Duration::from_secs(10))

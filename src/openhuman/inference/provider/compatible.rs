@@ -278,14 +278,8 @@ impl OpenAiCompatibleProvider {
                 headers.insert(USER_AGENT, value);
             }
 
-            // Windows: native TLS so the OS cert store wins. Other
-            // platforms keep rustls.
-            let builder = Client::builder();
-            #[cfg(target_os = "windows")]
-            let builder = builder.use_native_tls();
-            #[cfg(not(target_os = "windows"))]
-            let builder = builder.use_rustls_tls();
-            let builder = builder
+            // Platform-appropriate TLS backend — see [`crate::openhuman::tls`].
+            let builder = crate::openhuman::tls::tls_client_builder()
                 .timeout(std::time::Duration::from_secs(120))
                 .connect_timeout(std::time::Duration::from_secs(10))
                 .default_headers(headers);
@@ -300,13 +294,8 @@ impl OpenAiCompatibleProvider {
             });
         }
 
-        // Windows: native TLS for OS cert store; else: keep rustls.
-        let builder = Client::builder();
-        #[cfg(target_os = "windows")]
-        let builder = builder.use_native_tls();
-        #[cfg(not(target_os = "windows"))]
-        let builder = builder.use_rustls_tls();
-        let builder = builder
+        // Platform-appropriate TLS backend — see [`crate::openhuman::tls`].
+        let builder = crate::openhuman::tls::tls_client_builder()
             .timeout(std::time::Duration::from_secs(120))
             .connect_timeout(std::time::Duration::from_secs(10));
         let builder = crate::openhuman::config::apply_runtime_proxy_to_builder(
