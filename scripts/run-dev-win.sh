@@ -514,6 +514,17 @@ fi
 # under the long bash→cmd→bash chain, the relative entry sometimes
 # resolves against the wrong cwd and tauri.CMD is not found.
 PATH_PREFIX="$APP_DIR/node_modules/.bin:$PATH_PREFIX"
+
+# Ensure pnpm itself stays on PATH for cargo-tauri's beforeDevCommand
+# (`pnpm run dev` → vite). When run-dev-win.sh restores the Windows PATH
+# via cmd.exe %PATH%, some setups (WinGet-installed pnpm with no
+# AppData/Roaming/npm entry) don't surface a pnpm dir consistently
+# downstream. Prepend the resolved $PNPM_EXE dir to guarantee it.
+if [[ -n "${PNPM_EXE:-}" ]]; then
+  PNPM_EXE_DIR="$(dirname "$PNPM_EXE")"
+  PATH_PREFIX="$PNPM_EXE_DIR:$PATH_PREFIX"
+fi
+
 export PATH="$PATH_PREFIX:$PATH"
 
 "$PNPM_EXE" tauri:ensure
