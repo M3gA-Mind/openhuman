@@ -103,6 +103,19 @@ fn live_handler() -> &'static Mutex<Option<Box<dyn Fn(String) + Send + Sync>>> {
     LIVE_HANDLER.get_or_init(|| Mutex::new(None))
 }
 
+/// Strip query string and fragment from a deep-link URL before logging.
+/// OAuth callbacks carry tokens in the query string; logging the raw URL
+/// would persist secrets in log files and crash reports.
+fn redact_url_for_log(url: &str) -> String {
+    url.parse::<url::Url>()
+        .map(|mut parsed| {
+            parsed.set_query(None);
+            parsed.set_fragment(None);
+            parsed.to_string()
+        })
+        .unwrap_or_else(|_| "<invalid deep link>".to_string())
+}
+
 fn dispatch_url(url: String) {
     // Try the live handler first.
     if let Ok(guard) = live_handler().lock() {
@@ -113,7 +126,10 @@ fn dispatch_url(url: String) {
     }
     // No live handler yet — queue for drain_pending_urls.
     if let Ok(mut q) = pending_queue().lock() {
-        log::debug!("[deep-link-ipc] queued URL (no handler yet): {url}");
+        log::debug!(
+            "[deep-link-ipc] queued URL (no handler yet): {}",
+            redact_url_for_log(&url)
+        );
         q.push(url);
     }
 }
@@ -135,36 +151,49 @@ impl Drop for DeepLinkSocketGuard {
 
 /// Bind the deep-link socket and start the listener thread.
 /// Returns `None` if binding fails (non-fatal — log and continue).
+///
+/// Uses a bind-first approach to avoid the race where a secondary instance
+/// unconditionally removes a live primary's socket file: we only remove the
+/// file when we can confirm it is stale (connect fails).
 pub(crate) fn bind_and_listen() -> Option<DeepLinkSocketGuard> {
     let path = socket_path();
 
-    // Remove stale socket from a previous crash.
-    let _ = std::fs::remove_file(&path);
-
-    match UnixListener::bind(&path) {
-        Ok(listener) => {
-            let path_clone = path.clone();
-            std::thread::Builder::new()
-                .name("deep-link-ipc-listener".into())
-                .spawn(move || {
-                    log::info!(
-                        "[deep-link-ipc] primary: listening on {}",
-                        path_clone.display()
+    let listener = match UnixListener::bind(&path) {
+        Ok(l) => l,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            // A socket file already exists.  Probe whether a live primary
+            // is behind it before deciding to unlink.
+            match UnixStream::connect(&path) {
+                Ok(_) => {
+                    // Live primary — this instance should not bind.
+                    log::debug!(
+                        "[deep-link-ipc] socket {} is live; skipping bind \
+                         (primary already running)",
+                        path.display()
                     );
-                    for stream in listener.incoming() {
-                        match stream {
-                            Ok(stream) => handle_connection(stream),
-                            Err(e) => {
-                                log::debug!("[deep-link-ipc] accept error: {e}");
-                                // Listener is gone (guard dropped) — stop.
-                                break;
-                            }
+                    return None;
+                }
+                Err(_) => {
+                    // Stale socket from a previous crash — safe to remove.
+                    log::debug!(
+                        "[deep-link-ipc] removing stale socket at {}",
+                        path.display()
+                    );
+                    let _ = std::fs::remove_file(&path);
+                    match UnixListener::bind(&path) {
+                        Ok(l) => l,
+                        Err(e2) => {
+                            log::warn!(
+                                "[deep-link-ipc] failed to bind socket at {} after \
+                                 removing stale file — deep-link forwarding from \
+                                 secondary instances will not work: {e2}",
+                                path.display()
+                            );
+                            return None;
                         }
                     }
-                    log::info!("[deep-link-ipc] listener thread exiting");
-                })
-                .ok();
-            Some(DeepLinkSocketGuard { path })
+                }
+            }
         }
         Err(e) => {
             log::warn!(
@@ -172,9 +201,32 @@ pub(crate) fn bind_and_listen() -> Option<DeepLinkSocketGuard> {
                  from secondary instances will not work: {e}",
                 path.display()
             );
-            None
+            return None;
         }
-    }
+    };
+
+    let path_clone = path.clone();
+    std::thread::Builder::new()
+        .name("deep-link-ipc-listener".into())
+        .spawn(move || {
+            log::info!(
+                "[deep-link-ipc] primary: listening on {}",
+                path_clone.display()
+            );
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => handle_connection(stream),
+                    Err(e) => {
+                        log::debug!("[deep-link-ipc] accept error: {e}");
+                        // Listener is gone (guard dropped) — stop.
+                        break;
+                    }
+                }
+            }
+            log::info!("[deep-link-ipc] listener thread exiting");
+        })
+        .ok();
+    Some(DeepLinkSocketGuard { path })
 }
 
 fn handle_connection(stream: UnixStream) {
@@ -183,7 +235,10 @@ fn handle_connection(stream: UnixStream) {
     for line in reader.lines() {
         match line {
             Ok(url) if url.starts_with("openhuman://") => {
-                log::info!("[deep-link-ipc] primary: received deep-link URL: {url}");
+                log::info!(
+                    "[deep-link-ipc] primary: received deep-link URL: {}",
+                    redact_url_for_log(&url)
+                );
                 dispatch_url(url);
             }
             Ok(other) => {
@@ -213,7 +268,7 @@ pub(crate) fn drain_pending_urls<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
                     log::warn!("[deep-link-ipc] failed to emit deep-link event: {e}");
                 }
             } else {
-                log::warn!("[deep-link-ipc] received URL that failed to parse: {url}");
+                log::warn!("[deep-link-ipc] received malformed deep-link URL");
             }
         }));
     }
