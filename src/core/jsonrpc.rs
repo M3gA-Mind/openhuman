@@ -160,8 +160,9 @@ pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcReque
 /// Invokes a JSON-RPC method by name.
 ///
 /// This is a high-level wrapper around [`invoke_method_inner`] that adds
-/// automatic session management logic. If a call fails with a 401 Unauthorized
-/// error from the backend, it will automatically clear the local session.
+/// automatic session management logic. If a call fails with a confirmed
+/// OpenHuman session-expired error, it will automatically clear the local
+/// session.
 ///
 /// # Arguments
 ///
@@ -171,34 +172,34 @@ pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcReque
 pub async fn invoke_method(state: AppState, method: &str, params: Value) -> Result<Value, String> {
     let result = invoke_method_inner(state, method, params).await;
 
-    // Session auto-cleanup: if the backend says we're unauthorized, publish
-    // a `SessionExpired` event. The credentials subscriber clears the stored
-    // token, flips the scheduler-gate signed-out override so background
-    // workers stand down, and (eventually) pushes a sign-out to the UI.
-    // Centralising via the event bus means 401 detection from any path
-    // (this one, `llm_provider.api_error`, …) gets the same teardown.
+    // Session auto-cleanup: if the OpenHuman auth session is explicitly
+    // expired, publish a `SessionExpired` event. The credentials subscriber
+    // clears the stored token, flips the scheduler-gate signed-out override
+    // so background workers stand down, and (eventually) pushes a sign-out to
+    // the UI. Generic downstream/provider 401s must stay recoverable errors;
+    // otherwise a scoped integration failure can log the user out.
     if let Err(ref msg) = result {
+        let sanitized_reason = crate::openhuman::inference::provider::ops::sanitize_api_error(msg);
         if is_session_expired_error(msg) {
             log::warn!(
-                "[jsonrpc] confirmed session expiry for method='{}' — publishing SessionExpired",
-                method
+                "[jsonrpc] confirmed session expiry for method='{}' — publishing SessionExpired: {}",
+                method,
+                sanitized_reason
             );
             // Scrub before publishing — subscribers log `reason`, and the
             // upstream error string could include API keys / tokens from
-            // pasted-through provider replies. `sanitize_api_error` runs
-            // `scrub_secret_patterns` and truncates.
+            // pasted-through provider replies.
             crate::core::event_bus::publish_global(
                 crate::core::event_bus::DomainEvent::SessionExpired {
                     source: format!("jsonrpc.invoke_method:{method}"),
-                    reason: crate::openhuman::inference::provider::ops::sanitize_api_error(msg),
+                    reason: sanitized_reason,
                 },
             );
-        } else if is_downstream_provider_auth_error(msg) {
-            let redacted = crate::openhuman::inference::provider::ops::sanitize_api_error(msg);
+        } else if is_unconfirmed_unauthorized_error(msg) {
             log::info!(
-                "[jsonrpc] downstream provider auth failure for method='{}' (not session expiry) — {}",
+                "[jsonrpc] unconfirmed unauthorized error for method='{}' (not session expiry) — leaving session intact: {}",
                 method,
-                redacted
+                sanitized_reason
             );
         }
     }
@@ -242,13 +243,11 @@ pub async fn invoke_method(state: AppState, method: &str, params: Value) -> Resu
 /// directly, so there is no regression if this predicate misses them — the
 /// subscriber is idempotent and a harmless double-publish would still be correct.
 fn is_session_expired_error(msg: &str) -> bool {
-    let lower = msg.to_lowercase();
-    // Explicit session-expired markers from the OpenHuman backend / local guards.
-    if lower.contains("session expired")
-        || lower.contains("no backend session token")
-        || lower.contains("session jwt required")
-        || msg.contains("SESSION_EXPIRED")
-    {
+    // Explicit session-expired markers from the OpenHuman backend / local
+    // guards — delegated to the shared observability classifier so both the
+    // Sentry expected-error pipeline and the JSON-RPC publish boundary stay
+    // in lock-step.
+    if crate::core::observability::is_session_expired_message(msg) {
         return true;
     }
     // OpenHuman backend path 401s via `authed_json`:
@@ -256,6 +255,7 @@ fn is_session_expired_error(msg: &str) -> bool {
     // The HTTP-method prefix distinguishes these from provider-prefixed errors.
     // HEAD and OPTIONS are intentionally excluded — `authed_json` only issues
     // the five listed verbs (GET/POST/PUT/DELETE/PATCH) for REST JSON endpoints.
+    let lower = msg.to_ascii_lowercase();
     if (lower.contains("401") && lower.contains("unauthorized"))
         && (msg.starts_with("GET /")
             || msg.starts_with("POST /")
@@ -268,15 +268,18 @@ fn is_session_expired_error(msg: &str) -> bool {
     false
 }
 
-/// Returns `true` when the error looks like a downstream provider / integration
-/// 401 that should NOT clear the user's OpenHuman session.
+/// Detect auth-looking failures that are not specific enough to clear the
+/// OpenHuman session. This is only for diagnostics; it must not feed the
+/// `SessionExpired` publish path.
 ///
-/// Used exclusively for diagnostic logging at the `invoke_method` call site so
-/// provider auth failures are visible in the logs without being misclassified
-/// as session expiry. Does not drive any side-effects.
-fn is_downstream_provider_auth_error(msg: &str) -> bool {
-    let lower = msg.to_lowercase();
-    lower.contains("401") && lower.contains("unauthorized")
+/// Matches a generic `401 Unauthorized` OR a bare `"invalid token"` string,
+/// either of which can come from BYO-key providers, Composio, channels, or
+/// other scoped downstream calls. Used exclusively for diagnostic logging
+/// at the `invoke_method` call site so provider auth failures are visible
+/// in the logs without being misclassified as session expiry.
+fn is_unconfirmed_unauthorized_error(msg: &str) -> bool {
+    let lower = msg.to_ascii_lowercase();
+    (lower.contains("401") && lower.contains("unauthorized")) || lower.contains("invalid token")
 }
 
 /// Returns `true` when the error message comes from JSON-RPC params validation
@@ -645,23 +648,107 @@ async fn http_request_log_middleware(req: Request, next: Next) -> Response {
     response
 }
 
+/// Environment variable for additional comma-separated origins to allow.
+/// Intended for debug harnesses and E2E setups that don't run on loopback —
+/// e.g. `OPENHUMAN_CORE_ALLOWED_ORIGINS=https://e2e.internal,http://my-debugger:8080`.
+const ALLOWED_ORIGINS_ENV: &str = "OPENHUMAN_CORE_ALLOWED_ORIGINS";
+
+/// Decides whether a browser `Origin` header value is allowed to make
+/// authenticated cross-origin requests against the local RPC server.
+///
+/// The RPC server only ever serves three legitimate consumers:
+///   1. The bundled Tauri v2 webview — `tauri://localhost` on macOS/Linux and
+///      `http(s)://tauri.localhost` on Windows.
+///   2. The Vite dev server during `pnpm dev` — any port on loopback hosts.
+///   3. Operator-controlled debug harnesses opted in via
+///      `OPENHUMAN_CORE_ALLOWED_ORIGINS`.
+///
+/// Anything else (a random web page that has somehow obtained the bearer
+/// token via leaked logs / screenshots / a compromised third-party origin
+/// loaded in a CEF child webview) must be refused — the bearer token alone
+/// is not enough authorization without an origin binding.
+pub(super) fn is_origin_allowed(origin: &str) -> bool {
+    let extra_origins = std::env::var(ALLOWED_ORIGINS_ENV).ok();
+    is_origin_allowed_with_extra(origin, extra_origins.as_deref())
+}
+
+pub(super) fn is_origin_allowed_with_extra(origin: &str, extra_origins: Option<&str>) -> bool {
+    // Tauri v2 webview origins. Windows uses an HTTP(S) custom host; macOS
+    // and Linux use the `tauri://` scheme. We accept both for portability.
+    if matches!(
+        origin,
+        "tauri://localhost" | "http://tauri.localhost" | "https://tauri.localhost"
+    ) {
+        return true;
+    }
+
+    // Loopback origins on any port (Vite dev server, E2E driver, CLI tools).
+    if let Some(rest) = origin.strip_prefix("http://") {
+        let authority = rest.split('/').next().unwrap_or("");
+        let host = if let Some(stripped) = authority.strip_prefix('[') {
+            // IPv6 literal: `[::1]:1420` → `::1`
+            stripped.split(']').next().unwrap_or("")
+        } else {
+            authority.split(':').next().unwrap_or("")
+        };
+        if matches!(host, "127.0.0.1" | "localhost" | "::1") {
+            return true;
+        }
+    }
+
+    // Env override: comma-separated exact matches.
+    if let Some(extra) = extra_origins {
+        for candidate in extra.split(',').map(str::trim).filter(|s| !s.is_empty()) {
+            if candidate == origin {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 /// Middleware for handling Cross-Origin Resource Sharing (CORS).
+///
+/// Reads the request's `Origin` header before invoking the inner handler so
+/// the same value can be echoed back (when allowed) on the response.
 async fn cors_middleware(req: Request, next: Next) -> Response {
+    let origin = req
+        .headers()
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+
     if req.method() == Method::OPTIONS {
-        return with_cors_headers(StatusCode::NO_CONTENT.into_response());
+        return with_cors_headers(StatusCode::NO_CONTENT.into_response(), origin.as_deref());
     }
 
     let response = next.run(req).await;
-    with_cors_headers(response)
+    with_cors_headers(response, origin.as_deref())
 }
 
 /// Injects CORS headers into a response.
-fn with_cors_headers(mut response: Response) -> Response {
+///
+/// If the request carried an `Origin` header and that origin is on the
+/// allowlist, the value is echoed back in `Access-Control-Allow-Origin` and
+/// `Vary: Origin` is set so intermediate caches keep per-origin responses
+/// distinct. Disallowed origins receive no `Access-Control-Allow-Origin`
+/// header at all — the browser will then refuse to surface the response to
+/// the calling JS. Non-browser callers (no `Origin` header) are unaffected.
+pub(super) fn with_cors_headers(mut response: Response, origin: Option<&str>) -> Response {
     let headers = response.headers_mut();
-    headers.insert(
-        header::ACCESS_CONTROL_ALLOW_ORIGIN,
-        HeaderValue::from_static("*"),
-    );
+    headers.append(header::VARY, HeaderValue::from_static("Origin"));
+
+    if let Some(o) = origin {
+        if is_origin_allowed(o) {
+            if let Ok(val) = HeaderValue::from_str(o) {
+                headers.insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, val);
+            }
+        } else {
+            tracing::warn!("[cors] rejected disallowed origin: {}", o);
+        }
+    }
+
     headers.insert(
         header::ACCESS_CONTROL_ALLOW_METHODS,
         HeaderValue::from_static("GET, POST, OPTIONS"),
@@ -679,7 +766,34 @@ fn with_cors_headers(mut response: Response) -> Response {
 
 /// Handler for the health check endpoint.
 async fn health_handler() -> impl IntoResponse {
-    (StatusCode::OK, Json(json!({ "ok": true })))
+    let snapshot = crate::openhuman::health::snapshot();
+    let unhealthy: Vec<&str> = snapshot
+        .components
+        .iter()
+        .filter_map(|(name, c)| {
+            if c.status == "ok" || c.status == "starting" {
+                None
+            } else {
+                Some(name.as_str())
+            }
+        })
+        .collect();
+    let is_ok = unhealthy.is_empty();
+
+    let status = if is_ok {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+
+    tracing::debug!(
+        "[health] status={} components={} unhealthy={:?}",
+        status.as_u16(),
+        snapshot.components.len(),
+        unhealthy
+    );
+
+    (status, Json(snapshot))
 }
 
 /// Handler for the schema discovery endpoint.
@@ -1524,3 +1638,7 @@ fn build_http_schema_dump() -> HttpSchemaDump {
 #[cfg(test)]
 #[path = "jsonrpc_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "jsonrpc_cors_tests.rs"]
+mod cors_tests;
