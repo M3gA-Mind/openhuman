@@ -78,10 +78,13 @@ fn build_backend_reqwest_client() -> Result<Client> {
         );
     }
 
-    // Force rustls for consistent cross-platform TLS behavior.
+    // Use the platform TLS stack (schannel/SecureTransport/OpenSSL) so the
+    // OS trust store is honored — needed when running behind corporate
+    // TLS-inspecting proxies that present a re-signed cert from a CA only
+    // trusted by the OS, not by rustls's bundled webpki-roots.
     Client::builder()
         .default_headers(default_headers)
-        .use_rustls_tls()
+        .use_native_tls()
         .http1_only()
         .timeout(Duration::from_secs(120))
         .connect_timeout(Duration::from_secs(15))

@@ -263,8 +263,9 @@ fn save_stored_app_state(config: &Config, state: &StoredAppState) -> Result<(), 
 }
 
 fn build_client() -> Result<Client, String> {
+    // Native TLS so the OS trust store is honored — see [`crate::api::rest`].
     Client::builder()
-        .use_rustls_tls()
+        .use_native_tls()
         .http1_only()
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
