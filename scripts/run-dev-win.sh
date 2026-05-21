@@ -488,6 +488,29 @@ if [[ -z "$PNPM_EXE" ]]; then
   exit 1
 fi
 echo "[run-dev-win] pnpm resolved to: $PNPM_EXE"
+
+# `cargo tauri dev` runs its beforeDevCommand (`pnpm run dev`) via a native
+# `cmd /S /C` that resolves bare `pnpm` off PATH. This script otherwise only
+# ever calls pnpm by absolute path, so its dir was never on PATH and Tauri
+# dies with "'pnpm' is not recognized". Prepend the resolved pnpm's dir — it
+# ships pnpm.CMD alongside the bash shim, which cmd.exe uses.
+# Split the dirname computation out of the export so a `dirname` failure
+# surfaces with a non-zero exit (SC2155) instead of being swallowed by the
+# enclosing `export`. `dirname` on a validated absolute path is reliable
+# in practice, but the strict-mode posture is worth the extra line.
+PNPM_DIR="$(dirname "$PNPM_EXE")"
+# `dirname` returns `.` for a bare filename (e.g. if PNPM_EXE somehow
+# resolved to just "pnpm" without a path component). Prepending `.` would
+# inject the current working directory into PATH on a Windows dev machine
+# — a privilege-escalation-flavoured surprise. Skip the prepend in that
+# case (and on the also-degenerate empty result); the absolute-path call
+# sites elsewhere in this script still work.
+if [[ -n "$PNPM_DIR" && "$PNPM_DIR" != "." ]]; then
+  export PATH="$PNPM_DIR:$PATH"
+  echo "[run-dev-win] pnpm dir prepended to PATH: $PNPM_DIR"
+else
+  echo "[run-dev-win] pnpm dir not prepended to PATH (PNPM_EXE has no path component: $PNPM_EXE)"
+fi
 echo "[run-dev-win] node on bash PATH:    $(command -v node 2>/dev/null || echo '<not found>')"
 echo "[run-dev-win] node.exe on bash PATH: $(command -v node.exe 2>/dev/null || echo '<not found>')"
 
