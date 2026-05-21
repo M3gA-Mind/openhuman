@@ -193,6 +193,7 @@ impl ComposioProvider for LinearProvider {
 
         let mut total_fetched: usize = 0;
         let mut total_persisted: usize = 0;
+        let mut had_persist_failures = false;
         let mut newest_updated: Option<String> = None;
         let mut after_cursor: Option<String> = None;
         let mut hit_cursor_boundary = false;
@@ -207,7 +208,7 @@ impl ComposioProvider for LinearProvider {
             }
 
             let mut args = json!({
-                "assigneeId": viewer_id,
+                "assigneeId": &viewer_id,
                 "first": page_size,
                 "orderBy": "updatedAt",
             });
@@ -310,6 +311,7 @@ impl ComposioProvider for LinearProvider {
                         total_persisted += 1;
                     }
                     Err(e) => {
+                        had_persist_failures = true;
                         tracing::warn!(
                             issue_id = %issue_id,
                             error = %e,
@@ -343,7 +345,11 @@ impl ComposioProvider for LinearProvider {
         }
 
         // ── Step 5: advance cursor and save state ────────────────────
-        if let Some(new_cursor) = newest_updated {
+        if had_persist_failures {
+            tracing::warn!(
+                "[composio:linear] persist failures seen; keeping previous cursor for retry"
+            );
+        } else if let Some(new_cursor) = newest_updated {
             state.advance_cursor(&new_cursor);
         }
         state.set_last_sync_at_ms(sync::now_ms());
