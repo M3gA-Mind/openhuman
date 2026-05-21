@@ -46,6 +46,11 @@ pub struct IngestionQueue {
     tx: mpsc::Sender<IngestionJob>,
     /// Shared state — singleton lock, queue depth, status snapshot.
     state: IngestionState,
+    /// The actual channel capacity this queue was created with. Stored so
+    /// backpressure logs always reflect the real configured size rather than
+    /// the `DEFAULT_QUEUE_CAPACITY` constant (which may differ for test
+    /// queues or future callers of `start_worker_with_capacity`).
+    capacity: usize,
 }
 
 impl IngestionQueue {
@@ -67,7 +72,7 @@ impl IngestionQueue {
                 self.state.dequeue();
                 log::warn!(
                     "[memory:ingestion_queue] queue full (capacity {}), dropping job: {}",
-                    DEFAULT_QUEUE_CAPACITY,
+                    self.capacity,
                     dropped.document.title,
                 );
                 false
@@ -90,10 +95,14 @@ impl IngestionQueue {
         self.state.clone()
     }
 
-    /// Build a queue handle from a raw sender + state. Test-only.
+    /// Build a queue handle from a raw sender, state, and capacity. Test-only.
     #[cfg(test)]
-    fn from_parts(tx: mpsc::Sender<IngestionJob>, state: IngestionState) -> Self {
-        Self { tx, state }
+    fn from_parts(tx: mpsc::Sender<IngestionJob>, state: IngestionState, capacity: usize) -> Self {
+        Self {
+            tx,
+            state,
+            capacity,
+        }
     }
 }
 
@@ -134,11 +143,15 @@ pub fn start_worker_with_capacity(
 
     tokio::spawn(ingestion_worker(memory, rx, state.clone()));
 
-    log::info!(
+    log::debug!(
         "[memory:ingestion_queue] background worker started (capacity={})",
         capacity,
     );
-    IngestionQueue { tx, state }
+    IngestionQueue {
+        tx,
+        state,
+        capacity,
+    }
 }
 
 /// The main worker loop for background document ingestion.
@@ -243,7 +256,7 @@ mod tests {
         drop(rx2); // closed channel — worker gone
 
         // Test the Closed branch via from_parts with a closed receiver.
-        let queue = IngestionQueue::from_parts(tx2, state.clone());
+        let queue = IngestionQueue::from_parts(tx2, state.clone(), 1);
         assert!(!queue.submit(make_dummy_job("orphan")));
         assert_eq!(state.snapshot().queue_depth, 0);
 
@@ -252,7 +265,7 @@ mod tests {
         let (tx3, _rx3) = mpsc::channel::<IngestionJob>(1);
         // Send one item to fill it (bypassing submit to avoid incrementing state).
         tx3.try_send(make_dummy_job("filler")).ok();
-        let queue2 = IngestionQueue::from_parts(tx3, state2.clone());
+        let queue2 = IngestionQueue::from_parts(tx3, state2.clone(), 1);
         assert!(!queue2.submit(make_dummy_job("overflow")));
         // Depth should be 0 — enqueue was rolled back.
         assert_eq!(state2.snapshot().queue_depth, 0);
@@ -266,9 +279,44 @@ mod tests {
         let (tx, rx) = mpsc::channel::<IngestionJob>(4);
         drop(rx); // simulate worker shutdown
 
-        let queue = IngestionQueue::from_parts(tx, state.clone());
+        let queue = IngestionQueue::from_parts(tx, state.clone(), 4);
         assert!(!queue.submit(make_dummy_job("orphan")));
         assert_eq!(state.snapshot().queue_depth, 0);
+    }
+
+    /// Verify that `submit()` succeeds again after transient backpressure is
+    /// relieved (the channel drains and a slot becomes available).
+    #[tokio::test]
+    async fn submit_recovers_after_backpressure() {
+        let state = IngestionState::new();
+        // Capacity-2 channel so we can fill one slot and still have headroom
+        // for the recovery submit.
+        let (tx, mut rx) = mpsc::channel::<IngestionJob>(2);
+
+        // Pre-fill both slots directly to force the Full condition on submit.
+        tx.try_send(make_dummy_job("filler-a")).ok();
+        tx.try_send(make_dummy_job("filler-b")).ok();
+
+        let queue = IngestionQueue::from_parts(tx, state.clone(), 2);
+
+        // Channel is now full — submit should return false and roll back depth.
+        assert!(!queue.submit(make_dummy_job("overflow")));
+        assert_eq!(
+            state.snapshot().queue_depth,
+            0,
+            "depth must be 0 after rejected submit"
+        );
+
+        // Drain one slot to free up space.
+        let _ = rx.recv().await;
+
+        // submit() should now succeed and increment queue_depth by 1.
+        assert!(queue.submit(make_dummy_job("recovered")));
+        assert_eq!(
+            state.snapshot().queue_depth,
+            1,
+            "depth must reflect the recovered enqueue"
+        );
     }
 
     fn make_dummy_job(title: &str) -> IngestionJob {
