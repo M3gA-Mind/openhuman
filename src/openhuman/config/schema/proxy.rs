@@ -441,7 +441,13 @@ pub fn build_runtime_proxy_client(service_key: &str) -> reqwest::Client {
         return client;
     }
 
-    let builder = apply_runtime_proxy_to_builder(reqwest::Client::builder(), service_key);
+    // Native TLS so the OS trust store wins for outbound calls to
+    // api.tinyhumans.ai / composio / channel providers. See
+    // [`crate::api::rest`] for the broader rationale.
+    let builder = apply_runtime_proxy_to_builder(
+        reqwest::Client::builder().use_native_tls(),
+        service_key,
+    );
     let client = builder.build().unwrap_or_else(|error| {
         tracing::warn!(service_key, "Failed to build proxied client: {error}");
         reqwest::Client::new()
@@ -462,6 +468,7 @@ pub fn build_runtime_proxy_client_with_timeouts(
     }
 
     let builder = reqwest::Client::builder()
+        .use_native_tls()
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .connect_timeout(std::time::Duration::from_secs(connect_timeout_secs));
     let builder = apply_runtime_proxy_to_builder(builder, service_key);
