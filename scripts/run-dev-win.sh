@@ -636,22 +636,32 @@ fi
 #   can quote it however we want without involving cargo-tauri's outer
 #   escaping. The wrapper lives under %TEMP% (which is normally
 #   space-free) so its own path doesn't need quoting either.
-VITE_BIN_UNIX="$APP_DIR/node_modules/.bin/vite.CMD"
-if [[ ! -f "$VITE_BIN_UNIX" ]]; then
-  echo "[run-dev-win] vite shim not found at $VITE_BIN_UNIX" >&2
+VITE_JS_UNIX="$APP_DIR/node_modules/vite/bin/vite.js"
+if [[ ! -f "$VITE_JS_UNIX" ]]; then
+  echo "[run-dev-win] vite entry not found at $VITE_JS_UNIX" >&2
   echo "[run-dev-win] Did 'pnpm install' run? Aborting." >&2
   exit 1
 fi
-VITE_BIN_WIN="$(cygpath -w "$VITE_BIN_UNIX" 2>/dev/null || printf '%s' "$VITE_BIN_UNIX")"
+VITE_JS_WIN="$(cygpath -w "$VITE_JS_UNIX" 2>/dev/null || printf '%s' "$VITE_JS_UNIX")"
+
+# Resolve node.exe absolute path so the wrapper doesn't depend on
+# whatever PATH cargo-tauri hands to its cmd child.
+NODE_EXE_UNIX="$(command -v node.exe 2>/dev/null || command -v node 2>/dev/null)"
+if [[ -z "$NODE_EXE_UNIX" || ! -f "$NODE_EXE_UNIX" ]]; then
+  echo "[run-dev-win] node.exe not findable on bash PATH at wrapper-build time" >&2
+  exit 1
+fi
+NODE_EXE_WIN="$(cygpath -w "$NODE_EXE_UNIX" 2>/dev/null || printf '%s' "$NODE_EXE_UNIX")"
 
 WRAPPER_DIR_UNIX="$(cygpath -u "${TEMP:-${TMP:-/tmp}}" 2>/dev/null || echo /tmp)/openhuman-dev"
 mkdir -p "$WRAPPER_DIR_UNIX"
 VITE_WRAPPER_UNIX="$WRAPPER_DIR_UNIX/run-vite.bat"
-# Single-quoted heredoc keeps the .bat body literal (no MSYS path
-# rewrites, no variable expansion).
+# Invoke node.exe with vite's JS entry directly. The vite.CMD shim
+# falls back to bare `node` when its sibling doesn't have node.exe,
+# which fails inside cargo-tauri's cmd child (no node on PATH).
 {
   printf '@echo off\r\n'
-  printf 'call "%s" %%*\r\n' "$VITE_BIN_WIN"
+  printf '"%s" "%s" %%*\r\n' "$NODE_EXE_WIN" "$VITE_JS_WIN"
 } > "$VITE_WRAPPER_UNIX"
 VITE_WRAPPER_WIN="$(cygpath -w "$VITE_WRAPPER_UNIX" 2>/dev/null || printf '%s' "$VITE_WRAPPER_UNIX")"
 echo "[run-dev-win] vite wrapper at: $VITE_WRAPPER_WIN"
