@@ -430,6 +430,18 @@ describe('configPersistence', () => {
       expect(getStoredCoreMode()).toBeNull();
     });
 
+    it('logs the mode string directly, not an object wrapper', () => {
+      const spy = vi.spyOn(console, 'debug').mockImplementation(() => {});
+      storeCoreMode('cloud');
+      const calls = spy.mock.calls.flat();
+      // Must NOT log an object like { mode } — that renders as [object Object]
+      const hasObjectArg = calls.some(arg => typeof arg === 'object' && arg !== null);
+      expect(hasObjectArg).toBe(false);
+      const modeArg = calls.find(arg => typeof arg === 'string' && arg === 'cloud');
+      expect(modeArg).toBe('cloud');
+      spy.mockRestore();
+    });
+
     it('falls back to the E2E default local mode when no marker has been written', async () => {
       vi.resetModules();
       vi.doMock('../config', () => ({
