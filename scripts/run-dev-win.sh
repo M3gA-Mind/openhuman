@@ -583,9 +583,28 @@ else
   DEV_PORT=1420
 fi
 
+# Invoke cargo-tauri directly rather than going through `pnpm tauri dev`.
+#
+# The pnpm chain (pnpm.exe → cmd.exe → tauri.CMD) is fragile on Windows:
+# whether `tauri.CMD` is resolvable in the spawned cmd subprocess depends
+# on which pnpm shim was picked up by `find_pnpm`. The self-managing
+# `~/AppData/Local/pnpm/.tools/.../pnpm` variant auto-prepends
+# `node_modules/.bin` for script children; the WinGet-installed
+# `pnpm.exe` does not, so the script body `tauri "dev"` then fails with
+# "'tauri' is not recognized" inside cmd.
+#
+# `ensure-tauri-cli.sh` already installed the vendored CEF-aware
+# cargo-tauri at `$REPO_ROOT/.cache/cargo-install/bin/cargo-tauri.exe`,
+# so we can invoke that binary directly and skip the wrapper layer.
+CARGO_TAURI_EXE="$REPO_ROOT/.cache/cargo-install/bin/cargo-tauri.exe"
+if [[ ! -x "$CARGO_TAURI_EXE" ]]; then
+  echo "[run-dev-win] cargo-tauri.exe not found at $CARGO_TAURI_EXE" >&2
+  echo "[run-dev-win] tauri:ensure should have installed it. Aborting." >&2
+  exit 1
+fi
 if (( DEV_PORT != 1420 )); then
   echo "[run-dev-win] OPENHUMAN_DEV_PORT=$DEV_PORT — overriding tauri devUrl"
-  "$PNPM_EXE" tauri dev -c "{\"build\":{\"devUrl\":\"http://localhost:$DEV_PORT\"}}"
+  "$CARGO_TAURI_EXE" dev -c "{\"build\":{\"devUrl\":\"http://localhost:$DEV_PORT\"}}"
 else
-  "$PNPM_EXE" tauri dev
+  "$CARGO_TAURI_EXE" dev
 fi
