@@ -94,9 +94,7 @@ const applySessionToken = async (sessionToken: string): Promise<void> => {
   try {
     await storeSession(sessionToken, {});
   } finally {
-    window.dispatchEvent(
-      new CustomEvent('core-state:suppress-reauth', { detail: { until: 0 } })
-    );
+    window.dispatchEvent(new CustomEvent('core-state:suppress-reauth', { detail: { until: 0 } }));
   }
   patchCoreStateSnapshot({ snapshot: { sessionToken } });
   window.dispatchEvent(new CustomEvent(SESSION_TOKEN_UPDATED_EVENT, { detail: { sessionToken } }));

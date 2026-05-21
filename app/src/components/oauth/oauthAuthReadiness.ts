@@ -30,7 +30,11 @@ async function pingCoreRpc(): Promise<boolean> {
     // In cloud mode, pass the stored cloud token explicitly to avoid
     // getCoreRpcToken() resolving to a stale local-core token. See issue #2377.
     const cloudToken = getStoredCoreMode() === 'cloud' ? getStoredCoreToken() : null;
-    log(`${logPrefix} core.ping probe`, { rpcUrl, mode: getStoredCoreMode(), hasCloudToken: Boolean(cloudToken) });
+    log(`${logPrefix} core.ping probe`, {
+      rpcUrl,
+      mode: getStoredCoreMode(),
+      hasCloudToken: Boolean(cloudToken),
+    });
     const response = cloudToken
       ? await testCoreRpcConnection(rpcUrl, cloudToken)
       : await testCoreRpcConnection(rpcUrl);
