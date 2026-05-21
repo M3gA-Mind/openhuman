@@ -17,6 +17,10 @@ use super::MemoryIngestionConfig;
 use crate::core::event_bus::{publish_global, DomainEvent};
 use crate::openhuman::memory::store::{NamespaceDocumentInput, UnifiedMemory};
 
+/// Default bounded-channel capacity for the ingestion queue. Sized to absorb
+/// realistic bursts (bulk skill sync of ~200 docs) while capping memory usage.
+pub const DEFAULT_QUEUE_CAPACITY: usize = 512;
+
 /// A job submitted to the ingestion worker.
 ///
 /// Contains all the necessary information to process a document for graph
@@ -34,12 +38,12 @@ pub struct IngestionJob {
 
 /// Handle used by callers to submit ingestion jobs.
 ///
-/// This is a thin wrapper around a `tokio::sync::mpsc::UnboundedSender` and
+/// This is a thin wrapper around a `tokio::sync::mpsc::Sender` and
 /// can be cloned freely to be shared across multiple producers.
 #[derive(Clone)]
 pub struct IngestionQueue {
     /// Sender half of the job queue channel.
-    tx: mpsc::UnboundedSender<IngestionJob>,
+    tx: mpsc::Sender<IngestionJob>,
     /// Shared state — singleton lock, queue depth, status snapshot.
     state: IngestionState,
 }
@@ -54,18 +58,25 @@ impl IngestionQueue {
     /// # Returns
     ///
     /// Returns `true` if the job was successfully enqueued, `false` if the
-    /// worker has shut down (e.g., during application termination) and the
-    /// job was dropped.
+    /// queue is full (backpressure) or the worker has shut down.
     pub fn submit(&self, job: IngestionJob) -> bool {
         self.state.enqueue();
-        match self.tx.send(job) {
+        match self.tx.try_send(job) {
             Ok(()) => true,
-            Err(e) => {
-                // Worker is gone — undo the enqueue bump so depth stays accurate.
+            Err(mpsc::error::TrySendError::Full(dropped)) => {
+                self.state.dequeue();
+                log::warn!(
+                    "[memory:ingestion_queue] queue full (capacity {}), dropping job: {}",
+                    DEFAULT_QUEUE_CAPACITY,
+                    dropped.document.title,
+                );
+                false
+            }
+            Err(mpsc::error::TrySendError::Closed(dropped)) => {
                 self.state.dequeue();
                 log::warn!(
                     "[memory:ingestion_queue] failed to enqueue job (worker gone?): {}",
-                    e.0.document.title,
+                    dropped.document.title,
                 );
                 false
             }
@@ -77,6 +88,12 @@ impl IngestionQueue {
     /// paths that bypass the queue.
     pub fn state(&self) -> IngestionState {
         self.state.clone()
+    }
+
+    /// Build a queue handle from a raw sender + state. Test-only.
+    #[cfg(test)]
+    fn from_parts(tx: mpsc::Sender<IngestionJob>, state: IngestionState) -> Self {
+        Self { tx, state }
     }
 }
 
@@ -103,11 +120,24 @@ pub fn start_worker_with_state(
     memory: Arc<UnifiedMemory>,
     state: IngestionState,
 ) -> IngestionQueue {
-    let (tx, rx) = mpsc::unbounded_channel::<IngestionJob>();
+    start_worker_with_capacity(memory, state, DEFAULT_QUEUE_CAPACITY)
+}
+
+/// Start a worker with an explicit channel capacity. Exposed for
+/// deterministic tests that need a tiny queue to exercise backpressure.
+pub fn start_worker_with_capacity(
+    memory: Arc<UnifiedMemory>,
+    state: IngestionState,
+    capacity: usize,
+) -> IngestionQueue {
+    let (tx, rx) = mpsc::channel::<IngestionJob>(capacity);
 
     tokio::spawn(ingestion_worker(memory, rx, state.clone()));
 
-    log::info!("[memory:ingestion_queue] background worker started");
+    log::info!(
+        "[memory:ingestion_queue] background worker started (capacity={})",
+        capacity,
+    );
     IngestionQueue { tx, state }
 }
 
@@ -122,7 +152,7 @@ pub fn start_worker_with_state(
 /// * `rx` - The receiver half of the job queue channel.
 async fn ingestion_worker(
     memory: Arc<UnifiedMemory>,
-    mut rx: mpsc::UnboundedReceiver<IngestionJob>,
+    mut rx: mpsc::Receiver<IngestionJob>,
     state: IngestionState,
 ) {
     log::debug!("[memory:ingestion_queue] worker loop entered");
@@ -197,4 +227,69 @@ async fn ingestion_worker(
     }
 
     log::info!("[memory:ingestion_queue] worker shut down (channel closed)");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn submit_when_full_returns_false() {
+        let state = IngestionState::new();
+        let (tx, _rx) = mpsc::channel::<IngestionJob>(1);
+        // Fill the channel slot with a dummy send so it's full.
+        let (tx2, rx2) = mpsc::channel::<IngestionJob>(1);
+        drop(rx2); // closed channel — worker gone
+
+        // Test the Closed branch via from_parts with a closed receiver.
+        let queue = IngestionQueue::from_parts(tx2, state.clone());
+        assert!(!queue.submit(make_dummy_job("orphan")));
+        assert_eq!(state.snapshot().queue_depth, 0);
+
+        // Test the Full branch: capacity-1 channel, fill it, then try another.
+        let state2 = IngestionState::new();
+        let (tx3, _rx3) = mpsc::channel::<IngestionJob>(1);
+        // Send one item to fill it (bypassing submit to avoid incrementing state).
+        tx3.try_send(make_dummy_job("filler")).ok();
+        let queue2 = IngestionQueue::from_parts(tx3, state2.clone());
+        assert!(!queue2.submit(make_dummy_job("overflow")));
+        // Depth should be 0 — enqueue was rolled back.
+        assert_eq!(state2.snapshot().queue_depth, 0);
+
+        drop(tx); // silence unused warning
+    }
+
+    #[tokio::test]
+    async fn submit_when_worker_gone_returns_false() {
+        let state = IngestionState::new();
+        let (tx, rx) = mpsc::channel::<IngestionJob>(4);
+        drop(rx); // simulate worker shutdown
+
+        let queue = IngestionQueue::from_parts(tx, state.clone());
+        assert!(!queue.submit(make_dummy_job("orphan")));
+        assert_eq!(state.snapshot().queue_depth, 0);
+    }
+
+    fn make_dummy_job(title: &str) -> IngestionJob {
+        use crate::openhuman::memory::ingestion::MemoryIngestionConfig;
+        use crate::openhuman::memory::store::types::NamespaceDocumentInput;
+        IngestionJob {
+            document_id: format!("doc-{title}"),
+            document: NamespaceDocumentInput {
+                namespace: "test".to_string(),
+                key: title.to_string(),
+                title: title.to_string(),
+                content: "body".to_string(),
+                source_type: "doc".to_string(),
+                priority: "normal".to_string(),
+                tags: vec![],
+                metadata: serde_json::Value::Null,
+                category: "core".to_string(),
+                session_id: None,
+                document_id: None,
+            },
+            config: MemoryIngestionConfig::default(),
+        }
+    }
 }
