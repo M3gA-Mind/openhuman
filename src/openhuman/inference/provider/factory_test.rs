@@ -739,10 +739,7 @@ fn byok_intent_with_matching_entry_resolves_correctly() {
     config.inference_url = Some("https://custom-api.example.com/v1".to_string());
 
     // Legacy URL matches the custom entry → "custom:gpt-4o"
-    assert_ne!(
-        provider_for_role("reasoning", &config),
-        BYOK_INCOMPLETE_SENTINEL
-    );
+    assert_eq!(provider_for_role("reasoning", &config), "custom:gpt-4o");
 }
 
 #[test]

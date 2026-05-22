@@ -361,10 +361,10 @@ fn resolve_primary_cloud_provider_string(config: &Config) -> String {
         // config. Fail closed so the user sees an actionable error rather than
         // silently routing through the managed backend.
         if has_custom_inference_intent(config) {
-            log::warn!(
-                "[providers][chat-factory] BYOK intent detected (inference_url={:?}) \
+            log::debug!(
+                "[providers][chat-factory] BYOK intent detected (host={}) \
                  but no matching cloud_providers entry found; returning fail-closed sentinel",
-                config.inference_url
+                redact_inference_url(config.inference_url.as_deref())
             );
             return BYOK_INCOMPLETE_SENTINEL.to_string();
         }
@@ -379,16 +379,45 @@ fn resolve_primary_cloud_provider_string(config: &Config) -> String {
     // the managed backend.
     legacy_custom_inference_provider_string(config).unwrap_or_else(|| {
         if has_custom_inference_intent(config) {
-            log::warn!(
-                "[providers][chat-factory] BYOK intent detected (inference_url={:?}) \
+            log::debug!(
+                "[providers][chat-factory] BYOK intent detected (host={}) \
                  with no primary_cloud and no matching provider entry; returning fail-closed sentinel",
-                config.inference_url
+                redact_inference_url(config.inference_url.as_deref())
             );
             BYOK_INCOMPLETE_SENTINEL.to_string()
         } else {
             PROVIDER_OPENHUMAN.to_string()
         }
     })
+}
+
+/// Extract the host portion of an inference URL for safe logging.
+///
+/// Returns the host (e.g. `"api.example.com"`) so log lines are grep-friendly
+/// without exposing tokens or credentials that may appear in query-string or
+/// path components of a bearer-auth URL (e.g. `"https://host/v1?key=…"`).
+/// Falls back to `"<redacted>"` when the URL cannot be parsed or is absent.
+fn redact_inference_url(url: Option<&str>) -> &str {
+    url.and_then(|u| {
+        // Minimal host extraction: find the authority after "://".
+        let after_scheme = u.find("://").map(|i| &u[i + 3..])?;
+        // Authority ends at '/', '?', '#', or end-of-string.
+        let host_end = after_scheme
+            .find(['/', '?', '#'])
+            .unwrap_or(after_scheme.len());
+        let authority = &after_scheme[..host_end];
+        // Strip optional "user:pass@" and port.
+        let host = authority
+            .rfind('@')
+            .map_or(authority, |i| &authority[i + 1..]);
+        let host = host.rfind(':').map_or(host, |i| &host[..i]);
+        if host.is_empty() {
+            None
+        } else {
+            Some(host)
+        }
+    })
+    .unwrap_or("<redacted>")
 }
 
 /// Return `true` when the config contains a non-openhuman `inference_url`,
