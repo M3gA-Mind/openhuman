@@ -267,8 +267,6 @@ mod tests {
         assert!(!queue2.submit(make_dummy_job("overflow")));
         // Depth should be 0 — enqueue was rolled back.
         assert_eq!(state2.snapshot().queue_depth, 0);
-
-        drop(tx); // silence unused warning
     }
 
     #[tokio::test]
