@@ -384,6 +384,8 @@ const de3: TranslationMap = {
   'channels.telegram.savedRestartRequired':
     'Kanal gespeichert. Starte die App neu, um sie zu aktivieren.',
   'channels.web.alwaysAvailable': 'Immer verfügbar',
+  'subconscious.providerUnavailableTitle': 'Subconscious is paused',
+  'subconscious.providerSettings': 'AI settings',
 };
 
 export default de3;
