@@ -727,6 +727,10 @@ async fn run_typed_mode(
                     // the user pref and doesn't change per-spawn.
                     gated_tools: cached_integration.gated_tools.clone(),
                     connected: cached_integration.connected,
+                    // Inherit the cached non-active status — this spawn
+                    // path only fires on connected toolkits, but keep the
+                    // field consistent with the source row for #2365.
+                    non_active_status: cached_integration.non_active_status.clone(),
                 };
                 let integration = &integration;
                 // Fuzzy-filter the toolkit's actions against the task prompt
