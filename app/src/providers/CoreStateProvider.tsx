@@ -682,7 +682,7 @@ export default function CoreStateProvider({ children }: { children: ReactNode })
   useEffect(() => {
     const runReauth = (method: string, source: string) => {
       const now = Date.now();
-      if (Date.now() < suppressReauthUntilRef.current) {
+      if (now < suppressReauthUntilRef.current) {
         log(
           '[CoreState] auth-expired suppressed during deep-link auth delivery (method=%s source=%s)',
           method,
