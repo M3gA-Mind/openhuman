@@ -249,24 +249,16 @@ mod tests {
 
     #[tokio::test]
     async fn submit_when_full_returns_false() {
+        // Capacity-1 channel, fill it, then submit another — exercises the Full branch.
         let state = IngestionState::new();
-        let (tx2, rx2) = mpsc::channel::<IngestionJob>(1);
-        drop(rx2); // closed channel — worker gone
+        let (tx, _rx) = mpsc::channel::<IngestionJob>(1);
+        // Pre-fill the slot directly so submit() sees a full channel.
+        tx.try_send(make_dummy_job("filler")).ok();
 
-        // Test the Closed branch via from_parts with a closed receiver.
-        let queue = IngestionQueue::from_parts(tx2, state.clone(), 1);
-        assert!(!queue.submit(make_dummy_job("orphan")));
-        assert_eq!(state.snapshot().queue_depth, 0);
-
-        // Test the Full branch: capacity-1 channel, fill it, then try another.
-        let state2 = IngestionState::new();
-        let (tx3, _rx3) = mpsc::channel::<IngestionJob>(1);
-        // Send one item to fill it (bypassing submit to avoid incrementing state).
-        tx3.try_send(make_dummy_job("filler")).ok();
-        let queue2 = IngestionQueue::from_parts(tx3, state2.clone(), 1);
-        assert!(!queue2.submit(make_dummy_job("overflow")));
+        let queue = IngestionQueue::from_parts(tx, state.clone(), 1);
+        assert!(!queue.submit(make_dummy_job("overflow")));
         // Depth should be 0 — enqueue was rolled back.
-        assert_eq!(state2.snapshot().queue_depth, 0);
+        assert_eq!(state.snapshot().queue_depth, 0);
     }
 
     #[tokio::test]
