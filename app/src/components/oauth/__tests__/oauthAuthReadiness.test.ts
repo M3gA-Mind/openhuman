@@ -25,6 +25,7 @@ vi.mock('../../../services/bootCheckService', () => ({
 vi.mock('../../../utils/configPersistence', () => ({
   getStoredCoreMode: vi.fn(),
   getStoredCoreToken: vi.fn().mockReturnValue(null),
+  storeCoreMode: vi.fn(),
 }));
 
 vi.mock('../../../services/webviewAccountService', () => ({
@@ -59,6 +60,9 @@ describe('oauthAuthReadiness', () => {
 
   it('returns core_mode_unset when BootCheckGate has not committed a mode', async () => {
     vi.mocked(getStoredCoreMode).mockReturnValue(null);
+    // Must be web (non-Tauri) — in Tauri the code defaults to 'local' and never
+    // returns core_mode_unset.
+    vi.mocked(isTauri).mockReturnValue(false);
 
     const result = await waitForOAuthAuthReadiness(500);
 
