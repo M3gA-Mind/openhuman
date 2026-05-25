@@ -190,13 +190,13 @@ const id3: TranslationMap = {
   'bootCheck.restartUpdateCore': 'Mulai Ulang / Perbarui Runtime',
   'bootCheck.unexpectedError': 'Kesalahan Boot-Check Tak Terduga',
   'bootCheck.actionFailed': 'Terjadi kesalahan. Silakan coba lagi.',
-  'bootCheck.portConflictTitle': "Couldn't start the app engine",
+  'bootCheck.portConflictTitle': 'Tidak dapat memulai mesin aplikasi',
   'bootCheck.portConflictBody':
-    "Another process is using the network port OpenHuman needs. We'll try to fix this automatically.",
-  'bootCheck.portConflictFixButton': 'Fix Automatically',
-  'bootCheck.portConflictFixing': 'Fixing…',
+    'Proses lain sedang menggunakan port jaringan yang dibutuhkan OpenHuman. Kami akan mencoba memperbaikinya secara otomatis.',
+  'bootCheck.portConflictFixButton': 'Perbaiki Otomatis',
+  'bootCheck.portConflictFixing': 'Memperbaiki…',
   'bootCheck.portConflictFixFailed':
-    "Automatic fix didn't work. Please restart your computer and try again.",
+    'Perbaikan otomatis tidak berhasil. Silakan restart komputer Anda dan coba lagi.',
   'notifications.justNow': 'baru saja',
   'notifications.minAgo': '{n}m lalu',
   'notifications.hrAgo': '{n}j lalu',

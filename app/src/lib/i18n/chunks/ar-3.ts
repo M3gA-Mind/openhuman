@@ -185,13 +185,13 @@ const ar3: TranslationMap = {
   'bootCheck.restartUpdateCore': 'إعادة تشغيل / تحديث بيئة التشغيل',
   'bootCheck.unexpectedError': 'خطأ غير متوقع في فحص بدء التشغيل',
   'bootCheck.actionFailed': 'حدث خطأ ما. يرجى المحاولة مرة أخرى.',
-  'bootCheck.portConflictTitle': "Couldn't start the app engine",
+  'bootCheck.portConflictTitle': 'تعذّر تشغيل محرّك التطبيق',
   'bootCheck.portConflictBody':
-    "Another process is using the network port OpenHuman needs. We'll try to fix this automatically.",
-  'bootCheck.portConflictFixButton': 'Fix Automatically',
-  'bootCheck.portConflictFixing': 'Fixing…',
+    'هناك عملية أخرى تستخدم منفذ الشبكة الذي يحتاجه OpenHuman. سنحاول إصلاح ذلك تلقائيًا.',
+  'bootCheck.portConflictFixButton': 'إصلاح تلقائي',
+  'bootCheck.portConflictFixing': 'جارٍ الإصلاح…',
   'bootCheck.portConflictFixFailed':
-    "Automatic fix didn't work. Please restart your computer and try again.",
+    'لم ينجح الإصلاح التلقائي. يُرجى إعادة تشغيل الكمبيوتر والمحاولة مجددًا.',
   'notifications.justNow': 'الآن',
   'notifications.minAgo': 'منذ {n} د',
   'notifications.hrAgo': 'منذ {n} س',

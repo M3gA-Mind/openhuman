@@ -193,13 +193,13 @@ const es3: TranslationMap = {
   'bootCheck.restartUpdateCore': 'Reiniciar / Actualizar runtime',
   'bootCheck.unexpectedError': 'Error inesperado en verificación de arranque',
   'bootCheck.actionFailed': 'Algo salió mal. Inténtalo de nuevo.',
-  'bootCheck.portConflictTitle': "Couldn't start the app engine",
+  'bootCheck.portConflictTitle': 'No se pudo iniciar el motor de la aplicación',
   'bootCheck.portConflictBody':
-    "Another process is using the network port OpenHuman needs. We'll try to fix this automatically.",
-  'bootCheck.portConflictFixButton': 'Fix Automatically',
-  'bootCheck.portConflictFixing': 'Fixing…',
+    'Otro proceso está usando el puerto de red que OpenHuman necesita. Intentaremos solucionarlo automáticamente.',
+  'bootCheck.portConflictFixButton': 'Corregir automáticamente',
+  'bootCheck.portConflictFixing': 'Corrigiendo…',
   'bootCheck.portConflictFixFailed':
-    "Automatic fix didn't work. Please restart your computer and try again.",
+    'La corrección automática no funcionó. Reinicia tu equipo e inténtalo de nuevo.',
   'notifications.justNow': 'justo ahora',
   'notifications.minAgo': 'hace {n}m',
   'notifications.hrAgo': 'hace {n}h',

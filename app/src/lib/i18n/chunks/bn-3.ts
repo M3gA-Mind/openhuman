@@ -190,13 +190,13 @@ const bn3: TranslationMap = {
   'bootCheck.restartUpdateCore': 'রানটাইম রিস্টার্ট / আপডেট করুন',
   'bootCheck.unexpectedError': 'অপ্রত্যাশিত বুট-চেক ত্রুটি',
   'bootCheck.actionFailed': 'কিছু একটা ভুল হয়েছে। আবার চেষ্টা করুন।',
-  'bootCheck.portConflictTitle': "Couldn't start the app engine",
+  'bootCheck.portConflictTitle': 'অ্যাপ ইঞ্জিন চালু করা যায়নি',
   'bootCheck.portConflictBody':
-    "Another process is using the network port OpenHuman needs. We'll try to fix this automatically.",
-  'bootCheck.portConflictFixButton': 'Fix Automatically',
-  'bootCheck.portConflictFixing': 'Fixing…',
+    'অন্য একটি প্রক্রিয়া OpenHuman-এর প্রয়োজনীয় নেটওয়ার্ক পোর্ট ব্যবহার করছে। আমরা স্বয়ংক্রিয়ভাবে এটি ঠিক করার চেষ্টা করব।',
+  'bootCheck.portConflictFixButton': 'স্বয়ংক্রিয়ভাবে ঠিক করুন',
+  'bootCheck.portConflictFixing': 'ঠিক করা হচ্ছে…',
   'bootCheck.portConflictFixFailed':
-    "Automatic fix didn't work. Please restart your computer and try again.",
+    'স্বয়ংক্রিয় সংশোধন কাজ করেনি। অনুগ্রহ করে আপনার কম্পিউটার পুনরায় চালু করুন এবং আবার চেষ্টা করুন।',
   'notifications.justNow': 'এইমাত্র',
   'notifications.minAgo': '{n} মিনিট আগে',
   'notifications.hrAgo': '{n} ঘণ্টা আগে',

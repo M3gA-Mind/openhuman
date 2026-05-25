@@ -181,13 +181,12 @@ const zhCN3: TranslationMap = {
   'bootCheck.restartUpdateCore': '重启 / 更新核心',
   'bootCheck.unexpectedError': '意外的启动检查错误',
   'bootCheck.actionFailed': '操作失败 — 请重试。',
-  'bootCheck.portConflictTitle': "Couldn't start the app engine",
+  'bootCheck.portConflictTitle': '无法启动应用引擎',
   'bootCheck.portConflictBody':
-    "Another process is using the network port OpenHuman needs. We'll try to fix this automatically.",
-  'bootCheck.portConflictFixButton': 'Fix Automatically',
-  'bootCheck.portConflictFixing': 'Fixing…',
-  'bootCheck.portConflictFixFailed':
-    "Automatic fix didn't work. Please restart your computer and try again.",
+    '另一个进程正在占用 OpenHuman 所需的网络端口。我们将尝试自动修复此问题。',
+  'bootCheck.portConflictFixButton': '自动修复',
+  'bootCheck.portConflictFixing': '修复中…',
+  'bootCheck.portConflictFixFailed': '自动修复未成功。请重启您的计算机后重试。',
   'notifications.justNow': '刚刚',
   'notifications.minAgo': '{n} 分钟前',
   'notifications.hrAgo': '{n} 小时前',
