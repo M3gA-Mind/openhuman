@@ -7766,14 +7766,24 @@ async fn port_conflict_recovery_core_starts_on_fallback_port_e2e() {
 
     // ── 4. RPC health-check on the fallback port ─────────────────────────
     let diag = post_json_rpc(&rpc_base, 26170, "openhuman.connectivity_diag", json!({})).await;
-    let diag_result = assert_no_jsonrpc_error(&diag, "connectivity_diag on fallback port");
+    // JSON-RPC result envelope → inner cli-compatible wrapper → diag payload.
+    // post_json_rpc returns the raw JSON-RPC response; assert_no_jsonrpc_error
+    // unwraps the outer "result". The inner value is {"logs":[...],"result":{"diag":{...}}},
+    // so we need one more "result" hop before accessing "diag".
+    let outer = assert_no_jsonrpc_error(&diag, "connectivity_diag on fallback port");
+    let inner = outer.get("result").unwrap_or_else(|| {
+        panic!("connectivity_diag outer result missing 'result' key; got: {outer}")
+    });
+    let diag_payload = inner.get("diag").unwrap_or_else(|| {
+        panic!("connectivity_diag inner result missing 'diag' key; got: {inner}")
+    });
     assert!(
-        diag_result.get("pid").is_some(),
-        "connectivity_diag should return pid field; got: {diag_result}"
+        diag_payload.get("sidecar_pid").is_some(),
+        "connectivity_diag should return sidecar_pid field; got: {diag_payload}"
     );
     assert!(
-        diag_result.get("rpc_port").is_some(),
-        "connectivity_diag should return rpc_port field; got: {diag_result}"
+        diag_payload.get("listen_port").is_some(),
+        "connectivity_diag should return listen_port field; got: {diag_payload}"
     );
 
     rpc_join.abort();
