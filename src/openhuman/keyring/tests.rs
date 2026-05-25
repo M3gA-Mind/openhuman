@@ -530,6 +530,11 @@ fn is_available_returns_true_on_repeated_calls_os_backend() {
         super::ops::is_available(),
         "is_available must return true even with pre-existing probe key in OS keychain"
     );
+    // Repeated call should also stay true (exercises the OnceLock cached path).
+    assert!(
+        super::ops::is_available(),
+        "is_available must remain true on repeated calls (cached result)"
+    );
     // Cleanup.
     let _ = b.delete(probe_key);
 }
