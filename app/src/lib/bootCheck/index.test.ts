@@ -272,8 +272,10 @@ describe('runBootCheck — port conflict auto-recovery', () => {
       callRpc: vi.fn(async (method: string) => {
         if (method === 'core.ping') {
           pingCallCount += 1;
-          // Fail the first 3 attempts (initial waitForCore), succeed on 4th (retry after cache clear)
-          if (pingCallCount <= 3) throw new Error('timeout');
+          // waitForCore(10_000) makes ~12 attempts with 200→1000ms exponential backoff.
+          // Fail exactly those 12 so the initial call times out; ping 13 succeeds so
+          // the cache-clear retry waitForCore(5_000) returns true on its first attempt.
+          if (pingCallCount <= 12) throw new Error('timeout');
           return {};
         }
         if (method === 'openhuman.service_status') return { installed: false, running: false };
@@ -288,9 +290,8 @@ describe('runBootCheck — port conflict auto-recovery', () => {
     const result = await promise;
     vi.useRealTimers();
 
-    // With fake timers the ping loop runs out quickly; the cache-clear retry path
-    // is exercised if the second waitForCore gets a hit.
-    expect(['match', 'unreachable'].includes(result.kind)).toBe(true);
+    // Initial waitForCore timed out → cache cleared → second waitForCore succeeded.
+    expect(result.kind).toBe('match');
   });
 });
 

@@ -189,7 +189,7 @@ const en3: TranslationMap = {
   'bootCheck.restartUpdateCore': 'Restart / Update Runtime',
   'bootCheck.unexpectedError': 'Unexpected Boot-Check Error',
   'bootCheck.actionFailed': 'Something went wrong. Please try again.',
-  'bootCheck.portConflictTitle': "Couldn't start the app engine",
+  'bootCheck.portConflictTitle': "Couldn't Start the App Engine",
   'bootCheck.portConflictBody':
     "Another process is using the network port OpenHuman needs. We'll try to fix this automatically.",
   'bootCheck.portConflictFixButton': 'Fix Automatically',

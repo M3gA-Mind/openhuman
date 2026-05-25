@@ -272,6 +272,8 @@ async fn recover_port_conflict(
     state: tauri::State<'_, core_process::CoreProcessHandle>,
 ) -> Result<core_process::RecoveryOutcome, String> {
     log::info!("[core] recover_port_conflict: command invoked from frontend");
+    let _guard = state.inner().restart_lock().await;
+    log::debug!("[core] recover_port_conflict: acquired restart lock");
     let outcome = state.inner().recover_port_conflict().await;
     log::debug!(
         "[core] recover_port_conflict: result success={} message={}",

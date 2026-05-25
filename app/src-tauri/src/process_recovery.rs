@@ -577,9 +577,12 @@ mod linux_imp {
     }
 
     fn is_openhuman_executable(argv0: &str) -> bool {
-        let lower = argv0.to_ascii_lowercase();
-        // Match openhuman-core binary or OpenHuman app executable.
-        lower.contains("openhuman-core") || lower.contains("openhuman")
+        let filename = std::path::Path::new(argv0)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(argv0);
+        let lower = filename.to_ascii_lowercase();
+        lower == "openhuman-core" || lower == "openhuman"
     }
 
     #[cfg(test)]
@@ -817,12 +820,15 @@ mod windows_imp {
 
     fn is_openhuman_executable(caption: &str, exe_path: &str) -> bool {
         let caption_lower = caption.to_ascii_lowercase();
-        let exe_lower = exe_path.to_ascii_lowercase();
-        let matches_name = caption_lower == "openhuman-core.exe"
+        let exe_filename = std::path::Path::new(exe_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(exe_path)
+            .to_ascii_lowercase();
+        caption_lower == "openhuman-core.exe"
             || caption_lower == "openhuman.exe"
-            || exe_lower.contains("openhuman-core")
-            || exe_lower.contains("openhuman");
-        matches_name
+            || exe_filename == "openhuman-core.exe"
+            || exe_filename == "openhuman.exe"
     }
 
     #[cfg(test)]
