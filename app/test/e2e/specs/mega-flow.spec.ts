@@ -237,6 +237,9 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
     // Re-login since reset wipes the session.
     await triggerDeepLink('openhuman://auth?token=mega-composio-token');
     await waitForMockRequest('POST', '/telegram/login-tokens/', 15_000);
+    // Wait for the core to finish storing the session token before calling
+    // composio RPCs — without this the session may not be persisted yet.
+    await waitForMockRequest('GET', '/auth/me', 10_000);
 
     // Seed connections + available triggers; start with an empty active list.
     setMockBehaviors({
@@ -561,6 +564,8 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
 
     await triggerDeepLink('openhuman://auth?token=mega-composio-webhook-token');
     await waitForMockRequest('POST', '/telegram/login-tokens/', 15_000);
+    // Wait for the core to finish storing the session token before proceeding.
+    await waitForMockRequest('GET', '/auth/me', 10_000);
     clearRequestLog();
 
     // Seed composio state.
