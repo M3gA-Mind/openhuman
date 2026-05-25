@@ -97,11 +97,23 @@ pub(crate) fn is_known_openhuman_tier(model: &str) -> bool {
 
 /// Return the configured provider string for a named workload role.
 ///
-/// Empty / `"cloud"` resolves through `primary_cloud`. For backwards
-/// compatibility, a legacy external `inference_url` takes precedence when
-/// `primary_cloud` still points at OpenHuman because migration 1→2 preserved
-/// the URL as a custom provider entry but older configs did not explicitly set
-/// per-workload routes.
+/// Empty / `"cloud"` resolves through BYOK fallback first (for non-agentic
+/// roles), then `primary_cloud`. When a BYOK cloud provider is detected on
+/// any workload, unset chat/reasoning/coding routes inherit it rather than
+/// silently falling back to the managed OpenHuman backend.
+///
+/// The `agentic` role is deliberately excluded from BYOK inheritance: it is
+/// used by tool-using subagents (integrations_agent) via `hint:agentic` model
+/// overrides, which are managed-backend tier directives. Routing them through
+/// a BYOK provider would forward the tier name (e.g. `agentic-v1`) to a
+/// provider that doesn't understand it, and would break `hint:agentic`
+/// routing for users who have BYOK chat configured but want agentic subagents
+/// to stay on the managed backend's specialized model.
+///
+/// For backwards compatibility, a legacy external `inference_url` takes
+/// precedence when `primary_cloud` still points at OpenHuman because
+/// migration 1→2 preserved the URL as a custom provider entry but older
+/// configs did not explicitly set per-workload routes.
 pub fn provider_for_role(role: &str, config: &Config) -> String {
     let opt = match role {
         "chat" => config.chat_provider.as_deref(),
@@ -122,10 +134,61 @@ pub fn provider_for_role(role: &str, config: &Config) -> String {
     };
     let s = opt.unwrap_or("").trim();
     if s.is_empty() || s == "cloud" {
+        // BYOK inheritance applies to all roles except "agentic". The agentic
+        // workload must stay on the managed backend so hint:agentic routes and
+        // tool-using subagents receive the correct tier model.
+        if role != "agentic" {
+            if let Some(byok) = resolve_byok_fallback_provider_string(config) {
+                log::debug!(
+                    "[providers][byok-fallback] role={} inheriting BYOK provider string={}",
+                    role,
+                    byok
+                );
+                return byok;
+            }
+        }
         resolve_primary_cloud_provider_string(config)
     } else {
         s.to_string()
     }
+}
+
+/// Find the first BYOK cloud provider string configured across all workload
+/// routes, skipping local providers (ollama, lmstudio) and managed-backend
+/// sentinels ("openhuman", "cloud", empty).
+///
+/// Returns `None` when no BYOK cloud provider is configured, in which case
+/// the caller should fall through to `resolve_primary_cloud_provider_string`.
+///
+/// Priority order: chat → reasoning → agentic → coding (user-facing workloads
+/// first so the most prominent setting wins for unset background workloads).
+pub(crate) fn resolve_byok_fallback_provider_string(config: &Config) -> Option<String> {
+    let candidates = [
+        config.chat_provider.as_deref(),
+        config.reasoning_provider.as_deref(),
+        config.agentic_provider.as_deref(),
+        config.coding_provider.as_deref(),
+    ];
+    for candidate in candidates.iter().flatten() {
+        let s = candidate.trim();
+        if s.is_empty() || s == "cloud" || s == PROVIDER_OPENHUMAN {
+            continue;
+        }
+        // Skip local providers — they are not suitable fallbacks for agentic
+        // or background workloads that run on the managed backend.
+        if s.starts_with(OLLAMA_PROVIDER_PREFIX) || s.starts_with(LM_STUDIO_PROVIDER_PREFIX) {
+            continue;
+        }
+        // Any remaining non-empty string with a colon is a BYOK cloud slug.
+        if s.contains(':') {
+            log::debug!(
+                "[providers][byok-fallback] resolve_byok_fallback found candidate={}",
+                s
+            );
+            return Some(s.to_string());
+        }
+    }
+    None
 }
 
 /// Build a `(Provider, model)` for the given workload role.

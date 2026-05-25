@@ -148,10 +148,15 @@ pub(super) fn resolve_subagent_provider(
                     }
                     Err(e) => {
                         log::warn!(
-                        "[subagent_runner] workload '{}' provider build failed ({}) for agent_id={} — \
-                         falling back to parent provider + parent model '{}'",
-                        workload, e, agent_id, parent_model
-                    );
+                            "[subagent_runner] workload='{}' provider build failed for agent_id={} error='{}' \
+                             falling back to parent provider (parent_model='{}'). \
+                             Consider setting {}_provider in config.",
+                            workload,
+                            agent_id,
+                            e,
+                            parent_model,
+                            workload
+                        );
                         (parent_provider, parent_model)
                     }
                 }
