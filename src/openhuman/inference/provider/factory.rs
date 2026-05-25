@@ -97,18 +97,16 @@ pub(crate) fn is_known_openhuman_tier(model: &str) -> bool {
 
 /// Return the configured provider string for a named workload role.
 ///
-/// Empty / `"cloud"` resolves through BYOK fallback first (for non-agentic
-/// roles), then `primary_cloud`. When a BYOK cloud provider is detected on
-/// any workload, unset chat/reasoning/coding routes inherit it rather than
-/// silently falling back to the managed OpenHuman backend.
+/// Empty / `"cloud"` resolves through BYOK fallback first for the three
+/// chat-tier roles (`chat`, `reasoning`, `coding`), then `primary_cloud`.
+/// When a BYOK cloud provider is detected on any workload, unset chat-tier
+/// routes inherit it rather than silently falling back to the managed backend.
 ///
-/// The `agentic` role is deliberately excluded from BYOK inheritance: it is
-/// used by tool-using subagents (integrations_agent) via `hint:agentic` model
-/// overrides, which are managed-backend tier directives. Routing them through
-/// a BYOK provider would forward the tier name (e.g. `agentic-v1`) to a
-/// provider that doesn't understand it, and would break `hint:agentic`
-/// routing for users who have BYOK chat configured but want agentic subagents
-/// to stay on the managed backend's specialized model.
+/// Only `chat`, `reasoning`, and `coding` participate in BYOK inheritance.
+/// Background workloads (`memory`, `embeddings`, `heartbeat`, `learning`,
+/// `subconscious`) and the `agentic` workload always fall through to
+/// `primary_cloud` — they use tier-specific models that BYOK providers don't
+/// understand, and their providers are configured independently.
 ///
 /// For backwards compatibility, a legacy external `inference_url` takes
 /// precedence when `primary_cloud` still points at OpenHuman because
@@ -134,10 +132,12 @@ pub fn provider_for_role(role: &str, config: &Config) -> String {
     };
     let s = opt.unwrap_or("").trim();
     if s.is_empty() || s == "cloud" {
-        // BYOK inheritance applies to all roles except "agentic". The agentic
-        // workload must stay on the managed backend so hint:agentic routes and
-        // tool-using subagents receive the correct tier model.
-        if role != "agentic" {
+        // BYOK inheritance is scoped to the three chat-tier roles only.
+        // Background workloads (memory, embeddings, heartbeat, learning,
+        // subconscious) and the agentic workload must stay on the managed
+        // backend — they use tier-specific models that BYOK providers don't
+        // understand, and their providers are configured separately.
+        if matches!(role, "chat" | "reasoning" | "coding") {
             if let Some(byok) = resolve_byok_fallback_provider_string(config) {
                 log::debug!(
                     "[providers][byok-fallback] role={} inheriting BYOK provider string={}",

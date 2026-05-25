@@ -1133,6 +1133,29 @@ fn resolve_byok_fallback_skips_empty_and_finds_next() {
     assert_eq!(result, Some("anthropic:claude-opus-4-7".to_string()));
 }
 
+#[test]
+fn byok_fallback_background_workloads_never_inherit() {
+    // Background workloads (memory, embeddings, heartbeat, learning, subconscious)
+    // must stay on the managed backend even when chat BYOK is configured.
+    let mut config = Config::default();
+    config.cloud_providers.push(openai_entry("p_oai", "openai"));
+    config.chat_provider = Some("openai:gpt-4o".to_string());
+    for role in &[
+        "memory",
+        "embeddings",
+        "heartbeat",
+        "learning",
+        "subconscious",
+    ] {
+        let result = provider_for_role(role, &config);
+        assert_eq!(
+            result, "openhuman",
+            "background workload '{}' must not inherit chat BYOK",
+            role
+        );
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires live LM Studio on localhost:1234"]
 async fn live_lmstudio_provider_streams_thinking_and_text() {
