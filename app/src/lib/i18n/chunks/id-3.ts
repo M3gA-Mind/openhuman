@@ -190,6 +190,13 @@ const id3: TranslationMap = {
   'bootCheck.restartUpdateCore': 'Mulai Ulang / Perbarui Runtime',
   'bootCheck.unexpectedError': 'Kesalahan Boot-Check Tak Terduga',
   'bootCheck.actionFailed': 'Terjadi kesalahan. Silakan coba lagi.',
+  'bootCheck.portConflictTitle': "Couldn't start the app engine",
+  'bootCheck.portConflictBody':
+    "Another process is using the network port OpenHuman needs. We'll try to fix this automatically.",
+  'bootCheck.portConflictFixButton': 'Fix Automatically',
+  'bootCheck.portConflictFixing': 'Fixing…',
+  'bootCheck.portConflictFixFailed':
+    "Automatic fix didn't work. Please restart your computer and try again.",
   'notifications.justNow': 'baru saja',
   'notifications.minAgo': '{n}m lalu',
   'notifications.hrAgo': '{n}j lalu',

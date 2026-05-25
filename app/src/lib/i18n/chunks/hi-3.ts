@@ -189,6 +189,13 @@ const hi3: TranslationMap = {
   'bootCheck.restartUpdateCore': 'रनटाइम रीस्टार्ट / अपडेट करें',
   'bootCheck.unexpectedError': 'अनपेक्षित बूट-चेक एरर',
   'bootCheck.actionFailed': 'कुछ गड़बड़ हो गई। दोबारा कोशिश करें।',
+  'bootCheck.portConflictTitle': "Couldn't start the app engine",
+  'bootCheck.portConflictBody':
+    "Another process is using the network port OpenHuman needs. We'll try to fix this automatically.",
+  'bootCheck.portConflictFixButton': 'Fix Automatically',
+  'bootCheck.portConflictFixing': 'Fixing…',
+  'bootCheck.portConflictFixFailed':
+    "Automatic fix didn't work. Please restart your computer and try again.",
   'notifications.justNow': 'अभी-अभी',
   'notifications.minAgo': '{n}मि. पहले',
   'notifications.hrAgo': '{n}घं. पहले',

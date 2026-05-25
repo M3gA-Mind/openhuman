@@ -190,6 +190,13 @@ const ru3: TranslationMap = {
   'bootCheck.restartUpdateCore': 'Перезапустить / обновить среду',
   'bootCheck.unexpectedError': 'Неожиданная ошибка при загрузке',
   'bootCheck.actionFailed': 'Что-то пошло не так. Попробуй ещё раз.',
+  'bootCheck.portConflictTitle': "Couldn't start the app engine",
+  'bootCheck.portConflictBody':
+    "Another process is using the network port OpenHuman needs. We'll try to fix this automatically.",
+  'bootCheck.portConflictFixButton': 'Fix Automatically',
+  'bootCheck.portConflictFixing': 'Fixing…',
+  'bootCheck.portConflictFixFailed':
+    "Automatic fix didn't work. Please restart your computer and try again.",
   'notifications.justNow': 'только что',
   'notifications.minAgo': '{n} мин назад',
   'notifications.hrAgo': '{n} ч назад',

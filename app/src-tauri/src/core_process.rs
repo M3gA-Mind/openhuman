@@ -397,7 +397,7 @@ impl CoreProcessHandle {
         )
     }
 
-    fn apply_embedded_ready_signal(
+    pub(crate) fn apply_embedded_ready_signal(
         &self,
         ready: openhuman_core::core::jsonrpc::EmbeddedReadySignal,
     ) {
@@ -627,6 +627,57 @@ impl CoreProcessHandle {
     pub async fn send_terminate_signal(&self) {
         self.cancel_shutdown_token(" on app shutdown").await;
         self.abort_task(" on app shutdown").await;
+    }
+}
+
+/// Result returned to the frontend after a port-conflict auto-recovery attempt.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RecoveryOutcome {
+    pub success: bool,
+    pub message: String,
+    pub new_port: Option<u16>,
+}
+
+impl CoreProcessHandle {
+    /// Attempt to recover from a port conflict: reap stale OpenHuman processes,
+    /// wait briefly for the port to free, then start the embedded core.
+    ///
+    /// Called from the `recover_port_conflict` Tauri command when the frontend's
+    /// boot-check detects the core is unreachable due to a port conflict.
+    pub async fn recover_port_conflict(&self) -> RecoveryOutcome {
+        log::debug!(
+            "[core_process] recover_port_conflict: starting recovery for port {}",
+            self.preferred_port
+        );
+
+        crate::process_recovery::reap_stale_openhuman_processes();
+        log::debug!("[core_process] recover_port_conflict: stale process reap complete");
+
+        // Give the OS time to release the port after process termination.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        log::debug!("[core_process] recover_port_conflict: post-reap wait complete");
+
+        match self.ensure_running().await {
+            Ok(()) => {
+                let new_port = self.port();
+                log::info!(
+                    "[core_process] recover_port_conflict: recovery succeeded, core on port {new_port}"
+                );
+                RecoveryOutcome {
+                    success: true,
+                    message: format!("Core recovered on port {new_port}"),
+                    new_port: Some(new_port),
+                }
+            }
+            Err(err) => {
+                log::warn!("[core_process] recover_port_conflict: recovery failed: {err}");
+                RecoveryOutcome {
+                    success: false,
+                    message: format!("Recovery failed: {err}"),
+                    new_port: None,
+                }
+            }
+        }
     }
 }
 
