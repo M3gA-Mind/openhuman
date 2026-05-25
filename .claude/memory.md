@@ -266,3 +266,14 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 - **`BootCheckTransport` is the right hook for frontend recovery** — `app/src/lib/bootCheck/index.ts` is the injection point for new recovery capabilities; don't add them directly to the BootCheck component.
 - **i18n bootCheck keys live in `-3.ts` chunks** — New keys must be added to all 13 language files simultaneously (the `-3.ts` chunk for each language).
 - **Workflow folder** — `workflow/` at repo root has 5 markdown files (00–05) defining the full PR workflow: pick issue → architectobot plan → user approval → codecrusher → architectobot verify → checks → memory-keeper → commit → push/PR.
+
+## Channel Event Workspace Routing (Issue #2602)
+
+- **Workspace identity is `PathBuf`** — Represented as the workspace directory path on `ChannelRuntimeContext` as `ctx.workspace_dir: Arc<PathBuf>`. Use `ctx.workspace_dir.as_ref().clone()` at publish sites. There is no abstract `WorkspaceId` type.
+- **`DomainEvent` workspace routing contract** — Publisher populates workspace field from context; subscriber compares against `self.workspace_dir` and early-returns with `log::debug!` on mismatch. Follow this pattern for any workspace-scoped `DomainEvent` variant.
+- **`ChannelMessageReceived` and `ChannelMessageProcessed` carry `workspace_dir`** — Added in PR for issue #2602. Guards in `ConversationPersistenceSubscriber` (memory_conversations/bus.rs) and `TelegramRemoteSubscriber` (telegram/bus.rs) prevent cross-workspace persistence during login/workspace-change races.
+
+## Pre-existing Upstream Failures (from issue #2602 session)
+
+- **Upstream `main` has 5 Vitest failures and 4 TypeScript compile errors** — Caused by missing iOS experimental dependencies: `@noble/ciphers/chacha`, `@noble/ciphers/webcrypto`, `qrcode.react`, `@tauri-apps/plugin-barcode-scanner`. Breaks `pnpm compile`, `pnpm build`, `pnpm test:coverage` on a clean checkout. Always verify by stashing changes and running checks on the base branch before blaming your PR.
+- **`cargo fmt` must run after codecrusher** — codecrusher does not reliably produce `cargo fmt`-clean Rust. Always run `cargo fmt --manifest-path Cargo.toml` after codecrusher finishes and before committing.

@@ -206,7 +206,7 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
     // Login first — `oauth:success` is only meaningful for an authenticated user.
     await triggerDeepLink('openhuman://auth?token=mega-gmail-token');
     await waitForMockRequest('POST', '/telegram/login-tokens/', 15_000);
-    await waitForMockRequest('GET', '/auth/me', 10_000);
+    expect(await waitForMockRequest('GET', '/auth/me', 10_000)).toBeDefined();
     clearRequestLog();
 
     await triggerDeepLink('openhuman://oauth/success?integrationId=mock-gmail-int&provider=google');
