@@ -1,5 +1,13 @@
 //! Startup recovery for OpenHuman processes left behind by hard exits.
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct ProcessInfo {
+    pub pid: u32,
+    pub ppid: u32,
+    pub argv0: String,
+    pub command: String,
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
     use std::collections::{HashMap, HashSet};
@@ -7,21 +15,13 @@ mod imp {
     use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    use serde::Serialize;
-
     use crate::cef_preflight;
     use crate::core_process;
     use crate::process_kill::{kill_pid_force, kill_pid_term};
 
-    const TERM_GRACE: Duration = Duration::from_millis(500);
+    pub(crate) use super::ProcessInfo;
 
-    #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-    pub(crate) struct ProcessInfo {
-        pub pid: u32,
-        pub ppid: u32,
-        pub argv0: String,
-        pub command: String,
-    }
+    const TERM_GRACE: Duration = Duration::from_millis(500);
 
     #[derive(Debug, Default, PartialEq, Eq)]
     struct ReapSummary {
@@ -885,14 +885,10 @@ DESKTOP-ABC,openhuman-core.exe,C:\\Program Files\\OpenHuman\\openhuman-core.exe,
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) use imp::{enumerate_openhuman_processes, reap_stale_openhuman_processes, ProcessInfo};
+pub(crate) use imp::{enumerate_openhuman_processes, reap_stale_openhuman_processes};
 
 #[cfg(target_os = "linux")]
-pub(crate) use linux_imp::{
-    enumerate_openhuman_processes, reap_stale_openhuman_processes, ProcessInfo,
-};
+pub(crate) use linux_imp::{enumerate_openhuman_processes, reap_stale_openhuman_processes};
 
 #[cfg(target_os = "windows")]
-pub(crate) use windows_imp::{
-    enumerate_openhuman_processes, reap_stale_openhuman_processes, ProcessInfo,
-};
+pub(crate) use windows_imp::{enumerate_openhuman_processes, reap_stale_openhuman_processes};
