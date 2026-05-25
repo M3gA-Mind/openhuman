@@ -234,9 +234,9 @@ export async function loadAISettings(): Promise<AISettings> {
     const ref_ = routing[w];
     return ref_.kind === 'cloud';
   });
-  const hasUnsetChatWorkloads = (['chat', 'reasoning', 'agentic', 'coding'] as const).some(w => {
+  const hasUnsetChatWorkloads = (['chat', 'reasoning', 'coding'] as const).some(w => {
     const ref_ = routing[w];
-    return ref_.kind === 'default' || ref_.kind === 'openhuman';
+    return ref_.kind === 'default';
   });
   if (byokProvider !== undefined && hasUnsetChatWorkloads) {
     const byokSlug = (routing[byokProvider] as { kind: 'cloud'; providerSlug: string })
