@@ -79,29 +79,10 @@ pub(crate) use helpers::{
 pub(crate) static GLOBAL_MEMORY_TEST_LOCK: tokio::sync::Mutex<()> =
     tokio::sync::Mutex::const_new(());
 
-/// Shared test helper: binds the process-global memory client to a single
-/// leaked temp workspace that all `ops` submodule tests share.
-///
-/// Without this, each submodule's `ensure_memory_client()` would create its
-/// own `OnceLock<PathBuf>` pointing to a different temp dir.  When two test
-/// threads call `global::init()` concurrently with different paths, the second
-/// call *rebinds* the global, silently discarding the first module's seeded
-/// data.  Sharing one workspace means every concurrent `global::init()` call
-/// finds the same path and returns the existing client unchanged.
 #[cfg(test)]
-pub(crate) fn ensure_shared_memory_client() {
-    use std::path::PathBuf;
-    use std::sync::OnceLock;
-    static WORKSPACE: OnceLock<PathBuf> = OnceLock::new();
-    let workspace = WORKSPACE.get_or_init(|| {
-        let tmp = tempfile::TempDir::new().expect("tempdir");
-        let path = tmp.path().join("workspace");
-        std::fs::create_dir_all(&path).expect("workspace dir");
-        std::mem::forget(tmp);
-        path
-    });
-    let _ = crate::openhuman::memory::global::init(workspace.clone());
-}
+mod test_support;
+#[cfg(test)]
+pub(crate) use test_support::ensure_shared_memory_client;
 
 #[cfg(test)]
 #[path = "../ops_tests.rs"]
