@@ -650,7 +650,11 @@ impl CoreProcessHandle {
             self.preferred_port
         );
 
-        crate::process_recovery::reap_stale_openhuman_processes();
+        tokio::task::spawn_blocking(crate::process_recovery::reap_stale_openhuman_processes)
+            .await
+            .unwrap_or_else(|e| {
+                log::warn!("[core_process] recover_port_conflict: reap task panicked: {e}")
+            });
         log::debug!("[core_process] recover_port_conflict: stale process reap complete");
 
         // Give the OS time to release the port after process termination.

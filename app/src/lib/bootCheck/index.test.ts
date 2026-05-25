@@ -143,6 +143,11 @@ describe('runBootCheck — local mode', () => {
     vi.useRealTimers();
 
     expect(result.kind).toBe('unreachable');
+    // start_core_process succeeded (invokeCmd resolves) so portConflict must NOT be set —
+    // the timeout alone is not evidence of a port conflict.
+    if (result.kind === 'unreachable') {
+      expect(result.portConflict).toBeFalsy();
+    }
   });
 });
 

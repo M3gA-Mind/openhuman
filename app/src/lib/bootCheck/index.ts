@@ -257,7 +257,7 @@ export async function runBootCheck(
       return {
         kind: 'unreachable',
         reason: 'Local core did not respond in time',
-        portConflict: true,
+        portConflict: startFailed,
       };
     }
 
