@@ -251,6 +251,7 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
     });
 
     const before = await callOpenhumanRpc('openhuman.composio_list_triggers', {});
+    if (!before.ok) console.log(`${LOG} composio_list_triggers FAILED:`, JSON.stringify(before));
     expect(before.ok).toBe(true);
     // list_triggers always emits a log line → RpcOutcome wraps in {result, logs}.
     // JSON-RPC result shape: { result: { triggers: [...] }, logs: [...] }
@@ -582,6 +583,7 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
       connection_id: 'c2',
       slug: 'GITHUB_PULL_REQUEST_EVENT',
     });
+    if (!enable.ok) console.log(`${LOG} composio_enable_trigger FAILED:`, JSON.stringify(enable));
     expect(enable.ok).toBe(true);
     console.log(`${LOG} composio+webhook: trigger enabled`);
 
