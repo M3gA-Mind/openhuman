@@ -591,6 +591,7 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
     });
     expect(auth.ok).toBe(true);
     clearRequestLog();
+    await browser.pause(500);
 
     // Seed composio state.
     setMockBehaviors({
