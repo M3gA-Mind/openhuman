@@ -70,6 +70,27 @@ async function waitForMockRequest(
   return undefined;
 }
 
+/**
+ * Poll the core's `auth_get_session_token` RPC until it returns a non-null
+ * token, confirming that `auth_store_session` has fully written the JWT to
+ * disk.  This is more reliable than waiting for the mock's `/auth/me` log
+ * entry: that entry is recorded when the request *arrives* at the mock, but
+ * `store_session` finishes writing only after the response is received and
+ * the auth-profile file is flushed.
+ */
+async function waitForCoreSessionToken(timeoutMs = 12_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const snap = await callOpenhumanRpc<any>('openhuman.auth_get_session_token', {});
+    // RpcOutcome wraps the payload: json.result = { result: { token }, logs }
+    const token = snap.result?.result?.token ?? snap.result?.token;
+    if (snap.ok && token) return;
+    await browser.pause(300);
+  }
+  console.warn(`${LOG} waitForCoreSessionToken: session token not written within ${timeoutMs}ms`);
+}
+
 async function resetEverything(label: string): Promise<void> {
   console.log(`${LOG} reset (${label}) — admin reset only (skip destructive core reset)`);
   // Mock-side reset is enough to give each scenario a clean slate for the
@@ -237,9 +258,11 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
     // Re-login since reset wipes the session.
     await triggerDeepLink('openhuman://auth?token=mega-composio-token');
     await waitForMockRequest('POST', '/telegram/login-tokens/', 15_000);
-    // Wait for the core to finish storing the session token before calling
-    // composio RPCs — without this the session may not be persisted yet.
-    await waitForMockRequest('GET', '/auth/me', 10_000);
+    // Poll until the core has written the session JWT to disk.  The mock's
+    // /auth/me log entry fires when the request *arrives* (during
+    // store_session's token validation), which is before the profile file
+    // is flushed — so we need a deeper signal here.
+    await waitForCoreSessionToken(12_000);
 
     // Seed connections + available triggers; start with an empty active list.
     setMockBehaviors({
@@ -565,8 +588,9 @@ describe('Mega flow — login + Gmail OAuth + Composio in one session', () => {
 
     await triggerDeepLink('openhuman://auth?token=mega-composio-webhook-token');
     await waitForMockRequest('POST', '/telegram/login-tokens/', 15_000);
-    // Wait for the core to finish storing the session token before proceeding.
-    await waitForMockRequest('GET', '/auth/me', 10_000);
+    // Poll until the core has written the session JWT to disk — same fix as
+    // Scenario 4; see waitForCoreSessionToken for the full explanation.
+    await waitForCoreSessionToken(12_000);
     clearRequestLog();
 
     // Seed composio state.
