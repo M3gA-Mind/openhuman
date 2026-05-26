@@ -691,8 +691,18 @@ export default function Skills() {
         ? () => true
         : (meta: ComposioToolkitMeta) => meta.category === selectedCategory;
 
-    return composioAgentReadyEntries.filter(({ meta }) => matchesCategory(meta) && matchesSearch(meta));
-  }, [composioAgentReadyEntries, composioGridEntries, searchQuery, selectedCategory, agentReadyToolkits, agentReadyLoading, agentReadyError]);
+    return composioAgentReadyEntries.filter(
+      ({ meta }) => matchesCategory(meta) && matchesSearch(meta)
+    );
+  }, [
+    composioAgentReadyEntries,
+    composioGridEntries,
+    searchQuery,
+    selectedCategory,
+    agentReadyToolkits,
+    agentReadyLoading,
+    agentReadyError,
+  ]);
 
   const composioSortedEntries = useMemo(() => {
     return [...composioFilteredEntries].sort((a, b) => {
@@ -730,7 +740,14 @@ export default function Skills() {
       cats.add('Preview');
     }
     return SKILL_CATEGORY_ORDER.filter(c => c !== 'Channels' && cats.has(c));
-  }, [allItems, composioAgentReadyEntries, composioGridEntries, agentReadyToolkits, agentReadyLoading, agentReadyError]);
+  }, [
+    allItems,
+    composioAgentReadyEntries,
+    composioGridEntries,
+    agentReadyToolkits,
+    agentReadyLoading,
+    agentReadyError,
+  ]);
 
   const filteredItems = useMemo(() => {
     const q = searchQuery.toLowerCase();
