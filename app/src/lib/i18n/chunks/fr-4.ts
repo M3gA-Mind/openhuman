@@ -146,7 +146,8 @@ const fr4: TranslationMap = {
   'notifications.center.filterAll': 'Tout filtrer',
   'notifications.center.markAllRead': 'Tout marquer comme lu',
   'notifications.center.title': 'Notifications',
-  'oauth.button.loopbackTimeout': 'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
+  'oauth.button.loopbackTimeout':
+    'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
   'oauth.button.connecting': 'Connexion en cours…',
   'oauth.login.continueWith': 'Continuer avec',
   'onboarding.contextGathering.buildingDesc': 'Description de la construction',

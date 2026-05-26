@@ -146,7 +146,8 @@ const hi4: TranslationMap = {
   'notifications.center.filterAll': 'सभी फिल्टर',
   'notifications.center.markAllRead': 'सभी पढ़ा हुआ मार्क करें',
   'notifications.center.title': 'नोटिफिकेशन',
-  'oauth.button.loopbackTimeout': 'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
+  'oauth.button.loopbackTimeout':
+    'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
   'oauth.button.connecting': 'कनेक्ट हो रहा है...',
   'oauth.login.continueWith': 'के साथ जारी रखें',
   'onboarding.contextGathering.buildingDesc': 'बिल्डिंग विवरण',

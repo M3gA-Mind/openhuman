@@ -146,7 +146,8 @@ const ru4: TranslationMap = {
   'notifications.center.filterAll': 'Все',
   'notifications.center.markAllRead': 'Отметить всё прочитанным',
   'notifications.center.title': 'Уведомления',
-  'oauth.button.loopbackTimeout': 'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
+  'oauth.button.loopbackTimeout':
+    'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
   'oauth.button.connecting': 'Подключение...',
   'oauth.login.continueWith': 'Продолжить через',
   'onboarding.contextGathering.buildingDesc': 'Сборка профиля',

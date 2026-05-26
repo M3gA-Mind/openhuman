@@ -146,7 +146,8 @@ const bn4: TranslationMap = {
   'notifications.center.filterAll': 'সব ফিল্টার',
   'notifications.center.markAllRead': 'সব পঠিত চিহ্নিত করুন',
   'notifications.center.title': 'বিজ্ঞপ্তি',
-  'oauth.button.loopbackTimeout': 'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
+  'oauth.button.loopbackTimeout':
+    'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
   'oauth.button.connecting': 'সংযোগ হচ্ছে...',
   'oauth.login.continueWith': 'দিয়ে চালিয়ে যান',
   'onboarding.contextGathering.buildingDesc': 'বিল্ডিং বিবরণ',

@@ -137,7 +137,8 @@ const ko4: TranslationMap = {
   'notifications.center.filterAll': '전체 필터',
   'notifications.center.markAllRead': '모두 읽음으로 표시',
   'notifications.center.title': '알림',
-  'oauth.button.loopbackTimeout': 'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
+  'oauth.button.loopbackTimeout':
+    'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
   'oauth.button.connecting': '연결 중...',
   'oauth.login.continueWith': '다음으로 계속:',
   'onboarding.contextGathering.buildingDesc': '작성 설명',

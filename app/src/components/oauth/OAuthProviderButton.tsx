@@ -263,8 +263,7 @@ const OAuthProviderButton = ({
           })
           .catch(err => {
             warnLog('[%s] loopback callback failed', provider.id, err);
-            const isTimeout =
-              err instanceof Error && err.message.includes('timed out');
+            const isTimeout = err instanceof Error && err.message.includes('timed out');
             if (isTimeout) {
               setIsLoading(false);
               setStartupError(t('oauth.button.loopbackTimeout'));
