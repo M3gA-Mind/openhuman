@@ -147,7 +147,7 @@ const fr4: TranslationMap = {
   'notifications.center.markAllRead': 'Tout marquer comme lu',
   'notifications.center.title': 'Notifications',
   'oauth.button.loopbackTimeout':
-    'La connexion a expiré — le navigateur n'a pas complété la redirection OAuth. Veuillez réessayer.',
+    "La connexion a expiré — le navigateur n'a pas complété la redirection OAuth. Veuillez réessayer.",
   'oauth.button.connecting': 'Connexion en cours…',
   'oauth.login.continueWith': 'Continuer avec',
   'onboarding.contextGathering.buildingDesc': 'Description de la construction',
