@@ -1125,8 +1125,11 @@ impl Config {
                     if meta.permissions().mode() & 0o004 != 0 {
                         let warned = WARNED_WORLD_READABLE_CONFIGS
                             .get_or_init(|| Mutex::new(HashSet::new()));
-                        let mut warned_guard = warned.lock().unwrap_or_else(|e| e.into_inner());
-                        if warned_guard.insert(config_path.clone()) {
+                        let should_fix = {
+                            let mut warned_guard = warned.lock().unwrap_or_else(|e| e.into_inner());
+                            warned_guard.insert(config_path.clone())
+                        };
+                        if should_fix {
                             tracing::warn!(
                                 "[config] Config file {:?} is world-readable (mode {:o}); \
                                  auto-fixing to 600",
