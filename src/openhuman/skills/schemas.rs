@@ -507,23 +507,37 @@ fn handle_skills_run(params: Map<String, Value>) -> ControllerFuture {
                 missing.join(", ")
             ));
         }
-        let task_prompt = registry::render_inputs_block(&skill.inputs, &inputs);
-        let run_id = uuid::Uuid::new_v4().to_string();
-        let definition = skill.definition;
-        let prompt = if task_prompt.is_empty() {
-            "Begin.".to_string()
-        } else {
-            task_prompt
+        // Run as the orchestrator archetype (full capability — delegate to
+        // subagents, codegraph, edit/test), focused on this single skill: the
+        // skill's SKILL.md is injected as guidelines and the resolved inputs as
+        // the task. The orchestrator's own system prompt is kept; SKILL.md +
+        // inputs ride in the task prompt.
+        let orchestrator = crate::openhuman::agent::agents::load_builtins()
+            .map_err(|e| format!("skill_run: failed to load builtins: {e}"))?
+            .into_iter()
+            .find(|d| d.id == "orchestrator")
+            .ok_or_else(|| "skill_run: 'orchestrator' agent definition not found".to_string())?;
+        let guidelines = match &skill.definition.system_prompt {
+            crate::openhuman::agent::harness::definition::PromptSource::Inline(s) => s.clone(),
+            _ => String::new(),
         };
+        let inputs_block = registry::render_inputs_block(&skill.inputs, &inputs);
+        let task_prompt = format!(
+            "You are running a single skill: **{id}**. Follow these guidelines exactly and \
+             focus solely on completing this one task — do not pick up unrelated work.\n\n\
+             # Skill guidelines\n{guidelines}\n\n{inputs_block}",
+            id = skill.definition.id,
+        );
+        let run_id = uuid::Uuid::new_v4().to_string();
         let log_id = run_id.clone();
         tracing::info!(
             skill_id = %payload.skill_id,
             run_id = %run_id,
-            "[skills][rpc] skill_run: spawning background subagent"
+            "[skills][rpc] skill_run: spawning orchestrator focused on skill"
         );
-        // Background: the RPC returns immediately; the subagent runs detached.
+        // Background: the RPC returns immediately; the orchestrator runs detached.
         tokio::spawn(async move {
-            match run_subagent(&definition, &prompt, SubagentRunOptions::default()).await {
+            match run_subagent(&orchestrator, &task_prompt, SubagentRunOptions::default()).await {
                 Ok(_) => tracing::info!(run_id = %log_id, "[skills][rpc] skill_run: completed"),
                 Err(e) => {
                     tracing::warn!(run_id = %log_id, error = ?e, "[skills][rpc] skill_run: failed")
