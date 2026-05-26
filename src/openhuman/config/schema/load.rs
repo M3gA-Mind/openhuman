@@ -1125,20 +1125,38 @@ impl Config {
                     if meta.permissions().mode() & 0o004 != 0 {
                         let warned = WARNED_WORLD_READABLE_CONFIGS
                             .get_or_init(|| Mutex::new(HashSet::new()));
-                        let should_fix = {
-                            let mut warned_guard = warned.lock().unwrap_or_else(|e| e.into_inner());
-                            warned_guard.insert(config_path.clone())
-                        };
-                        if should_fix {
+                        // Only attempt to fix paths not yet successfully chmod'd.
+                        // Cache is advanced only on success so a persistent
+                        // failure re-warns and re-attempts on every load.
+                        let already_fixed = warned
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .contains(&config_path);
+                        if !already_fixed {
                             tracing::warn!(
                                 "[config] Config file {:?} is world-readable (mode {:o}); \
                                  auto-fixing to 600",
                                 config_path,
                                 meta.permissions().mode() & 0o777,
                             );
+                            match fs::set_permissions(&config_path, Permissions::from_mode(0o600))
+                                .await
+                            {
+                                Ok(()) => {
+                                    warned
+                                        .lock()
+                                        .unwrap_or_else(|e| e.into_inner())
+                                        .insert(config_path.clone());
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        path = %config_path.display(),
+                                        error = %e,
+                                        "[config] failed to auto-fix config file permissions to 600",
+                                    );
+                                }
+                            }
                         }
-                        let _ =
-                            fs::set_permissions(&config_path, Permissions::from_mode(0o600)).await;
                     }
                 }
             }
