@@ -32,6 +32,9 @@ use crate::openhuman::skills::ops::{
 };
 use crate::rpc::RpcOutcome;
 
+use crate::openhuman::agent::harness::subagent_runner::{run_subagent, SubagentRunOptions};
+use crate::openhuman::skills::registry;
+
 #[derive(Debug, Deserialize, Default)]
 struct SkillsListParams {
     // No params today. Kept as an empty struct so future filters (scope,
@@ -184,6 +187,7 @@ pub fn all_skills_controller_schemas() -> Vec<ControllerSchema> {
         skills_schemas("skills_create"),
         skills_schemas("skills_install_from_url"),
         skills_schemas("skills_uninstall"),
+        skills_schemas("skills_run"),
     ]
 }
 
@@ -209,6 +213,10 @@ pub fn all_skills_registered_controllers() -> Vec<RegisteredController> {
             schema: skills_schemas("skills_uninstall"),
             handler: handle_skills_uninstall,
         },
+        RegisteredController {
+            schema: skills_schemas("skills_run"),
+            handler: handle_skills_run,
+        },
     ]
 }
 
@@ -225,6 +233,45 @@ pub fn skills_schemas(function: &str) -> ControllerSchema {
                 comment: "Discovered skills (sorted by name, project-scope shadows user-scope).",
                 required: true,
             }],
+        },
+        "skills_run" => ControllerSchema {
+            namespace: "skills",
+            function: "run",
+            description: "Start a skill as a background subagent with the given inputs. Validates required inputs, renders them into the prompt, and spawns the skill's agent; returns immediately with a run id.",
+            inputs: vec![
+                FieldSchema {
+                    name: "skill_id",
+                    ty: TypeSchema::String,
+                    comment: "Id of the skill to run (matches SkillDefinition.id).",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "inputs",
+                    ty: TypeSchema::Json,
+                    comment: "Object of input values keyed by the skill's declared input names.",
+                    required: false,
+                },
+            ],
+            outputs: vec![
+                FieldSchema {
+                    name: "run_id",
+                    ty: TypeSchema::String,
+                    comment: "Id for this background run.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "status",
+                    ty: TypeSchema::String,
+                    comment: "Always \"started\" — the subagent runs in the background.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "skill_id",
+                    ty: TypeSchema::String,
+                    comment: "Echo of the requested skill id.",
+                    required: true,
+                },
+            ],
         },
         "skills_read_resource" => ControllerSchema {
             namespace: "skills",
@@ -434,6 +481,61 @@ fn handle_skills_list(params: Map<String, Value>) -> ControllerFuture {
         let summaries = skills.into_iter().map(SkillSummary::from).collect();
         to_json(RpcOutcome::new(
             SkillsListResult { skills: summaries },
+            Vec::new(),
+        ))
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct SkillsRunParams {
+    skill_id: String,
+    #[serde(default)]
+    inputs: Option<Value>,
+}
+
+fn handle_skills_run(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let payload = deserialize_params::<SkillsRunParams>(params)?;
+        let workspace = resolve_workspace_dir().await;
+        let skill = registry::get_skill(&workspace, &payload.skill_id)
+            .ok_or_else(|| format!("skill_run: unknown skill '{}'", payload.skill_id))?;
+        let inputs = payload.inputs.unwrap_or(Value::Null);
+        let missing = registry::missing_required_inputs(&skill.inputs, &inputs);
+        if !missing.is_empty() {
+            return Err(format!(
+                "skill_run: missing required inputs: {}",
+                missing.join(", ")
+            ));
+        }
+        let task_prompt = registry::render_inputs_block(&skill.inputs, &inputs);
+        let run_id = uuid::Uuid::new_v4().to_string();
+        let definition = skill.definition;
+        let prompt = if task_prompt.is_empty() {
+            "Begin.".to_string()
+        } else {
+            task_prompt
+        };
+        let log_id = run_id.clone();
+        tracing::info!(
+            skill_id = %payload.skill_id,
+            run_id = %run_id,
+            "[skills][rpc] skill_run: spawning background subagent"
+        );
+        // Background: the RPC returns immediately; the subagent runs detached.
+        tokio::spawn(async move {
+            match run_subagent(&definition, &prompt, SubagentRunOptions::default()).await {
+                Ok(_) => tracing::info!(run_id = %log_id, "[skills][rpc] skill_run: completed"),
+                Err(e) => {
+                    tracing::warn!(run_id = %log_id, error = ?e, "[skills][rpc] skill_run: failed")
+                }
+            }
+        });
+        to_json(RpcOutcome::new(
+            serde_json::json!({
+                "run_id": run_id,
+                "status": "started",
+                "skill_id": payload.skill_id,
+            }),
             Vec::new(),
         ))
     })

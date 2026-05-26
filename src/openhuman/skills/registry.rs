@@ -8,9 +8,11 @@
 //! This keeps [`AgentDefinition`] untouched (no widespread struct-literal
 //! churn) — inputs ride at the skill layer via `#[serde(flatten)]`.
 
+use std::path::Path;
+
 use serde::{Deserialize, Serialize};
 
-use crate::openhuman::agent::harness::definition::AgentDefinition;
+use crate::openhuman::agent::harness::definition::{AgentDefinition, PromptSource};
 
 /// One declared input — a parameter the skill needs, with a human description.
 /// `required` inputs must be supplied at run time; `kind` is an optional type
@@ -62,6 +64,53 @@ pub fn render_inputs_block(defs: &[SkillInput], provided: &serde_json::Value) ->
     lines.join("\n")
 }
 
+/// Load the skill registry: compile-time builtins (no declared inputs) plus
+/// runtime skills under `<workspace>/skills/<id>/{skill.toml, SKILL.md}`. A
+/// skill's `SKILL.md`, when present, becomes its inline system prompt. A bad
+/// `skill.toml` is skipped with a warning, not fatal.
+pub fn load_skills(workspace_dir: &Path) -> Vec<SkillDefinition> {
+    let mut skills: Vec<SkillDefinition> = Vec::new();
+
+    if let Ok(builtins) = crate::openhuman::agent::agents::load_builtins() {
+        for definition in builtins {
+            skills.push(SkillDefinition { definition, inputs: Vec::new() });
+        }
+    }
+
+    let dir = workspace_dir.join("skills");
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let sd = entry.path();
+            if !sd.is_dir() {
+                continue;
+            }
+            let toml_path = sd.join("skill.toml");
+            let Ok(toml_str) = std::fs::read_to_string(&toml_path) else {
+                continue;
+            };
+            let mut skill: SkillDefinition = match toml::from_str(&toml_str) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::warn!("[skills] skipping {}: {e}", toml_path.display());
+                    continue;
+                }
+            };
+            if let Ok(md) = std::fs::read_to_string(sd.join("SKILL.md")) {
+                skill.definition.system_prompt = PromptSource::Inline(md);
+            }
+            skills.push(skill);
+        }
+    }
+    skills
+}
+
+/// Look up one skill by id across the registry.
+pub fn get_skill(workspace_dir: &Path, id: &str) -> Option<SkillDefinition> {
+    load_skills(workspace_dir)
+        .into_iter()
+        .find(|s| s.definition.id == id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,5 +149,32 @@ mod tests {
         })).unwrap();
         assert_eq!(i.kind.as_deref(), Some("integer"));
         assert!(i.required);
+    }
+
+    #[test]
+    fn load_skills_reads_runtime_skill_prompt_and_inputs() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let sd = tmp.path().join("skills").join("github-issue-crusher");
+        std::fs::create_dir_all(&sd).unwrap();
+        std::fs::write(
+            sd.join("skill.toml"),
+            "id = \"github-issue-crusher\"\nwhen_to_use = \"fix a github issue\"\n\
+             [[inputs]]\nname = \"repo\"\ndescription = \"owner/name\"\nrequired = true\n\
+             [[inputs]]\nname = \"issue\"\ndescription = \"issue #\"\nrequired = true\ntype = \"integer\"\n",
+        )
+        .unwrap();
+        std::fs::write(sd.join("SKILL.md"), "# Issue Crusher\nFix it.").unwrap();
+
+        let skills = load_skills(tmp.path());
+        let s = skills
+            .iter()
+            .find(|s| s.definition.id == "github-issue-crusher")
+            .expect("runtime skill loaded");
+        assert_eq!(s.inputs.len(), 2);
+        assert_eq!(s.inputs[1].kind.as_deref(), Some("integer"));
+        match &s.definition.system_prompt {
+            PromptSource::Inline(p) => assert!(p.contains("Fix it.")),
+            other => panic!("expected inline prompt, got {other:?}"),
+        }
     }
 }
