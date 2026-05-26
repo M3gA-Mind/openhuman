@@ -814,6 +814,23 @@ const NODE_PKG_READ_VERBS: &[&str] = &[
 /// run build scripts, so they are fail-closed to `Write`.
 const CARGO_READ_VERBS: &[&str] = &["tree", "metadata", "search", "info", "version", "help"];
 
+/// Detect a pacman *install/upgrade* from its bundled operation flag.
+///
+/// pacman packs its operation and modifiers into a single flag (`-Syu`, `-Ss`),
+/// and `args` reach us already lowercased — so the `-S` (sync) operation is
+/// indistinguishable from a literal `-s` by case alone. We therefore key off
+/// the *modifier* letters instead of a blanket `starts_with("-s")`, which would
+/// over-match every read-only `-S` query: a `-S`-family flag mutates the host
+/// only when it carries none of pacman's read-only query modifiers — search
+/// (`s`), info (`i`), list (`l`), groups (`g`) or print (`p`). So `-S pkg`,
+/// `-Sy`, `-Syu` are installs while `-Ss`/`-Si`/`-Sl`/`-Sg`/`-Sp` are reads.
+fn is_pacman_install(args: &[String]) -> bool {
+    args.iter().any(|a| {
+        a.strip_prefix("-s")
+            .is_some_and(|modifiers| !modifiers.contains(['s', 'i', 'l', 'g', 'p']))
+    })
+}
+
 /// Detect a package-manager *install* invocation. These mutate the host /
 /// global environment, so they are the always-ask `Install` bucket (even in
 /// Full) — the same gate the dedicated `install_tool` enforces, applied to the
@@ -826,7 +843,7 @@ fn is_install_command(base: &str, args: &[String]) -> bool {
     match base {
         // System package managers.
         "apt" | "apt-get" | "dnf" | "yum" | "zypper" => has("install"),
-        "pacman" => args.iter().any(|a| a.starts_with("-s")), // -S / -Sy / -Syu (lowercased)
+        "pacman" => is_pacman_install(args),
         "apk" => has("add"),
         "brew" | "snap" | "flatpak" | "winget" | "choco" | "scoop" => has("install"),
         // Language package managers — host/global-modifying installs only.

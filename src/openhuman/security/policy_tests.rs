@@ -427,6 +427,8 @@ fn classify_installs_are_install_bucket() {
         "apt-get install -y curl",
         "brew install ripgrep",
         "pacman -S vim",
+        "pacman -Sy",
+        "pacman -Syu",
         "apk add bash",
         "dnf install nginx",
         "pip install requests",
@@ -454,6 +456,23 @@ fn classify_local_installs_are_write_not_install() {
         CommandClass::Write
     );
     assert_eq!(p.classify_command("cargo add serde"), CommandClass::Write);
+}
+
+#[test]
+fn classify_pacman_readonly_queries_are_not_install() {
+    let p = default_policy();
+    // pacman's `-S` family includes read-only queries (search/info/list/groups/
+    // print). A blanket `starts_with("-s")` mis-bucketed these as always-ask
+    // Install; they must fall through to the fail-closed Write default instead.
+    for c in [
+        "pacman -Ss firefox", // search
+        "pacman -Si vim",     // info
+        "pacman -Sl core",    // list a repo
+        "pacman -Sg",         // list groups
+        "pacman -Sp vim",     // print download URLs
+    ] {
+        assert_eq!(p.classify_command(c), CommandClass::Write, "{c}");
+    }
 }
 
 #[test]

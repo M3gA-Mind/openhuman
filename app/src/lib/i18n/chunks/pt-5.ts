@@ -759,7 +759,7 @@ const pt5: TranslationMap = {
   'settings.agentAccess.readWrite': 'read + write',
   'settings.agentAccess.readOnly': 'read-only',
   'settings.agentAccess.remove': 'Remove',
-  'settings.agentAccess.pathPlaceholder': '/absolute/path/to/folder',
+  'settings.agentAccess.pathPlaceholder': 'Caminho absoluto da pasta',
   'settings.agentAccess.accessLevelLabel': 'Access level',
   'settings.agentAccess.add': 'Add',
   'settings.agentAccess.saving': 'Saving…',
