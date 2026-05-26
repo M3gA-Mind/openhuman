@@ -166,15 +166,16 @@ describe('Skills page — Preview filter pill', () => {
   });
 
   // ── Test 5 ──────────────────────────────────────────────────────────────────
-  it('while agent-ready data is loading, Preview mode also shows all toolkits instead of a blank grid', () => {
+  it('while agent-ready data is loading, Preview pill is hidden and integrations grid remains populated', () => {
     agentReadyState = { agentReady: new Set(), loading: true, error: null };
 
     renderWithProviders(<Skills />, { initialEntries: ['/skills'] });
 
-    // In loading state the Preview pill is not shown (availableCategories won't
-    // add it until resolved), so we cannot click it.  The important invariant is
-    // that the default grid is not blank; verified above in test 4.
-    // When Preview IS reachable (e.g. after data resolves), test 3 covers it.
+    // Preview pill must not appear until agent-ready data resolves.
+    expect(screen.queryByRole('tab', { name: /Preview/i })).not.toBeInTheDocument();
+    // Default grid must remain non-empty (no flash of blank grid while loading).
+    const section = getIntegrationsSection();
+    expect(getComposioSlugs(section).length).toBeGreaterThan(0);
   });
 
   // ── Test 6 ──────────────────────────────────────────────────────────────────
