@@ -398,11 +398,20 @@ fn decrypt_optional_secret(
 ) -> Result<()> {
     if let Some(raw) = value.clone() {
         if crate::openhuman::keyring::SecretStore::is_encrypted(&raw) {
-            *value = Some(
-                store
-                    .decrypt(&raw)
-                    .with_context(|| format!("Failed to decrypt {field_name}"))?,
-            );
+            match store.decrypt(&raw) {
+                Ok(plaintext) => *value = Some(plaintext),
+                Err(e) => {
+                    // Decryption key is inaccessible (e.g. rotated, keyring reset, or
+                    // migrated across machines). Clear the field so config loads
+                    // successfully — the affected integration will be disabled until
+                    // the user re-enters the credential. A hard error here would block
+                    // every config load and make the app unusable.
+                    log::warn!(
+                        "[config] Failed to decrypt {field_name} — field cleared (key inaccessible): {e}"
+                    );
+                    *value = None;
+                }
+            }
         }
     }
     Ok(())

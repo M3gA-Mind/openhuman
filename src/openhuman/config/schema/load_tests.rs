@@ -1682,6 +1682,48 @@ allowed_users = ["@admin"]
     );
 }
 
+/// Regression for keyring-loss scenario: if a channel token was encrypted with
+/// a key that is no longer accessible (e.g. keyring reset, machine migration),
+/// config load must NOT fail hard. The field should be cleared and a warning
+/// logged, so the rest of the app continues to work.
+#[tokio::test]
+async fn config_load_succeeds_when_decryption_key_inaccessible() {
+    let tmp = tempfile::tempdir().unwrap();
+    let config_path = tmp.path().join("config.toml");
+    let workspace_dir = tmp.path().join("workspace");
+    std::fs::create_dir_all(&workspace_dir).unwrap();
+
+    // Write a config whose discord.bot_token is encrypted with a key from a
+    // *different* workspace so the current SecretStore (keyed to `tmp`) cannot
+    // decrypt it. The `enc2:` prefix makes `is_encrypted()` return true.
+    // The hex blob is garbage — intentionally undecryptable.
+    let stale_ciphertext = "enc2:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+    let toml_content = format!(
+        r#"[secrets]
+encrypt = true
+
+[channels_config.discord]
+bot_token = "{stale_ciphertext}"
+"#
+    );
+    std::fs::write(&config_path, toml_content.as_bytes()).unwrap();
+
+    // Config load must succeed even though the token cannot be decrypted.
+    let reloaded = load_or_init_for_workspace(tmp.path()).await;
+
+    // Discord config should be cleared (None bot_token → channel won't start)
+    // rather than crashing the entire config load.
+    let discord_token = reloaded
+        .channels_config
+        .discord
+        .as_ref()
+        .map(|d| d.bot_token.as_str());
+    assert!(
+        discord_token.map_or(true, |t| t.is_empty()),
+        "Expected discord.bot_token to be cleared after decryption failure, got: {discord_token:?}"
+    );
+}
+
 /// Backwards-compatibility regression for #1900: a pre-upgrade `config.toml`
 /// that contains plaintext secrets (written by a build from before encryption
 /// was wired in) must continue to load with `secrets.encrypt = true`. The
