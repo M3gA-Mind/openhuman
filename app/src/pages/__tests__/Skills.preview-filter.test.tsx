@@ -231,7 +231,7 @@ describe('Skills page — Preview filter pill', () => {
     // by stubbing it with a custom has() implementation.
     const allAgentReady = {
       has: () => true,
-      *[Symbol.iterator] () {},
+      *[Symbol.iterator]() {},
       size: 999,
     } as unknown as Set<string>;
     agentReadyState = { agentReady: allAgentReady, loading: false, error: null };
