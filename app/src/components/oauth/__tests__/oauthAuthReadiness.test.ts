@@ -4,7 +4,11 @@ import { getCoreStateSnapshot } from '../../../lib/coreState/store';
 import { bootCheckTransport } from '../../../services/bootCheckService';
 import { testCoreRpcConnection } from '../../../services/coreRpcClient';
 import { isTauri } from '../../../services/webviewAccountService';
-import { getStoredCoreMode, getStoredCoreToken } from '../../../utils/configPersistence';
+import {
+  getStoredCoreMode,
+  getStoredCoreToken,
+  storeCoreMode,
+} from '../../../utils/configPersistence';
 import {
   oauthAuthReadinessUserMessage,
   prepareOAuthLoginLaunch,
@@ -56,6 +60,16 @@ describe('oauthAuthReadiness', () => {
     });
     vi.mocked(testCoreRpcConnection).mockResolvedValue({ ok: true } as Response);
     vi.mocked(isTauri).mockReturnValue(true);
+  });
+
+  it('defaults to local mode in Tauri when no core mode is stored', async () => {
+    vi.mocked(getStoredCoreMode).mockReturnValue(null);
+    // isTauri is true from beforeEach — should auto-set 'local' and proceed
+
+    const result = await waitForOAuthAuthReadiness(2_000);
+
+    expect(vi.mocked(storeCoreMode)).toHaveBeenCalledWith('local');
+    expect(result).toEqual({ ready: true });
   });
 
   it('returns core_mode_unset when BootCheckGate has not committed a mode', async () => {
