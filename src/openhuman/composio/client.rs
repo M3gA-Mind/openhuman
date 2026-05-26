@@ -150,6 +150,7 @@ impl ComposioClient {
                 .iter()
                 .map(|t| t.trim())
                 .filter(|t| !t.is_empty())
+                .map(|t| urlencoding::encode(t).into_owned())
                 .collect::<Vec<_>>()
                 .join(",");
             if !joined.is_empty() {
@@ -161,6 +162,7 @@ impl ComposioClient {
                 .iter()
                 .map(|t| t.trim())
                 .filter(|t| !t.is_empty())
+                .map(|t| urlencoding::encode(t).into_owned())
                 .collect::<Vec<_>>()
                 .join(",");
             if !joined.is_empty() {

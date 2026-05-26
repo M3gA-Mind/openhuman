@@ -8,6 +8,29 @@
 //! These ops are also callable directly from other domains (e.g. the
 //! agent harness) when they need composio data at runtime.
 
+/// Toolkits that honour the `tags` query param on the backend tool-list endpoint.
+/// Expand this list when a new toolkit gains tag support.
+const TAG_QUERYABLE_TOOLKITS: &[&str] = &["github"];
+
+/// Returns `true` when `tags` should be forwarded to the backend.
+///
+/// Tags are forwarded when no toolkit filter is active (`None` / empty slice)
+/// or when at least one requested toolkit is in [`TAG_QUERYABLE_TOOLKITS`].
+/// This is `pub(crate)` so `tools.rs` can reuse it without duplicating the list.
+pub(crate) fn should_forward_tags(toolkits: Option<&[String]>) -> bool {
+    match toolkits {
+        None => true,
+        Some(kits) => {
+            kits.is_empty()
+                || kits.iter().any(|k| {
+                    TAG_QUERYABLE_TOOLKITS
+                        .iter()
+                        .any(|t| k.trim().eq_ignore_ascii_case(t))
+                })
+        }
+    }
+}
+
 use crate::openhuman::config::Config;
 use crate::openhuman::memory::MemoryClient;
 use crate::openhuman::memory_store::chunks::store as memory_tree_store;
@@ -682,13 +705,10 @@ pub async fn composio_list_tools(
     toolkits: Option<Vec<String>>,
     tags: Option<Vec<String>>,
 ) -> OpResult<RpcOutcome<ComposioToolsResponse>> {
-    // tags is only meaningful for the GitHub toolkit; suppress it for all
-    // other requests to avoid unintended filtering on future expansions.
-    let effective_tags = match (&toolkits, tags) {
-        (Some(kits), Some(t)) if kits.iter().any(|k| k.trim().eq_ignore_ascii_case("github")) => {
-            Some(t)
-        }
-        _ => None,
+    let effective_tags = if should_forward_tags(toolkits.as_deref()) {
+        tags
+    } else {
+        None
     };
     tracing::debug!(?toolkits, ?effective_tags, "[composio] rpc list_tools");
     // Route through the mode-aware factory. In direct mode the backend
@@ -2185,9 +2205,7 @@ pub async fn fetch_toolkit_actions(
     if toolkit_slug.is_empty() {
         anyhow::bail!("fetch_toolkit_actions: toolkit must not be empty");
     }
-    // tags is only meaningful for GitHub; drop it silently for every
-    // other toolkit so callers don't need to know about this constraint.
-    let effective_tags = if toolkit_slug.eq_ignore_ascii_case("github") {
+    let effective_tags = if should_forward_tags(Some(&[toolkit_slug.to_string()])) {
         tags
     } else {
         None

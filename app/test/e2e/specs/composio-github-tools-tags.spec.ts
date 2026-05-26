@@ -321,18 +321,12 @@ describe('Composio GitHub tools — tags query param flow', () => {
     console.log(`${LOG_PREFIX} GT.4: ${llmHits.length} LLM completion request(s)`);
     expect(llmHits.length).toBeGreaterThanOrEqual(2);
 
-    // Best-effort: verify the composio execute was called for the stars action.
+    // Verify the composio execute was called for the forced tool call.
     const execHit = log.find(
       r => r.method === 'POST' && r.url.includes('/agent-integrations/composio/execute')
     );
-    if (execHit) {
-      console.log(`${LOG_PREFIX} GT.4: composio execute confirmed`);
-    } else {
-      console.warn(
-        `${LOG_PREFIX} GT.4: composio execute not in mock log — ` +
-          `core may route to real Composio API. LLM + UI assertions still hold.`
-      );
-    }
+    expect(execHit).toBeDefined();
+    console.log(`${LOG_PREFIX} GT.4: composio execute confirmed — ${execHit!.url}`);
 
     console.log(`${LOG_PREFIX} GT.4: PASSED`);
   });

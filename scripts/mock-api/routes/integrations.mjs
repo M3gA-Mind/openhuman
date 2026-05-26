@@ -346,10 +346,16 @@ export function handleIntegrations(ctx) {
     // Falls back to [] when no knob is set.
     let tools = [];
 
-    if (requestedTags.length > 0) {
+    // Mirror the Rust gate: tags are only honoured when no toolkit filter is
+    // active or the toolkit list includes GitHub.
+    const hasGithubToolkit =
+      requestedToolkits.length === 0 || requestedToolkits.includes("github");
+    const effectiveTags = hasGithubToolkit ? requestedTags : [];
+
+    if (effectiveTags.length > 0) {
       // OR semantics: union across all requested tags.
       const seen = new Set();
-      for (const tag of requestedTags) {
+      for (const tag of effectiveTags) {
         const knobKey = `composioToolsByTag_${tag}`;
         const tagTools = parseBehaviorJson(knobKey, null);
         if (Array.isArray(tagTools)) {

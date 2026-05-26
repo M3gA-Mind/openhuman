@@ -751,13 +751,10 @@ impl Tool for ComposioListToolsTool {
                 .filter_map(|v| v.as_str().map(str::to_string))
                 .collect::<Vec<_>>()
         });
-        let tags = match (&toolkits, raw_tags) {
-            (Some(kits), Some(t))
-                if kits.iter().any(|k| k.trim().eq_ignore_ascii_case("github")) =>
-            {
-                Some(t)
-            }
-            _ => None,
+        let tags = if super::ops::should_forward_tags(toolkits.as_deref()) {
+            raw_tags
+        } else {
+            None
         };
         let include_unconnected = args
             .get("include_unconnected")
