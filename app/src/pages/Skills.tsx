@@ -679,8 +679,13 @@ export default function Skills() {
 
     if (selectedCategory === 'Preview') {
       // Show only toolkits that are not in the agent-ready catalog.
+      // If data is still loading or errored, show all matching entries so the
+      // grid doesn't flash blank — same graceful-degradation contract as the
+      // default view.
       const resolved = !agentReadyLoading && !agentReadyError;
-      if (!resolved) return [];
+      if (!resolved) {
+        return composioGridEntries.filter(({ meta }) => matchesSearch(meta));
+      }
       return composioGridEntries.filter(
         ({ meta }) => matchesSearch(meta) && !agentReadyToolkits.has(meta.slug)
       );
