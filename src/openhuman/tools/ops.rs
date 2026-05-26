@@ -138,6 +138,8 @@ pub fn all_tools_with_runtime(
         Box::new(TodoTool::new()),
         Box::new(PlanExitTool::new()),
         Box::new(CurrentTimeTool::new()),
+        Box::new(CodegraphIndexTool::new(config.clone(), workspace_dir.to_path_buf())),
+        Box::new(CodegraphSearchTool::new(config.clone(), workspace_dir.to_path_buf())),
         Box::new(DetectToolsTool::new()),
         Box::new(InstallToolTool::new(security.clone())),
         Box::new(CronAddTool::new(config.clone(), security.clone())),
