@@ -143,6 +143,7 @@ const zhCN4: TranslationMap = {
   'notifications.center.filterAll': '全部',
   'notifications.center.markAllRead': '全部标记已读',
   'notifications.center.title': '通知',
+  'oauth.button.loopbackTimeout': 'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
   'oauth.button.connecting': '连接中...',
   'oauth.login.continueWith': '继续使用',
   'onboarding.contextGathering.buildingDesc': '正在分析你的历史记录...',

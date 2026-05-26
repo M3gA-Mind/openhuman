@@ -146,6 +146,7 @@ const id4: TranslationMap = {
   'notifications.center.filterAll': 'Filter semua',
   'notifications.center.markAllRead': 'Tandai semua sudah dibaca',
   'notifications.center.title': 'Notifikasi',
+  'oauth.button.loopbackTimeout': 'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
   'oauth.button.connecting': 'Menghubungkan...',
   'oauth.login.continueWith': 'Lanjutkan dengan',
   'onboarding.contextGathering.buildingDesc': 'Deskripsi pembangunan',
