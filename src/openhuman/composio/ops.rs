@@ -680,8 +680,17 @@ fn dedupe_memory_targets(targets: Vec<MemoryCleanupTarget>) -> Vec<MemoryCleanup
 pub async fn composio_list_tools(
     config: &Config,
     toolkits: Option<Vec<String>>,
+    tags: Option<Vec<String>>,
 ) -> OpResult<RpcOutcome<ComposioToolsResponse>> {
-    tracing::debug!(?toolkits, "[composio] rpc list_tools");
+    // tags is only meaningful for the GitHub toolkit; suppress it for all
+    // other requests to avoid unintended filtering on future expansions.
+    let effective_tags = match (&toolkits, tags) {
+        (Some(kits), Some(t)) if kits.iter().any(|k| k.trim().eq_ignore_ascii_case("github")) => {
+            Some(t)
+        }
+        _ => None,
+    };
+    tracing::debug!(?toolkits, ?effective_tags, "[composio] rpc list_tools");
     // Route through the mode-aware factory. In direct mode the backend
     // tool catalogue (which is shaped by the tinyhumans-tenant
     // allowlist + curated whitelist) does NOT apply — the user's
@@ -694,10 +703,13 @@ pub async fn composio_list_tools(
     match kind {
         ComposioClientKind::Backend(client) => {
             tracing::debug!("[composio] list_tools: backend variant");
-            let resp = client.list_tools(toolkits.as_deref()).await.map_err(|e| {
-                report_composio_op_error("list_tools", &e);
-                format!("[composio] list_tools failed: {e:#}")
-            })?;
+            let resp = client
+                .list_tools(toolkits.as_deref(), effective_tags.as_deref())
+                .await
+                .map_err(|e| {
+                    report_composio_op_error("list_tools", &e);
+                    format!("[composio] list_tools failed: {e:#}")
+                })?;
             let count = resp.tools.len();
             Ok(RpcOutcome::new(
                 resp,
@@ -1830,7 +1842,10 @@ async fn fetch_connected_integrations_uncached(
             let tools = if connected_slugs_for_tools.is_empty() {
                 Vec::new()
             } else {
-                match client.list_tools(Some(&connected_slugs_for_tools)).await {
+                match client
+                    .list_tools(Some(&connected_slugs_for_tools), None)
+                    .await
+                {
                     Ok(resp) => resp.tools,
                     Err(e) => {
                         tracing::warn!(
@@ -1898,21 +1913,23 @@ async fn fetch_connected_integrations_uncached(
             // (definitional source). Failure is non-fatal — we fall
             // back to empty tools and let lazy resolution handle it.
             let tools = match super::client::build_composio_client(config) {
-                Some(backend_client) => match backend_client.list_tools(Some(&allowlist)).await {
-                    Ok(resp) => {
-                        tracing::debug!(
+                Some(backend_client) => {
+                    match backend_client.list_tools(Some(&allowlist), None).await {
+                        Ok(resp) => {
+                            tracing::debug!(
                             count = resp.tools.len(),
                             "[composio-direct] fetch_connected_integrations: pulled tool schemas from backend (tenant-agnostic definitional source)"
                         );
-                        resp.tools
-                    }
-                    Err(e) => {
-                        tracing::info!(
+                            resp.tools
+                        }
+                        Err(e) => {
+                            tracing::info!(
                             "[composio-direct] fetch_connected_integrations: backend list_tools failed (will use lazy fallback at delegation time): {e:#}"
                         );
-                        Vec::new()
+                            Vec::new()
+                        }
                     }
-                },
+                }
                 None => {
                     tracing::info!(
                         "[composio-direct] fetch_connected_integrations: no backend session for schema fetch; lazy fallback at delegation time"
@@ -2151,6 +2168,10 @@ async fn fetch_connected_integrations_uncached(
 /// `fetch_connected_integrations_uncached`'s own namespacing rule so
 /// siblings like `github` / `git` don't leak into each other's buckets.
 ///
+/// `tags` narrows the result by Composio action tag (OR semantics). Only
+/// honoured for the GitHub toolkit; passed through to `list_tools` so the
+/// backend can skip the repo-list force-include and return a focused set.
+///
 /// Returns an empty vec when the backend has no actions for the
 /// toolkit (valid steady state for a freshly-authorised integration
 /// whose catalogue hasn't been published yet). Returns `Err` only for
@@ -2158,14 +2179,22 @@ async fn fetch_connected_integrations_uncached(
 pub async fn fetch_toolkit_actions(
     client: &ComposioClient,
     toolkit: &str,
+    tags: Option<&[String]>,
 ) -> anyhow::Result<Vec<ConnectedIntegrationTool>> {
     let toolkit_slug = toolkit.trim();
     if toolkit_slug.is_empty() {
         anyhow::bail!("fetch_toolkit_actions: toolkit must not be empty");
     }
-    tracing::debug!(toolkit = %toolkit_slug, "[composio] fetch_toolkit_actions");
+    // tags is only meaningful for GitHub; drop it silently for every
+    // other toolkit so callers don't need to know about this constraint.
+    let effective_tags = if toolkit_slug.eq_ignore_ascii_case("github") {
+        tags
+    } else {
+        None
+    };
+    tracing::debug!(toolkit = %toolkit_slug, ?effective_tags, "[composio] fetch_toolkit_actions");
     let resp = client
-        .list_tools(Some(&[toolkit_slug.to_string()]))
+        .list_tools(Some(&[toolkit_slug.to_string()]), effective_tags)
         .await
         .map_err(|e| anyhow::anyhow!("list_tools failed for toolkit `{toolkit_slug}`: {e}"))?;
     let action_prefix = format!("{}_", toolkit_slug.to_uppercase());
