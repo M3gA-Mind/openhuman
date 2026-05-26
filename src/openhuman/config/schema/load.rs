@@ -1120,7 +1120,7 @@ impl Config {
         if config_path.exists() {
             #[cfg(unix)]
             {
-                use std::os::unix::fs::PermissionsExt;
+                use std::{fs::Permissions, os::unix::fs::PermissionsExt};
                 if let Ok(meta) = fs::metadata(&config_path).await {
                     if meta.permissions().mode() & 0o004 != 0 {
                         let warned = WARNED_WORLD_READABLE_CONFIGS
@@ -1128,13 +1128,14 @@ impl Config {
                         let mut warned_guard = warned.lock().unwrap_or_else(|e| e.into_inner());
                         if warned_guard.insert(config_path.clone()) {
                             tracing::warn!(
-                                "Config file {:?} is world-readable (mode {:o}). \
-                                 Consider restricting with: chmod 600 {:?}",
+                                "[config] Config file {:?} is world-readable (mode {:o}); \
+                                 auto-fixing to 600",
                                 config_path,
                                 meta.permissions().mode() & 0o777,
-                                config_path,
                             );
                         }
+                        let _ =
+                            fs::set_permissions(&config_path, Permissions::from_mode(0o600)).await;
                     }
                 }
             }
