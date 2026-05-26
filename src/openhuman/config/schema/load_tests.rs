@@ -1697,7 +1697,8 @@ async fn config_load_succeeds_when_decryption_key_inaccessible() {
     // *different* workspace so the current SecretStore (keyed to `tmp`) cannot
     // decrypt it. The `enc2:` prefix makes `is_encrypted()` return true.
     // The hex blob is garbage — intentionally undecryptable.
-    let stale_ciphertext = "enc2:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+    let stale_ciphertext =
+        "enc2:deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
     let toml_content = format!(
         r#"[secrets]
 encrypt = true
