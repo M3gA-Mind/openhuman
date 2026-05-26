@@ -749,7 +749,7 @@ const hi5: TranslationMap = {
   'settings.agentAccess.readWrite': 'read + write',
   'settings.agentAccess.readOnly': 'read-only',
   'settings.agentAccess.remove': 'Remove',
-  'settings.agentAccess.pathPlaceholder': '/absolute/path/to/folder',
+  'settings.agentAccess.pathPlaceholder': 'फ़ोल्डर का पूर्ण पथ',
   'settings.agentAccess.accessLevelLabel': 'Access level',
   'settings.agentAccess.add': 'Add',
   'settings.agentAccess.saving': 'Saving…',

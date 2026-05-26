@@ -2254,6 +2254,8 @@ const en: TranslationMap = {
   'notifications.center.markAllRead': 'Mark all read',
   'notifications.center.title': 'Notifications',
   'oauth.button.connecting': 'Connecting...',
+  'oauth.button.loopbackTimeout':
+    'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
   'oauth.login.continueWith': 'Continue with',
   'onboarding.contextGathering.buildingDesc': 'Gathering context from your connected accounts…',
   'onboarding.contextGathering.buildingProfile': 'Building your profile...',

@@ -3,6 +3,27 @@
 //! Events carry full payloads so subscribers have everything they need without
 //! secondary lookups. The broadcast channel clones each event per subscriber,
 //! which is fine — richness beats round-trips.
+//!
+//! ## Workspace-scoped events
+//!
+//! Some events are scoped to a specific workspace directory and must be
+//! validated by subscribers before acting on them.
+//!
+//! **Publisher contract**: when constructing a workspace-scoped event, the
+//! publisher must populate `workspace_dir` with the active workspace path at
+//! event creation time. This is typically available as `ctx.workspace_dir`
+//! on the channel runtime context.
+//!
+//! **Subscriber contract**: subscribers that persist or mutate workspace-
+//! specific data must compare the event's `workspace_dir` against their own
+//! workspace binding and silently drop events that do not match. This prevents
+//! stale in-flight events from a previous workspace from corrupting the newly
+//! active workspace's state when the user switches workspaces (e.g. logs out
+//! and back in) while events are in flight.
+//!
+//! **Current workspace-scoped variants**:
+//! - [`DomainEvent::ChannelMessageReceived`]
+//! - [`DomainEvent::ChannelMessageProcessed`]
 
 /// Top-level domain event. Non-exhaustive so new variants can be added
 /// without breaking existing match arms.
@@ -129,6 +150,10 @@ pub enum DomainEvent {
         reply_target: String,
         content: String,
         thread_ts: Option<String>,
+        /// Workspace directory active when this event was published.
+        /// Subscribers that persist data must reject events whose
+        /// `workspace_dir` does not match their own workspace binding.
+        workspace_dir: std::path::PathBuf,
     },
     /// A channel message was fully processed (LLM response sent or error).
     ChannelMessageProcessed {
@@ -141,6 +166,10 @@ pub enum DomainEvent {
         response: String,
         elapsed_ms: u64,
         success: bool,
+        /// Workspace directory active when this event was published.
+        /// Subscribers that persist data must reject events whose
+        /// `workspace_dir` does not match their own workspace binding.
+        workspace_dir: std::path::PathBuf,
     },
     /// A reaction event was received from a channel transport.
     ChannelReactionReceived {
