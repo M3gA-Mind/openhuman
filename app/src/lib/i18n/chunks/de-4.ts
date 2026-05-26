@@ -147,7 +147,7 @@ const de4: TranslationMap = {
   'notifications.center.markAllRead': 'Alles als gelesen markieren',
   'notifications.center.title': 'Benachrichtigungen',
   'oauth.button.loopbackTimeout':
-    'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
+    'Anmeldung abgelaufen — der Browser hat die OAuth-Weiterleitung nicht abgeschlossen. Bitte versuche es erneut.',
   'oauth.button.connecting': 'Verbinden...',
   'oauth.login.continueWith': 'Weiter mit',
   'onboarding.contextGathering.buildingDesc': 'Gebäudebeschreibung',

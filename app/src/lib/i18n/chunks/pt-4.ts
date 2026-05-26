@@ -148,7 +148,7 @@ const pt4: TranslationMap = {
   'notifications.center.markAllRead': 'Marcar todos como lidos',
   'notifications.center.title': 'Notificações',
   'oauth.button.loopbackTimeout':
-    'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
+    'Login expirou — o navegador não concluiu o redirecionamento OAuth. Por favor, tente novamente.',
   'oauth.button.connecting': 'Conectando...',
   'oauth.login.continueWith': 'Continuar com',
   'onboarding.contextGathering.buildingDesc': 'Descrição de construção',

@@ -146,7 +146,7 @@ const ar4: TranslationMap = {
   'notifications.center.markAllRead': 'تحديد الكل كمقروء',
   'notifications.center.title': 'الإشعارات',
   'oauth.button.loopbackTimeout':
-    'Sign-in timed out — the browser did not complete the OAuth redirect. Please try again.',
+    'انتهت مهلة تسجيل الدخول — لم يكتمل المتصفح إعادة توجيه OAuth. يرجى المحاولة مرة أخرى.',
   'oauth.button.connecting': 'جارٍ الاتصال...',
   'oauth.login.continueWith': 'المتابعة مع',
   'onboarding.contextGathering.buildingDesc': 'وصف البناء',
