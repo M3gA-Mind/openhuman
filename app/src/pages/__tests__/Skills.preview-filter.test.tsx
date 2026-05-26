@@ -20,7 +20,10 @@ import Skills from '../Skills';
 // ── Mutable state shared across tests ─────────────────────────────────────────
 
 let composioToolkits: string[] = [];
-let composioConnectionByToolkit = new Map<string, { id: string; toolkit: string; status: string }>();
+let composioConnectionByToolkit = new Map<
+  string,
+  { id: string; toolkit: string; status: string }
+>();
 let agentReadyState: { agentReady: Set<string>; loading: boolean; error: string | null } = {
   agentReady: new Set<string>(),
   loading: false,
@@ -98,11 +101,7 @@ describe('Skills page — Preview filter pill', () => {
     composioModeStatus = { result: { mode: 'backend', api_key_set: true }, logs: [] };
     sessionToken = 'jwt-abc';
     // Resolved state with two agent-ready toolkits and two preview-only ones.
-    agentReadyState = {
-      agentReady: new Set(['gmail', 'github']),
-      loading: false,
-      error: null,
-    };
+    agentReadyState = { agentReady: new Set(['gmail', 'github']), loading: false, error: null };
   });
 
   // ── Test 1 ──────────────────────────────────────────────────────────────────
@@ -232,7 +231,7 @@ describe('Skills page — Preview filter pill', () => {
     // by stubbing it with a custom has() implementation.
     const allAgentReady = {
       has: () => true,
-      [Symbol.iterator]: function* () {},
+      *[Symbol.iterator] () {},
       size: 999,
     } as unknown as Set<string>;
     agentReadyState = { agentReady: allAgentReady, loading: false, error: null };
