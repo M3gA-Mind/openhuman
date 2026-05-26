@@ -29,6 +29,8 @@
 //! always reports as available.
 
 pub mod backend;
+pub mod crypto;
+pub mod encrypted_file_backend;
 pub mod encrypted_store;
 pub mod error;
 pub mod ops;
@@ -37,6 +39,7 @@ pub mod store;
 // ── Public re-exports ─────────────────────────────────────────────────────────
 
 pub use backend::KeyringBackend;
+pub use encrypted_file_backend::init_master_key;
 pub use encrypted_store::SecretStore;
 pub use error::KeyringError;
 pub use ops::{

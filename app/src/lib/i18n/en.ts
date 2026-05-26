@@ -549,6 +549,7 @@ const en: TranslationMap = {
     'Never share your recovery phrase. Anyone with these words can access your account.',
   'mnemonic.copied': 'Recovery phrase copied to clipboard',
   'mnemonic.reveal': 'Reveal phrase',
+  'mnemonic.revealPhrase': 'Reveal recovery phrase',
   'mnemonic.hidden': 'Recovery phrase is hidden',
 
   // What Leaves My Computer
@@ -3038,8 +3039,10 @@ const en: TranslationMap = {
   'settings.mascot.colorHeading': 'Color',
   'settings.mascot.colorBlack': 'Black',
   'settings.mascot.colorBurgundy': 'Burgundy',
-  'settings.mascot.colorGreen': 'Green',
+  'settings.mascot.colorCustom': 'Custom',
   'settings.mascot.colorNavy': 'Navy',
+  'settings.mascot.primaryColor': 'Primary color',
+  'settings.mascot.secondaryColor': 'Secondary color',
   'settings.mascot.colorYellow': 'Yellow',
   'settings.mascot.libraryUnavailable': 'OpenHuman library unavailable',
   'settings.mascot.title': 'OpenHuman',
