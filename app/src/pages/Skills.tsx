@@ -181,7 +181,7 @@ function ComposioConnectorTile({
       onClick={handleClick}
       title={`${meta.name} — ${meta.description}`}
       aria-label={`${meta.name}, ${statusLabel}. ${ctaLabel}.`}
-      className={`group flex flex-col justify-center items-center rounded-2xl border p-3 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 ${
+      className={`group flex h-full w-full flex-col justify-center items-center rounded-2xl border p-3 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 ${
         isConnected
           ? 'border-sage-300 bg-sage-50/80 shadow-[0_0_0_1px_rgba(34,197,94,0.12)] hover:bg-sage-50 dark:border-sage-500/30 dark:bg-sage-500/10 dark:hover:bg-sage-500/15'
           : isPending
@@ -1039,9 +1039,12 @@ export default function Skills() {
                       (composioSortedEntries.length > 0 ? (
                         <div
                           className="grid gap-2 sm:gap-3"
-                          style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(5.5rem, 1fr))' }}>
+                          style={{
+                            gridTemplateColumns: 'repeat(auto-fill, minmax(5.5rem, 1fr))',
+                            gridAutoRows: '6.5rem',
+                          }}>
                           {composioSortedEntries.map(({ meta, connection }) => (
-                            <div key={meta.slug} data-testid={`skill-row-composio-${meta.slug}`}>
+                            <div key={meta.slug} data-testid={`skill-row-composio-${meta.slug}`} className="overflow-hidden">
                               <ComposioConnectorTile
                                 meta={meta}
                                 connection={connection}
