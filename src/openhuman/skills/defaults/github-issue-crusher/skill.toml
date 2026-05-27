@@ -1,0 +1,24 @@
+# github-issue-crusher — a DEFAULT skill shipped with OpenHuman.
+# Bundled into the binary and seeded into <workspace>/skills/ on first load
+# (idempotent — never clobbers user edits). Parsed as a SkillDefinition:
+# AgentDefinition fields are flattened in, plus the declared [[inputs]]. At
+# skills_run time it runs as the `orchestrator` agent, focused by SKILL.md,
+# with these inputs rendered into the task prompt.
+id = "github-issue-crusher"
+when_to_use = "Fix one GitHub issue end to end: find the cause in the repo, implement a fix, and open a pull request."
+
+[[inputs]]
+name = "repo"
+description = "GitHub repo to work on, as owner/name (e.g. acme/web)."
+required = true
+
+[[inputs]]
+name = "issue"
+description = "Issue number to pick and fix."
+required = true
+type = "integer"
+
+[[inputs]]
+name = "pr_base"
+description = "Base branch the pull request targets (default: the repo's default branch)."
+required = false

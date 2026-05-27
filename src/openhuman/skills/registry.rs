@@ -64,11 +64,50 @@ pub fn render_inputs_block(defs: &[SkillInput], provided: &serde_json::Value) ->
     lines.join("\n")
 }
 
-/// Load the skill registry: compile-time builtins (no declared inputs) plus
-/// runtime skills under `<workspace>/skills/<id>/{skill.toml, SKILL.md}`. A
-/// skill's `SKILL.md`, when present, becomes its inline system prompt. A bad
-/// `skill.toml` is skipped with a warning, not fatal.
+/// Default skills shipped *with* OpenHuman — bundled into the binary and
+/// materialised into `<workspace>/skills/<id>/` on first load. Each entry is
+/// `(id, skill.toml, SKILL.md)`.
+const DEFAULT_SKILLS: &[(&str, &str, &str)] = &[(
+    "github-issue-crusher",
+    include_str!("defaults/github-issue-crusher/skill.toml"),
+    include_str!("defaults/github-issue-crusher/SKILL.md"),
+)];
+
+/// Seed the bundled [`DEFAULT_SKILLS`] into `<workspace>/skills/<id>/` when
+/// absent. Idempotent and non-destructive: an existing `skill.toml` (already
+/// seeded, or user-edited) is left untouched, so a default can be customised or
+/// removed. This is what makes a default skill "come with the system" — every
+/// workspace gets it without a manual drop.
+pub fn seed_default_skills(workspace_dir: &Path) {
+    let base = workspace_dir.join("skills");
+    for (id, skill_toml, skill_md) in DEFAULT_SKILLS {
+        let dir = base.join(id);
+        if dir.join("skill.toml").exists() {
+            continue; // already present — never clobber
+        }
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            log::warn!("[skills] seed {id}: mkdir failed: {e}");
+            continue;
+        }
+        let _ = std::fs::write(dir.join("skill.toml"), skill_toml);
+        let _ = std::fs::write(dir.join("SKILL.md"), skill_md);
+        log::info!(
+            "[skills] seeded default skill '{id}' into {}",
+            dir.display()
+        );
+    }
+}
+
+/// Load the skill registry: bundled defaults (seeded into the workspace) +
+/// compile-time builtins (no declared inputs) + runtime skills under
+/// `<workspace>/skills/<id>/{skill.toml, SKILL.md}`. A skill's `SKILL.md`, when
+/// present, becomes its inline system prompt. A bad `skill.toml` is skipped
+/// with a warning, not fatal.
 pub fn load_skills(workspace_dir: &Path) -> Vec<SkillDefinition> {
+    // Materialise the bundled defaults (idempotent) so they're always present
+    // and user-editable in the workspace, then picked up by the scan below.
+    seed_default_skills(workspace_dir);
+
     let mut skills: Vec<SkillDefinition> = Vec::new();
 
     if let Ok(builtins) = crate::openhuman::agent::agents::load_builtins() {
@@ -203,5 +242,42 @@ mod tests {
             PromptSource::Inline(p) => assert!(p.contains("Fix it.")),
             other => panic!("expected inline prompt, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn default_skills_seed_into_empty_workspace() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        // Fresh workspace, nothing pre-written: the bundled default must appear.
+        let skills = load_skills(tmp.path());
+        let s = skills
+            .iter()
+            .find(|s| s.definition.id == "github-issue-crusher")
+            .expect("bundled default seeded + loaded");
+        assert_eq!(s.inputs.len(), 3, "repo + issue + pr_base");
+        assert_eq!(s.inputs[0].name, "repo");
+        assert!(s.inputs[0].required);
+        assert_eq!(
+            s.inputs[1].kind.as_deref(),
+            Some("integer"),
+            "issue is integer"
+        );
+        assert!(!s.inputs[2].required, "pr_base is optional");
+        match &s.definition.system_prompt {
+            PromptSource::Inline(p) => assert!(p.contains("GitHub Issue Crusher")),
+            other => panic!("expected inline prompt, got {other:?}"),
+        }
+        // Materialised on disk (user-editable), and re-seeding is non-destructive.
+        let toml = tmp.path().join("skills/github-issue-crusher/skill.toml");
+        assert!(toml.exists());
+        std::fs::write(
+            &toml,
+            "id = \"github-issue-crusher\"\nwhen_to_use = \"edited\"\n",
+        )
+        .unwrap();
+        seed_default_skills(tmp.path());
+        assert!(
+            std::fs::read_to_string(&toml).unwrap().contains("edited"),
+            "existing skill.toml must not be clobbered"
+        );
     }
 }
