@@ -1,19 +1,22 @@
 //! Shared URL validation + SSRF guards for outbound network tools.
 //!
 //! Used by `http_request`, `curl`, and any future tool that takes a
-//! user-supplied URL. The contract is intentionally strict:
+//! user-supplied URL. Two allowlist modes:
 //!
-//! - http(s) only
-//! - non-empty allowlist required (callers pass it in)
-//! - no whitespace, no userinfo, no IPv6 hosts
-//! - blocks loopback / RFC1918 / link-local / multicast / documentation /
-//!   shared-address / IPv4-mapped IPv6, including `localhost` /
-//!   `*.localhost` / `*.local`
+//! - **Open allowlist** (`allowed_domains` is empty): any public non-private
+//!   host is permitted. All SSRF guards still apply (loopback / RFC1918 /
+//!   link-local / multicast / documentation / shared-address /
+//!   IPv4-mapped IPv6, `localhost` / `*.localhost` / `*.local`).
+//! - **Strict allowlist** (`allowed_domains` is non-empty): only the listed
+//!   domains and their subdomains are permitted.
 //!
-//! The blocklist deliberately does NOT cover alternate IP notations
-//! (octal, hex, decimal) because Rust's `IpAddr::parse` rejects them —
-//! they fall through and get rejected by the allowlist instead. See the
-//! tests in `http_request.rs` for the documented behaviour.
+//! Both modes enforce: http(s) only, no whitespace, no userinfo, no IPv6 hosts.
+//!
+//! **Alternate IP notations** (octal, hex, decimal): Rust's `IpAddr::parse`
+//! rejects them so they are treated as plain hostnames. In strict-allowlist
+//! mode they are rejected by the domain check. In open-allowlist mode they
+//! pass `validate_url` but are caught by `validate_url_with_dns_check`
+//! because they fail real-world DNS resolution.
 //!
 //! ## DNS Rebinding Protection
 //!
@@ -43,27 +46,37 @@ pub(super) fn validate_url(raw_url: &str, allowed_domains: &[String]) -> anyhow:
         anyhow::bail!("Only http:// and https:// URLs are allowed");
     }
 
-    if allowed_domains.is_empty() {
-        anyhow::bail!(
-            "I'm not allowed to open any website yet — the allowed websites list is empty. \
-             Add the site you need (or turn on \"Allow all sites\") under \
-             Settings → Advanced → Search engine → Allowed websites, then ask me again."
-        );
-    }
-
     let host = extract_host(url)?;
 
     if is_private_or_local_host(&host) {
         anyhow::bail!("Blocked local/private host: {host}");
     }
 
-    if !host_matches_allowlist(&host, allowed_domains) {
+    // Empty allowed_domains = open mode: any public non-private host is
+    // permitted (same as ["*"]). This ensures the http_request tool works
+    // out of the box regardless of whether the user configured an explicit
+    // domain list, and keeps web-fetch consistent across routing paths.
+    // A non-empty list = strict mode: only listed domains pass. (#2700)
+    if !allowed_domains.is_empty() && !host_matches_allowlist(&host, allowed_domains) {
+        log::debug!(
+            "[url_guard] strict-allowlist rejection: host={host} allowed={:?}",
+            allowed_domains
+        );
         anyhow::bail!(
             "I'm not allowed to open '{host}' — it isn't in your allowed websites. \
              Add it (or turn on \"Allow all sites\") under \
              Settings → Advanced → Search engine → Allowed websites, then ask me again."
         );
     }
+
+    log::debug!(
+        "[url_guard] validate_url ok: host={host} mode={}",
+        if allowed_domains.is_empty() {
+            "open"
+        } else {
+            "strict"
+        }
+    );
 
     Ok(url.to_string())
 }
@@ -420,12 +433,27 @@ mod tests {
         assert!(err.contains("userinfo"));
     }
 
+    // Empty allowed_domains = open mode: any public host is permitted.
+    // This keeps web-fetch working when no domain list is configured and
+    // makes behaviour consistent between default and external-LLM routing.
+    // (#2700)
     #[test]
-    fn validate_requires_allowlist() {
-        let err = validate_url("https://example.com", &[])
+    fn validate_empty_allowlist_allows_public_host() {
+        assert!(validate_url("https://example.com", &[]).is_ok());
+        assert!(validate_url("https://www.cnbc.com/markets", &[]).is_ok());
+    }
+
+    #[test]
+    fn validate_empty_allowlist_still_blocks_private_hosts() {
+        let err = validate_url("https://192.168.1.5", &[])
             .unwrap_err()
             .to_string();
-        assert!(err.contains("allowed websites"));
+        assert!(err.contains("local/private"));
+
+        let err = validate_url("https://localhost", &[])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("local/private"));
     }
 
     #[test]
