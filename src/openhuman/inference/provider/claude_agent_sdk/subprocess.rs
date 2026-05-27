@@ -126,10 +126,9 @@ impl Provider for ClaudeAgentSdkProvider {
                             );
                         }
                         if is_error {
-                            error_message =
-                                Some(result.unwrap_or_else(|| {
-                                    "claude subprocess returned an error".to_string()
-                                }));
+                            error_message = Some(result.unwrap_or_else(|| {
+                                "claude subprocess returned an error".to_string()
+                            }));
                         } else {
                             result_text = result;
                         }

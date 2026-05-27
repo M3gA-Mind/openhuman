@@ -1000,10 +1000,7 @@ fn check_claude_agent_sdk(config: &Config, items: &mut Vec<DiagnosticItem>) {
         return;
     }
 
-    tracing::debug!(
-        "probe:claude_agent_sdk:entry binary={}",
-        sdk.binary
-    );
+    tracing::debug!("probe:claude_agent_sdk:entry binary={}", sdk.binary);
 
     // Probe the configured binary by running `<binary> --version`.
     let mut cmd = std::process::Command::new(&sdk.binary);
@@ -1037,7 +1034,10 @@ fn check_claude_agent_sdk(config: &Config, items: &mut Vec<DiagnosticItem>) {
                 "claude_agent_sdk",
                 format!("claude CLI found (binary='{}'): {version}", sdk.binary),
             ));
-            tracing::debug!("probe:claude_agent_sdk:exit binary={} result=ok", sdk.binary);
+            tracing::debug!(
+                "probe:claude_agent_sdk:exit binary={} result=ok",
+                sdk.binary
+            );
         }
         Ok(output) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1057,7 +1057,10 @@ fn check_claude_agent_sdk(config: &Config, items: &mut Vec<DiagnosticItem>) {
                     truncate_for_display(preview, COMMAND_VERSION_PREVIEW_CHARS)
                 ),
             ));
-            tracing::debug!("probe:claude_agent_sdk:exit binary={} result=warn", sdk.binary);
+            tracing::debug!(
+                "probe:claude_agent_sdk:exit binary={} result=warn",
+                sdk.binary
+            );
         }
         Err(err) => {
             tracing::warn!(
@@ -1073,7 +1076,10 @@ fn check_claude_agent_sdk(config: &Config, items: &mut Vec<DiagnosticItem>) {
                     sdk.binary, err
                 ),
             ));
-            tracing::debug!("probe:claude_agent_sdk:exit binary={} result=warn", sdk.binary);
+            tracing::debug!(
+                "probe:claude_agent_sdk:exit binary={} result=warn",
+                sdk.binary
+            );
         }
     }
 }
