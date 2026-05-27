@@ -142,7 +142,12 @@ pub async fn search_ref(
         Coverage::Partial
     };
     if docs.is_empty() {
-        return Ok(SearchOutcome { hits: vec![], coverage, indexed: 0, total });
+        return Ok(SearchOutcome {
+            hits: vec![],
+            coverage,
+            indexed: 0,
+            total,
+        });
     }
 
     let q_tokens = code_tokens(query);
@@ -160,7 +165,12 @@ pub async fn search_ref(
 
     let fused = rrf(&[bm, dense], k);
     let hits = fused.into_iter().map(|i| docs[i].path.clone()).collect();
-    Ok(SearchOutcome { hits, coverage, indexed: docs.len(), total })
+    Ok(SearchOutcome {
+        hits,
+        coverage,
+        indexed: docs.len(),
+        total,
+    })
 }
 
 #[cfg(test)]
@@ -199,9 +209,15 @@ mod tests {
     struct FakeEmbedder;
     #[async_trait]
     impl EmbeddingProvider for FakeEmbedder {
-        fn name(&self) -> &str { "fake" }
-        fn model_id(&self) -> &str { "fake-1" }
-        fn dimensions(&self) -> usize { 3 }
+        fn name(&self) -> &str {
+            "fake"
+        }
+        fn model_id(&self) -> &str {
+            "fake-1"
+        }
+        fn dimensions(&self) -> usize {
+            3
+        }
         async fn embed(&self, texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
             Ok(texts.iter().map(|_| vec![1.0, 0.0, 0.0]).collect())
         }
@@ -212,18 +228,45 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let mut store = CodegraphStore::open(&tmp.path().join("cg.db")).unwrap();
         let sig = FakeEmbedder.signature();
-        store.put_blob("a", &sig, &["reconcile".into(), "backoff".into()], &[1.0, 0.0, 0.0]).unwrap();
-        store.put_blob("b", &sig, &["login".into(), "token".into()], &[0.0, 1.0, 0.0]).unwrap();
-        // manifest has a 3rd file with no cached blob → partial coverage.
-        store.set_manifest("r", "main", &[
-            ("retry.rs".into(), "a".into()),
-            ("auth.rs".into(), "b".into()),
-            ("pending.rs".into(), "uncached".into()),
-        ]).unwrap();
-
-        let out = search_ref(&mut store, "r", "main", "reconcile backoff", &FakeEmbedder, 10)
-            .await
+        store
+            .put_blob(
+                "a",
+                &sig,
+                &["reconcile".into(), "backoff".into()],
+                &[1.0, 0.0, 0.0],
+            )
             .unwrap();
+        store
+            .put_blob(
+                "b",
+                &sig,
+                &["login".into(), "token".into()],
+                &[0.0, 1.0, 0.0],
+            )
+            .unwrap();
+        // manifest has a 3rd file with no cached blob → partial coverage.
+        store
+            .set_manifest(
+                "r",
+                "main",
+                &[
+                    ("retry.rs".into(), "a".into()),
+                    ("auth.rs".into(), "b".into()),
+                    ("pending.rs".into(), "uncached".into()),
+                ],
+            )
+            .unwrap();
+
+        let out = search_ref(
+            &mut store,
+            "r",
+            "main",
+            "reconcile backoff",
+            &FakeEmbedder,
+            10,
+        )
+        .await
+        .unwrap();
         assert_eq!(out.coverage, Coverage::Partial);
         assert_eq!(out.indexed, 2);
         assert_eq!(out.total, 3);

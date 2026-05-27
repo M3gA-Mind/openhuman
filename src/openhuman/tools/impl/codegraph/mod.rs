@@ -40,7 +40,10 @@ pub struct CodegraphIndexTool {
 
 impl CodegraphIndexTool {
     pub fn new(config: Arc<Config>, workspace_dir: std::path::PathBuf) -> Self {
-        Self { config, workspace_dir }
+        Self {
+            config,
+            workspace_dir,
+        }
     }
 }
 
@@ -70,7 +73,11 @@ impl Tool for CodegraphIndexTool {
     async fn execute(&self, args: Value) -> anyhow::Result<ToolResult> {
         let path = match arg_str(&args, "path") {
             Some(p) => p,
-            None => return Ok(ToolResult::error("codegraph_index: `path` (repo working dir) is required")),
+            None => {
+                return Ok(ToolResult::error(
+                    "codegraph_index: `path` (repo working dir) is required",
+                ))
+            }
         };
         let repo_dir = Path::new(path);
         let git_ref = match arg_str(&args, "ref") {
@@ -79,7 +86,14 @@ impl Tool for CodegraphIndexTool {
         };
         let provider = embeddings::provider_from_config(&self.config)?;
         let mut store = CodegraphStore::open(&codegraph_db(&self.workspace_dir))?;
-        let report = index_ref(&mut store, &repo_id(repo_dir), repo_dir, Some(&git_ref), &*provider).await?;
+        let report = index_ref(
+            &mut store,
+            &repo_id(repo_dir),
+            repo_dir,
+            Some(&git_ref),
+            &*provider,
+        )
+        .await?;
         Ok(ToolResult::success(serde_json::to_string_pretty(&report)?))
     }
 }
@@ -94,7 +108,10 @@ pub struct CodegraphSearchTool {
 
 impl CodegraphSearchTool {
     pub fn new(config: Arc<Config>, workspace_dir: std::path::PathBuf) -> Self {
-        Self { config, workspace_dir }
+        Self {
+            config,
+            workspace_dir,
+        }
     }
 }
 
@@ -131,7 +148,11 @@ impl Tool for CodegraphSearchTool {
         };
         let path = match arg_str(&args, "path") {
             Some(p) => p,
-            None => return Ok(ToolResult::error("codegraph_search: `path` (repo working dir) is required")),
+            None => {
+                return Ok(ToolResult::error(
+                    "codegraph_search: `path` (repo working dir) is required",
+                ))
+            }
         };
         let repo_dir = Path::new(path);
         let git_ref = match arg_str(&args, "ref") {
@@ -141,7 +162,15 @@ impl Tool for CodegraphSearchTool {
         let k = args.get("k").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
         let provider = embeddings::provider_from_config(&self.config)?;
         let mut store = CodegraphStore::open(&codegraph_db(&self.workspace_dir))?;
-        let outcome = search_ref(&mut store, &repo_id(repo_dir), &git_ref, query, &*provider, k).await?;
+        let outcome = search_ref(
+            &mut store,
+            &repo_id(repo_dir),
+            &git_ref,
+            query,
+            &*provider,
+            k,
+        )
+        .await?;
         Ok(ToolResult::success(serde_json::to_string_pretty(&outcome)?))
     }
 }

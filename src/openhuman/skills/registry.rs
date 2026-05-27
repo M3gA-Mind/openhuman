@@ -73,7 +73,10 @@ pub fn load_skills(workspace_dir: &Path) -> Vec<SkillDefinition> {
 
     if let Ok(builtins) = crate::openhuman::agent::agents::load_builtins() {
         for definition in builtins {
-            skills.push(SkillDefinition { definition, inputs: Vec::new() });
+            skills.push(SkillDefinition {
+                definition,
+                inputs: Vec::new(),
+            });
         }
     }
 
@@ -118,18 +121,41 @@ mod tests {
 
     fn defs() -> Vec<SkillInput> {
         vec![
-            SkillInput { name: "repo".into(), description: "owner/name".into(), required: true, kind: None },
-            SkillInput { name: "issue".into(), description: "issue #".into(), required: true, kind: Some("integer".into()) },
-            SkillInput { name: "pr_base".into(), description: "base branch".into(), required: false, kind: None },
+            SkillInput {
+                name: "repo".into(),
+                description: "owner/name".into(),
+                required: true,
+                kind: None,
+            },
+            SkillInput {
+                name: "issue".into(),
+                description: "issue #".into(),
+                required: true,
+                kind: Some("integer".into()),
+            },
+            SkillInput {
+                name: "pr_base".into(),
+                description: "base branch".into(),
+                required: false,
+                kind: None,
+            },
         ]
     }
 
     #[test]
     fn missing_required_is_detected() {
-        assert_eq!(missing_required_inputs(&defs(), &json!({"repo": "acme/web"})), vec!["issue".to_string()]);
-        assert!(missing_required_inputs(&defs(), &json!({"repo": "acme/web", "issue": 42})).is_empty());
+        assert_eq!(
+            missing_required_inputs(&defs(), &json!({"repo": "acme/web"})),
+            vec!["issue".to_string()]
+        );
+        assert!(
+            missing_required_inputs(&defs(), &json!({"repo": "acme/web", "issue": 42})).is_empty()
+        );
         // null counts as missing
-        assert_eq!(missing_required_inputs(&defs(), &json!({"repo": "acme/web", "issue": null})), vec!["issue".to_string()]);
+        assert_eq!(
+            missing_required_inputs(&defs(), &json!({"repo": "acme/web", "issue": null})),
+            vec!["issue".to_string()]
+        );
     }
 
     #[test]
@@ -146,7 +172,8 @@ mod tests {
     fn skill_input_parses_type_alias() {
         let i: SkillInput = serde_json::from_value(json!({
             "name": "issue", "description": "issue #", "required": true, "type": "integer"
-        })).unwrap();
+        }))
+        .unwrap();
         assert_eq!(i.kind.as_deref(), Some("integer"));
         assert!(i.required);
     }
