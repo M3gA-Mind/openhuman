@@ -1044,7 +1044,10 @@ export default function Skills() {
                             gridAutoRows: '6.5rem',
                           }}>
                           {composioSortedEntries.map(({ meta, connection }) => (
-                            <div key={meta.slug} data-testid={`skill-row-composio-${meta.slug}`} className="overflow-hidden">
+                            <div
+                              key={meta.slug}
+                              data-testid={`skill-row-composio-${meta.slug}`}
+                              className="overflow-hidden">
                               <ComposioConnectorTile
                                 meta={meta}
                                 connection={connection}
