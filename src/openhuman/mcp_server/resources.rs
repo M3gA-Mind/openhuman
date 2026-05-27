@@ -183,6 +183,8 @@ pub fn read_resource_result(params: &Value) -> Result<Value, (i64, &'static str,
         .as_object()
         .and_then(|obj| obj.get("uri"))
         .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|uri| !uri.is_empty())
         .ok_or_else(|| {
             (
                 -32602_i64,
@@ -333,8 +335,8 @@ mod tests {
     fn all_catalog_uris_are_unique() {
         let mut uris: Vec<&str> = RESOURCE_CATALOG.iter().map(|r| r.uri).collect();
         let original_len = uris.len();
-        uris.dedup();
         uris.sort_unstable();
+        uris.dedup();
         let deduped_len = uris.len();
         assert_eq!(
             original_len, deduped_len,
