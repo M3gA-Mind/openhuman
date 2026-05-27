@@ -73,9 +73,16 @@ impl Tool for ScheduleTool {
     }
 
     fn permission_level(&self) -> PermissionLevel {
-        // Mutating actions create or run shell commands on the host; use the
-        // highest level needed across all actions exposed by this tool.
-        PermissionLevel::Execute
+        // Minimum level across all actions — list/get need only ReadOnly.
+        // Mutating actions enforce Execute via permission_level_with_args.
+        PermissionLevel::ReadOnly
+    }
+
+    fn permission_level_with_args(&self, args: &serde_json::Value) -> PermissionLevel {
+        match args.get("action").and_then(|v| v.as_str()) {
+            Some("list") | Some("get") => PermissionLevel::ReadOnly,
+            _ => PermissionLevel::Execute,
+        }
     }
 
     fn external_effect_with_args(&self, args: &serde_json::Value) -> bool {
@@ -673,7 +680,10 @@ mod tests {
     }
 
     #[test]
-    fn schedule_permission_level_is_execute() {
+    fn schedule_permission_level_is_read_only() {
+        // Static level is the minimum (ReadOnly) so list/get are not blocked
+        // on read-capable channels. Per-action level is enforced by
+        // permission_level_with_args at call time.
         let tmp = TempDir::new().unwrap();
         let config = Config {
             workspace_dir: tmp.path().join("workspace"),
@@ -686,7 +696,47 @@ mod tests {
             &config.workspace_dir,
         ));
         let tool = ScheduleTool::new(security, config);
-        assert_eq!(tool.permission_level(), PermissionLevel::Execute);
+        assert_eq!(tool.permission_level(), PermissionLevel::ReadOnly);
+    }
+
+    #[test]
+    fn schedule_permission_level_with_args_is_args_aware() {
+        let tmp = TempDir::new().unwrap();
+        let config = Config {
+            workspace_dir: tmp.path().join("workspace"),
+            config_path: tmp.path().join("config.toml"),
+            ..Config::default()
+        };
+        std::fs::create_dir_all(&config.workspace_dir).unwrap();
+        let security = Arc::new(SecurityPolicy::from_config(
+            &config.autonomy,
+            &config.workspace_dir,
+        ));
+        let tool = ScheduleTool::new(security, config);
+
+        for action in &["list", "get"] {
+            assert_eq!(
+                tool.permission_level_with_args(&json!({ "action": action })),
+                PermissionLevel::ReadOnly,
+                "schedule action '{action}' should require ReadOnly"
+            );
+        }
+        for action in &["create", "add", "once", "cancel", "remove", "pause", "resume"] {
+            assert_eq!(
+                tool.permission_level_with_args(&json!({ "action": action })),
+                PermissionLevel::Execute,
+                "schedule action '{action}' should require Execute"
+            );
+        }
+        // Unknown/missing action defaults to Execute (fail-closed)
+        assert_eq!(
+            tool.permission_level_with_args(&json!({ "action": "explode" })),
+            PermissionLevel::Execute
+        );
+        assert_eq!(
+            tool.permission_level_with_args(&json!({})),
+            PermissionLevel::Execute
+        );
     }
 
     #[test]

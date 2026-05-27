@@ -1309,6 +1309,31 @@ impl Agent {
                     false,
                 )
             } else {
+                // Per-call args-aware permission check: tools that expose
+                // multi-level actions (e.g. schedule list vs schedule create)
+                // set a low static permission_level() so the tool is visible
+                // on read-capable channels, but declare the true per-action
+                // level via permission_level_with_args.
+                let call_required = tool.permission_level_with_args(&call.arguments);
+                if call_required > session_decision.allowed_permission {
+                    tracing::debug!(
+                        tool = call.name.as_str(),
+                        call_required = %call_required,
+                        allowed = %session_decision.allowed_permission,
+                        "[agent_loop] tool action blocked by per-call permission check"
+                    );
+                    (
+                        format!(
+                            "Tool '{}' action requires {} permission, channel '{}' allows {}",
+                            call.name,
+                            call_required,
+                            self.event_channel,
+                            session_decision.allowed_permission
+                        ),
+                        false,
+                    )
+                } else {
+
                 let context = ToolCallContext::session(
                     self.event_session_id(),
                     self.event_channel(),
@@ -1416,6 +1441,7 @@ impl Agent {
                         Err(e) => (format!("Error executing {}: {e}", call.name), false),
                     }
                 }
+                } // end else { // per-call permission ok
             }
         } else {
             (format!("Unknown tool: {}", call.name), false)
