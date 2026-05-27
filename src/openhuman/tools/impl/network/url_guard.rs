@@ -526,14 +526,13 @@ mod tests {
     #[tokio::test]
     async fn dns_check_with_empty_allowlist_blocks_private_resolved_ip() {
         // Even in open mode, DNS rebinding to a private IP must be blocked.
-        let err = validate_url_with_dns_check_with_resolver(
-            "https://example.com",
-            &[],
-            |_, _| async { Ok(vec!["10.0.0.1".parse().unwrap()]) },
-        )
-        .await
-        .unwrap_err()
-        .to_string();
+        let err =
+            validate_url_with_dns_check_with_resolver("https://example.com", &[], |_, _| async {
+                Ok(vec!["10.0.0.1".parse().unwrap()])
+            })
+            .await
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("DNS rebinding blocked"));
     }
 
