@@ -251,8 +251,23 @@ pub async fn index_ref(
                 continue;
             }
         };
-        pend_docs.push(structural_doc(&text));
-        pend_tokens.push(code_tokens(&text));
+        let tokens = code_tokens(&text);
+        // A file with no extractable structure (empty `__init__.py`, a data
+        // file, `x = 1`) yields an empty structural doc. Embedders reject empty
+        // input (the cloud backend 400s the whole batch), so fall back to the
+        // lexical tokens — still content-derived, so cacheable by blob SHA.
+        let doc = structural_doc(&text);
+        let doc = if doc.trim().is_empty() {
+            if tokens.is_empty() {
+                "(no extractable content)".to_string()
+            } else {
+                tokens.join(" ")
+            }
+        } else {
+            doc
+        };
+        pend_docs.push(doc);
+        pend_tokens.push(tokens);
         pend_sha.push(sha.clone());
     }
 
@@ -393,6 +408,55 @@ mod tests {
         assert!((norm - 1.0).abs() < 1e-3, "embedding is L2-normalized");
     }
 
+    /// An embedder that errors on empty input, like the real cloud backend
+    /// (which 400s "input must be a non-empty string"). Guards the fallback.
+    struct StrictEmbedder;
+    #[async_trait]
+    impl EmbeddingProvider for StrictEmbedder {
+        fn name(&self) -> &str {
+            "strict"
+        }
+        fn model_id(&self) -> &str {
+            "strict-1"
+        }
+        fn dimensions(&self) -> usize {
+            2
+        }
+        async fn embed(&self, texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
+            if texts.iter().any(|t| t.trim().is_empty()) {
+                anyhow::bail!("input must be a non-empty string");
+            }
+            Ok(texts
+                .iter()
+                .map(|t| vec![t.len() as f32 + 1.0, 1.0])
+                .collect())
+        }
+    }
+
+    #[tokio::test]
+    async fn index_ref_never_embeds_empty_doc() {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["config", "user.email", "t@t"]);
+        git(&repo, &["config", "user.name", "t"]);
+        // Structure-less files: empty, and a bare assignment (no def/import/call/doc).
+        std::fs::write(repo.join("__init__.py"), "").unwrap();
+        std::fs::write(repo.join("data.py"), "x = 1\n").unwrap();
+        std::fs::write(repo.join("ok.py"), "def go():\n    run()\n").unwrap();
+        git(&repo, &["add", "-A"]);
+        git(&repo, &["commit", "-q", "-m", "init"]);
+
+        let mut store = CodegraphStore::open(&tmp.path().join("cg.db")).unwrap();
+        // Must NOT bail with the empty-input error: the fallback keeps every
+        // embed input non-empty even for files with no extractable structure.
+        let rep = index_ref(&mut store, "r", &repo, Some("main"), &StrictEmbedder)
+            .await
+            .expect("index_ref tolerates structure-less files");
+        assert_eq!(rep.computed, 3, "all three files embedded + stored");
+    }
+
     // ---- manual indexing benchmark -------------------------------------
     // A zero-latency embedder returning realistically-sized (default 1024-d)
     // vectors, with cumulative embed-time accounting so the harness can
@@ -519,5 +583,121 @@ mod tests {
             warm.cached
         );
         eprintln!("================================================================\n");
+    }
+
+    /// Live probe — build the *real* provider from the workspace config and
+    /// embed one string. Confirms the cloud session JWT + backend are reachable
+    /// before attempting a full real-embedding index. A `401`/expired session
+    /// prints `EMBED FAILED` rather than panicking.
+    ///
+    ///   OPENHUMAN_WORKSPACE=/path OPENHUMAN_KEYRING_BACKEND=file \
+    ///     cargo test --lib codegraph::index::tests::cloud_embed_probe -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore = "live: needs OPENHUMAN_WORKSPACE + a valid backend session"]
+    async fn cloud_embed_probe() {
+        let config = crate::openhuman::config::Config::load_or_init()
+            .await
+            .expect("load config");
+        let provider = crate::openhuman::embeddings::provider_from_config(&config)
+            .expect("build embedding provider");
+        eprintln!(
+            "\n==== cloud embed probe ====\nprovider={} model={} dims={} sig={}",
+            provider.name(),
+            provider.model_id(),
+            provider.dimensions(),
+            provider.signature(),
+        );
+        let t = std::time::Instant::now();
+        match provider.embed(&["hello world from codegraph"]).await {
+            Ok(vs) => {
+                let v = vs.first().map(Vec::as_slice).unwrap_or(&[]);
+                eprintln!(
+                    "OK: {} vector(s), dim={}, first5={:?}  ({:.0} ms)",
+                    vs.len(),
+                    v.len(),
+                    &v[..v.len().min(5)],
+                    t.elapsed().as_secs_f64() * 1e3
+                );
+            }
+            Err(e) => eprintln!("EMBED FAILED: {e:#}"),
+        }
+        eprintln!("===========================\n");
+    }
+
+    /// Full real-embedding e2e: load the workspace config → build the cloud
+    /// provider → `index_ref` a real repo → `search_ref`, asserting full
+    /// coverage + non-empty hits and printing real wall-time (embedding
+    /// included). Defaults to the small flask checkout (one embed batch);
+    /// override with `CODEGRAPH_E2E_REPO` / `CODEGRAPH_E2E_QUERY`.
+    ///
+    ///   OPENHUMAN_WORKSPACE=/path OPENHUMAN_KEYRING_BACKEND=file \
+    ///     cargo test --lib codegraph::index::tests::index_e2e_cloud -- --ignored --nocapture
+    #[tokio::test]
+    #[ignore = "live: real cloud embeddings; needs OPENHUMAN_WORKSPACE + a valid session"]
+    async fn index_e2e_cloud() {
+        let repo = std::path::PathBuf::from(std::env::var("CODEGRAPH_E2E_REPO").unwrap_or_else(
+            |_| {
+                "/home/sanil/vezures/openhuman-cbmem-ab/bench/codebase-memory-ab/repos/pallets__flask"
+                    .to_string()
+            },
+        ));
+        if !repo.exists() {
+            eprintln!("index_e2e_cloud: repo not found: {}", repo.display());
+            return;
+        }
+        let query = std::env::var("CODEGRAPH_E2E_QUERY")
+            .unwrap_or_else(|_| "register blueprint route url rule".to_string());
+
+        let config = crate::openhuman::config::Config::load_or_init()
+            .await
+            .expect("load config");
+        let provider = crate::openhuman::embeddings::provider_from_config(&config)
+            .expect("build embedding provider");
+
+        let tmp = TempDir::new().unwrap();
+        let mut store = CodegraphStore::open(&tmp.path().join("cg.db")).unwrap();
+
+        let t0 = std::time::Instant::now();
+        let rep = index_ref(&mut store, "e2e", &repo, None, provider.as_ref())
+            .await
+            .expect("index_ref");
+        let index_ms = t0.elapsed().as_secs_f64() * 1e3;
+
+        let t1 = std::time::Instant::now();
+        let out = crate::openhuman::codegraph::search_ref(
+            &mut store,
+            "e2e",
+            &rep.git_ref,
+            &query,
+            provider.as_ref(),
+            10,
+        )
+        .await
+        .expect("search_ref");
+        let search_ms = t1.elapsed().as_secs_f64() * 1e3;
+
+        eprintln!("\n==== codegraph e2e (REAL cloud embeddings) =====================");
+        eprintln!("repo  : {}  ref={}", repo.display(), rep.git_ref);
+        eprintln!(
+            "index : files={} computed={} cached={} skipped={}  in {:.0} ms (embedding incl.)",
+            rep.files, rep.computed, rep.cached, rep.skipped, index_ms
+        );
+        eprintln!("query : {query:?}");
+        eprintln!(
+            "search: coverage={:?} indexed={} total={}  in {:.0} ms",
+            out.coverage, out.indexed, out.total, search_ms
+        );
+        eprintln!("top hits:");
+        for (i, h) in out.hits.iter().take(10).enumerate() {
+            eprintln!("  {}. {}", i + 1, h);
+        }
+        eprintln!("================================================================\n");
+
+        assert!(rep.computed > 0, "indexed at least one blob");
+        assert!(
+            matches!(out.coverage, crate::openhuman::codegraph::Coverage::Full),
+            "every file indexed → full coverage"
+        );
+        assert!(!out.hits.is_empty(), "search returned hits");
     }
 }
