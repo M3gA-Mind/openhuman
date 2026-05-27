@@ -1087,6 +1087,38 @@ fn byok_fallback_empty_string_treated_as_unset() {
     );
 }
 
+// ── claude_agent_sdk provider factory tests ───────────────────────────────────
+
+#[test]
+fn claude_agent_sdk_bare_provider_string_uses_default_model() {
+    let config = Config::default();
+    let (_, model) = create_chat_provider_from_string("reasoning", "claude_agent_sdk", &config)
+        .expect("claude_agent_sdk must build without a model suffix");
+    // Default model from ClaudeAgentSdkConfig
+    assert_eq!(
+        model, "claude-sonnet-4-6",
+        "claude_agent_sdk with no suffix must use the default model"
+    );
+}
+
+#[test]
+fn claude_agent_sdk_with_model_suffix() {
+    let config = Config::default();
+    let (_, model) =
+        create_chat_provider_from_string("reasoning", "claude_agent_sdk:claude-opus-4-7", &config)
+            .expect("claude_agent_sdk:<model> must build");
+    assert_eq!(model, "claude-opus-4-7");
+}
+
+#[test]
+fn claude_agent_sdk_with_custom_default_model_in_config() {
+    let mut config = Config::default();
+    config.claude_agent_sdk.default_model = "claude-haiku-4-5".to_string();
+    let (_, model) = create_chat_provider_from_string("chat", "claude_agent_sdk", &config)
+        .expect("claude_agent_sdk must build with config default model");
+    assert_eq!(model, "claude-haiku-4-5");
+}
+
 // ── resolve_byok_fallback_provider_string direct tests ───────────────────────
 
 #[test]
