@@ -367,12 +367,9 @@ mod tests {
         let client = ensure_memory_client();
         let state = client.ingestion_state();
 
-        // `queue_depth` is an AtomicUsize on the process-global ingestion state,
-        // which is shared (and not reset) across every memory::ops test. A prior
-        // test's in-flight ingestion can leave residue, so assert the delta from a
-        // captured baseline rather than an absolute depth — the snapshot fields set
-        // by mark_running below are overwritten per-call and remain deterministic.
-        let baseline_depth = state.snapshot().queue_depth;
+        // Reset any residue from background ingestion left by prior tests.
+        state.reset_for_test();
+
         state.enqueue();
         state.mark_running("doc-sync", "Sync Title", "sync-test");
 
@@ -385,7 +382,7 @@ mod tests {
         assert_eq!(status.current_document_id.as_deref(), Some("doc-sync"));
         assert_eq!(status.current_title.as_deref(), Some("Sync Title"));
         assert_eq!(status.current_namespace.as_deref(), Some("sync-test"));
-        assert_eq!(status.queue_depth, baseline_depth + 1);
+        assert_eq!(status.queue_depth, 1);
 
         state.dequeue();
         state.mark_completed("doc-sync", true, 12345);
