@@ -32,6 +32,15 @@ use crate::openhuman::skills::ops::{
 };
 use crate::rpc::RpcOutcome;
 
+use crate::openhuman::agent::harness::session::Agent;
+use crate::openhuman::agent::harness::subagent_runner::with_autonomous_iter_cap;
+use crate::openhuman::skills::{registry, run_log};
+
+/// Iteration cap for an autonomous skill run (orchestrator + sub-agents). High
+/// enough to "run until done", while the repeated-failure circuit breaker still
+/// stops dead-end grinding — deliberately bounded (not infinite) to cap spend.
+const SKILL_RUN_MAX_ITERATIONS: usize = 200;
+
 #[derive(Debug, Deserialize, Default)]
 struct SkillsListParams {
     // No params today. Kept as an empty struct so future filters (scope,
@@ -184,6 +193,7 @@ pub fn all_skills_controller_schemas() -> Vec<ControllerSchema> {
         skills_schemas("skills_create"),
         skills_schemas("skills_install_from_url"),
         skills_schemas("skills_uninstall"),
+        skills_schemas("skills_run"),
     ]
 }
 
@@ -209,6 +219,10 @@ pub fn all_skills_registered_controllers() -> Vec<RegisteredController> {
             schema: skills_schemas("skills_uninstall"),
             handler: handle_skills_uninstall,
         },
+        RegisteredController {
+            schema: skills_schemas("skills_run"),
+            handler: handle_skills_run,
+        },
     ]
 }
 
@@ -225,6 +239,51 @@ pub fn skills_schemas(function: &str) -> ControllerSchema {
                 comment: "Discovered skills (sorted by name, project-scope shadows user-scope).",
                 required: true,
             }],
+        },
+        "skills_run" => ControllerSchema {
+            namespace: "skills",
+            function: "run",
+            description: "Start a skill in the background: run the orchestrator agent focused by the skill's SKILL.md + the given inputs, streaming every step to a per-run log file. Validates required inputs and returns immediately with a run id and the log path.",
+            inputs: vec![
+                FieldSchema {
+                    name: "skill_id",
+                    ty: TypeSchema::String,
+                    comment: "Id of the skill to run (matches SkillDefinition.id).",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "inputs",
+                    ty: TypeSchema::Json,
+                    comment: "Object of input values keyed by the skill's declared input names.",
+                    required: false,
+                },
+            ],
+            outputs: vec![
+                FieldSchema {
+                    name: "run_id",
+                    ty: TypeSchema::String,
+                    comment: "Id for this background run.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "status",
+                    ty: TypeSchema::String,
+                    comment: "Always \"started\" — the orchestrator runs in the background.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "skill_id",
+                    ty: TypeSchema::String,
+                    comment: "Echo of the requested skill id.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "log",
+                    ty: TypeSchema::String,
+                    comment: "Path to the per-run streaming log (<workspace>/skills/.runs/<skill>_<ts>.log).",
+                    required: true,
+                },
+            ],
         },
         "skills_read_resource" => ControllerSchema {
             namespace: "skills",
@@ -434,6 +493,144 @@ fn handle_skills_list(params: Map<String, Value>) -> ControllerFuture {
         let summaries = skills.into_iter().map(SkillSummary::from).collect();
         to_json(RpcOutcome::new(
             SkillsListResult { skills: summaries },
+            Vec::new(),
+        ))
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct SkillsRunParams {
+    skill_id: String,
+    #[serde(default)]
+    inputs: Option<Value>,
+}
+
+fn handle_skills_run(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let payload = deserialize_params::<SkillsRunParams>(params)?;
+        let workspace = resolve_workspace_dir().await;
+        let skill = registry::get_skill(&workspace, &payload.skill_id)
+            .ok_or_else(|| format!("skill_run: unknown skill '{}'", payload.skill_id))?;
+        let inputs = payload.inputs.unwrap_or(Value::Null);
+        let missing = registry::missing_required_inputs(&skill.inputs, &inputs);
+        if !missing.is_empty() {
+            return Err(format!(
+                "skill_run: missing required inputs: {}",
+                missing.join(", ")
+            ));
+        }
+        // Focus the orchestrator on this single skill: its SKILL.md rides in
+        // the task prompt as guidelines + the resolved inputs; the
+        // orchestrator's own system prompt and full tool access are kept.
+        let guidelines = match &skill.definition.system_prompt {
+            crate::openhuman::agent::harness::definition::PromptSource::Inline(s) => s.clone(),
+            _ => String::new(),
+        };
+        let inputs_block = registry::render_inputs_block(&skill.inputs, &inputs);
+        let skill_id = skill.definition.id.clone();
+        let task_prompt = format!(
+            "You are running a single skill: **{skill_id}**. Follow these guidelines exactly and \
+             focus solely on completing this one task — do not pick up unrelated work.\n\n\
+             # Skill guidelines\n{guidelines}\n\n{inputs_block}",
+        );
+        let run_id = uuid::Uuid::new_v4().to_string();
+        let log_path = run_log::run_log_path(&workspace, &skill_id, &run_id);
+        tracing::info!(
+            skill_id = %skill_id,
+            run_id = %run_id,
+            log = %log_path.display(),
+            "[skills][rpc] skill_run: starting orchestrator run"
+        );
+
+        // Detached: build the orchestrator Agent, stream every step to the run
+        // log, and return the run id immediately. Running a full turn (not a
+        // bare subagent) establishes its own parent context, so there is no
+        // NoParentContext failure, and the AgentProgress sink gives a complete
+        // tool-by-tool trace.
+        {
+            let run_id = run_id.clone();
+            let skill_id = skill_id.clone();
+            let inputs = inputs.clone();
+            let log_path = log_path.clone();
+            tokio::spawn(async move {
+                if let Err(e) =
+                    run_log::write_header(&log_path, &skill_id, &run_id, &inputs, &task_prompt)
+                        .await
+                {
+                    tracing::warn!(run_id = %run_id, error = %e, "[skills][rpc] skill_run: header write failed");
+                }
+                let mut config = match Config::load_or_init().await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        let _ = run_log::write_footer(
+                            &log_path,
+                            "FAILED",
+                            0,
+                            &format!("load config: {e:#}"),
+                        )
+                        .await;
+                        return;
+                    }
+                };
+                // Autonomous skill run: lift the orchestrator's iteration cap and
+                // open web fetch to all public hosts (the SSRF private-host block
+                // stays). Sub-agents get the lifted cap via with_autonomous_iter_cap
+                // around run_single below; approval prompts don't apply (a
+                // background run carries no chat context, so the gate never parks).
+                config.agent.max_tool_iterations = SKILL_RUN_MAX_ITERATIONS;
+                config.http_request.allowed_domains = vec!["*".to_string()];
+                let mut agent = match Agent::from_config_for_agent(&config, "orchestrator") {
+                    Ok(a) => a,
+                    Err(e) => {
+                        let _ = run_log::write_footer(
+                            &log_path,
+                            "FAILED",
+                            0,
+                            &format!("build agent: {e:#}"),
+                        )
+                        .await;
+                        return;
+                    }
+                };
+                agent.set_event_context(run_id.clone(), "skill");
+                let (tx, rx) = tokio::sync::mpsc::channel(256);
+                agent.set_on_progress(Some(tx));
+                let bridge = tokio::spawn(run_log::drain_to_log(rx, log_path.clone()));
+
+                let started = std::time::Instant::now();
+                // Scope the lifted iteration cap over the whole run — the
+                // orchestrator turn and every inline sub-agent loop.
+                let result = with_autonomous_iter_cap(
+                    SKILL_RUN_MAX_ITERATIONS,
+                    agent.run_single(&task_prompt),
+                )
+                .await;
+                agent.set_on_progress(None); // drop the sender → bridge drains and exits
+                drop(agent);
+                let _ = bridge.await;
+
+                let ms = started.elapsed().as_millis() as u64;
+                match result {
+                    Ok(out) => {
+                        let _ = run_log::write_footer(&log_path, "DONE", ms, &out).await;
+                        tracing::info!(run_id = %run_id, "[skills][rpc] skill_run: completed");
+                    }
+                    Err(e) => {
+                        let _ =
+                            run_log::write_footer(&log_path, "FAILED", ms, &format!("{e:#}")).await;
+                        tracing::warn!(run_id = %run_id, error = ?e, "[skills][rpc] skill_run: failed");
+                    }
+                }
+            });
+        }
+
+        to_json(RpcOutcome::new(
+            serde_json::json!({
+                "run_id": run_id,
+                "status": "started",
+                "skill_id": skill_id,
+                "log": log_path.display().to_string(),
+            }),
             Vec::new(),
         ))
     })
