@@ -131,9 +131,17 @@ pub async fn search_ref(
     embedder: &dyn EmbeddingProvider,
     k: usize,
 ) -> Result<SearchOutcome> {
-    let model = embedder.signature();
-    let docs = store.hydrate(repo_id, git_ref, &model)?;
     let total = store.manifest_size(repo_id, git_ref)?;
+    // Auto-detect the index mode: prefer the dense arm (rows under the
+    // embedder's signature); if none, fall back to the lexical-only key (a
+    // small repo indexed BM25-only). Lexical search makes no embedder call.
+    let dense_model = embedder.signature();
+    let mut docs = store.hydrate(repo_id, git_ref, &dense_model)?;
+    let dense_active = !docs.is_empty();
+    if !dense_active {
+        docs = store.hydrate(repo_id, git_ref, super::index::LEXICAL_MODEL)?;
+    }
+
     let coverage = if total == 0 {
         Coverage::None
     } else if docs.len() >= total {
@@ -153,17 +161,23 @@ pub async fn search_ref(
     let q_tokens = code_tokens(query);
     let bm = bm25_rank(&docs, &q_tokens);
 
-    let mut qv = embedder
-        .embed(&[query])
-        .await
-        .context("codegraph: embed query")?
-        .into_iter()
-        .next()
-        .unwrap_or_default();
-    l2_normalize(&mut qv);
-    let dense = dense_rank(&docs, &qv);
+    // Dense arm only when the index has vectors — otherwise BM25 alone, and no
+    // query-embed round-trip. RRF over a single ranking preserves its order.
+    let arms = if dense_active {
+        let mut qv = embedder
+            .embed(&[query])
+            .await
+            .context("codegraph: embed query")?
+            .into_iter()
+            .next()
+            .unwrap_or_default();
+        l2_normalize(&mut qv);
+        vec![bm, dense_rank(&docs, &qv)]
+    } else {
+        vec![bm]
+    };
 
-    let fused = rrf(&[bm, dense], k);
+    let fused = rrf(&arms, k);
     let hits = fused.into_iter().map(|i| docs[i].path.clone()).collect();
     Ok(SearchOutcome {
         hits,

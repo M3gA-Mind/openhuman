@@ -9,13 +9,43 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::openhuman::codegraph::{current_ref, index_ref, search_ref, CodegraphStore};
+use crate::openhuman::codegraph::{
+    count_code_files, current_ref, index_ref, search_ref, CodegraphStore, IndexMode,
+};
 use crate::openhuman::config::Config;
 use crate::openhuman::embeddings;
 use crate::openhuman::tools::traits::{Tool, ToolResult};
 
 fn codegraph_db(workspace_dir: &Path) -> std::path::PathBuf {
     workspace_dir.join("codegraph").join("index.db")
+}
+
+/// File count at/above which auto-indexing builds the dense (embedding) index;
+/// below it, BM25-only. Small repos saturate recall, so dense buys little there
+/// while costing real embedding latency. Override with the env var.
+fn dense_min_files() -> usize {
+    std::env::var("OPENHUMAN_CODEGRAPH_DENSE_MIN_FILES")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(400)
+}
+
+/// Size-gated mode for `auto`: dense above the threshold, else lexical. The
+/// count is cheap (`git ls-files`, no reads/embeds).
+fn auto_mode(repo_dir: &Path) -> IndexMode {
+    match count_code_files(repo_dir) {
+        Ok(n) if n > dense_min_files() => IndexMode::Dense,
+        _ => IndexMode::Lexical,
+    }
+}
+
+/// Resolve an explicit `mode` arg (`auto`/`lexical`/`dense`) against the repo.
+fn resolve_mode(arg: Option<&str>, repo_dir: &Path) -> IndexMode {
+    match arg {
+        Some("dense") => IndexMode::Dense,
+        Some("lexical") => IndexMode::Lexical,
+        _ => auto_mode(repo_dir),
+    }
 }
 
 /// Stable per-repo key: the canonical worktree path (manifests are per
@@ -55,8 +85,10 @@ impl Tool for CodegraphIndexTool {
 
     fn description(&self) -> &str {
         "Index a checked-out repo for fast retrieval. Args: `path` (repo working dir, required), \
-         `ref` (branch/commit; defaults to the current checkout). Incremental and content-addressed \
-         — only files whose content changed are (re)embedded. Returns {files, computed, cached, skipped}."
+         `ref` (branch/commit; defaults to the current checkout), `mode` (`auto` (default) | `lexical` | `dense`). \
+         `auto` builds BM25-only for small repos and adds dense embeddings above a file-count threshold. \
+         Incremental and content-addressed — only changed files are (re)processed. \
+         Returns {mode, files, computed, cached, skipped}."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -64,7 +96,8 @@ impl Tool for CodegraphIndexTool {
             "type": "object",
             "properties": {
                 "path": {"type": "string", "description": "Repo working directory to index."},
-                "ref": {"type": "string", "description": "Branch/commit to index (defaults to current checkout)."}
+                "ref": {"type": "string", "description": "Branch/commit to index (defaults to current checkout)."},
+                "mode": {"type": "string", "enum": ["auto", "lexical", "dense"], "description": "auto (size-gated, default), lexical (BM25 only), or dense (embeddings)."}
             },
             "required": ["path"]
         })
@@ -84,6 +117,7 @@ impl Tool for CodegraphIndexTool {
             Some(r) => r.to_string(),
             None => current_ref(repo_dir)?,
         };
+        let mode = resolve_mode(arg_str(&args, "mode"), repo_dir);
         let provider = embeddings::provider_from_config(&self.config)?;
         let mut store = CodegraphStore::open(&codegraph_db(&self.workspace_dir))?;
         let report = index_ref(
@@ -92,9 +126,17 @@ impl Tool for CodegraphIndexTool {
             repo_dir,
             Some(&git_ref),
             &*provider,
+            mode,
         )
         .await?;
-        Ok(ToolResult::success(serde_json::to_string_pretty(&report)?))
+        let out = serde_json::json!({
+            "mode": if mode == IndexMode::Dense { "dense" } else { "lexical" },
+            "files": report.files,
+            "computed": report.computed,
+            "cached": report.cached,
+            "skipped": report.skipped,
+        });
+        Ok(ToolResult::success(serde_json::to_string_pretty(&out)?))
     }
 }
 
@@ -122,7 +164,9 @@ impl Tool for CodegraphSearchTool {
     }
 
     fn description(&self) -> &str {
-        "Find the files most relevant to a query in an indexed repo (lexical + semantic, fused). \
+        "Find the files most relevant to a query in a repo (lexical + semantic, fused). \
+         Indexes the repo first if it hasn't been indexed yet (synchronous; BM25-only for small \
+         repos, dense embeddings for larger ones). \
          Args: `query` (required), `path` (repo working dir, required), `ref` (defaults to current), \
          `k` (max hits, default 10). Returns {hits:[paths], coverage:full|partial|none, indexed, total}. \
          If coverage is not `full`, treat hits as hints and also use grep."
@@ -162,15 +206,15 @@ impl Tool for CodegraphSearchTool {
         let k = args.get("k").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
         let provider = embeddings::provider_from_config(&self.config)?;
         let mut store = CodegraphStore::open(&codegraph_db(&self.workspace_dir))?;
-        let outcome = search_ref(
-            &mut store,
-            &repo_id(repo_dir),
-            &git_ref,
-            query,
-            &*provider,
-            k,
-        )
-        .await?;
+        let rid = repo_id(repo_dir);
+        // Index-first: if this (repo, ref) has never been indexed, build it now
+        // (synchronously) so the search has something to hit. Mode is size-gated
+        // — BM25-only for small repos, dense above the threshold.
+        if store.manifest_size(&rid, &git_ref)? == 0 {
+            let mode = auto_mode(repo_dir);
+            index_ref(&mut store, &rid, repo_dir, Some(&git_ref), &*provider, mode).await?;
+        }
+        let outcome = search_ref(&mut store, &rid, &git_ref, query, &*provider, k).await?;
         Ok(ToolResult::success(serde_json::to_string_pretty(&outcome)?))
     }
 }

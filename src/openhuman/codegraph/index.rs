@@ -31,6 +31,38 @@ const MAX_CALLS: usize = 200;
 /// repo into a handful of calls.
 const EMBED_BATCH: usize = 128;
 
+/// Cache `model` key for a lexical-only (BM25, no embedding) index. Kept
+/// separate from any embedder signature so a later dense pass indexes fresh
+/// under its own key rather than colliding with these embedding-less rows.
+pub const LEXICAL_MODEL: &str = "codegraph:lexical:v1";
+
+/// What to build for a `(repo, ref)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndexMode {
+    /// BM25 tokens only — no embedding calls. Cheap; enough for small repos
+    /// where recall saturates anyway.
+    Lexical,
+    /// Structural-aug dense vectors + BM25 tokens — the full seed. Worth its
+    /// embedding cost on larger repos.
+    Dense,
+}
+
+impl IndexMode {
+    /// The blob-cache `model` key this mode writes/reads under.
+    pub fn model_key(self, embedder: &dyn EmbeddingProvider) -> String {
+        match self {
+            IndexMode::Lexical => LEXICAL_MODEL.to_string(),
+            IndexMode::Dense => embedder.signature(),
+        }
+    }
+}
+
+/// Count tracked code files at the checkout — the cheap signal (`git ls-files`,
+/// no reads/embeds) used to choose [`IndexMode`] before indexing.
+pub fn count_code_files(repo_dir: &Path) -> Result<usize> {
+    Ok(tree_blobs(repo_dir)?.len())
+}
+
 /// Per-index outcome. On a branch switch, `computed` is just the changed blobs.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct IndexReport {
@@ -203,20 +235,22 @@ fn l2_normalize(v: &mut [f32]) {
 }
 
 /// (Re)index the checkout at `repo_dir` under `(repo_id, ref)`. Only blobs not
-/// already cached for the embedder's signature are read + embedded; the rest
-/// are cache hits. Then the ref's manifest is rewritten to the current tree.
+/// already cached for this `mode`'s key are read + (in `Dense`) embedded; the
+/// rest are cache hits. Then the ref's manifest is rewritten to the current
+/// tree. In `Lexical` mode no embedder call is made — tokens only.
 pub async fn index_ref(
     store: &mut CodegraphStore,
     repo_id: &str,
     repo_dir: &Path,
     git_ref: Option<&str>,
     embedder: &dyn EmbeddingProvider,
+    mode: IndexMode,
 ) -> Result<IndexReport> {
     let git_ref = match git_ref {
         Some(r) => r.to_string(),
         None => current_ref(repo_dir)?,
     };
-    let model = embedder.signature();
+    let model = mode.model_key(embedder);
     let blobs = tree_blobs(repo_dir)?;
     let (mut cached, mut skipped) = (0usize, 0usize);
 
@@ -252,44 +286,53 @@ pub async fn index_ref(
             }
         };
         let tokens = code_tokens(&text);
-        // A file with no extractable structure (empty `__init__.py`, a data
-        // file, `x = 1`) yields an empty structural doc. Embedders reject empty
-        // input (the cloud backend 400s the whole batch), so fall back to the
-        // lexical tokens — still content-derived, so cacheable by blob SHA.
-        let doc = structural_doc(&text);
-        let doc = if doc.trim().is_empty() {
-            if tokens.is_empty() {
-                "(no extractable content)".to_string()
+        if mode == IndexMode::Dense {
+            // A file with no extractable structure (empty `__init__.py`, a data
+            // file, `x = 1`) yields an empty structural doc. Embedders reject
+            // empty input (the cloud backend 400s the whole batch), so fall
+            // back to the lexical tokens — still content-derived, cacheable by
+            // blob SHA. (Skipped entirely in Lexical mode — no embedding.)
+            let doc = structural_doc(&text);
+            let doc = if doc.trim().is_empty() {
+                if tokens.is_empty() {
+                    "(no extractable content)".to_string()
+                } else {
+                    tokens.join(" ")
+                }
             } else {
-                tokens.join(" ")
-            }
-        } else {
-            doc
-        };
-        pend_docs.push(doc);
+                doc
+            };
+            pend_docs.push(doc);
+        }
         pend_tokens.push(tokens);
         pend_sha.push(sha.clone());
     }
 
-    // Phase 2 — embed the structural docs in batches (few round-trips, not one
-    // per file), L2-normalising each vector.
-    let mut embs: Vec<Vec<f32>> = Vec::with_capacity(pend_docs.len());
-    for chunk in pend_docs.chunks(EMBED_BATCH) {
-        let refs: Vec<&str> = chunk.iter().map(String::as_str).collect();
-        let out = embedder
-            .embed(&refs)
-            .await
-            .context("codegraph: embed structural docs")?;
-        if out.len() != chunk.len() {
-            anyhow::bail!(
-                "codegraph: embedder returned {} vectors for {} inputs",
-                out.len(),
-                chunk.len()
-            );
-        }
-        for mut v in out {
-            l2_normalize(&mut v);
-            embs.push(v);
+    // Phase 2 — produce a vector per pending blob. Lexical: empty vectors (no
+    // embedder call). Dense: embed the structural docs in batches (few
+    // round-trips, not one per file), L2-normalising each.
+    let mut embs: Vec<Vec<f32>> = Vec::with_capacity(pend_sha.len());
+    match mode {
+        IndexMode::Lexical => embs.resize(pend_sha.len(), Vec::new()),
+        IndexMode::Dense => {
+            for chunk in pend_docs.chunks(EMBED_BATCH) {
+                let refs: Vec<&str> = chunk.iter().map(String::as_str).collect();
+                let out = embedder
+                    .embed(&refs)
+                    .await
+                    .context("codegraph: embed structural docs")?;
+                if out.len() != chunk.len() {
+                    anyhow::bail!(
+                        "codegraph: embedder returned {} vectors for {} inputs",
+                        out.len(),
+                        chunk.len()
+                    );
+                }
+                for mut v in out {
+                    l2_normalize(&mut v);
+                    embs.push(v);
+                }
+            }
         }
     }
 
@@ -386,7 +429,7 @@ mod tests {
         let mut store = CodegraphStore::open(&tmp.path().join("cg.db")).unwrap();
         let emb = FakeEmbedder;
 
-        let r1 = index_ref(&mut store, "r", &repo, Some("main"), &emb)
+        let r1 = index_ref(&mut store, "r", &repo, Some("main"), &emb, IndexMode::Dense)
             .await
             .unwrap();
         assert_eq!(r1.files, 1, "only the .rs file is indexed");
@@ -394,7 +437,7 @@ mod tests {
         assert_eq!(r1.cached, 0);
 
         // Re-index unchanged tree → all cache hits, nothing re-embedded.
-        let r2 = index_ref(&mut store, "r", &repo, Some("main"), &emb)
+        let r2 = index_ref(&mut store, "r", &repo, Some("main"), &emb, IndexMode::Dense)
             .await
             .unwrap();
         assert_eq!(r2.computed, 0);
@@ -451,10 +494,84 @@ mod tests {
         let mut store = CodegraphStore::open(&tmp.path().join("cg.db")).unwrap();
         // Must NOT bail with the empty-input error: the fallback keeps every
         // embed input non-empty even for files with no extractable structure.
-        let rep = index_ref(&mut store, "r", &repo, Some("main"), &StrictEmbedder)
-            .await
-            .expect("index_ref tolerates structure-less files");
+        let rep = index_ref(
+            &mut store,
+            "r",
+            &repo,
+            Some("main"),
+            &StrictEmbedder,
+            IndexMode::Dense,
+        )
+        .await
+        .expect("index_ref tolerates structure-less files");
         assert_eq!(rep.computed, 3, "all three files embedded + stored");
+    }
+
+    /// Embedder that fails if called at all — proves the lexical path embeds nothing.
+    struct NoEmbed;
+    #[async_trait]
+    impl EmbeddingProvider for NoEmbed {
+        fn name(&self) -> &str {
+            "noembed"
+        }
+        fn model_id(&self) -> &str {
+            "noembed-1"
+        }
+        fn dimensions(&self) -> usize {
+            2
+        }
+        async fn embed(&self, _t: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
+            anyhow::bail!("embedder must not be called in lexical mode")
+        }
+    }
+
+    #[tokio::test]
+    async fn lexical_mode_indexes_and_searches_without_embedding() {
+        let tmp = TempDir::new().unwrap();
+        let repo = tmp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        git(&repo, &["init", "-q"]);
+        git(&repo, &["config", "user.email", "t@t"]);
+        git(&repo, &["config", "user.name", "t"]);
+        std::fs::write(repo.join("auth.rs"), "fn login() { session(); token(); }\n").unwrap();
+        std::fs::write(repo.join("retry.rs"), "fn reconcile() { backoff(); }\n").unwrap();
+        git(&repo, &["add", "-A"]);
+        git(&repo, &["commit", "-q", "-m", "init"]);
+
+        let mut store = CodegraphStore::open(&tmp.path().join("cg.db")).unwrap();
+        // Lexical index makes no embedder call (NoEmbed would bail) …
+        let rep = index_ref(
+            &mut store,
+            "r",
+            &repo,
+            Some("main"),
+            &NoEmbed,
+            IndexMode::Lexical,
+        )
+        .await
+        .expect("lexical index never embeds");
+        assert_eq!(rep.computed, 2);
+
+        // … and lexical search is BM25-only — still no embedder call — yet ranks.
+        let out = crate::openhuman::codegraph::search_ref(
+            &mut store,
+            "r",
+            "main",
+            "reconcile backoff",
+            &NoEmbed,
+            5,
+        )
+        .await
+        .expect("lexical search never embeds");
+        assert!(matches!(
+            out.coverage,
+            crate::openhuman::codegraph::Coverage::Full
+        ));
+        assert_eq!(
+            out.hits.first().map(String::as_str),
+            Some("retry.rs"),
+            "BM25 ranks retry.rs first for 'reconcile backoff'"
+        );
     }
 
     // ---- manual indexing benchmark -------------------------------------
@@ -533,7 +650,7 @@ mod tests {
 
         // COLD — nothing cached, every blob is read + extracted + embedded + stored.
         let t0 = std::time::Instant::now();
-        let cold = index_ref(&mut store, "bench", &repo, None, &emb)
+        let cold = index_ref(&mut store, "bench", &repo, None, &emb, IndexMode::Dense)
             .await
             .unwrap();
         let cold_ms = t0.elapsed().as_secs_f64() * 1e3;
@@ -543,7 +660,7 @@ mod tests {
 
         // WARM — re-index the same tree: content-addressed → all cache hits.
         let t1 = std::time::Instant::now();
-        let warm = index_ref(&mut store, "bench", &repo, None, &emb)
+        let warm = index_ref(&mut store, "bench", &repo, None, &emb, IndexMode::Dense)
             .await
             .unwrap();
         let warm_ms = t1.elapsed().as_secs_f64() * 1e3;
@@ -658,9 +775,16 @@ mod tests {
         let mut store = CodegraphStore::open(&tmp.path().join("cg.db")).unwrap();
 
         let t0 = std::time::Instant::now();
-        let rep = index_ref(&mut store, "e2e", &repo, None, provider.as_ref())
-            .await
-            .expect("index_ref");
+        let rep = index_ref(
+            &mut store,
+            "e2e",
+            &repo,
+            None,
+            provider.as_ref(),
+            IndexMode::Dense,
+        )
+        .await
+        .expect("index_ref");
         let index_ms = t0.elapsed().as_secs_f64() * 1e3;
 
         let t1 = std::time::Instant::now();
