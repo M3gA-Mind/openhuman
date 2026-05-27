@@ -1,7 +1,7 @@
 use crate::openhuman::config::Config;
 use crate::openhuman::cron::{self, DeliveryConfig, Schedule, SessionTarget};
 use crate::openhuman::security::SecurityPolicy;
-use crate::openhuman::tools::traits::{Tool, ToolResult};
+use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolResult};
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -70,6 +70,23 @@ impl Tool for ScheduleTool {
             },
             "required": ["action"]
         })
+    }
+
+    fn permission_level(&self) -> PermissionLevel {
+        // Mutating actions create or run shell commands on the host; use the
+        // highest level needed across all actions exposed by this tool.
+        PermissionLevel::Execute
+    }
+
+    fn external_effect_with_args(&self, args: &serde_json::Value) -> bool {
+        // Read-only actions (list/get) need no approval; all mutating actions
+        // (create/add/once/cancel/remove/pause/resume) persist or remove a
+        // scheduled job and must go through the ApprovalGate
+        // (GHSA-f46p-6vf9-64mm).
+        match args.get("action").and_then(|v| v.as_str()) {
+            Some("list") | Some("get") => false,
+            _ => true,
+        }
     }
 
     async fn execute(&self, args: serde_json::Value) -> Result<ToolResult> {
@@ -603,5 +620,91 @@ mod tests {
         let result = tool.execute(json!({"action": "explode"})).await.unwrap();
         assert!(result.is_error);
         assert!(result.output().contains("Unknown action"));
+    }
+
+    // ── GHSA-f46p-6vf9-64mm: approval gate must fire for mutating actions ─
+
+    #[test]
+    fn schedule_mutating_actions_are_external_effect() {
+        let tmp = TempDir::new().unwrap();
+        let config = Config {
+            workspace_dir: tmp.path().join("workspace"),
+            config_path: tmp.path().join("config.toml"),
+            ..Config::default()
+        };
+        std::fs::create_dir_all(&config.workspace_dir).unwrap();
+        let security = Arc::new(SecurityPolicy::from_config(
+            &config.autonomy,
+            &config.workspace_dir,
+        ));
+        let tool = ScheduleTool::new(security, config);
+
+        for action in &[
+            "create", "add", "once", "cancel", "remove", "pause", "resume",
+        ] {
+            assert!(
+                tool.external_effect_with_args(&json!({ "action": action })),
+                "schedule action '{action}' must declare external_effect=true so ApprovalGate is consulted"
+            );
+        }
+    }
+
+    #[test]
+    fn schedule_readonly_actions_are_not_external_effect() {
+        let tmp = TempDir::new().unwrap();
+        let config = Config {
+            workspace_dir: tmp.path().join("workspace"),
+            config_path: tmp.path().join("config.toml"),
+            ..Config::default()
+        };
+        std::fs::create_dir_all(&config.workspace_dir).unwrap();
+        let security = Arc::new(SecurityPolicy::from_config(
+            &config.autonomy,
+            &config.workspace_dir,
+        ));
+        let tool = ScheduleTool::new(security, config);
+
+        for action in &["list", "get"] {
+            assert!(
+                !tool.external_effect_with_args(&json!({ "action": action })),
+                "schedule action '{action}' must not require approval (read-only)"
+            );
+        }
+    }
+
+    #[test]
+    fn schedule_permission_level_is_execute() {
+        let tmp = TempDir::new().unwrap();
+        let config = Config {
+            workspace_dir: tmp.path().join("workspace"),
+            config_path: tmp.path().join("config.toml"),
+            ..Config::default()
+        };
+        std::fs::create_dir_all(&config.workspace_dir).unwrap();
+        let security = Arc::new(SecurityPolicy::from_config(
+            &config.autonomy,
+            &config.workspace_dir,
+        ));
+        let tool = ScheduleTool::new(security, config);
+        assert_eq!(tool.permission_level(), PermissionLevel::Execute);
+    }
+
+    #[test]
+    fn schedule_unknown_action_treated_as_external_effect() {
+        // Unknown actions default to requiring approval — fail-closed.
+        let tmp = TempDir::new().unwrap();
+        let config = Config {
+            workspace_dir: tmp.path().join("workspace"),
+            config_path: tmp.path().join("config.toml"),
+            ..Config::default()
+        };
+        std::fs::create_dir_all(&config.workspace_dir).unwrap();
+        let security = Arc::new(SecurityPolicy::from_config(
+            &config.autonomy,
+            &config.workspace_dir,
+        ));
+        let tool = ScheduleTool::new(security, config);
+        assert!(tool.external_effect_with_args(&json!({ "action": "explode" })));
+        assert!(tool.external_effect_with_args(&json!({})));
     }
 }
