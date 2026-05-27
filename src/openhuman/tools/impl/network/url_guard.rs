@@ -244,7 +244,10 @@ fn extract_port(url: &str) -> anyhow::Result<u16> {
 
 pub(super) fn host_matches_allowlist(host: &str, allowed_domains: &[String]) -> bool {
     allowed_domains.iter().any(|domain| {
-        host == domain
+        // `*` = allow any host. SSRF / private-host blocking happens earlier in
+        // `validate_url_with_dns_check`, so `*` opens only *public* hosts.
+        domain == "*"
+            || host == domain
             || host
                 .strip_suffix(domain)
                 .is_some_and(|prefix| prefix.ends_with('.'))
@@ -678,5 +681,24 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("local/private"));
+    }
+
+    #[test]
+    fn wildcard_allows_any_host() {
+        let any = vec!["*".to_string()];
+        assert!(host_matches_allowlist("docs.rs", &any));
+        assert!(host_matches_allowlist("api.github.com", &any));
+        assert!(host_matches_allowlist("whatever.example.org", &any));
+    }
+
+    #[tokio::test]
+    async fn wildcard_still_blocks_private_hosts() {
+        // `*` opens public hosts only — SSRF block on private/local hosts stays.
+        let any = vec!["*".to_string()];
+        let err = validate_url_with_dns_check("https://127.0.0.1", &any)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("local/private"), "got: {err}");
     }
 }

@@ -33,7 +33,13 @@ use crate::openhuman::skills::ops::{
 use crate::rpc::RpcOutcome;
 
 use crate::openhuman::agent::harness::session::Agent;
+use crate::openhuman::agent::harness::subagent_runner::with_autonomous_iter_cap;
 use crate::openhuman::skills::{registry, run_log};
+
+/// Iteration cap for an autonomous skill run (orchestrator + sub-agents). High
+/// enough to "run until done", while the repeated-failure circuit breaker still
+/// stops dead-end grinding — deliberately bounded (not infinite) to cap spend.
+const SKILL_RUN_MAX_ITERATIONS: usize = 200;
 
 #[derive(Debug, Deserialize, Default)]
 struct SkillsListParams {
@@ -553,7 +559,7 @@ fn handle_skills_run(params: Map<String, Value>) -> ControllerFuture {
                 {
                     tracing::warn!(run_id = %run_id, error = %e, "[skills][rpc] skill_run: header write failed");
                 }
-                let config = match Config::load_or_init().await {
+                let mut config = match Config::load_or_init().await {
                     Ok(c) => c,
                     Err(e) => {
                         let _ = run_log::write_footer(
@@ -566,6 +572,13 @@ fn handle_skills_run(params: Map<String, Value>) -> ControllerFuture {
                         return;
                     }
                 };
+                // Autonomous skill run: lift the orchestrator's iteration cap and
+                // open web fetch to all public hosts (the SSRF private-host block
+                // stays). Sub-agents get the lifted cap via with_autonomous_iter_cap
+                // around run_single below; approval prompts don't apply (a
+                // background run carries no chat context, so the gate never parks).
+                config.agent.max_tool_iterations = SKILL_RUN_MAX_ITERATIONS;
+                config.http_request.allowed_domains = vec!["*".to_string()];
                 let mut agent = match Agent::from_config_for_agent(&config, "orchestrator") {
                     Ok(a) => a,
                     Err(e) => {
@@ -585,7 +598,13 @@ fn handle_skills_run(params: Map<String, Value>) -> ControllerFuture {
                 let bridge = tokio::spawn(run_log::drain_to_log(rx, log_path.clone()));
 
                 let started = std::time::Instant::now();
-                let result = agent.run_single(&task_prompt).await;
+                // Scope the lifted iteration cap over the whole run — the
+                // orchestrator turn and every inline sub-agent loop.
+                let result = with_autonomous_iter_cap(
+                    SKILL_RUN_MAX_ITERATIONS,
+                    agent.run_single(&task_prompt),
+                )
+                .await;
                 agent.set_on_progress(None); // drop the sender → bridge drains and exits
                 drop(agent);
                 let _ = bridge.await;
