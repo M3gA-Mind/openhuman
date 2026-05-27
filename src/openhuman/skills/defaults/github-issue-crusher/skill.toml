@@ -4,21 +4,29 @@
 # AgentDefinition fields are flattened in, plus the declared [[inputs]]. At
 # skills_run time it runs as the `orchestrator` agent, focused by SKILL.md,
 # with these inputs rendered into the task prompt.
+#
+# Fork-aware: the issue lives on the UPSTREAM repo, the fix is pushed to a FORK
+# (via the GitHub API — no local push creds needed), and the PR is cross-repo.
 id = "github-issue-crusher"
-when_to_use = "Fix one GitHub issue end to end: find the cause in the repo, implement a fix, and open a pull request."
+when_to_use = "Fix one GitHub issue end to end and open a pull request — including the fork workflow (issue on an upstream repo, fix pushed to a fork, cross-repo PR back to upstream)."
 
 [[inputs]]
 name = "repo"
-description = "GitHub repo to work on, as owner/name (e.g. acme/web)."
+description = "The UPSTREAM repo the issue lives on AND the PR targets, as owner/name (e.g. acme/web)."
 required = true
 
 [[inputs]]
 name = "issue"
-description = "Issue number to pick and fix."
+description = "Issue number on the upstream repo to pick and fix."
 required = true
 type = "integer"
 
 [[inputs]]
+name = "fork"
+description = "Fork to push the fix branch to, as owner/name. Omit to use (or create) a fork under the connected GitHub account."
+required = false
+
+[[inputs]]
 name = "pr_base"
-description = "Base branch the pull request targets (default: the repo's default branch)."
+description = "Base branch on the upstream the PR targets (default: the upstream's default branch)."
 required = false

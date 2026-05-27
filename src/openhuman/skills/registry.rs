@@ -253,7 +253,7 @@ mod tests {
             .iter()
             .find(|s| s.definition.id == "github-issue-crusher")
             .expect("bundled default seeded + loaded");
-        assert_eq!(s.inputs.len(), 3, "repo + issue + pr_base");
+        assert_eq!(s.inputs.len(), 4, "repo + issue + fork + pr_base");
         assert_eq!(s.inputs[0].name, "repo");
         assert!(s.inputs[0].required);
         assert_eq!(
@@ -261,7 +261,9 @@ mod tests {
             Some("integer"),
             "issue is integer"
         );
-        assert!(!s.inputs[2].required, "pr_base is optional");
+        assert_eq!(s.inputs[2].name, "fork");
+        assert!(!s.inputs[2].required, "fork is optional");
+        assert!(!s.inputs[3].required, "pr_base is optional");
         match &s.definition.system_prompt {
             PromptSource::Inline(p) => assert!(p.contains("GitHub Issue Crusher")),
             other => panic!("expected inline prompt, got {other:?}"),
