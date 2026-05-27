@@ -26,6 +26,10 @@ const CODE_EXTS: &[&str] = &[
 ];
 const MAX_FILE_BYTES: u64 = 100_000;
 const MAX_CALLS: usize = 200;
+/// Structural docs embedded per provider call. One call per file would be one
+/// network round-trip per file against a cloud embedder; batching collapses a
+/// repo into a handful of calls.
+const EMBED_BATCH: usize = 128;
 
 /// Per-index outcome. On a branch switch, `computed` is just the changed blobs.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -46,7 +50,10 @@ fn git(repo_dir: &Path, args: &[&str]) -> Result<String> {
         .output()
         .with_context(|| format!("git {args:?}"))?;
     if !out.status.success() {
-        anyhow::bail!("git {args:?} failed: {}", String::from_utf8_lossy(&out.stderr));
+        anyhow::bail!(
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -59,7 +66,9 @@ pub fn current_ref(repo_dir: &Path) -> Result<String> {
             return Ok(s.to_string());
         }
     }
-    Ok(git(repo_dir, &["rev-parse", "--short", "HEAD"])?.trim().to_string())
+    Ok(git(repo_dir, &["rev-parse", "--short", "HEAD"])?
+        .trim()
+        .to_string())
 }
 
 /// `(path, blob_sha)` for tracked code files at the current checkout.
@@ -75,7 +84,10 @@ fn tree_blobs(repo_dir: &Path) -> Result<Vec<(String, String)>> {
             Some(s) => s,
             None => continue,
         };
-        let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("");
+        let ext = Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
         if CODE_EXTS.contains(&ext) {
             out.push((path.to_string(), sha.to_string()));
         }
@@ -140,7 +152,10 @@ pub fn structural_doc(text: &str) -> String {
             }
             _ => {}
         }
-        if t.starts_with("//") || t.starts_with("///") || t.starts_with('#') || t.starts_with('*')
+        if t.starts_with("//")
+            || t.starts_with("///")
+            || t.starts_with('#')
+            || t.starts_with('*')
             || t.starts_with("\"\"\"")
         {
             docs.push(t.trim_start_matches(['/', '#', '*', ' ', '"']).to_string());
@@ -203,10 +218,17 @@ pub async fn index_ref(
     };
     let model = embedder.signature();
     let blobs = tree_blobs(repo_dir)?;
-    let (mut computed, mut cached, mut skipped) = (0usize, 0usize, 0usize);
+    let (mut cached, mut skipped) = (0usize, 0usize);
 
+    // Phase 1 — read + extract every *uncached, unique* blob. No DB writes and
+    // no embedding yet, so phases 2 and 3 can batch both. A content SHA seen
+    // twice in the tree (identical file) is extracted once.
+    let mut seen = std::collections::HashSet::new();
+    let mut pend_sha: Vec<String> = Vec::new();
+    let mut pend_tokens: Vec<Vec<String>> = Vec::new();
+    let mut pend_docs: Vec<String> = Vec::new();
     for (path, sha) in &blobs {
-        if store.has_blob(sha, &model)? {
+        if !seen.insert(sha.clone()) || store.has_blob(sha, &model)? {
             cached += 1;
             continue;
         }
@@ -229,20 +251,45 @@ pub async fn index_ref(
                 continue;
             }
         };
-        let doc = structural_doc(&text);
-        let mut emb = embedder
-            .embed(&[doc.as_str()])
-            .await
-            .context("codegraph: embed structural doc")?
-            .into_iter()
-            .next()
-            .unwrap_or_default();
-        l2_normalize(&mut emb);
-        store.put_blob(sha, &model, &code_tokens(&text), &emb)?;
-        computed += 1;
+        pend_docs.push(structural_doc(&text));
+        pend_tokens.push(code_tokens(&text));
+        pend_sha.push(sha.clone());
     }
 
+    // Phase 2 — embed the structural docs in batches (few round-trips, not one
+    // per file), L2-normalising each vector.
+    let mut embs: Vec<Vec<f32>> = Vec::with_capacity(pend_docs.len());
+    for chunk in pend_docs.chunks(EMBED_BATCH) {
+        let refs: Vec<&str> = chunk.iter().map(String::as_str).collect();
+        let out = embedder
+            .embed(&refs)
+            .await
+            .context("codegraph: embed structural docs")?;
+        if out.len() != chunk.len() {
+            anyhow::bail!(
+                "codegraph: embedder returned {} vectors for {} inputs",
+                out.len(),
+                chunk.len()
+            );
+        }
+        for mut v in out {
+            l2_normalize(&mut v);
+            embs.push(v);
+        }
+    }
+
+    // Phase 3 — persist the whole batch in one transaction, then rewrite the
+    // ref's manifest.
+    let computed = pend_sha.len();
+    let entries: Vec<(String, Vec<String>, Vec<f32>)> = pend_sha
+        .into_iter()
+        .zip(pend_tokens)
+        .zip(embs)
+        .map(|((sha, tokens), emb)| (sha, tokens, emb))
+        .collect();
+    store.put_blobs(&model, &entries)?;
     store.set_manifest(repo_id, &git_ref, &blobs)?;
+
     Ok(IndexReport {
         repo_id: repo_id.to_string(),
         git_ref,
@@ -278,19 +325,33 @@ mod tests {
     struct FakeEmbedder;
     #[async_trait]
     impl EmbeddingProvider for FakeEmbedder {
-        fn name(&self) -> &str { "fake" }
-        fn model_id(&self) -> &str { "fake-1" }
-        fn dimensions(&self) -> usize { 3 }
+        fn name(&self) -> &str {
+            "fake"
+        }
+        fn model_id(&self) -> &str {
+            "fake-1"
+        }
+        fn dimensions(&self) -> usize {
+            3
+        }
         async fn embed(&self, texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
             // deterministic non-zero vector per input (length-based, just needs to be stable)
-            Ok(texts.iter().map(|t| vec![t.len() as f32 + 1.0, 1.0, 0.5]).collect())
+            Ok(texts
+                .iter()
+                .map(|t| vec![t.len() as f32 + 1.0, 1.0, 0.5])
+                .collect())
         }
     }
 
     fn git(dir: &std::path::Path, args: &[&str]) {
         let ok = std::process::Command::new("git")
-            .arg("-C").arg(dir).args(args)
-            .output().unwrap().status.success();
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .unwrap()
+            .status
+            .success();
         assert!(ok, "git {args:?}");
     }
 
@@ -310,13 +371,17 @@ mod tests {
         let mut store = CodegraphStore::open(&tmp.path().join("cg.db")).unwrap();
         let emb = FakeEmbedder;
 
-        let r1 = index_ref(&mut store, "r", &repo, Some("main"), &emb).await.unwrap();
+        let r1 = index_ref(&mut store, "r", &repo, Some("main"), &emb)
+            .await
+            .unwrap();
         assert_eq!(r1.files, 1, "only the .rs file is indexed");
         assert_eq!(r1.computed, 1);
         assert_eq!(r1.cached, 0);
 
         // Re-index unchanged tree → all cache hits, nothing re-embedded.
-        let r2 = index_ref(&mut store, "r", &repo, Some("main"), &emb).await.unwrap();
+        let r2 = index_ref(&mut store, "r", &repo, Some("main"), &emb)
+            .await
+            .unwrap();
         assert_eq!(r2.computed, 0);
         assert_eq!(r2.cached, 1);
 
@@ -326,5 +391,133 @@ mod tests {
         assert!(hits[0].tokens.contains(&"reconcile".to_string()));
         let norm: f32 = hits[0].emb.iter().map(|x| x * x).sum::<f32>().sqrt();
         assert!((norm - 1.0).abs() < 1e-3, "embedding is L2-normalized");
+    }
+
+    // ---- manual indexing benchmark -------------------------------------
+    // A zero-latency embedder returning realistically-sized (default 1024-d)
+    // vectors, with cumulative embed-time accounting so the harness can
+    // subtract it and report *pure engine* throughput (extract + tokenize +
+    // SQLite + manifest). Real cloud embedding latency adds on top of that.
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::Arc;
+
+    struct BenchEmbedder {
+        dim: usize,
+        embed_nanos: Arc<AtomicU64>,
+        invocations: Arc<AtomicU64>,
+        docs: Arc<AtomicU64>,
+    }
+    #[async_trait]
+    impl EmbeddingProvider for BenchEmbedder {
+        fn name(&self) -> &str {
+            "bench"
+        }
+        fn model_id(&self) -> &str {
+            "bench-vec"
+        }
+        fn dimensions(&self) -> usize {
+            self.dim
+        }
+        async fn embed(&self, texts: &[&str]) -> anyhow::Result<Vec<Vec<f32>>> {
+            let t = std::time::Instant::now();
+            let out: Vec<Vec<f32>> = texts
+                .iter()
+                .map(|s| {
+                    // cheap, deterministic, non-degenerate vector of the real size
+                    let mut v = vec![0.0f32; self.dim];
+                    v[0] = s.len() as f32 + 1.0;
+                    if self.dim > 1 {
+                        v[1] = 1.0;
+                    }
+                    v
+                })
+                .collect();
+            self.embed_nanos
+                .fetch_add(t.elapsed().as_nanos() as u64, Ordering::Relaxed);
+            self.invocations.fetch_add(1, Ordering::Relaxed);
+            self.docs.fetch_add(texts.len() as u64, Ordering::Relaxed);
+            Ok(out)
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "manual benchmark: CODEGRAPH_BENCH_REPO=/path cargo test ... -- --ignored --nocapture"]
+    async fn bench_index_speed() {
+        let repo = match std::env::var("CODEGRAPH_BENCH_REPO") {
+            Ok(p) => std::path::PathBuf::from(p),
+            Err(_) => {
+                eprintln!("bench_index_speed: set CODEGRAPH_BENCH_REPO=/path/to/git/repo");
+                return;
+            }
+        };
+        let dim: usize = std::env::var("CODEGRAPH_BENCH_DIM")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1024);
+
+        let tmp = TempDir::new().unwrap();
+        let mut store = CodegraphStore::open(&tmp.path().join("cg.db")).unwrap();
+        let embed_nanos = Arc::new(AtomicU64::new(0));
+        let invocations = Arc::new(AtomicU64::new(0));
+        let docs = Arc::new(AtomicU64::new(0));
+        let emb = BenchEmbedder {
+            dim,
+            embed_nanos: embed_nanos.clone(),
+            invocations: invocations.clone(),
+            docs: docs.clone(),
+        };
+
+        // COLD — nothing cached, every blob is read + extracted + embedded + stored.
+        let t0 = std::time::Instant::now();
+        let cold = index_ref(&mut store, "bench", &repo, None, &emb)
+            .await
+            .unwrap();
+        let cold_ms = t0.elapsed().as_secs_f64() * 1e3;
+        let embed_ms = embed_nanos.load(Ordering::Relaxed) as f64 / 1e6;
+        let engine_ms = (cold_ms - embed_ms).max(0.0);
+        let n = cold.computed.max(1) as f64;
+
+        // WARM — re-index the same tree: content-addressed → all cache hits.
+        let t1 = std::time::Instant::now();
+        let warm = index_ref(&mut store, "bench", &repo, None, &emb)
+            .await
+            .unwrap();
+        let warm_ms = t1.elapsed().as_secs_f64() * 1e3;
+
+        eprintln!("\n==== codegraph index bench =====================================");
+        eprintln!("repo            : {}", repo.display());
+        eprintln!("embed dim       : {dim}  (zero-latency fake embedder)");
+        eprintln!(
+            "files (tracked) : {}  computed={} cached={} skipped={}",
+            cold.files, cold.computed, cold.cached, cold.skipped
+        );
+        eprintln!("-- COLD (full index) -------------------------------------------");
+        eprintln!("  wall total    : {:>8.1} ms", cold_ms);
+        eprintln!(
+            "  fake embed    : {:>8.1} ms  ({:.1}% — replaced by real cloud latency in prod)",
+            embed_ms,
+            100.0 * embed_ms / cold_ms.max(1e-9)
+        );
+        eprintln!(
+            "  ENGINE only   : {:>8.1} ms  → {:>7.0} files/s  ({:.3} ms/file)",
+            engine_ms,
+            n / (engine_ms / 1e3).max(1e-9),
+            engine_ms / n
+        );
+        eprintln!(
+            "  embed         : {} call(s) for {} docs  (batched ≤{}/call)",
+            invocations.load(Ordering::Relaxed),
+            docs.load(Ordering::Relaxed),
+            EMBED_BATCH
+        );
+        eprintln!("-- WARM (content-addressed re-index, all cache hits) -----------");
+        eprintln!(
+            "  wall total    : {:>8.1} ms  → {:>7.0} files/s  ({:.4} ms/file)  cached={}",
+            warm_ms,
+            warm.files as f64 / (warm_ms / 1e3).max(1e-9),
+            warm_ms / warm.files.max(1) as f64,
+            warm.cached
+        );
+        eprintln!("================================================================\n");
     }
 }

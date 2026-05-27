@@ -63,7 +63,12 @@ impl CodegraphStore {
         let conn = Connection::open(db_path)
             .with_context(|| format!("open codegraph db at {}", db_path.display()))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.execute_batch(SCHEMA).context("init codegraph schema")?;
+        // NORMAL is durable across an app crash under WAL (only a power/OS crash
+        // can lose the last commit) and drops the per-commit fsync that
+        // otherwise dominates a cold index — and this is a rebuildable cache.
+        conn.pragma_update(None, "synchronous", "NORMAL")?;
+        conn.execute_batch(SCHEMA)
+            .context("init codegraph schema")?;
         Ok(Self { conn })
     }
 
@@ -92,9 +97,44 @@ impl CodegraphStore {
         Ok(())
     }
 
+    /// Insert many computed blobs in a single transaction (one fsync for the
+    /// batch, not one per blob). Idempotent on `(sha, model)` via `OR IGNORE`,
+    /// so duplicate content within the batch keeps its first row. The hot path
+    /// for a cold index — prefer this over a `put_blob` loop.
+    pub fn put_blobs(
+        &mut self,
+        model: &str,
+        blobs: &[(String, Vec<String>, Vec<f32>)],
+    ) -> Result<()> {
+        if blobs.is_empty() {
+            return Ok(());
+        }
+        let tx = self.conn.transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT OR IGNORE INTO blob(sha, model, tokens, emb, dim) VALUES (?1,?2,?3,?4,?5)",
+            )?;
+            for (sha, tokens, emb) in blobs {
+                let token_str = tokens.join(" ");
+                let mut bytes = Vec::with_capacity(emb.len() * 4);
+                for f in emb {
+                    bytes.extend_from_slice(&f.to_le_bytes());
+                }
+                stmt.execute(params![sha, model, token_str, bytes, emb.len() as i64])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Replace a `(repo, ref)` manifest with `files` (`(path, sha)`), handling
     /// deletes/renames: the ref's rows are rewritten to exactly `files`.
-    pub fn set_manifest(&mut self, repo_id: &str, git_ref: &str, files: &[(String, String)]) -> Result<()> {
+    pub fn set_manifest(
+        &mut self,
+        repo_id: &str,
+        git_ref: &str,
+        files: &[(String, String)],
+    ) -> Result<()> {
         let tx = self.conn.transaction()?;
         tx.execute(
             "DELETE FROM manifest WHERE repo_id=?1 AND git_ref=?2",
@@ -186,7 +226,8 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let s = store(&tmp);
         assert!(!s.has_blob("sha1", "m").unwrap());
-        s.put_blob("sha1", "m", &["foo".into(), "bar".into()], &[0.5, -0.5]).unwrap();
+        s.put_blob("sha1", "m", &["foo".into(), "bar".into()], &[0.5, -0.5])
+            .unwrap();
         assert!(s.has_blob("sha1", "m").unwrap());
         // Different model = distinct cache entry.
         assert!(!s.has_blob("sha1", "other").unwrap());
@@ -195,15 +236,54 @@ mod tests {
     }
 
     #[test]
+    fn put_blobs_batches_and_dedups() {
+        let tmp = TempDir::new().unwrap();
+        let mut s = store(&tmp);
+        s.put_blobs(
+            "m",
+            &[
+                ("s1".into(), vec!["a".into(), "b".into()], vec![1.0, 0.0]),
+                ("s2".into(), vec!["c".into()], vec![0.0, 1.0]),
+                ("s1".into(), vec!["dup".into()], vec![9.0]), // OR IGNORE keeps the first
+            ],
+        )
+        .unwrap();
+        assert!(s.has_blob("s1", "m").unwrap());
+        assert!(s.has_blob("s2", "m").unwrap());
+        // Empty batch is a no-op (warm re-index path).
+        s.put_blobs("m", &[]).unwrap();
+        s.set_manifest(
+            "r",
+            "main",
+            &[("a.rs".into(), "s1".into()), ("b.rs".into(), "s2".into())],
+        )
+        .unwrap();
+        let hits = s.hydrate("r", "main", "m").unwrap();
+        assert_eq!(hits.len(), 2);
+        let a = hits.iter().find(|h| h.path == "a.rs").unwrap();
+        assert_eq!(
+            a.tokens,
+            vec!["a".to_string(), "b".to_string()],
+            "first insert kept, not the dup"
+        );
+    }
+
+    #[test]
     fn manifest_hydrate_and_coverage() {
         let tmp = TempDir::new().unwrap();
         let mut s = store(&tmp);
-        s.put_blob("shaA", "m", &["alpha".into()], &[1.0, 0.0]).unwrap();
+        s.put_blob("shaA", "m", &["alpha".into()], &[1.0, 0.0])
+            .unwrap();
         // shaB intentionally not cached (simulates skipped/oversized) → omitted from hydrate.
-        s.set_manifest("repo", "main", &[
-            ("a.rs".into(), "shaA".into()),
-            ("b.rs".into(), "shaB".into()),
-        ]).unwrap();
+        s.set_manifest(
+            "repo",
+            "main",
+            &[
+                ("a.rs".into(), "shaA".into()),
+                ("b.rs".into(), "shaB".into()),
+            ],
+        )
+        .unwrap();
         let hits = s.hydrate("repo", "main", "m").unwrap();
         assert_eq!(hits.len(), 1, "only the cached blob hydrates");
         assert_eq!(hits[0].path, "a.rs");
@@ -217,8 +297,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let mut s = store(&tmp);
         s.put_blob("x", "m", &["x".into()], &[0.0]).unwrap();
-        s.set_manifest("r", "brA", &[("util.rs".into(), "x".into())]).unwrap();
-        s.set_manifest("r", "brB", &[("util/mod.rs".into(), "x".into())]).unwrap();
+        s.set_manifest("r", "brA", &[("util.rs".into(), "x".into())])
+            .unwrap();
+        s.set_manifest("r", "brB", &[("util/mod.rs".into(), "x".into())])
+            .unwrap();
         let mut refs = s.refs("r").unwrap();
         refs.sort();
         assert_eq!(refs, vec!["brA".to_string(), "brB".to_string()]);
@@ -236,7 +318,8 @@ mod tests {
             let mut s = CodegraphStore::open(&db).unwrap();
             s.put_blob("live", "m", &["a".into()], &[1.0]).unwrap();
             s.put_blob("orphan", "m", &["b".into()], &[1.0]).unwrap();
-            s.set_manifest("r", "main", &[("a.rs".into(), "live".into())]).unwrap();
+            s.set_manifest("r", "main", &[("a.rs".into(), "live".into())])
+                .unwrap();
             assert_eq!(s.gc().unwrap(), 1, "orphan blob removed");
             assert!(s.has_blob("live", "m").unwrap());
             assert!(!s.has_blob("orphan", "m").unwrap());
