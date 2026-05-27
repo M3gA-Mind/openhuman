@@ -721,7 +721,9 @@ mod tests {
                 "schedule action '{action}' should require ReadOnly"
             );
         }
-        for action in &["create", "add", "once", "cancel", "remove", "pause", "resume"] {
+        for action in &[
+            "create", "add", "once", "cancel", "remove", "pause", "resume",
+        ] {
             assert_eq!(
                 tool.permission_level_with_args(&json!({ "action": action })),
                 PermissionLevel::Execute,
