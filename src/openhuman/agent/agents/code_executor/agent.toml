@@ -25,6 +25,11 @@ hint = "coding"
 # OPENHUMAN_LSP_ENABLED — listing it here is harmless when the gate is
 # off (the tool is simply not registered).
 named = [
+    # codegraph navigation — preferred first step for locating code in a repo.
+    # `codegraph_search` auto-indexes on first use; see the prompt's
+    # "Finding code in a repo — codegraph first" section.
+    "codegraph_search",
+    "codegraph_index",
     "shell",
     "file_read",
     "file_write",
