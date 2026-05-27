@@ -49,6 +49,14 @@ pub(super) fn validate_url(raw_url: &str, allowed_domains: &[String]) -> anyhow:
     let host = extract_host(url)?;
 
     if is_private_or_local_host(&host) {
+        log::debug!(
+            "[url_guard] ssrf block: host={host} mode={}",
+            if allowed_domains.is_empty() {
+                "open"
+            } else {
+                "strict"
+            }
+        );
         anyhow::bail!("Blocked local/private host: {host}");
     }
 
@@ -157,12 +165,26 @@ async fn resolve_host_ips(host: String, port: u16) -> anyhow::Result<Vec<IpAddr>
 }
 
 pub(super) fn normalize_allowed_domains(domains: Vec<String>) -> Vec<String> {
+    if domains.is_empty() {
+        return Vec::new();
+    }
     let mut normalized = domains
         .into_iter()
         .filter_map(|d| normalize_domain(&d))
         .collect::<Vec<_>>();
     normalized.sort_unstable();
     normalized.dedup();
+    if normalized.is_empty() {
+        // All entries were malformed (whitespace-only, scheme-only, etc.) and
+        // filtered out. Returning empty would silently enter open mode; instead
+        // return a sentinel that keeps the tool in strict mode and rejects every
+        // URL — fail-closed on misconfiguration. (#2738)
+        log::warn!(
+            "[url_guard] all configured allowed_domains entries are invalid — \
+             treating as misconfigured allowlist (fail-closed)"
+        );
+        return vec!["<misconfigured-allowlist>".to_string()];
+    }
     normalized
 }
 
@@ -454,6 +476,65 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("local/private"));
+    }
+
+    // ── normalize_allowed_domains: fail-closed on malformed-only input ──
+
+    #[test]
+    fn normalize_all_invalid_entries_stays_fail_closed() {
+        // A non-empty list that fully normalizes to nothing must NOT produce
+        // an empty slice (which would silently enter open mode). (#2738)
+        let got = normalize_allowed_domains(vec!["   ".into(), "https://".into()]);
+        assert!(
+            !got.is_empty(),
+            "normalized result must be non-empty to stay in strict mode"
+        );
+        // The sentinel must not match any real public host.
+        assert!(
+            !host_matches_allowlist("example.com", &got),
+            "sentinel must not grant access to real hosts"
+        );
+        assert!(
+            !host_matches_allowlist("api.example.com", &got),
+            "sentinel must not grant access to subdomains"
+        );
+    }
+
+    #[test]
+    fn normalize_empty_input_stays_empty_for_open_mode() {
+        // Explicitly empty input should return empty (open mode is intentional).
+        assert!(normalize_allowed_domains(vec![]).is_empty());
+    }
+
+    #[tokio::test]
+    async fn dns_check_with_empty_allowlist_allows_public_resolved_host() {
+        // Open mode (empty allowlist) must still pass DNS check for public IPs.
+        let got = validate_url_with_dns_check_with_resolver(
+            "https://example.com",
+            &[],
+            |host, port| async move {
+                assert_eq!(host, "example.com");
+                assert_eq!(port, 443);
+                Ok(vec!["93.184.216.34".parse().unwrap()])
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(got, "https://example.com");
+    }
+
+    #[tokio::test]
+    async fn dns_check_with_empty_allowlist_blocks_private_resolved_ip() {
+        // Even in open mode, DNS rebinding to a private IP must be blocked.
+        let err = validate_url_with_dns_check_with_resolver(
+            "https://example.com",
+            &[],
+            |_, _| async { Ok(vec!["10.0.0.1".parse().unwrap()]) },
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("DNS rebinding blocked"));
     }
 
     #[test]
