@@ -82,6 +82,7 @@ const DevWorkflowPanel = () => {
   const [cronLoading, setCronLoading] = useState(false);
   const [runHistory, setRunHistory] = useState<CoreCronRun[]>([]);
   const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
   const [running, setRunning] = useState(false);
 
   // ── Load existing cron job on mount ─────────────────────────────────
@@ -656,6 +657,18 @@ const DevWorkflowPanel = () => {
               </button>
             </div>
 
+            {/* Last output */}
+            {existingJob.last_output && (
+              <div className="mt-3">
+                <div className="text-xs font-medium text-sage-600 dark:text-sage-400 mb-1">
+                  {t('settings.devWorkflow.lastOutput')}
+                </div>
+                <pre className="px-3 py-2 rounded-md bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-[11px] text-neutral-700 dark:text-neutral-300 font-mono whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                  {existingJob.last_output}
+                </pre>
+              </div>
+            )}
+
             {/* Run History */}
             {runHistory.length > 0 && (
               <div className="mt-3">
@@ -668,27 +681,44 @@ const DevWorkflowPanel = () => {
                 {historyExpanded && (
                   <div className="mt-1.5 space-y-1">
                     {runHistory.map(run => (
-                      <div
-                        key={run.id}
-                        className="flex items-center justify-between px-2 py-1 rounded bg-white dark:bg-neutral-800 text-xs">
-                        <span className="text-neutral-600 dark:text-neutral-400">
-                          {new Date(run.started_at).toLocaleString()}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {run.duration_ms != null && (
-                            <span className="text-neutral-500 dark:text-neutral-500">
-                              {(run.duration_ms / 1000).toFixed(1)}s
+                      <div key={run.id} className="rounded bg-white dark:bg-neutral-800">
+                        <button
+                          onClick={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
+                          className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-neutral-50 dark:hover:bg-neutral-750 rounded transition-colors">
+                          <div className="flex items-center gap-2">
+                            <span className="text-neutral-400">
+                              {expandedRunId === run.id ? '▾' : '▸'}
                             </span>
-                          )}
-                          <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                              run.status === 'ok'
-                                ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
-                                : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300'
-                            }`}>
-                            {run.status}
-                          </span>
-                        </div>
+                            <span className="text-neutral-600 dark:text-neutral-400">
+                              {new Date(run.started_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {run.duration_ms != null && (
+                              <span className="text-neutral-500 dark:text-neutral-500">
+                                {(run.duration_ms / 1000).toFixed(1)}s
+                              </span>
+                            )}
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                run.status === 'ok'
+                                  ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
+                                  : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300'
+                              }`}>
+                              {run.status}
+                            </span>
+                          </div>
+                        </button>
+                        {expandedRunId === run.id && run.output && (
+                          <pre className="mx-2 mb-2 px-3 py-2 rounded-md bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-[11px] text-neutral-700 dark:text-neutral-300 font-mono whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+                            {run.output}
+                          </pre>
+                        )}
+                        {expandedRunId === run.id && !run.output && (
+                          <div className="mx-2 mb-2 px-3 py-2 text-[11px] text-neutral-400 dark:text-neutral-500 italic">
+                            {t('settings.devWorkflow.noOutput')}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
