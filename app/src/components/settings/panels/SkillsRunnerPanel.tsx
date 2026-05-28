@@ -4,9 +4,8 @@
 // picker / Run / Schedule / Recent Runs UX lives in
 // `app/src/components/skills/SkillsRunnerBody.tsx`, shared with the
 // top-level /skills page's "Runners" tab.
-
-import SkillsRunnerBody from '../../skills/SkillsRunnerBody';
 import { useT } from '../../../lib/i18n/I18nContext';
+import SkillsRunnerBody from '../../skills/SkillsRunnerBody';
 import SettingsHeader from '../components/SettingsHeader';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 

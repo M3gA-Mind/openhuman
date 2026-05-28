@@ -505,8 +505,11 @@ mod tests {
                     duration: 617236 ms\n\
                     finished: 2026-05-28T08:01:30.944918997+00:00 UTC\n\n\
                     body...\n";
-        std::fs::write(runs.join("github-issue-crusher_20260528T075113Z_aaaaaaaa.log"), done)
-            .unwrap();
+        std::fs::write(
+            runs.join("github-issue-crusher_20260528T075113Z_aaaaaaaa.log"),
+            done,
+        )
+        .unwrap();
 
         // (b) still-running — no footer yet
         let running = "==== skill_run: pr-review-shepherd ====\n\
@@ -515,8 +518,11 @@ mod tests {
                        inputs : {}\n\n\
                        --- task prompt ---\nfoo\n\
                        --- steps ---\nstep 1\n";
-        std::fs::write(runs.join("pr-review-shepherd_20260528T090000Z_bbbbbbbb.log"), running)
-            .unwrap();
+        std::fs::write(
+            runs.join("pr-review-shepherd_20260528T090000Z_bbbbbbbb.log"),
+            running,
+        )
+        .unwrap();
 
         let all = scan_runs(tmp.path(), None, 10);
         assert_eq!(all.len(), 2, "both runs visible");
@@ -526,7 +532,11 @@ mod tests {
         assert_eq!(all[0].duration_ms, None);
         assert_eq!(all[1].status, "DONE");
         assert_eq!(all[1].duration_ms, Some(617236));
-        assert!(all[1].finished.as_deref().unwrap().starts_with("2026-05-28T08:01:30"));
+        assert!(all[1]
+            .finished
+            .as_deref()
+            .unwrap()
+            .starts_with("2026-05-28T08:01:30"));
 
         // Filter by skill_id
         let only_pr = scan_runs(tmp.path(), Some("pr-review-shepherd"), 10);
@@ -552,8 +562,11 @@ mod tests {
                        started: 2026-05-28T09:00:00.000000000+00:00 UTC\n\n\
                        --- task prompt ---\nfoo\n\
                        --- steps ---\nstep 1\nstep 2\n";
-        std::fs::write(runs.join("pr-review-shepherd_20260528T090000Z_11111111.log"), running)
-            .unwrap();
+        std::fs::write(
+            runs.join("pr-review-shepherd_20260528T090000Z_11111111.log"),
+            running,
+        )
+        .unwrap();
 
         let path = find_run_log_path(tmp.path(), "11111111-aaaa-bbbb-cccc-dddddddddddd")
             .expect("must find log by run id");

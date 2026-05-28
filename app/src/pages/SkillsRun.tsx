@@ -35,8 +35,7 @@ export default function SkillsRun() {
               type="button"
               onClick={() => navigate('/skills?tab=runners')}
               aria-label={t('common.back')}
-              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-stone-600 dark:text-neutral-300 hover:bg-stone-100 dark:hover:bg-neutral-800 transition-colors"
-            >
+              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-stone-600 dark:text-neutral-300 hover:bg-stone-100 dark:hover:bg-neutral-800 transition-colors">
               <span aria-hidden="true">←</span> {t('common.back')}
             </button>
             <h1 className="text-base font-semibold text-stone-900 dark:text-neutral-100">

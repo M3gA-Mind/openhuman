@@ -18,20 +18,17 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import SkillsDashboard from './SkillsDashboard';
+
 const stableT = (key: string) => key;
 vi.mock('../lib/i18n/I18nContext', () => ({ useT: () => ({ t: stableT }) }));
 
-const hoisted = vi.hoisted(() => ({
-  cronList: vi.fn(),
-  cronUpdate: vi.fn(),
-}));
+const hoisted = vi.hoisted(() => ({ cronList: vi.fn(), cronUpdate: vi.fn() }));
 
 vi.mock('../utils/tauriCommands/cron', () => ({
   openhumanCronList: hoisted.cronList,
   openhumanCronUpdate: hoisted.cronUpdate,
 }));
-
-import SkillsDashboard from './SkillsDashboard';
 
 const renderDashboard = () =>
   render(
@@ -117,11 +114,7 @@ describe('SkillsDashboard', () => {
     hoisted.cronList.mockResolvedValue({
       result: [
         makeJob({ id: 'a', name: 'skill-run-dev-workflow-repo=owner-foo' }),
-        makeJob({
-          id: 'b',
-          name: 'skill-run-dev-workflow-repo=owner-bar',
-          enabled: false,
-        }),
+        makeJob({ id: 'b', name: 'skill-run-dev-workflow-repo=owner-bar', enabled: false }),
       ],
     });
     renderDashboard();
@@ -180,11 +173,7 @@ describe('SkillsDashboard', () => {
       // First call: enabled=true. Second call (after update): enabled=false.
       return {
         result: [
-          makeJob({
-            id: 'j-1',
-            name: 'skill-run-dev-workflow-repo=x',
-            enabled: listCalls === 1,
-          }),
+          makeJob({ id: 'j-1', name: 'skill-run-dev-workflow-repo=x', enabled: listCalls === 1 }),
         ],
       };
     });

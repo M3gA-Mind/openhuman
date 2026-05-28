@@ -325,11 +325,13 @@ const zhCN5: TranslationMap = {
   'skills.create.descriptionPlaceholder': '这个技能做什么？',
   'skills.create.optional': '(optional)',
   'skills.create.inputs.heading': 'Inputs',
-  'skills.create.inputs.help': 'Declare parameters the skill needs. The Skills Runner will render a form for these at run time.',
+  'skills.create.inputs.help':
+    'Declare parameters the skill needs. The Skills Runner will render a form for these at run time.',
   'skills.create.inputs.add': 'Add input',
   'skills.create.inputs.row.name': 'Input name',
   'skills.create.inputs.row.namePlaceholder': 'e.g. repo',
-  'skills.create.inputs.row.nameError': 'Letters, digits, underscores, and dashes only; must start with a letter.',
+  'skills.create.inputs.row.nameError':
+    'Letters, digits, underscores, and dashes only; must start with a letter.',
   'skills.create.inputs.row.description': 'Input description',
   'skills.create.inputs.row.descriptionPlaceholder': 'What goes in this field?',
   'skills.create.inputs.row.type': 'Type',

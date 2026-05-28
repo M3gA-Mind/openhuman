@@ -32,13 +32,10 @@ export default function SkillNew() {
   const [formValid, setFormValid] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const handleStateChange = useCallback(
-    (state: { valid: boolean; submitting: boolean }) => {
-      setFormValid(state.valid);
-      setSubmitting(state.submitting);
-    },
-    []
-  );
+  const handleStateChange = useCallback((state: { valid: boolean; submitting: boolean }) => {
+    setFormValid(state.valid);
+    setSubmitting(state.submitting);
+  }, []);
 
   const handleCreated = useCallback(
     (_skill: SkillSummary) => {
@@ -73,8 +70,7 @@ export default function SkillNew() {
                 data-testid="skill-new-cancel"
                 onClick={() => navigate('/skills?tab=runners')}
                 disabled={submitting}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-stone-600 dark:text-neutral-300 transition-colors hover:bg-stone-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:opacity-40"
-              >
+                className="rounded-lg px-4 py-2 text-sm font-medium text-stone-600 dark:text-neutral-300 transition-colors hover:bg-stone-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:opacity-40">
                 {t('common.cancel')}
               </button>
               <button
@@ -82,8 +78,7 @@ export default function SkillNew() {
                 form={PAGE_FORM_ID}
                 data-testid="skill-new-submit"
                 disabled={!formValid || submitting}
-                className="rounded-lg bg-primary-500 px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50"
-              >
+                className="rounded-lg bg-primary-500 px-4 py-2 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50">
                 {submitting ? t('skills.create.creating') : t('skills.create.createBtn')}
               </button>
             </div>

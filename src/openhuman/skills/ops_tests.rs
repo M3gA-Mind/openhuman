@@ -550,6 +550,7 @@ fn create_skill_user_scope_scaffolds_skill_md_and_resource_dirs() {
         author: Some("Jane Dev".to_string()),
         tags: vec!["demo".to_string(), "greeting".to_string()],
         allowed_tools: vec!["shell".to_string()],
+        inputs: Vec::new(),
     };
 
     let created = create_skill_inner(Some(home.path()), ws.path(), params)
@@ -1183,7 +1184,7 @@ fn uninstall_skill_rejects_symlinked_skills_root() {
 
 #[test]
 fn skill_create_input_def_deserializes_full_row_from_json() {
-    let row: super::ops_create::SkillCreateInputDef = serde_json::from_value(serde_json::json!({
+    let row: crate::openhuman::skills::ops_create::SkillCreateInputDef = serde_json::from_value(serde_json::json!({
         "name": "repo",
         "description": "owner/name slug",
         "required": true,
@@ -1201,7 +1202,7 @@ fn skill_create_input_def_required_defaults_to_true() {
     // The form sends `required` per row, but other callers (CLI, future
     // RPC clients) may omit it. The serde default keeps the safer
     // semantic — a row the user bothered to declare is required.
-    let row: super::ops_create::SkillCreateInputDef = serde_json::from_value(serde_json::json!({
+    let row: crate::openhuman::skills::ops_create::SkillCreateInputDef = serde_json::from_value(serde_json::json!({
         "name": "topic",
     }))
     .unwrap();
@@ -1256,19 +1257,19 @@ fn skill_create_input_def_round_trips_through_registry_skill_input() {
     // body, parse it back through the registry's `SkillDefinition`,
     // and check every field survived.
     let rows = vec![
-        super::ops_create::SkillCreateInputDef {
+        crate::openhuman::skills::ops_create::SkillCreateInputDef {
             name: "repo".into(),
             description: Some("owner/name slug".into()),
             required: true,
             type_: Some("string".into()),
         },
-        super::ops_create::SkillCreateInputDef {
+        crate::openhuman::skills::ops_create::SkillCreateInputDef {
             name: "issue".into(),
             description: Some("issue #".into()),
             required: true,
             type_: Some("integer".into()),
         },
-        super::ops_create::SkillCreateInputDef {
+        crate::openhuman::skills::ops_create::SkillCreateInputDef {
             name: "pr_base".into(),
             description: None,
             required: false,

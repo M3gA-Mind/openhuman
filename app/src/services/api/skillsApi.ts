@@ -245,9 +245,7 @@ export const skillsApi = {
         ...(input.author !== undefined ? { author: input.author } : {}),
         ...(input.tags !== undefined ? { tags: input.tags } : {}),
         ...(input.allowedTools !== undefined ? { 'allowed-tools': input.allowedTools } : {}),
-        ...(input.inputs !== undefined && input.inputs.length > 0
-          ? { inputs: input.inputs }
-          : {}),
+        ...(input.inputs !== undefined && input.inputs.length > 0 ? { inputs: input.inputs } : {}),
       },
     });
     const raw = unwrapEnvelope(response);
@@ -360,12 +358,13 @@ export const skillsApi = {
    * `offset` to tail forward — the returned `offset` is the cursor for
    * the next call. Stop polling once `complete: true` (footer landed).
    */
-  readRunLog: async (
-    runId: string,
-    offset?: number,
-    maxBytes?: number
-  ): Promise<RunLogSlice> => {
-    log('readRunLog: request runId=%s offset=%s maxBytes=%s', runId, offset ?? 0, maxBytes ?? 'default');
+  readRunLog: async (runId: string, offset?: number, maxBytes?: number): Promise<RunLogSlice> => {
+    log(
+      'readRunLog: request runId=%s offset=%s maxBytes=%s',
+      runId,
+      offset ?? 0,
+      maxBytes ?? 'default'
+    );
     const params: Record<string, unknown> = { run_id: runId };
     if (offset !== undefined) params.offset = offset;
     if (maxBytes !== undefined) params.max_bytes = maxBytes;
