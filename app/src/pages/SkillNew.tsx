@@ -45,7 +45,7 @@ export default function SkillNew() {
       // The dashboard re-fetches the cron list on mount, so any
       // schedule the user adds for this new skill will appear there
       // automatically — no need to plumb the new id through state.
-      navigate('/skills');
+      navigate('/skills?tab=runners');
     },
     [navigate]
   );
@@ -71,7 +71,7 @@ export default function SkillNew() {
               <button
                 type="button"
                 data-testid="skill-new-cancel"
-                onClick={() => navigate('/skills')}
+                onClick={() => navigate('/skills?tab=runners')}
                 disabled={submitting}
                 className="rounded-lg px-4 py-2 text-sm font-medium text-stone-600 dark:text-neutral-300 transition-colors hover:bg-stone-100 dark:hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 disabled:opacity-40"
               >
