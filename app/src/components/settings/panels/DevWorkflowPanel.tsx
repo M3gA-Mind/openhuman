@@ -629,148 +629,152 @@ const DevWorkflowPanel = () => {
           </div>
         )}
 
-        {/* Repo selector */}
-        <div>
-          <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
-            {t('settings.devWorkflow.githubRepository')}
-          </label>
-          {reposError && (
-            <div className="mb-2 px-3 py-2 rounded-md bg-coral-50 dark:bg-coral-500/10 border border-coral-200 dark:border-coral-500/30 text-xs text-coral-700 dark:text-coral-300">
-              {reposError}
-            </div>
-          )}
-          <select
-            value={selectedRepo}
-            onChange={e => void onRepoSelect(e.target.value)}
-            disabled={reposLoading}
-            className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50">
-            <option value="">
-              {reposLoading
-                ? t('settings.devWorkflow.loadingRepositories')
-                : t('settings.devWorkflow.selectRepository')}
-            </option>
-            {repos.map(r => (
-              <option key={r.fullName} value={r.fullName}>
-                {r.fullName} {r.private ? t('settings.devWorkflow.privateTag') : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Fork info */}
-        {forkLoading && (
-          <div className="text-xs text-neutral-500 dark:text-neutral-400">
-            {t('settings.devWorkflow.detectingForkInfo')}
-          </div>
-        )}
-        {forkInfo && (
-          <div className="px-3 py-2 rounded-md bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/30">
-            <div className="text-xs font-medium text-primary-800 dark:text-primary-300">
-              {t('settings.devWorkflow.forkDetected')}
-            </div>
-            <div className="text-xs text-primary-700 dark:text-primary-200 mt-0.5">
-              {t('settings.devWorkflow.upstream')}{' '}
-              <span className="font-mono">{forkInfo.upstreamFullName}</span>
-            </div>
-            <div className="text-xs text-primary-600 dark:text-primary-300 mt-0.5">
-              {t('settings.devWorkflow.forkPrNote')}
-            </div>
-          </div>
-        )}
-        {selectedRepo && !forkLoading && !forkInfo && (
-          <div className="px-3 py-2 rounded-md bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
-            <div className="text-xs text-neutral-600 dark:text-neutral-400">
-              {t('settings.devWorkflow.notForkNote')}
-            </div>
-          </div>
-        )}
-
-        {/* Branch selector */}
-        {branches.length > 0 && (
-          <div>
-            <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
-              {t('settings.devWorkflow.targetBranch')}
-            </label>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
-              {t('settings.devWorkflow.targetBranchNote')}
-              {forkInfo ? ` on ${forkInfo.upstreamFullName}` : ''}.
-            </p>
-            <select
-              value={targetBranch}
-              onChange={e => {
-                setTargetBranch(e.target.value);
-                setSaveStatus('idle');
-              }}
-              disabled={branchesLoading}
-              className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50">
-              {branches.map(b => (
-                <option key={b.name} value={b.name}>
-                  {b.name}
+        {/* Setup form — only shown when no active config exists */}
+        {!existingJob && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
+                {t('settings.devWorkflow.githubRepository')}
+              </label>
+              {reposError && (
+                <div className="mb-2 px-3 py-2 rounded-md bg-coral-50 dark:bg-coral-500/10 border border-coral-200 dark:border-coral-500/30 text-xs text-coral-700 dark:text-coral-300">
+                  {reposError}
+                </div>
+              )}
+              <select
+                value={selectedRepo}
+                onChange={e => void onRepoSelect(e.target.value)}
+                disabled={reposLoading}
+                className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50">
+                <option value="">
+                  {reposLoading
+                    ? t('settings.devWorkflow.loadingRepositories')
+                    : t('settings.devWorkflow.selectRepository')}
                 </option>
-              ))}
-            </select>
-          </div>
-        )}
-        {branchesLoading && (
-          <div className="text-xs text-neutral-500 dark:text-neutral-400">
-            {t('settings.devWorkflow.loadingBranches')}
-          </div>
-        )}
+                {repos.map(r => (
+                  <option key={r.fullName} value={r.fullName}>
+                    {r.fullName} {r.private ? t('settings.devWorkflow.privateTag') : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {/* Schedule */}
-        {selectedRepo && (
-          <div>
-            <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
-              {t('settings.devWorkflow.runFrequency')}
-            </label>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
-              {t('settings.devWorkflow.runFrequencyNote')}
-            </p>
-            <select
-              value={schedule}
-              onChange={e => {
-                setSchedule(e.target.value);
-                setSaveStatus('idle');
-              }}
-              className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-              {SCHEDULE_PRESETS.map(p => (
-                <option key={p.value} value={p.value}>
-                  {t(p.labelKey)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+            {/* Fork info */}
+            {forkLoading && (
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                {t('settings.devWorkflow.detectingForkInfo')}
+              </div>
+            )}
+            {forkInfo && (
+              <div className="px-3 py-2 rounded-md bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/30">
+                <div className="text-xs font-medium text-primary-800 dark:text-primary-300">
+                  {t('settings.devWorkflow.forkDetected')}
+                </div>
+                <div className="text-xs text-primary-700 dark:text-primary-200 mt-0.5">
+                  {t('settings.devWorkflow.upstream')}{' '}
+                  <span className="font-mono">{forkInfo.upstreamFullName}</span>
+                </div>
+                <div className="text-xs text-primary-600 dark:text-primary-300 mt-0.5">
+                  {t('settings.devWorkflow.forkPrNote')}
+                </div>
+              </div>
+            )}
+            {selectedRepo && !forkLoading && !forkInfo && (
+              <div className="px-3 py-2 rounded-md bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+                <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                  {t('settings.devWorkflow.notForkNote')}
+                </div>
+              </div>
+            )}
 
-        {/* Actions */}
-        {selectedRepo && (
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              onClick={() => void handleSave()}
-              disabled={!canSave}
-              className="px-4 py-2 rounded-md bg-primary-600 hover:bg-primary-500 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-              {existingJob
-                ? t('settings.devWorkflow.updateConfiguration')
-                : t('settings.devWorkflow.saveConfiguration')}
-            </button>
-            {existingJob && (
-              <button
-                onClick={() => void handleRemove()}
-                className="px-4 py-2 rounded-md bg-coral-600 hover:bg-coral-500 text-white text-sm font-medium transition-colors">
-                {t('settings.devWorkflow.remove')}
-              </button>
+            {/* Branch selector */}
+            {branches.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
+                  {t('settings.devWorkflow.targetBranch')}
+                </label>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
+                  {t('settings.devWorkflow.targetBranchNote')}
+                  {forkInfo ? ` on ${forkInfo.upstreamFullName}` : ''}.
+                </p>
+                <select
+                  value={targetBranch}
+                  onChange={e => {
+                    setTargetBranch(e.target.value);
+                    setSaveStatus('idle');
+                  }}
+                  disabled={branchesLoading}
+                  className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50">
+                  {branches.map(b => (
+                    <option key={b.name} value={b.name}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
-            {saveStatus === 'saved' && (
-              <span className="text-xs text-sage-600 dark:text-sage-400 font-medium">
-                {t('settings.devWorkflow.saved')}
-              </span>
+            {branchesLoading && (
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                {t('settings.devWorkflow.loadingBranches')}
+              </div>
             )}
-            {saveStatus === 'error' && (
-              <span className="text-xs text-coral-600 dark:text-coral-400 font-medium">
-                {t('settings.devWorkflow.cronSaveError')}
-              </span>
+
+            {/* Schedule */}
+            {selectedRepo && (
+              <div>
+                <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
+                  {t('settings.devWorkflow.runFrequency')}
+                </label>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
+                  {t('settings.devWorkflow.runFrequencyNote')}
+                </p>
+                <select
+                  value={schedule}
+                  onChange={e => {
+                    setSchedule(e.target.value);
+                    setSaveStatus('idle');
+                  }}
+                  className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                  {SCHEDULE_PRESETS.map(p => (
+                    <option key={p.value} value={p.value}>
+                      {t(p.labelKey)}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
-          </div>
+
+            {/* Actions */}
+            {selectedRepo && (
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={() => void handleSave()}
+                  disabled={!canSave}
+                  className="px-4 py-2 rounded-md bg-primary-600 hover:bg-primary-500 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                  {existingJob
+                    ? t('settings.devWorkflow.updateConfiguration')
+                    : t('settings.devWorkflow.saveConfiguration')}
+                </button>
+                {existingJob && (
+                  <button
+                    onClick={() => void handleRemove()}
+                    className="px-4 py-2 rounded-md bg-coral-600 hover:bg-coral-500 text-white text-sm font-medium transition-colors">
+                    {t('settings.devWorkflow.remove')}
+                  </button>
+                )}
+                {saveStatus === 'saved' && (
+                  <span className="text-xs text-sage-600 dark:text-sage-400 font-medium">
+                    {t('settings.devWorkflow.saved')}
+                  </span>
+                )}
+                {saveStatus === 'error' && (
+                  <span className="text-xs text-coral-600 dark:text-coral-400 font-medium">
+                    {t('settings.devWorkflow.cronSaveError')}
+                  </span>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
