@@ -77,6 +77,14 @@ pub(crate) struct NativeMessage {
     pub(crate) tool_call_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tool_calls: Option<Vec<ToolCall>>,
+    /// Reasoning/thinking output for an `assistant` turn, replayed back to
+    /// the provider on follow-up requests. DeepSeek's thinking mode rejects
+    /// a tool-call turn whose `reasoning_content` is not passed back
+    /// (Sentry TAURI-RUST-4KB). Only emitted for reasoning models that
+    /// produced it (most providers leave this `None`, so it never appears
+    /// on the wire for them).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) reasoning_content: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

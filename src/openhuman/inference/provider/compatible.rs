@@ -578,11 +578,24 @@ impl OpenAiCompatibleProvider {
                                         .and_then(serde_json::Value::as_str)
                                         .map(ToString::to_string);
 
+                                    // Replay the assistant's reasoning so
+                                    // DeepSeek thinking mode accepts the
+                                    // tool-call turn on the follow-up request
+                                    // (Sentry TAURI-RUST-4KB). Written by
+                                    // `build_native_assistant_history`; absent
+                                    // for non-reasoning models.
+                                    let reasoning_content = value
+                                        .get("reasoning_content")
+                                        .and_then(serde_json::Value::as_str)
+                                        .filter(|s| !s.trim().is_empty())
+                                        .map(ToString::to_string);
+
                                     return NativeMessage {
                                         role: "assistant".to_string(),
                                         content,
                                         tool_call_id: None,
                                         tool_calls: Some(tool_calls),
+                                        reasoning_content,
                                     };
                                 }
                             }
@@ -608,6 +621,7 @@ impl OpenAiCompatibleProvider {
                                 content,
                                 tool_call_id,
                                 tool_calls: None,
+                                reasoning_content: None,
                             };
                         }
                     }
@@ -617,6 +631,7 @@ impl OpenAiCompatibleProvider {
                         content: Some(message.content.clone()),
                         tool_call_id: None,
                         tool_calls: None,
+                        reasoning_content: None,
                     }
                 })
                 .collect();
@@ -769,6 +784,16 @@ impl OpenAiCompatibleProvider {
             .ok_or_else(|| anyhow::anyhow!("No choices in response from {}", provider_name))?;
 
         let mut text = message.effective_content_optional();
+        // Preserve the raw reasoning so the agent loop can replay it on the
+        // follow-up request. DeepSeek's thinking mode rejects an
+        // `assistant` turn that carries `tool_calls` if its
+        // `reasoning_content` is not passed back (Sentry TAURI-RUST-4KB).
+        let reasoning_content = message
+            .reasoning_content
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(ToString::to_string);
         let mut tool_calls = message
             .tool_calls
             .unwrap_or_default()
@@ -817,6 +842,7 @@ impl OpenAiCompatibleProvider {
             text,
             tool_calls,
             usage,
+            reasoning_content,
         })
     }
 
@@ -1676,6 +1702,7 @@ impl Provider for OpenAiCompatibleProvider {
                     text: Some(text),
                     tool_calls: vec![],
                     usage: None,
+                    reasoning_content: None,
                 });
             }
         };
@@ -1694,6 +1721,15 @@ impl Provider for OpenAiCompatibleProvider {
             .ok_or_else(|| anyhow::anyhow!("No response from {}", self.name))?;
 
         let text = choice.message.effective_content_optional();
+        // See `parse_native_response`: replay reasoning on the follow-up
+        // request so DeepSeek thinking mode accepts the tool-call turn.
+        let reasoning_content = choice
+            .message
+            .reasoning_content
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(ToString::to_string);
         let tool_calls = choice
             .message
             .tool_calls
@@ -1715,6 +1751,7 @@ impl Provider for OpenAiCompatibleProvider {
             text,
             tool_calls,
             usage,
+            reasoning_content,
         })
     }
 
@@ -1849,6 +1886,7 @@ impl Provider for OpenAiCompatibleProvider {
                             text: Some(text),
                             tool_calls: vec![],
                             usage: None,
+                            reasoning_content: None,
                         })
                         .map_err(|responses_err| {
                             let fb = super::format_anyhow_chain(&responses_err);
@@ -1878,6 +1916,7 @@ impl Provider for OpenAiCompatibleProvider {
                     text: Some(text),
                     tool_calls: vec![],
                     usage: None,
+                    reasoning_content: None,
                 });
             }
 
@@ -1889,6 +1928,7 @@ impl Provider for OpenAiCompatibleProvider {
                         text: Some(text),
                         tool_calls: vec![],
                         usage: None,
+                        reasoning_content: None,
                     })
                     .map_err(|responses_err| {
                         let fb = super::format_anyhow_chain(&responses_err);
