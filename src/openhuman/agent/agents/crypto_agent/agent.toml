@@ -46,6 +46,13 @@ named = [
     # parameters — only consumes a `prepared_id` returned by the
     # matching `wallet_prepare_*` call earlier in this turn.
     "wallet_execute_prepared",
+    # Curated one-shot swap on Base via Uniswap V3 (1% WETH/TOSHI pool).
+    # Prepares + executes in a single call; `external_effect = true` so
+    # the harness still parks the call through ApprovalGate before
+    # signing. Use only when the user has explicitly asked to buy TOSHI
+    # on Base — for any other pair, fall back to the generic
+    # `wallet_prepare_swap` + `wallet_execute_prepared` path.
+    "wallet_buy_toshi_on_base",
     # Market data — crypto series, FX rates, commodities — for grounding
     # quote sanity checks and price questions before any execute step.
     "stock_quote",
