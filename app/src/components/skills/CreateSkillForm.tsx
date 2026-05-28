@@ -127,7 +127,7 @@ export function previewSlug(name: string): string {
 }
 
 const CreateSkillForm = forwardRef<CreateSkillFormHandle, CreateSkillFormProps>(
-  function CreateSkillForm({ formId, onCreated, onStateChange, autoFocus = false }, ref) {
+  ({ formId, onCreated, onStateChange, autoFocus = false }, ref) => {
     const { t } = useT();
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
