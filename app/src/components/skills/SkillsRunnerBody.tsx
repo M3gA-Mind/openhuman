@@ -236,6 +236,34 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
   const [scheduledJobs, setScheduledJobs] = useState<CoreCronJob[]>([]);
   const [scheduledJobsLoading, setScheduledJobsLoading] = useState(false);
 
+  // Sort: enabled-with-most-recent-last_run first (this is the
+  // "active" surface — same emphasis DevWorkflowPanel:486-647 gives
+  // its single configured job). Then enabled jobs with no recorded
+  // last_run, then disabled jobs. Within each bucket fall back to
+  // created_at desc for stability.
+  const sortedScheduledJobs = useMemo(() => {
+    const score = (j: CoreCronJob): number => {
+      if (j.enabled && j.last_run) return new Date(j.last_run).getTime();
+      if (j.enabled) return 0; // enabled but never ran
+      return -1; // disabled
+    };
+    return [...scheduledJobs].sort((a, b) => {
+      const sa = score(a);
+      const sb = score(b);
+      if (sa === sb) {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      return sb - sa;
+    });
+  }, [scheduledJobs]);
+
+  // The job at the top of the sorted list (if any AND enabled) is the
+  // "active" schedule and gets prominent treatment in the row render.
+  const activeJobId = useMemo<string | null>(() => {
+    const top = sortedScheduledJobs[0];
+    return top && top.enabled ? top.id : null;
+  }, [sortedScheduledJobs]);
+
   // Per-job run history (lazy-loaded on row expand). Keyed by job_id so
   // we keep history across re-expansions without re-fetching. Each entry
   // tracks { runs, loading, expandedRunId } for that schedule. The
@@ -947,18 +975,34 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
                       <div className="text-xs font-medium text-stone-600 dark:text-stone-400">
                         {t('settings.skillsRunner.schedule.existing')}
                       </div>
-                      {scheduledJobs.map((job) => {
+                      {sortedScheduledJobs.map((job) => {
                         const hist = historyState[job.id];
+                        const isActive = job.id === activeJobId;
                         return (
                           <div
                             key={job.id}
                             data-testid={`scheduled-job-${job.id}`}
-                            className="rounded border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 text-xs"
+                            data-active={isActive ? 'true' : 'false'}
+                            className={`rounded border text-xs ${
+                              isActive
+                                ? 'border-sage-300 dark:border-sage-500/40 bg-sage-50 dark:bg-sage-500/10'
+                                : 'border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900'
+                            }`}
                           >
                             <div className="flex items-center justify-between gap-2 px-3 py-2">
                               <div className="flex-1 min-w-0">
-                                <div className="font-mono truncate text-stone-700 dark:text-stone-300">
-                                  {job.name ?? job.id}
+                                <div className="flex items-center gap-1.5">
+                                  {isActive && (
+                                    <span
+                                      data-testid={`active-badge-${job.id}`}
+                                      className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-sage-200 dark:bg-sage-500/30 text-sage-800 dark:text-sage-200"
+                                    >
+                                      ★ {t('settings.skillsRunner.schedule.active')}
+                                    </span>
+                                  )}
+                                  <div className="font-mono truncate text-stone-700 dark:text-stone-300">
+                                    {job.name ?? job.id}
+                                  </div>
                                 </div>
                                 <div className="text-stone-500 dark:text-stone-400">
                                   {/* schedule.expr may be undefined on some shapes; just stringify */}
@@ -966,6 +1010,24 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
                                     const s = job.schedule as { expr?: string } | undefined;
                                     return s?.expr ?? '';
                                   })()}
+                                  {job.last_run && (
+                                    <>
+                                      {' · '}
+                                      {t('settings.skillsRunner.schedule.lastRunLabel')}{' '}
+                                      {new Date(job.last_run).toLocaleString()}
+                                      {job.last_status && (
+                                        <span
+                                          className={`ml-1 px-1 py-0.5 rounded text-[10px] font-medium ${
+                                            job.last_status === 'ok'
+                                              ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
+                                              : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300'
+                                          }`}
+                                        >
+                                          {job.last_status}
+                                        </span>
+                                      )}
+                                    </>
+                                  )}
                                 </div>
                               </div>
                               {/* Enable/disable toggle — styling lifted from

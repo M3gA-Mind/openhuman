@@ -3069,6 +3069,8 @@ const en: TranslationMap = {
   'settings.skillsRunner.schedule.historyLoading': 'Loading history…',
   'settings.skillsRunner.schedule.historyEmpty': 'No runs yet for this schedule.',
   'settings.skillsRunner.schedule.historyNoOutput': 'No output captured.',
+  'settings.skillsRunner.schedule.active': 'Active',
+  'settings.skillsRunner.schedule.lastRunLabel': 'last:',
   'settings.skillsRunner.recentRuns.headingForSkill': 'Recent runs for this skill',
   'settings.skillsRunner.recentRuns.headingAll': 'Recent skill runs (all)',
   'settings.skillsRunner.recentRuns.refresh': 'Refresh',

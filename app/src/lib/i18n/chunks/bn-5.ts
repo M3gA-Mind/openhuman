@@ -218,6 +218,8 @@ const bn5: TranslationMap = {
   'settings.skillsRunner.schedule.historyLoading': 'Loading history\u2026',
   'settings.skillsRunner.schedule.historyEmpty': 'No runs yet for this schedule.',
   'settings.skillsRunner.schedule.historyNoOutput': 'No output captured.',
+  'settings.skillsRunner.schedule.active': 'Active',
+  'settings.skillsRunner.schedule.lastRunLabel': 'last:',
   'settings.devWorkflow.nextRun': 'Next run',
   'settings.devWorkflow.lastRun': 'Last run',
   'settings.devWorkflow.runNow': 'Run now',

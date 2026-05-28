@@ -271,6 +271,69 @@ describe('SkillsRunnerBody — per-job history viewer', () => {
     await waitFor(() => expect(screen.queryByText(/hello world/)).not.toBeInTheDocument());
   });
 
+  it('marks the most-recent enabled schedule as Active and sorts it first', async () => {
+    const jobs = [
+      makeJob({
+        id: 'job-old-enabled',
+        name: `skill-run-${SKILL_ID}-old`,
+        enabled: true,
+        last_run: '2026-05-29T08:00:00Z',
+      }),
+      makeJob({
+        id: 'job-recent-enabled',
+        name: `skill-run-${SKILL_ID}-recent`,
+        enabled: true,
+        last_run: '2026-05-29T10:00:00Z',
+      }),
+      makeJob({
+        id: 'job-paused',
+        name: `skill-run-${SKILL_ID}-paused`,
+        enabled: false,
+      }),
+    ];
+    hoisted.cronList.mockResolvedValue({ result: jobs });
+
+    const Body = await importBody();
+    render(<Body />);
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+    const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: SKILL_ID } });
+    await waitFor(() => expect(hoisted.cronList).toHaveBeenCalled());
+
+    // The recent enabled job should be marked active (only one active
+    // badge present, and it's on the recent job).
+    const badges = await screen.findAllByTestId(/^active-badge-/);
+    expect(badges).toHaveLength(1);
+    expect(badges[0]).toHaveAttribute('data-testid', 'active-badge-job-recent-enabled');
+
+    // Sort order: recent enabled, old enabled, paused. We assert by
+    // reading the rendered scheduled-job rows in DOM order.
+    const rows = screen.getAllByTestId(/^scheduled-job-/);
+    expect(rows.map((r) => r.getAttribute('data-testid'))).toEqual([
+      'scheduled-job-job-recent-enabled',
+      'scheduled-job-job-old-enabled',
+      'scheduled-job-job-paused',
+    ]);
+    expect(rows[0]).toHaveAttribute('data-active', 'true');
+    expect(rows[1]).toHaveAttribute('data-active', 'false');
+    expect(rows[2]).toHaveAttribute('data-active', 'false');
+  });
+
+  it('does not show an Active badge when no schedules are enabled', async () => {
+    hoisted.cronList.mockResolvedValue({
+      result: [makeJob({ enabled: false })],
+    });
+    const Body = await importBody();
+    render(<Body />);
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+    const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: SKILL_ID } });
+    await waitFor(() => expect(hoisted.cronList).toHaveBeenCalled());
+
+    await screen.findByTestId('scheduled-job-job-1');
+    expect(screen.queryByTestId(/^active-badge-/)).not.toBeInTheDocument();
+  });
+
   it('shows the empty-history placeholder when cron_runs returns no rows', async () => {
     hoisted.cronRuns.mockResolvedValue({ result: { runs: [] } });
     const Body = await importBody();
