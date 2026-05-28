@@ -14,11 +14,19 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import {
+  type ScannedRun,
   type SkillDescription,
   type SkillRunStarted,
   type SkillSummary,
   skillsApi,
 } from '../../../services/api/skillsApi';
+import {
+  type CoreCronJob,
+  openhumanCronAdd,
+  openhumanCronList,
+  openhumanCronRemove,
+  openhumanCronRun,
+} from '../../../utils/tauriCommands/cron';
 import SettingsHeader from '../components/SettingsHeader';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 
@@ -30,6 +38,53 @@ interface RunState {
   status: 'idle' | 'submitting' | 'started' | 'error';
   message?: string;
   result?: SkillRunStarted;
+}
+
+// Cron schedule presets. The exact cron expressions match
+// DevWorkflowPanel's set so users see the same options across the two
+// panels. Custom expressions land in a future revision.
+const SCHEDULE_PRESETS: { labelKey: string; value: string }[] = [
+  { labelKey: 'settings.skillsRunner.schedule.every30min', value: '*/30 * * * *' },
+  { labelKey: 'settings.skillsRunner.schedule.everyHour', value: '0 * * * *' },
+  { labelKey: 'settings.skillsRunner.schedule.every2hours', value: '0 */2 * * *' },
+  { labelKey: 'settings.skillsRunner.schedule.every6hours', value: '0 */6 * * *' },
+  { labelKey: 'settings.skillsRunner.schedule.onceDaily', value: '0 9 * * *' },
+];
+
+/** Name prefix used to identify cron jobs owned by this panel (per-skill). */
+const CRON_NAME_PREFIX = 'skill-run-';
+
+/** Build the cron-job name for `(skillId, inputs)` — unique per skill +
+ * inputs combo so re-scheduling against the same target updates one job
+ * instead of stacking duplicates. We hash inputs into a short slug to
+ * keep names readable but distinct. */
+function buildCronJobName(skillId: string, inputs: Record<string, unknown>): string {
+  const keys = Object.keys(inputs).sort();
+  const compact = keys
+    .map((k) => {
+      const v = inputs[k];
+      if (v === undefined || v === null || v === '') return '';
+      const s = typeof v === 'string' ? v : String(v);
+      return `${k}=${s.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 24)}`;
+    })
+    .filter(Boolean)
+    .join('_');
+  const suffix = compact.length > 0 ? `-${compact}` : '';
+  return `${CRON_NAME_PREFIX}${skillId}${suffix}`.slice(0, 80);
+}
+
+/** Compose the agent-job prompt that re-fires the skill_run at cron tick. */
+function buildAgentPrompt(skillId: string, inputs: Record<string, unknown>): string {
+  const inputLines = Object.entries(inputs)
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `- ${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`)
+    .join('\n');
+  return [
+    `Run the ${skillId} skill via the run_skill tool with these inputs:`,
+    inputLines || '(no inputs)',
+    '',
+    'Do NOT do the work yourself — call run_skill and report back the new run_id.',
+  ].join('\n');
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -111,6 +166,21 @@ const SkillsRunnerPanel = () => {
 
   // Run state
   const [run, setRun] = useState<RunState>({ status: 'idle' });
+
+  // Schedule state
+  const [schedule, setSchedule] = useState<string>(SCHEDULE_PRESETS[0].value);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [scheduleError, setScheduleError] = useState<string | null>(null);
+  const [scheduleSaved, setScheduleSaved] = useState(false);
+
+  // Scheduled jobs owned by this panel (cron_list filtered by name prefix)
+  const [scheduledJobs, setScheduledJobs] = useState<CoreCronJob[]>([]);
+  const [scheduledJobsLoading, setScheduledJobsLoading] = useState(false);
+
+  // Recent runs (skill-scoped if a skill is picked, cross-skill otherwise)
+  const [recentRuns, setRecentRuns] = useState<ScannedRun[]>([]);
+  const [recentRunsLoading, setRecentRunsLoading] = useState(false);
+  const [recentRunsRefreshNonce, setRecentRunsRefreshNonce] = useState(0);
 
   // ── Initial load: skills_list ──────────────────────────────────────
   useEffect(() => {
@@ -219,6 +289,113 @@ const SkillsRunnerPanel = () => {
       setRun({ status: 'error', message: msg });
     }
   }, [description, formValues, missingRequired, t]);
+
+  // ── Recent runs: load on mount + on skill change + on demand ───────
+  useEffect(() => {
+    let cancelled = false;
+    setRecentRunsLoading(true);
+    skillsApi
+      .recentRuns(selectedSkillId || undefined, 10)
+      .then((list) => {
+        if (cancelled) return;
+        setRecentRuns(list);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        log('recentRuns error: %s', err instanceof Error ? err.message : String(err));
+        setRecentRuns([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRecentRunsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSkillId, recentRunsRefreshNonce]);
+
+  // ── Scheduled jobs: load on skill change ───────────────────────────
+  const loadScheduledJobs = useCallback(async () => {
+    if (!selectedSkillId) {
+      setScheduledJobs([]);
+      return;
+    }
+    setScheduledJobsLoading(true);
+    try {
+      const resp = await openhumanCronList();
+      const allJobs = (resp.result ?? []) as CoreCronJob[];
+      const wanted = `${CRON_NAME_PREFIX}${selectedSkillId}`;
+      setScheduledJobs(allJobs.filter((j) => (j.name ?? '').startsWith(wanted)));
+    } catch (err: unknown) {
+      log('loadScheduledJobs error: %s', err instanceof Error ? err.message : String(err));
+      setScheduledJobs([]);
+    } finally {
+      setScheduledJobsLoading(false);
+    }
+  }, [selectedSkillId]);
+
+  useEffect(() => {
+    void loadScheduledJobs();
+  }, [loadScheduledJobs]);
+
+  // ── Save schedule handler ──────────────────────────────────────────
+  const handleSaveSchedule = useCallback(async () => {
+    if (!description) return;
+    if (missingRequired.length > 0) {
+      setScheduleError(`${t('settings.skillsRunner.error.missingRequired')} ${missingRequired.join(', ')}`);
+      return;
+    }
+    setSavingSchedule(true);
+    setScheduleError(null);
+    setScheduleSaved(false);
+    try {
+      const inputs = buildInputsPayload(description, formValues);
+      const name = buildCronJobName(description.id, inputs);
+      const prompt = buildAgentPrompt(description.id, inputs);
+      log('saveSchedule name=%s schedule=%s', name, schedule);
+      await openhumanCronAdd({
+        name,
+        schedule: { kind: 'cron', expr: schedule },
+        job_type: 'agent',
+        prompt,
+        session_target: 'isolated',
+        delivery: { mode: 'proactive', best_effort: true },
+      });
+      setScheduleSaved(true);
+      setTimeout(() => setScheduleSaved(false), 3000);
+      await loadScheduledJobs();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log('saveSchedule error: %s', msg);
+      setScheduleError(msg);
+    } finally {
+      setSavingSchedule(false);
+    }
+  }, [description, formValues, missingRequired, schedule, t, loadScheduledJobs]);
+
+  // ── Schedule-row actions ───────────────────────────────────────────
+  const handleRunJobNow = useCallback(
+    async (jobId: string) => {
+      try {
+        await openhumanCronRun(jobId);
+        setRecentRunsRefreshNonce((n) => n + 1);
+      } catch (err: unknown) {
+        log('runJobNow error: %s', err instanceof Error ? err.message : String(err));
+      }
+    },
+    []
+  );
+
+  const handleRemoveJob = useCallback(
+    async (jobId: string) => {
+      try {
+        await openhumanCronRemove(jobId);
+        await loadScheduledJobs();
+      } catch (err: unknown) {
+        log('removeJob error: %s', err instanceof Error ? err.message : String(err));
+      }
+    },
+    [loadScheduledJobs]
+  );
 
   // ── Form-field renderer ────────────────────────────────────────────
   const renderField = (
@@ -413,10 +590,183 @@ const SkillsRunnerPanel = () => {
                     </div>
                   )}
                 </div>
+
+                {/* Schedule (cron-driven recurring) */}
+                <div className="pt-4 border-t border-stone-200 dark:border-stone-700 space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-stone-700 dark:text-stone-300">
+                      {t('settings.skillsRunner.schedule.heading')}
+                    </h3>
+                    <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">
+                      {t('settings.skillsRunner.schedule.help')}
+                    </p>
+                  </div>
+
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <label
+                        htmlFor="skills-runner-schedule"
+                        className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1"
+                      >
+                        {t('settings.skillsRunner.schedule.frequency')}
+                      </label>
+                      <select
+                        id="skills-runner-schedule"
+                        value={schedule}
+                        onChange={(e) => setSchedule(e.target.value)}
+                        className="w-full rounded border border-stone-300 dark:border-stone-600 bg-white dark:bg-stone-800 px-3 py-2 text-sm text-stone-900 dark:text-stone-100"
+                      >
+                        {SCHEDULE_PRESETS.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {t(p.labelKey)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveSchedule()}
+                      disabled={savingSchedule || missingRequired.length > 0}
+                      className="rounded bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 disabled:opacity-50 px-4 py-2 text-sm font-medium text-stone-900 dark:text-stone-100"
+                    >
+                      {savingSchedule
+                        ? t('settings.skillsRunner.schedule.saving')
+                        : t('settings.skillsRunner.schedule.save')}
+                    </button>
+                  </div>
+
+                  {scheduleSaved && (
+                    <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                      {t('settings.skillsRunner.schedule.saved')}
+                    </p>
+                  )}
+                  {scheduleError && (
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      {t('settings.skillsRunner.schedule.error')} {scheduleError}
+                    </p>
+                  )}
+
+                  {/* Existing scheduled jobs for this skill */}
+                  {scheduledJobsLoading ? (
+                    <p className="text-xs text-stone-500 dark:text-stone-400">
+                      {t('settings.skillsRunner.schedule.loadingJobs')}
+                    </p>
+                  ) : scheduledJobs.length === 0 ? (
+                    <p className="text-xs italic text-stone-500 dark:text-stone-400">
+                      {t('settings.skillsRunner.schedule.noJobs')}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium text-stone-600 dark:text-stone-400">
+                        {t('settings.skillsRunner.schedule.existing')}
+                      </div>
+                      {scheduledJobs.map((job) => (
+                        <div
+                          key={job.id}
+                          className="flex items-center justify-between gap-2 rounded border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 px-3 py-2 text-xs"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="font-mono truncate text-stone-700 dark:text-stone-300">
+                              {job.name ?? job.id}
+                            </div>
+                            <div className="text-stone-500 dark:text-stone-400">
+                              {/* schedule.expr may be undefined on some shapes; just stringify */}
+                              {(() => {
+                                const s = job.schedule as { expr?: string } | undefined;
+                                return s?.expr ?? '';
+                              })()}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleRunJobNow(job.id)}
+                            className="rounded bg-primary-600 hover:bg-primary-700 px-2 py-1 text-xs font-medium text-white"
+                          >
+                            {t('settings.skillsRunner.schedule.runNow')}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleRemoveJob(job.id)}
+                            className="rounded bg-red-600 hover:bg-red-700 px-2 py-1 text-xs font-medium text-white"
+                          >
+                            {t('settings.skillsRunner.schedule.remove')}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </>
         )}
+
+        {/* Recent runs (cross-skill if no skill picked; otherwise scoped) */}
+        <div className="pt-4 border-t border-stone-200 dark:border-stone-700 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-stone-700 dark:text-stone-300">
+              {selectedSkillId
+                ? t('settings.skillsRunner.recentRuns.headingForSkill')
+                : t('settings.skillsRunner.recentRuns.headingAll')}
+            </h3>
+            <button
+              type="button"
+              onClick={() => setRecentRunsRefreshNonce((n) => n + 1)}
+              className="text-xs text-stone-600 dark:text-stone-400 hover:underline"
+            >
+              {t('settings.skillsRunner.recentRuns.refresh')}
+            </button>
+          </div>
+          {recentRunsLoading ? (
+            <p className="text-xs text-stone-500 dark:text-stone-400">
+              {t('settings.skillsRunner.recentRuns.loading')}
+            </p>
+          ) : recentRuns.length === 0 ? (
+            <p className="text-xs italic text-stone-500 dark:text-stone-400">
+              {t('settings.skillsRunner.recentRuns.empty')}
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {recentRuns.map((r) => {
+                const badgeClass = (() => {
+                  if (r.status === 'RUNNING')
+                    return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+                  if (r.status === 'DONE')
+                    return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200';
+                  if (r.status === 'DEGENERATE')
+                    return 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200';
+                  return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+                })();
+                const dur = r.duration_ms !== null ? `${Math.round(r.duration_ms / 1000)}s` : '—';
+                return (
+                  <div
+                    key={r.run_id}
+                    className="rounded border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 px-3 py-2 text-xs"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-xs font-medium ${badgeClass}`}
+                      >
+                        {r.status}
+                      </span>
+                      <span className="font-mono text-stone-700 dark:text-stone-300">
+                        {r.run_id.slice(0, 8)}
+                      </span>
+                      <span className="text-stone-600 dark:text-stone-400">{r.skill_id}</span>
+                      <span className="text-stone-500 dark:text-stone-400 ml-auto">{dur}</span>
+                    </div>
+                    <div className="text-stone-500 dark:text-stone-400 truncate">
+                      {r.started}
+                    </div>
+                    <div className="text-stone-400 dark:text-stone-500 font-mono text-[10px] truncate">
+                      {r.log_path}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

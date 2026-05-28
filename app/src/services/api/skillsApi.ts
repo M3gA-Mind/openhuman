@@ -330,6 +330,25 @@ export const skillsApi = {
     log('runSkill: response runId=%s log=%s', raw.run_id, raw.log);
     return raw;
   },
+
+  /**
+   * Recent autonomous skill runs from `<workspace>/skills/.runs/`. Sorted
+   * by start time descending. Pass `skillId` to filter to one skill,
+   * omit for cross-skill. `limit` defaults to 20 (max 100).
+   */
+  recentRuns: async (skillId?: string, limit?: number): Promise<ScannedRun[]> => {
+    log('recentRuns: request skillId=%s limit=%s', skillId ?? '*', limit ?? 'default');
+    const params: Record<string, unknown> = {};
+    if (skillId !== undefined) params.skill_id = skillId;
+    if (limit !== undefined) params.limit = limit;
+    const response = await callCoreRpc<Envelope<{ runs: ScannedRun[] }> | { runs: ScannedRun[] }>({
+      method: 'openhuman.skills_recent_runs',
+      params,
+    });
+    const raw = unwrapEnvelope(response);
+    log('recentRuns: response count=%d', raw.runs.length);
+    return raw.runs;
+  },
 };
 
 /**
@@ -359,4 +378,25 @@ export interface SkillRunStarted {
   status: string; // "started"
   skill_id: string;
   log: string; // absolute path to the streaming log
+}
+
+/**
+ * One run entry returned by `openhuman.skills_recent_runs`. Wire shape
+ * mirrors `crate::openhuman::skills::run_log::ScannedRun`. `status` is
+ * `"RUNNING"` while the run hasn't written its `--- result ---` footer
+ * yet; after the footer lands it becomes `"DONE"` / `"DEGENERATE"` /
+ * `"FAILED"`.
+ */
+export interface ScannedRun {
+  run_id: string;
+  skill_id: string;
+  /** RFC3339-with-trailing-`UTC` timestamp from the log header. */
+  started: string;
+  status: 'RUNNING' | 'DONE' | 'DEGENERATE' | 'FAILED' | string;
+  /** Footer `duration: <ms> ms`. Null while running. */
+  duration_ms: number | null;
+  /** Footer `finished:` timestamp. Null while running. */
+  finished: string | null;
+  /** Absolute path to the streaming log file. */
+  log_path: string;
 }
