@@ -293,4 +293,70 @@ export const skillsApi = {
     log('uninstallSkill: response name=%s removedPath=%s', normalized.name, normalized.removedPath);
     return normalized;
   },
+
+  /**
+   * Fetch the declared `[[inputs]]` for a single skill plus its display
+   * metadata. Lightweight companion to `listSkills` — `SkillSummary` rows
+   * (used by the catalog grid) deliberately don't include input
+   * declarations, so the Skills Runner panel calls this once when the
+   * user picks a skill from the dropdown so it can render the right form
+   * controls.
+   */
+  describeSkill: async (skillId: string): Promise<SkillDescription> => {
+    log('describeSkill: request skillId=%s', skillId);
+    const response = await callCoreRpc<Envelope<SkillDescription> | SkillDescription>({
+      method: 'openhuman.skills_describe',
+      params: { skill_id: skillId },
+    });
+    const raw = unwrapEnvelope(response);
+    log('describeSkill: response inputs=%d', raw.inputs.length);
+    return raw;
+  },
+
+  /**
+   * Fire-and-forget invocation of `openhuman.skills_run`. Returns
+   * immediately with the new background run's `run_id`, the canonical
+   * `skill_id`, and the log path the run is streaming into; the actual
+   * autonomous work continues in the background and finishes with
+   * status `DONE` / `DEGENERATE` / `FAILED` in the run log.
+   */
+  runSkill: async (skillId: string, inputs: Record<string, unknown>): Promise<SkillRunStarted> => {
+    log('runSkill: request skillId=%s', skillId);
+    const response = await callCoreRpc<Envelope<SkillRunStarted> | SkillRunStarted>({
+      method: 'openhuman.skills_run',
+      params: { skill_id: skillId, inputs },
+    });
+    const raw = unwrapEnvelope(response);
+    log('runSkill: response runId=%s log=%s', raw.run_id, raw.log);
+    return raw;
+  },
 };
+
+/**
+ * One input declaration from a skill's `[[inputs]]` block, returned by
+ * `openhuman.skills_describe`. The FE renders one form control per entry:
+ * `string`/`integer`/`boolean` map to text/number/checkbox controls.
+ */
+export interface SkillInputDescription {
+  name: string;
+  description: string;
+  required: boolean;
+  /** Type hint from `[[inputs]].type`. */
+  type: string;
+}
+
+/** Wire shape returned by `openhuman.skills_describe`. */
+export interface SkillDescription {
+  id: string;
+  display_name: string;
+  when_to_use: string;
+  inputs: SkillInputDescription[];
+}
+
+/** Wire shape returned by `openhuman.skills_run` (fire-and-forget). */
+export interface SkillRunStarted {
+  run_id: string;
+  status: string; // "started"
+  skill_id: string;
+  log: string; // absolute path to the streaming log
+}

@@ -18,6 +18,7 @@ import CronJobsPanel from '../components/settings/panels/CronJobsPanel';
 import DeveloperOptionsPanel from '../components/settings/panels/DeveloperOptionsPanel';
 import DevicesComingSoonPanel from '../components/settings/panels/DevicesComingSoonPanel';
 import DevWorkflowPanel from '../components/settings/panels/DevWorkflowPanel';
+import SkillsRunnerPanel from '../components/settings/panels/SkillsRunnerPanel';
 import EmbeddingsPanel from '../components/settings/panels/EmbeddingsPanel';
 import HeartbeatPanel from '../components/settings/panels/HeartbeatPanel';
 import LedgerUsagePanel from '../components/settings/panels/LedgerUsagePanel';
@@ -441,6 +442,7 @@ const Settings = () => {
         <Route path="agent-chat" element={wrapSettingsPage(<AgentChatPanel />)} />
         <Route path="cron-jobs" element={wrapSettingsPage(<CronJobsPanel />)} />
         <Route path="dev-workflow" element={wrapSettingsPage(<DevWorkflowPanel />)} />
+        <Route path="skills-runner" element={wrapSettingsPage(<SkillsRunnerPanel />)} />
         <Route
           path="screen-awareness-debug"
           element={wrapSettingsPage(<ScreenAwarenessDebugPanel />)}
