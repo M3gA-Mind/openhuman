@@ -214,6 +214,13 @@ Quick reference for anyone starting with Claude on this project. Updated by the 
 - **`cron_add` RPC** — Was missing from `schemas.rs` (only existed as agent tool). Now exposed as `openhuman.cron_add`. Frontend wrapper: `openhumanCronAdd()` in `app/src/utils/tauriCommands/cron.ts`.
 - **Worktree `pnpm build` rolldown fix** — Worktrees can miss `@rolldown/binding-darwin-arm64`. Fix: `pnpm install --force`.
 
+## Artifacts Domain (Issue #2776)
+
+- **Filesystem-backed persistence, no SQLite** — `src/openhuman/artifacts/` stores JSON metadata (`meta.json`) + binary blobs under `<workspace_dir>/artifacts/<uuid>/`. Pattern mirrors `memory/ops/files.rs` but simpler.
+- **`"ai"` namespace in controller registry** — RPC methods are `openhuman.ai_list_artifacts`, `openhuman.ai_get_artifact`, `openhuman.ai_delete_artifact`. Future `ai_*` methods should use this same namespace.
+- **Two-layer path validation required** — (1) `validate_artifact_id` rejects empty strings, `/`, `\`, `..`, absolute Unix paths, Windows `C:` and UNC `\\` paths; (2) `assert_within_root` canonicalizes and checks containment. Replicate this pattern for any new filesystem-backed domain.
+- **`cargo test --lib` required for lib crate tests** — `cargo test -p openhuman -- "artifacts"` lists tests but filters to 0. Must use `cargo test -p openhuman --lib -- "artifacts"` because tests are in the lib crate, not integration test binaries.
+
 ## Rust Testing Patterns
 
 - **Memory tree tests filter** — `cargo test -p openhuman -- "memory::tree"` runs the memory tree unit tests (602 tests); full module paths are `openhuman::memory::tree::ingest::tests::*` and `openhuman::memory::tree::canonicalize::email_clean::tests::*`.
