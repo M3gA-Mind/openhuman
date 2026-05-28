@@ -118,6 +118,10 @@ const LEGACY_ALIASES: &[(&str, &str)] = &[
     // bare `health_snapshot` (no namespace prefix) was used by older clients
     // before the canonical `openhuman.health_snapshot` form was established.
     ("health_snapshot", "openhuman.health_snapshot"),
+    // `openhuman.system_info` was used by older clients / SDK callers before
+    // the method was namespaced under `health` as `openhuman.health_system_info`.
+    // Sentry CORE-RUST-G0 — https://sentry.tinyhumans.ai/organizations/tinyhumans/issues/6340/
+    ("openhuman.system_info", "openhuman.health_system_info"),
     ("openhuman.inference_embed", "openhuman.embeddings_embed"),
     ("openhuman.local_ai_presets", "openhuman.inference_presets"),
     (
@@ -419,6 +423,18 @@ mod tests {
         assert_eq!(
             resolve_legacy("health_snapshot"),
             "openhuman.health_snapshot",
+        );
+    }
+
+    #[test]
+    fn resolve_legacy_rewrites_system_info() {
+        // Sentry CORE-RUST-G0: older clients called `openhuman.system_info`
+        // before the method was namespaced under `health` as
+        // `openhuman.health_system_info`.  The alias table must rewrite it so
+        // the call resolves against the registered controller.
+        assert_eq!(
+            resolve_legacy("openhuman.system_info"),
+            "openhuman.health_system_info",
         );
     }
 

@@ -38,6 +38,7 @@ export const CORE_RPC_METHODS = {
   mcpClientsInstalledList: 'openhuman.mcp_clients_installed_list',
   mcpClientsToolCall: 'openhuman.mcp_clients_tool_call',
   healthSnapshot: 'openhuman.health_snapshot',
+  healthSystemInfo: 'openhuman.health_system_info',
 } as const;
 
 export type CoreRpcMethod = (typeof CORE_RPC_METHODS)[keyof typeof CORE_RPC_METHODS];
@@ -77,6 +78,10 @@ export const LEGACY_METHOD_ALIASES: Record<string, CoreRpcMethod> = {
   'openhuman.providers_list_models': CORE_RPC_METHODS.inferenceListModels,
   'openhuman.inference_embed': CORE_RPC_METHODS.embeddingsEmbed,
   health_snapshot: CORE_RPC_METHODS.healthSnapshot,
+  // `openhuman.system_info` was used by older clients / SDK callers before the
+  // method was namespaced as `openhuman.health_system_info`.
+  // Sentry CORE-RUST-G0 — https://sentry.tinyhumans.ai/organizations/tinyhumans/issues/6340/
+  'openhuman.system_info': CORE_RPC_METHODS.healthSystemInfo,
 };
 
 export function normalizeRpcMethod(method: string): string {
