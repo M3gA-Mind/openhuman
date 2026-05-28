@@ -182,6 +182,14 @@ const hi4: TranslationMap = {
   'pages.settings.account.recoveryPhrase': 'रिकवरी फ्रेज़',
   'pages.settings.account.recoveryPhraseDesc': 'रिकवरी फ़्रेज़ विवरण',
   'pages.settings.account.team': 'टीम',
+  'pages.settings.account.walletAddresses': 'Wallet addresses',
+  'pages.settings.account.walletAddressesDesc':
+    'View the wallet addresses derived from your recovery phrase',
+  'pages.settings.walletAddresses.intro':
+    'These addresses are derived from your recovery phrase. The EVM address below is the one we sign Base transactions with (Uniswap swaps, transfers).',
+  'pages.settings.walletAddresses.notConfigured':
+    'Set up your recovery phrase first so we can derive your wallet addresses.',
+  'pages.settings.walletAddresses.baseSignerTag': 'Signs Base txs',
   'pages.settings.account.teamDesc': 'टीम विवरण',
   'pages.settings.accountSection.description': 'रिकवरी फ्रेज़, टीम, कनेक्शन और प्राइवेसी सेटिंग्स।',
   'pages.settings.accountSection.title': 'अकाउंट',

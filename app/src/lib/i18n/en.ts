@@ -2388,6 +2388,14 @@ const en: TranslationMap = {
   'pages.settings.account.privacyDesc': 'Control what data leaves your computer',
   'pages.settings.account.recoveryPhrase': 'Recovery phrase',
   'pages.settings.account.recoveryPhraseDesc': 'View and back up your account recovery phrase',
+  'pages.settings.account.walletAddresses': 'Wallet addresses',
+  'pages.settings.account.walletAddressesDesc':
+    'View the wallet addresses derived from your recovery phrase',
+  'pages.settings.walletAddresses.intro':
+    'These addresses are derived from your recovery phrase. The EVM address below is the one we sign Base transactions with (Uniswap swaps, transfers).',
+  'pages.settings.walletAddresses.notConfigured':
+    'Set up your recovery phrase first so we can derive your wallet addresses.',
+  'pages.settings.walletAddresses.baseSignerTag': 'Signs Base txs',
   'pages.settings.account.team': 'Team',
   'pages.settings.account.teamDesc': 'Manage team members and permissions',
   'pages.settings.accountSection.description':

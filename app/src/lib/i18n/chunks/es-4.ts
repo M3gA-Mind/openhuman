@@ -182,6 +182,14 @@ const es4: TranslationMap = {
   'pages.settings.account.recoveryPhrase': 'Frase de recuperación',
   'pages.settings.account.recoveryPhraseDesc': 'Descripción de frase de recuperación',
   'pages.settings.account.team': 'Equipo',
+  'pages.settings.account.walletAddresses': 'Wallet addresses',
+  'pages.settings.account.walletAddressesDesc':
+    'View the wallet addresses derived from your recovery phrase',
+  'pages.settings.walletAddresses.intro':
+    'These addresses are derived from your recovery phrase. The EVM address below is the one we sign Base transactions with (Uniswap swaps, transfers).',
+  'pages.settings.walletAddresses.notConfigured':
+    'Set up your recovery phrase first so we can derive your wallet addresses.',
+  'pages.settings.walletAddresses.baseSignerTag': 'Signs Base txs',
   'pages.settings.account.teamDesc': 'Descripción de equipo',
   'pages.settings.accountSection.description':
     'Frase de recuperación, equipo, conexiones y configuración de privacidad.',

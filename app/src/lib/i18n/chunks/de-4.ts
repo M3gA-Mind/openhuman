@@ -183,6 +183,14 @@ const de4: TranslationMap = {
   'pages.settings.account.recoveryPhrase': 'Wiederherstellungssatz',
   'pages.settings.account.recoveryPhraseDesc':
     'Verwalte deine BIP39-Wiederherstellungsphrase für Verschlüsselung und Wallet-Zugriff',
+  'pages.settings.account.walletAddresses': 'Wallet addresses',
+  'pages.settings.account.walletAddressesDesc':
+    'View the wallet addresses derived from your recovery phrase',
+  'pages.settings.walletAddresses.intro':
+    'These addresses are derived from your recovery phrase. The EVM address below is the one we sign Base transactions with (Uniswap swaps, transfers).',
+  'pages.settings.walletAddresses.notConfigured':
+    'Set up your recovery phrase first so we can derive your wallet addresses.',
+  'pages.settings.walletAddresses.baseSignerTag': 'Signs Base txs',
   'pages.settings.account.team': 'Team',
   'pages.settings.account.teamDesc': 'Verwalte dein Team, deine Mitglieder und Einladungen',
   'pages.settings.account.migration': 'Von einem anderen Assistenten importieren',

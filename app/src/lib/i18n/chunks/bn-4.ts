@@ -181,6 +181,14 @@ const bn4: TranslationMap = {
   'pages.settings.account.recoveryPhrase': 'রিকভারি ফ্রেজ',
   'pages.settings.account.recoveryPhraseDesc': 'রিকভারি ফ্রেজের বিবরণ',
   'pages.settings.account.team': 'টিম',
+  'pages.settings.account.walletAddresses': 'Wallet addresses',
+  'pages.settings.account.walletAddressesDesc':
+    'View the wallet addresses derived from your recovery phrase',
+  'pages.settings.walletAddresses.intro':
+    'These addresses are derived from your recovery phrase. The EVM address below is the one we sign Base transactions with (Uniswap swaps, transfers).',
+  'pages.settings.walletAddresses.notConfigured':
+    'Set up your recovery phrase first so we can derive your wallet addresses.',
+  'pages.settings.walletAddresses.baseSignerTag': 'Signs Base txs',
   'pages.settings.account.teamDesc': 'টিমের বিবরণ',
   'pages.settings.accountSection.description': 'রিকভারি ফ্রেজ, টিম, সংযোগ এবং গোপনীয়তা সেটিংস।',
   'pages.settings.accountSection.title': 'অ্যাকাউন্ট',

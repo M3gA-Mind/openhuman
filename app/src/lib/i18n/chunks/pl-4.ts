@@ -209,6 +209,14 @@ const pl4: TranslationMap = {
   'pages.settings.account.recoveryPhrase': 'Fraza odzyskiwania',
   'pages.settings.account.recoveryPhraseDesc':
     'Zarządzaj swoją frazą odzyskiwania BIP39 do szyfrowania i dostępu do portfela',
+  'pages.settings.account.walletAddresses': 'Wallet addresses',
+  'pages.settings.account.walletAddressesDesc':
+    'View the wallet addresses derived from your recovery phrase',
+  'pages.settings.walletAddresses.intro':
+    'These addresses are derived from your recovery phrase. The EVM address below is the one we sign Base transactions with (Uniswap swaps, transfers).',
+  'pages.settings.walletAddresses.notConfigured':
+    'Set up your recovery phrase first so we can derive your wallet addresses.',
+  'pages.settings.walletAddresses.baseSignerTag': 'Signs Base txs',
   'pages.settings.account.team': 'Zespół',
   'pages.settings.account.teamDesc': 'Zarządzaj zespołem, członkami i zaproszeniami',
   'pages.settings.account.migration': 'Importuj z innego asystenta',

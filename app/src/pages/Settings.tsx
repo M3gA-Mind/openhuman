@@ -32,6 +32,7 @@ import NotificationsTabbedPanel from '../components/settings/panels/Notification
 import PersonaPanel from '../components/settings/panels/PersonaPanel';
 import PrivacyPanel from '../components/settings/panels/PrivacyPanel';
 import RecoveryPhrasePanel from '../components/settings/panels/RecoveryPhrasePanel';
+import WalletAddressesPanel from '../components/settings/panels/WalletAddressesPanel';
 import ScreenAwarenessDebugPanel from '../components/settings/panels/ScreenAwarenessDebugPanel';
 import ScreenIntelligencePanel from '../components/settings/panels/ScreenIntelligencePanel';
 import SearchPanel from '../components/settings/panels/SearchPanel';
@@ -157,6 +158,16 @@ const CompanionIcon = (
     />
   </svg>
 );
+const WalletAddressesIcon = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M3 10h18M5 6h14a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2zm12 7h2"
+    />
+  </svg>
+);
 const VoiceIcon = (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path
@@ -204,6 +215,13 @@ const Settings = () => {
       description: t('pages.settings.account.recoveryPhraseDesc'),
       route: 'recovery-phrase',
       icon: RecoveryPhraseIcon,
+    },
+    {
+      id: 'wallet-addresses',
+      title: t('pages.settings.account.walletAddresses'),
+      description: t('pages.settings.account.walletAddressesDesc'),
+      route: 'wallet-addresses',
+      icon: WalletAddressesIcon,
     },
     {
       id: 'team',
@@ -397,6 +415,7 @@ const Settings = () => {
         />
         {/* Account & Billing leaf panels */}
         <Route path="recovery-phrase" element={wrapSettingsPage(<RecoveryPhrasePanel />)} />
+        <Route path="wallet-addresses" element={wrapSettingsPage(<WalletAddressesPanel />)} />
         <Route path="team" element={wrapSettingsPage(<TeamPanel />)} />
         <Route path="team/manage/:teamId" element={wrapSettingsPage(<TeamManagementPanel />)} />
         <Route

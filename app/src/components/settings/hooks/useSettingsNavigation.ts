@@ -23,6 +23,7 @@ export type SettingsRoute =
   | 'memory-data'
   | 'memory-debug'
   | 'recovery-phrase'
+  | 'wallet-addresses'
   | 'webhooks-debug'
   | 'agent-chat'
   | 'screen-awareness-debug'
@@ -108,6 +109,7 @@ export const useSettingsNavigation = (): SettingsNavigationHook => {
     if (path.includes('/settings/composio-triggers')) return 'composio-triggers';
     if (path.includes('/settings/composio-routing')) return 'composio-routing';
     if (path.includes('/settings/intelligence')) return 'intelligence';
+    if (path.includes('/settings/wallet-addresses')) return 'wallet-addresses';
     if (path.includes('/settings/recovery-phrase')) return 'recovery-phrase';
     if (path.includes('/settings/agent-chat')) return 'agent-chat';
     // Notification routes must be checked in specificity order so the more
@@ -187,6 +189,7 @@ export const useSettingsNavigation = (): SettingsNavigationHook => {
 
       // Leaf panels under account
       case 'recovery-phrase':
+      case 'wallet-addresses':
       case 'team':
       case 'privacy':
         return [settingsCrumb, accountCrumb];

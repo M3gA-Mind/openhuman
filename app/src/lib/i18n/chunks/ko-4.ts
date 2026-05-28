@@ -159,6 +159,14 @@ const ko4: TranslationMap = {
   'pages.settings.account.recoveryPhrase': '복구 문구',
   'pages.settings.account.recoveryPhraseDesc':
     '암호화 및 지갑 접근을 위한 BIP39 복구 문구를 관리합니다',
+  'pages.settings.account.walletAddresses': 'Wallet addresses',
+  'pages.settings.account.walletAddressesDesc':
+    'View the wallet addresses derived from your recovery phrase',
+  'pages.settings.walletAddresses.intro':
+    'These addresses are derived from your recovery phrase. The EVM address below is the one we sign Base transactions with (Uniswap swaps, transfers).',
+  'pages.settings.walletAddresses.notConfigured':
+    'Set up your recovery phrase first so we can derive your wallet addresses.',
+  'pages.settings.walletAddresses.baseSignerTag': 'Signs Base txs',
   'pages.settings.account.team': '팀',
   'pages.settings.account.teamDesc': '팀, 멤버 및 초대를 관리합니다',
   'pages.settings.accountSection.description': '복구 문구, 팀, 연결 및 개인정보 설정.',

@@ -181,6 +181,14 @@ const ru4: TranslationMap = {
   'pages.settings.account.recoveryPhrase': 'Фраза восстановления',
   'pages.settings.account.recoveryPhraseDesc': 'Описание фразы восстановления',
   'pages.settings.account.team': 'Команда',
+  'pages.settings.account.walletAddresses': 'Wallet addresses',
+  'pages.settings.account.walletAddressesDesc':
+    'View the wallet addresses derived from your recovery phrase',
+  'pages.settings.walletAddresses.intro':
+    'These addresses are derived from your recovery phrase. The EVM address below is the one we sign Base transactions with (Uniswap swaps, transfers).',
+  'pages.settings.walletAddresses.notConfigured':
+    'Set up your recovery phrase first so we can derive your wallet addresses.',
+  'pages.settings.walletAddresses.baseSignerTag': 'Signs Base txs',
   'pages.settings.account.teamDesc': 'Описание команды',
   'pages.settings.accountSection.description':
     'Фраза восстановления, команда, подключения и настройки конфиденциальности.',
