@@ -6,7 +6,7 @@
  * - Escape key closes (but not while submitting).
  * - Backdrop click closes (but not while submitting).
  * - Submit is disabled when name or description is empty.
- * - Submit rekeys `allowedTools` → `'allowed-tools'` via skillsApi.createSkill.
+ * - Submit calls `skillsApi.createSkill` with name, description, and scope.
  * - Submit calls `onCreated` with the returned skill.
  * - Submit failure surfaces an error banner and re-enables the button.
  * - Slug preview updates as the name changes.
@@ -82,7 +82,7 @@ describe('CreateSkillModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('rekeys allowedTools to allowed-tools on submit and calls onCreated', async () => {
+  it('calls createSkill with name, description, scope and calls onCreated', async () => {
     const { skillsApi } = await import('../../../services/api/skillsApi');
     const created = builtSkill();
     vi.mocked(skillsApi.createSkill).mockResolvedValueOnce(created);
@@ -93,10 +93,6 @@ describe('CreateSkillModal', () => {
 
     fireEvent.change(screen.getByLabelText(/Name/), { target: { value: 'My Skill' } });
     fireEvent.change(screen.getByLabelText(/Description/), { target: { value: 'does stuff' } });
-    fireEvent.change(screen.getByLabelText(/Tags/), { target: { value: 'alpha, beta' } });
-    fireEvent.change(screen.getByLabelText(/Allowed tools/), {
-      target: { value: 'mcp/fs, fetch' },
-    });
 
     const submit = screen.getByRole('button', { name: /Create skill/ });
     await act(async () => {
@@ -107,8 +103,6 @@ describe('CreateSkillModal', () => {
       name: 'My Skill',
       description: 'does stuff',
       scope: 'user',
-      tags: ['alpha', 'beta'],
-      allowedTools: ['mcp/fs', 'fetch'],
     });
     expect(onCreated).toHaveBeenCalledWith(created);
   });
