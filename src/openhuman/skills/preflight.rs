@@ -170,8 +170,7 @@ impl<'a> LivePreflightProbes<'a> {
 #[async_trait]
 impl<'a> PreflightProbes for LivePreflightProbes<'a> {
     async fn composio_toolkit_active(&self, toolkit: &str) -> bool {
-        let connections =
-            composio::fetch_connected_integrations(self.config).await;
+        let connections = composio::fetch_connected_integrations(self.config).await;
         connections
             .iter()
             .any(|c| c.toolkit.eq_ignore_ascii_case(toolkit))
@@ -243,9 +242,7 @@ pub async fn run_github_preflight<P: PreflightProbes>(
 
     // (1) Composio GitHub integration must be connected.
     if !probes.composio_toolkit_active("github").await {
-        tracing::warn!(
-            "[skills:preflight] github gate fail: composio_github_missing"
-        );
+        tracing::warn!("[skills:preflight] github gate fail: composio_github_missing");
         return Err(GithubGateError::ComposioGithubMissing);
     }
 
@@ -281,9 +278,7 @@ pub async fn run_github_preflight<P: PreflightProbes>(
             // identity — confirms the connection is genuinely usable.
             match probes.composio_identity("github").await {
                 Some(_) => {
-                    tracing::debug!(
-                        "[skills:preflight] github gate pass (identity_match=any)"
-                    );
+                    tracing::debug!("[skills:preflight] github gate pass (identity_match=any)");
                     Ok(())
                 }
                 None => {
@@ -304,10 +299,7 @@ pub async fn run_github_preflight<P: PreflightProbes>(
                     return Err(GithubGateError::ComposioIdentityUnresolved);
                 }
             };
-            if composio_name
-                .trim()
-                .eq_ignore_ascii_case(git_name.trim())
-            {
+            if composio_name.trim().eq_ignore_ascii_case(git_name.trim()) {
                 tracing::debug!(
                     composio = %composio_name,
                     git = %git_name,
@@ -427,9 +419,7 @@ mod tests {
         let cfg = strict_cfg();
         let mut probes = StubProbes::happy();
         probes.composio_active = false;
-        let err = run_github_preflight(Some(&cfg), &probes)
-            .await
-            .unwrap_err();
+        let err = run_github_preflight(Some(&cfg), &probes).await.unwrap_err();
         assert_eq!(err, GithubGateError::ComposioGithubMissing);
         // Subsequent checks must NOT run (composio fail short-circuits).
         let calls = probes.calls.lock().unwrap();
@@ -441,9 +431,7 @@ mod tests {
         let cfg = strict_cfg();
         let mut probes = StubProbes::happy();
         probes.git_version_ok = Err("not found".into());
-        let err = run_github_preflight(Some(&cfg), &probes)
-            .await
-            .unwrap_err();
+        let err = run_github_preflight(Some(&cfg), &probes).await.unwrap_err();
         match err {
             GithubGateError::GitBinaryMissing(msg) => assert!(msg.contains("not found")),
             other => panic!("expected GitBinaryMissing, got {other:?}"),
@@ -455,13 +443,11 @@ mod tests {
         let cfg = strict_cfg();
         let mut probes = StubProbes::happy();
         probes.git_name = "   ".into(); // whitespace-only counts as empty? we read trimmed
-        // The Live probes return trimmed strings; StubProbes returns as-is,
-        // but the gate compares to empty AFTER the StubProbes returns the
-        // raw value. Real probes trim. Emulate by clearing.
+                                        // The Live probes return trimmed strings; StubProbes returns as-is,
+                                        // but the gate compares to empty AFTER the StubProbes returns the
+                                        // raw value. Real probes trim. Emulate by clearing.
         probes.git_name = "".into();
-        let err = run_github_preflight(Some(&cfg), &probes)
-            .await
-            .unwrap_err();
+        let err = run_github_preflight(Some(&cfg), &probes).await.unwrap_err();
         assert_eq!(err, GithubGateError::GitUserNameMissing);
     }
 
@@ -470,9 +456,7 @@ mod tests {
         let cfg = strict_cfg();
         let mut probes = StubProbes::happy();
         probes.git_email = "".into();
-        let err = run_github_preflight(Some(&cfg), &probes)
-            .await
-            .unwrap_err();
+        let err = run_github_preflight(Some(&cfg), &probes).await.unwrap_err();
         assert_eq!(err, GithubGateError::GitUserEmailMissing);
     }
 
@@ -482,9 +466,7 @@ mod tests {
         let mut probes = StubProbes::happy();
         probes.composio_username = Some("octo-alice".into());
         probes.git_name = "Alice".into();
-        let err = run_github_preflight(Some(&cfg), &probes)
-            .await
-            .unwrap_err();
+        let err = run_github_preflight(Some(&cfg), &probes).await.unwrap_err();
         match err {
             GithubGateError::IdentityMismatch {
                 composio_username,
@@ -502,9 +484,7 @@ mod tests {
         let cfg = strict_cfg();
         let mut probes = StubProbes::happy();
         probes.composio_username = None;
-        let err = run_github_preflight(Some(&cfg), &probes)
-            .await
-            .unwrap_err();
+        let err = run_github_preflight(Some(&cfg), &probes).await.unwrap_err();
         assert_eq!(err, GithubGateError::ComposioIdentityUnresolved);
     }
 
@@ -538,7 +518,10 @@ mod tests {
         probes.composio_username = Some("not-the-same".into());
         probes.git_name = "completely-different".into();
         let res = run_github_preflight(Some(&cfg), &probes).await;
-        assert!(res.is_ok(), "identity_match=any: presence is enough: {res:?}");
+        assert!(
+            res.is_ok(),
+            "identity_match=any: presence is enough: {res:?}"
+        );
     }
 
     #[tokio::test]
@@ -549,9 +532,7 @@ mod tests {
         };
         let mut probes = StubProbes::happy();
         probes.composio_username = None;
-        let err = run_github_preflight(Some(&cfg), &probes)
-            .await
-            .unwrap_err();
+        let err = run_github_preflight(Some(&cfg), &probes).await.unwrap_err();
         assert_eq!(err, GithubGateError::ComposioIdentityUnresolved);
     }
 
@@ -564,7 +545,10 @@ mod tests {
         let mut probes = StubProbes::happy();
         probes.composio_username = None; // would fail strict/any
         let res = run_github_preflight(Some(&cfg), &probes).await;
-        assert!(res.is_ok(), "identity_match=none: reachability only: {res:?}");
+        assert!(
+            res.is_ok(),
+            "identity_match=none: reachability only: {res:?}"
+        );
         let calls = probes.calls.lock().unwrap();
         // The identity probe must not have been called.
         assert!(
@@ -605,13 +589,22 @@ mod tests {
     fn gate_error_tags_are_stable() {
         // The tag goes into the run-log header line — keep them
         // grep-friendly and don't rename casually.
-        assert_eq!(GithubGateError::ComposioGithubMissing.tag(), "composio_github_missing");
+        assert_eq!(
+            GithubGateError::ComposioGithubMissing.tag(),
+            "composio_github_missing"
+        );
         assert_eq!(
             GithubGateError::GitBinaryMissing("x".into()).tag(),
             "git_binary_missing"
         );
-        assert_eq!(GithubGateError::GitUserNameMissing.tag(), "git_user_name_missing");
-        assert_eq!(GithubGateError::GitUserEmailMissing.tag(), "git_user_email_missing");
+        assert_eq!(
+            GithubGateError::GitUserNameMissing.tag(),
+            "git_user_name_missing"
+        );
+        assert_eq!(
+            GithubGateError::GitUserEmailMissing.tag(),
+            "git_user_email_missing"
+        );
         assert_eq!(
             GithubGateError::IdentityMismatch {
                 composio_username: "a".into(),

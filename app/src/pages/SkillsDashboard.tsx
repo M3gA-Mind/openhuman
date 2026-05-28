@@ -71,7 +71,6 @@ function recognizeSkillCron(jobName: string): { skillId: string } | null {
   return null;
 }
 
-
 /** Group jobs by skill_id and present a single card per skill (newest first). */
 interface SkillGroup {
   skillId: string;
@@ -136,7 +135,7 @@ export default function SkillsDashboard() {
       // Accept both the current `skill-run-` prefix and the legacy
       // `dev-workflow-` naming DevWorkflowPanel uses, via the shared
       // recogniser at the top of the file.
-      const filtered = all.filter((j) => recognizeSkillCron(j.name ?? '') !== null);
+      const filtered = all.filter(j => recognizeSkillCron(j.name ?? '') !== null);
       log('loaded %d skill cron jobs (of %d total)', filtered.length, all.length);
       setJobs(filtered);
     } catch (err: unknown) {
@@ -191,16 +190,14 @@ export default function SkillsDashboard() {
                 type="button"
                 data-testid="skills-dashboard-create"
                 onClick={goCreate}
-                className="rounded-lg border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-xs font-medium text-stone-700 dark:text-neutral-200 shadow-soft transition-colors hover:bg-stone-50 dark:hover:bg-neutral-800"
-              >
+                className="rounded-lg border border-stone-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 px-3 py-2 text-xs font-medium text-stone-700 dark:text-neutral-200 shadow-soft transition-colors hover:bg-stone-50 dark:hover:bg-neutral-800">
                 + {t('skills.dashboard.create')}
               </button>
               <button
                 type="button"
                 data-testid="skills-dashboard-run"
                 onClick={goRun}
-                className="rounded-lg bg-primary-500 px-3 py-2 text-xs font-semibold text-white shadow-soft transition-colors hover:bg-primary-600"
-              >
+                className="rounded-lg bg-primary-500 px-3 py-2 text-xs font-semibold text-white shadow-soft transition-colors hover:bg-primary-600">
                 ▷ {t('skills.dashboard.run')}
               </button>
             </div>
@@ -214,8 +211,7 @@ export default function SkillsDashboard() {
           {loading && (
             <div
               data-testid="skills-dashboard-loading"
-              className="rounded-2xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-soft text-sm text-stone-500 dark:text-neutral-400"
-            >
+              className="rounded-2xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-soft text-sm text-stone-500 dark:text-neutral-400">
               {t('common.loading')}
             </div>
           )}
@@ -223,16 +219,14 @@ export default function SkillsDashboard() {
           {!loading && error && (
             <div
               data-testid="skills-dashboard-error"
-              className="rounded-2xl border border-coral-200 bg-coral-50 dark:bg-coral-500/10 dark:border-coral-500/30 p-4 text-sm"
-            >
+              className="rounded-2xl border border-coral-200 bg-coral-50 dark:bg-coral-500/10 dark:border-coral-500/30 p-4 text-sm">
               <p className="text-coral-800 dark:text-coral-200">
                 {t('skills.dashboard.loadError')}: {error}
               </p>
               <button
                 type="button"
                 onClick={() => void loadJobs()}
-                className="mt-2 rounded border border-coral-300 dark:border-coral-500/40 bg-white dark:bg-neutral-900 px-3 py-1.5 text-xs font-medium text-coral-700 dark:text-coral-300 hover:bg-coral-100 dark:hover:bg-coral-500/15"
-              >
+                className="mt-2 rounded border border-coral-300 dark:border-coral-500/40 bg-white dark:bg-neutral-900 px-3 py-1.5 text-xs font-medium text-coral-700 dark:text-coral-300 hover:bg-coral-100 dark:hover:bg-coral-500/15">
                 {t('common.retry')}
               </button>
             </div>
@@ -241,8 +235,7 @@ export default function SkillsDashboard() {
           {!loading && !error && groups.length === 0 && (
             <div
               data-testid="skills-dashboard-empty"
-              className="rounded-2xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-8 shadow-soft text-center"
-            >
+              className="rounded-2xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-8 shadow-soft text-center">
               <h3 className="text-sm font-semibold text-stone-900 dark:text-neutral-100">
                 {t('skills.dashboard.emptyTitle')}
               </h3>
@@ -253,8 +246,7 @@ export default function SkillsDashboard() {
                 type="button"
                 data-testid="skills-dashboard-empty-cta"
                 onClick={goRun}
-                className="mt-4 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white shadow-soft transition-colors hover:bg-primary-600"
-              >
+                className="mt-4 rounded-lg bg-primary-500 px-4 py-2 text-xs font-semibold text-white shadow-soft transition-colors hover:bg-primary-600">
                 ▷ {t('skills.dashboard.run')}
               </button>
             </div>
@@ -262,7 +254,7 @@ export default function SkillsDashboard() {
 
           {!loading && !error && groups.length > 0 && (
             <div className="space-y-2">
-              {groups.map((group) => {
+              {groups.map(group => {
                 const job = group.primary;
                 const isBusy = busyJobId === job.id;
                 // testIdRoot keys the rendered testids:

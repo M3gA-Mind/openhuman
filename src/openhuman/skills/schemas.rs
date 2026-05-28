@@ -779,10 +779,7 @@ fn handle_skills_recent_runs(params: Map<String, Value>) -> ControllerFuture {
             limit,
             "[skills][rpc] recent_runs"
         );
-        to_json(RpcOutcome::new(
-            SkillsRecentRunsResult { runs },
-            Vec::new(),
-        ))
+        to_json(RpcOutcome::new(SkillsRecentRunsResult { runs }, Vec::new()))
     })
 }
 
@@ -845,9 +842,7 @@ pub(crate) async fn spawn_skill_run_background(
             }
         };
         let probes = preflight::LivePreflightProbes::new(&config_snapshot);
-        if let Err(gate_err) =
-            preflight::run_github_preflight(Some(github_cfg), &probes).await
-        {
+        if let Err(gate_err) = preflight::run_github_preflight(Some(github_cfg), &probes).await {
             let tag = gate_err.tag();
             // Materialise a run-log entry on disk so the gate failure
             // shows up in `<workspace>/skills/.runs/` (and therefore

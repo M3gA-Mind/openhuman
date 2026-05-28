@@ -14,18 +14,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import SkillNew from './SkillNew';
+
 const stableT = (key: string) => key;
 vi.mock('../lib/i18n/I18nContext', () => ({ useT: () => ({ t: stableT }) }));
 
-const hoisted = vi.hoisted(() => ({
-  createSkill: vi.fn(),
-}));
+const hoisted = vi.hoisted(() => ({ createSkill: vi.fn() }));
 
-vi.mock('../services/api/skillsApi', () => ({
-  skillsApi: { createSkill: hoisted.createSkill },
-}));
-
-import SkillNew from './SkillNew';
+vi.mock('../services/api/skillsApi', () => ({ skillsApi: { createSkill: hoisted.createSkill } }));
 
 const renderPage = () =>
   render(
