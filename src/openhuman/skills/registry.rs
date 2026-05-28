@@ -28,6 +28,50 @@ pub struct SkillInput {
     pub kind: Option<String>,
 }
 
+/// How strictly the [`SkillGithubConfig`] preflight gate should compare
+/// the Composio-connected GitHub identity with the local `git config
+/// user.name`. Default: [`IdentityMatch::Strict`].
+///
+/// | Variant | Behaviour at preflight |
+/// |---------|------------------------|
+/// | `Strict` | The Composio-connected GitHub username MUST equal `git config user.name` (case-insensitive after trimming). Mismatch → gate fail. |
+/// | `Any`    | Both must exist (Composio github connection AND local git identity) but they don't have to match. |
+/// | `None`   | Skip the identity comparison entirely — only assert both subsystems are reachable. |
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IdentityMatch {
+    #[default]
+    Strict,
+    Any,
+    None,
+}
+
+/// `[github]` block in `skill.toml`. Optional; absent ⇒ no GitHub
+/// preflight gate runs for this skill. Present + `required = true` ⇒
+/// the preflight described in [`crate::openhuman::skills::schemas`]'s
+/// `preflight_github_gate` runs before the orchestrator boots.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SkillGithubConfig {
+    /// When true, the gate runs. When false (default), the gate is
+    /// skipped even if other fields are populated — the gate is opt-in
+    /// per skill.
+    #[serde(default)]
+    pub required: bool,
+    /// How strictly to compare the Composio GitHub identity against
+    /// local `git config user.name`. See [`IdentityMatch`].
+    #[serde(default)]
+    pub identity_match: IdentityMatch,
+}
+
+impl Default for SkillGithubConfig {
+    fn default() -> Self {
+        Self {
+            required: false,
+            identity_match: IdentityMatch::default(),
+        }
+    }
+}
+
 /// A skill = an agent definition + its declared inputs (parsed from `skill.toml`).
 #[derive(Debug, Clone, Deserialize)]
 pub struct SkillDefinition {
@@ -35,6 +79,12 @@ pub struct SkillDefinition {
     pub definition: AgentDefinition,
     #[serde(default)]
     pub inputs: Vec<SkillInput>,
+    /// Optional GitHub preflight gate. When `Some(..)` with
+    /// `required = true`, the preflight runs before the orchestrator
+    /// boots — see
+    /// [`crate::openhuman::skills::schemas::spawn_skill_run_background`].
+    #[serde(default)]
+    pub github: Option<SkillGithubConfig>,
 }
 
 /// Names of `required` inputs that are absent or null in `provided`. Empty ⇒ OK.
@@ -136,6 +186,7 @@ pub fn load_skills(workspace_dir: &Path) -> Vec<SkillDefinition> {
             skills.push(SkillDefinition {
                 definition,
                 inputs: Vec::new(),
+                github: None,
             });
         }
     }
@@ -301,6 +352,83 @@ mod tests {
         assert!(
             std::fs::read_to_string(&toml).unwrap().contains("edited"),
             "existing skill.toml must not be clobbered"
+        );
+    }
+
+    #[test]
+    fn skill_github_config_defaults_when_absent() {
+        // No [github] block in skill.toml → `github` deserialises to None,
+        // which the preflight reads as "gate disabled, skip silently".
+        let toml = "id = \"x\"\nwhen_to_use = \"y\"\n";
+        let parsed: SkillDefinition = toml::from_str(toml).expect("parse");
+        assert!(parsed.github.is_none(), "no [github] block ⇒ None");
+    }
+
+    #[test]
+    fn skill_github_config_parses_full_block() {
+        let toml = "id = \"x\"\nwhen_to_use = \"y\"\n\
+                    [github]\nrequired = true\nidentity_match = \"strict\"\n";
+        let parsed: SkillDefinition = toml::from_str(toml).expect("parse");
+        let gh = parsed.github.expect("github block present");
+        assert!(gh.required);
+        assert_eq!(gh.identity_match, IdentityMatch::Strict);
+    }
+
+    #[test]
+    fn skill_github_config_required_defaults_to_false() {
+        // Block present but required not set ⇒ required = false (default).
+        let toml = "id = \"x\"\nwhen_to_use = \"y\"\n\
+                    [github]\nidentity_match = \"any\"\n";
+        let parsed: SkillDefinition = toml::from_str(toml).expect("parse");
+        let gh = parsed.github.expect("github block present");
+        assert!(!gh.required, "required defaults to false");
+        assert_eq!(gh.identity_match, IdentityMatch::Any);
+    }
+
+    #[test]
+    fn skill_github_config_identity_match_defaults_to_strict() {
+        let toml = "id = \"x\"\nwhen_to_use = \"y\"\n\
+                    [github]\nrequired = true\n";
+        let parsed: SkillDefinition = toml::from_str(toml).expect("parse");
+        let gh = parsed.github.expect("github block present");
+        assert_eq!(
+            gh.identity_match,
+            IdentityMatch::Strict,
+            "default is Strict"
+        );
+    }
+
+    #[test]
+    fn skill_github_config_accepts_all_identity_match_variants() {
+        for (variant, expected) in [
+            ("strict", IdentityMatch::Strict),
+            ("any", IdentityMatch::Any),
+            ("none", IdentityMatch::None),
+        ] {
+            let toml = format!(
+                "id = \"x\"\nwhen_to_use = \"y\"\n\
+                 [github]\nrequired = true\nidentity_match = \"{variant}\"\n"
+            );
+            let parsed: SkillDefinition = toml::from_str(&toml).expect("parse");
+            assert_eq!(
+                parsed.github.expect("github block present").identity_match,
+                expected,
+                "variant {variant} → {expected:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn skill_github_config_serializes_lowercase() {
+        let gh = SkillGithubConfig {
+            required: true,
+            identity_match: IdentityMatch::Strict,
+        };
+        let s = toml::to_string(&gh).expect("serialize");
+        assert!(s.contains("required = true"));
+        assert!(
+            s.contains("identity_match = \"strict\""),
+            "lowercase serialization: got {s}"
         );
     }
 
