@@ -190,6 +190,7 @@ pub fn all_skills_controller_schemas() -> Vec<ControllerSchema> {
     vec![
         skills_schemas("skills_list"),
         skills_schemas("skills_describe"),
+        skills_schemas("skills_recent_runs"),
         skills_schemas("skills_read_resource"),
         skills_schemas("skills_create"),
         skills_schemas("skills_install_from_url"),
@@ -207,6 +208,10 @@ pub fn all_skills_registered_controllers() -> Vec<RegisteredController> {
         RegisteredController {
             schema: skills_schemas("skills_describe"),
             handler: handle_skills_describe,
+        },
+        RegisteredController {
+            schema: skills_schemas("skills_recent_runs"),
+            handler: handle_skills_recent_runs,
         },
         RegisteredController {
             schema: skills_schemas("skills_read_resource"),
@@ -435,6 +440,31 @@ pub fn skills_schemas(function: &str) -> ControllerSchema {
                 },
             ],
         },
+        "skills_recent_runs" => ControllerSchema {
+            namespace: "skills",
+            function: "recent_runs",
+            description: "List recent autonomous skill runs by scanning `<workspace>/skills/.runs/`. Returns one entry per log file (header: skill_id, run_id, started; footer: status, duration_ms, finished) sorted by `started` descending. `status` is `RUNNING` while the footer hasn't landed yet, then `DONE` / `DEGENERATE` / `FAILED`. Optionally filter by `skill_id` to scope to one skill; `limit` (default 20, max 100) caps the result. Cheap: reads the files top-to-bottom and short-circuits — no schema parsing of the streaming body.",
+            inputs: vec![
+                FieldSchema {
+                    name: "skill_id",
+                    ty: TypeSchema::String,
+                    comment: "Optional: restrict results to runs of one skill (e.g. \"github-issue-crusher\"). Omit to return runs across every skill.",
+                    required: false,
+                },
+                FieldSchema {
+                    name: "limit",
+                    ty: TypeSchema::U64,
+                    comment: "Cap on the number of entries returned. Default 20, clamped to 100.",
+                    required: false,
+                },
+            ],
+            outputs: vec![FieldSchema {
+                name: "runs",
+                ty: TypeSchema::String,
+                comment: "Array of `{ run_id, skill_id, started, status, duration_ms, finished, log_path }` — see crate::openhuman::skills::run_log::ScannedRun.",
+                required: true,
+            }],
+        },
         "skills_describe" => ControllerSchema {
             namespace: "skills",
             function: "describe",
@@ -464,10 +494,15 @@ pub fn skills_schemas(function: &str) -> ControllerSchema {
                     comment: "Short one-line summary from skill.toml `when_to_use` — what the skill does and when to pick it.",
                     required: true,
                 },
+                // Wire shape: array of objects. Schema rendering keeps the
+                // type as `String` for the controller-catalog payload, but
+                // the actual JSON returned by `handle_skills_describe`
+                // serialises this as a real array of `SkillInputDescription`
+                // objects — `{name, description, required, type}` per entry.
                 FieldSchema {
                     name: "inputs",
                     ty: TypeSchema::String,
-                    comment: "JSON-encoded array of `[[inputs]]` entries; each entry: `{ name, description, required, type }`. Renderable as a dynamic form.",
+                    comment: "Array of `[[inputs]]` entries; each entry: `{ name, description, required, type }`. Renderable as a dynamic form.",
                     required: true,
                 },
             ],
@@ -601,6 +636,42 @@ fn handle_skills_describe(params: Map<String, Value>) -> ControllerFuture {
                 when_to_use: skill.definition.when_to_use.clone(),
                 inputs,
             },
+            Vec::new(),
+        ))
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct SkillsRecentRunsParams {
+    #[serde(default)]
+    skill_id: Option<String>,
+    #[serde(default)]
+    limit: Option<u32>,
+}
+
+#[derive(serde::Serialize)]
+struct SkillsRecentRunsResult {
+    runs: Vec<run_log::ScannedRun>,
+}
+
+/// `openhuman.skills_recent_runs` — list runs from `<workspace>/skills/.runs/`
+/// (most-recent first), optionally filtered to one skill, capped by `limit`.
+/// Powers the Skills Runner panel's "Recent runs" section + future live-log
+/// tail. Delegates the actual scan + parse to `run_log::scan_runs`.
+fn handle_skills_recent_runs(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let payload = deserialize_params::<SkillsRecentRunsParams>(params)?;
+        let limit = payload.limit.unwrap_or(20).min(100) as usize;
+        let workspace = resolve_workspace_dir().await;
+        let runs = run_log::scan_runs(&workspace, payload.skill_id.as_deref(), limit);
+        tracing::debug!(
+            count = runs.len(),
+            filter = ?payload.skill_id,
+            limit,
+            "[skills][rpc] recent_runs"
+        );
+        to_json(RpcOutcome::new(
+            SkillsRecentRunsResult { runs },
             Vec::new(),
         ))
     })

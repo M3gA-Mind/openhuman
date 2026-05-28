@@ -217,6 +217,115 @@ pub fn detect_repeated_line(
         .map(|(line, count)| (line.to_string(), count))
 }
 
+/// One run extracted from a `.runs/<skill>_<utc>_<run>.log` file. Built by
+/// [`scan_runs`] for the `openhuman.skills_recent_runs` RPC + the Skills
+/// Runner panel's "Recent runs" section. Status is `RUNNING` until the
+/// footer block (`--- result ---` + `status: …` + `duration: … ms`) lands.
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct ScannedRun {
+    pub run_id: String,
+    pub skill_id: String,
+    /// Header `started:` timestamp (RFC3339); empty if header was malformed.
+    pub started: String,
+    /// `"DONE"` / `"DEGENERATE"` / `"FAILED"` / `"RUNNING"` (running ⇔ no footer yet).
+    pub status: String,
+    /// Footer `duration: <ms> ms`, parsed; `None` while running.
+    pub duration_ms: Option<u64>,
+    /// Footer `finished:` timestamp; `None` while running.
+    pub finished: Option<String>,
+    /// Absolute path to the streaming log file — what the FE shows for
+    /// "view full log" or future tail-streaming.
+    pub log_path: String,
+}
+
+/// Scan `<workspace>/skills/.runs/` for run-log files, parse their header +
+/// footer, and return a vec sorted by `started` *descending* (most-recent
+/// first). When `skill_id` is `Some(_)`, only entries whose header
+/// `skill_id` matches are returned. `limit` caps the result (post-filter,
+/// post-sort) so the panel can render a short list cheaply. Malformed
+/// files are skipped silently — never blocks the response.
+pub fn scan_runs(workspace: &Path, skill_id: Option<&str>, limit: usize) -> Vec<ScannedRun> {
+    let dir = runs_dir(workspace);
+    let mut runs: Vec<ScannedRun> = Vec::new();
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return runs;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !name.ends_with(".log") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let mut sid = String::new();
+        let mut rid = String::new();
+        let mut started = String::new();
+        let mut status = String::from("RUNNING");
+        let mut duration_ms: Option<u64> = None;
+        let mut finished: Option<String> = None;
+        let mut seen_result = false;
+        for line in text.lines() {
+            // Header
+            if let Some(rest) = line.strip_prefix("==== skill_run:") {
+                sid = rest
+                    .trim()
+                    .trim_end_matches('=')
+                    .trim()
+                    .to_string();
+            } else if let Some(rest) = line.strip_prefix("run_id ") {
+                rid = rest.trim_start_matches(':').trim().to_string();
+            } else if let Some(rest) = line.strip_prefix("started:") {
+                started = rest.trim().to_string();
+            }
+            // Footer (only fields that appear AFTER `--- result ---`)
+            if line.starts_with("--- result ---") {
+                seen_result = true;
+                continue;
+            }
+            if seen_result {
+                if let Some(rest) = line.strip_prefix("status ") {
+                    status = rest.trim_start_matches(':').trim().to_string();
+                } else if let Some(rest) = line.strip_prefix("duration:") {
+                    // Format: "<n> ms"
+                    let trimmed = rest.trim();
+                    let num = trimmed.trim_end_matches(" ms").trim();
+                    if let Ok(n) = num.parse::<u64>() {
+                        duration_ms = Some(n);
+                    }
+                } else if let Some(rest) = line.strip_prefix("finished:") {
+                    finished = Some(rest.trim().trim_end_matches(" UTC").trim().to_string());
+                }
+            }
+        }
+        if sid.is_empty() || rid.is_empty() {
+            // Malformed header — skip rather than show a half-row.
+            continue;
+        }
+        if let Some(want) = skill_id {
+            if sid != want {
+                continue;
+            }
+        }
+        runs.push(ScannedRun {
+            run_id: rid,
+            skill_id: sid,
+            started,
+            status,
+            duration_ms,
+            finished,
+            log_path: path.to_string_lossy().into_owned(),
+        });
+    }
+    // Sort most-recent first by `started` (RFC3339 sorts lexicographically).
+    runs.sort_by(|a, b| b.started.cmp(&a.started));
+    runs.truncate(limit);
+    runs
+}
+
 /// Final footer: status, duration, and the agent's final output text.
 pub async fn write_footer(
     path: &Path,
@@ -259,6 +368,70 @@ mod tests {
             .join("\n");
         let (_, n2) = detect_repeated_line(&dffae, 30, 4).expect("must trip");
         assert_eq!(n2, 8);
+    }
+
+    #[test]
+    fn scan_runs_parses_header_footer_and_status() {
+        // Mirror the on-disk layout: <workspace>/skills/.runs/<file>.log
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let runs = runs_dir(tmp.path());
+        std::fs::create_dir_all(&runs).unwrap();
+
+        // (a) finished run — full footer
+        let done = "==== skill_run: github-issue-crusher ====\n\
+                    run_id : aaaaaaaa-1111-2222-3333-444444444444\n\
+                    started: 2026-05-28T07:51:13.604134255+00:00 UTC\n\
+                    inputs : {}\n\n\
+                    --- task prompt ---\nfoo\n\
+                    --- steps ---\nstep 1\n\
+                    --- result ---\n\
+                    status  : DONE\n\
+                    duration: 617236 ms\n\
+                    finished: 2026-05-28T08:01:30.944918997+00:00 UTC\n\n\
+                    body...\n";
+        std::fs::write(runs.join("github-issue-crusher_20260528T075113Z_aaaaaaaa.log"), done)
+            .unwrap();
+
+        // (b) still-running — no footer yet
+        let running = "==== skill_run: pr-review-shepherd ====\n\
+                       run_id : bbbbbbbb-1111-2222-3333-444444444444\n\
+                       started: 2026-05-28T09:00:00.000000000+00:00 UTC\n\
+                       inputs : {}\n\n\
+                       --- task prompt ---\nfoo\n\
+                       --- steps ---\nstep 1\n";
+        std::fs::write(runs.join("pr-review-shepherd_20260528T090000Z_bbbbbbbb.log"), running)
+            .unwrap();
+
+        let all = scan_runs(tmp.path(), None, 10);
+        assert_eq!(all.len(), 2, "both runs visible");
+        // Newest first — (b) started later than (a).
+        assert_eq!(all[0].run_id, "bbbbbbbb-1111-2222-3333-444444444444");
+        assert_eq!(all[0].status, "RUNNING");
+        assert_eq!(all[0].duration_ms, None);
+        assert_eq!(all[1].status, "DONE");
+        assert_eq!(all[1].duration_ms, Some(617236));
+        assert!(all[1].finished.as_deref().unwrap().starts_with("2026-05-28T08:01:30"));
+
+        // Filter by skill_id
+        let only_pr = scan_runs(tmp.path(), Some("pr-review-shepherd"), 10);
+        assert_eq!(only_pr.len(), 1);
+        assert_eq!(only_pr[0].skill_id, "pr-review-shepherd");
+
+        // Limit caps the result post-sort
+        let one = scan_runs(tmp.path(), None, 1);
+        assert_eq!(one.len(), 1);
+        assert_eq!(one[0].run_id, "bbbbbbbb-1111-2222-3333-444444444444");
+    }
+
+    #[test]
+    fn scan_runs_skips_malformed_files() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let runs = runs_dir(tmp.path());
+        std::fs::create_dir_all(&runs).unwrap();
+        // Empty header — no `==== skill_run: ` line ⇒ skip silently.
+        std::fs::write(runs.join("garbage_x_y.log"), "hi i'm not a run log\n").unwrap();
+        let scanned = scan_runs(tmp.path(), None, 10);
+        assert!(scanned.is_empty(), "malformed files must be skipped");
     }
 
     #[test]
