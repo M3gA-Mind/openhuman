@@ -4,13 +4,31 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { renderWithProviders } from '../../../../test/test-utils';
 
 // [dev-workflow] Unit tests for DevWorkflowPanel.tsx — covers repo loading,
-// not-connected error, fork detection, branch population, and save/clear wiring.
+// not-connected error, fork detection, branch population, and cron job wiring.
 
-const hoisted = vi.hoisted(() => ({ composioExecute: vi.fn(), listConnections: vi.fn() }));
+const hoisted = vi.hoisted(() => ({
+  composioExecute: vi.fn(),
+  listConnections: vi.fn(),
+  cronAdd: vi.fn(),
+  cronList: vi.fn(),
+  cronRemove: vi.fn(),
+  cronUpdate: vi.fn(),
+  cronRun: vi.fn(),
+  cronRuns: vi.fn(),
+}));
 
 vi.mock('../../../../lib/composio/composioApi', () => ({
   execute: hoisted.composioExecute,
   listConnections: hoisted.listConnections,
+}));
+
+vi.mock('../../../../utils/tauriCommands/cron', () => ({
+  openhumanCronAdd: hoisted.cronAdd,
+  openhumanCronList: hoisted.cronList,
+  openhumanCronRemove: hoisted.cronRemove,
+  openhumanCronUpdate: hoisted.cronUpdate,
+  openhumanCronRun: hoisted.cronRun,
+  openhumanCronRuns: hoisted.cronRuns,
 }));
 
 // Stable t function — creating a new function object on every render
@@ -32,7 +50,7 @@ vi.mock('../../components/SettingsHeader', () => ({
 }));
 
 // Import once — DevWorkflowPanel state is managed via API mocks and
-// localStorage, not module-level vars, so a single import is sufficient.
+// cron RPC, not module-level vars, so a single import is sufficient.
 async function importPanel() {
   const mod = await import('../DevWorkflowPanel');
   return mod.default;
@@ -82,9 +100,12 @@ const branchesResponse = {
 describe('DevWorkflowPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
     hoisted.listConnections.mockResolvedValue(githubConnection);
     hoisted.composioExecute.mockResolvedValue(reposResponse);
+    hoisted.cronList.mockResolvedValue({ data: [] });
+    hoisted.cronAdd.mockResolvedValue({ data: { id: 'cron-1', name: 'dev-workflow-user-repo1' } });
+    hoisted.cronRemove.mockResolvedValue({ data: { job_id: 'cron-1', removed: true } });
+    hoisted.cronRuns.mockResolvedValue({ data: [] });
   });
 
   test('renders header immediately and populates repo dropdown on successful fetch', async () => {
@@ -183,7 +204,7 @@ describe('DevWorkflowPanel', () => {
     });
   });
 
-  test('save button stores config in localStorage', async () => {
+  test('save button creates a cron job via openhumanCronAdd', async () => {
     // Call sequence: LIST_REPOS → GET_A_REPO (non-fork) → LIST_BRANCHES
     hoisted.composioExecute
       .mockResolvedValueOnce(reposResponse)
@@ -213,46 +234,66 @@ describe('DevWorkflowPanel', () => {
     });
     fireEvent.click(saveBtn);
 
-    // Verify localStorage was written
-    const raw = localStorage.getItem('openhuman:dev-workflow-config');
-    expect(raw).not.toBeNull();
-    const stored = JSON.parse(raw!);
-    expect(stored.repoFullName).toBe('user/repo1');
-    expect(stored.repoOwner).toBe('user');
-    expect(stored.repoName).toBe('repo1');
-    expect(stored.targetBranch).toBe('main');
-    expect(typeof stored.schedule).toBe('string');
-
-    // Saved status indicator
-    expect(screen.getByText('settings.devWorkflow.saved')).toBeInTheDocument();
+    // Verify cron_add was called
+    await waitFor(() => {
+      expect(hoisted.cronAdd).toHaveBeenCalledTimes(1);
+    });
+    const addCall = hoisted.cronAdd.mock.calls[0][0];
+    expect(addCall.name).toBe('dev-workflow-user-repo1');
+    expect(addCall.schedule).toEqual({ kind: 'cron', expr: '*/30 * * * *' });
+    expect(addCall.job_type).toBe('agent');
+    expect(addCall.prompt).toContain('dev-workflow');
+    expect(addCall.prompt).toContain('user/repo1');
   });
 
-  test('remove button clears localStorage config', async () => {
-    // Pre-populate localStorage so savedConfig is non-null on mount
-    const existingConfig = {
-      repoFullName: 'user/repo1',
-      repoOwner: 'user',
-      repoName: 'repo1',
-      forkInfo: null,
-      targetBranch: 'main',
-      schedule: '*/30 * * * *',
+  test('remove button deletes cron job via openhumanCronRemove', async () => {
+    // Pre-populate cron list so existingJob is set on mount
+    const existingCronJob = {
+      id: 'cron-1',
+      name: 'dev-workflow-user-repo1',
+      expression: '*/30 * * * *',
+      schedule: { kind: 'cron', expr: '*/30 * * * *' },
+      command: '',
+      prompt: 'Run the dev-workflow skill.',
+      job_type: 'agent',
+      session_target: 'isolated',
+      enabled: true,
+      delivery: { mode: 'proactive', best_effort: true },
+      delete_after_run: false,
+      created_at: '2026-01-01T00:00:00Z',
+      next_run: '2026-01-01T01:00:00Z',
     };
-    localStorage.setItem('openhuman:dev-workflow-config', JSON.stringify(existingConfig));
+    hoisted.cronList.mockResolvedValue({ data: [existingCronJob] });
+    // Call sequence: LIST_REPOS → GET_A_REPO (non-fork) → LIST_BRANCHES
+    hoisted.composioExecute
+      .mockResolvedValueOnce(reposResponse)
+      .mockResolvedValueOnce(repoMetaNonFork)
+      .mockResolvedValueOnce(branchesResponse);
 
     const Panel = await importPanel();
     renderWithProviders(<Panel />);
 
-    // Active config summary is shown immediately (initialised from localStorage)
-    expect(screen.getByText('settings.devWorkflow.activeConfiguration')).toBeInTheDocument();
+    // Wait for repos to load
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: /user\/repo1/ })).toBeInTheDocument();
+    });
 
-    // Remove button is visible because savedConfig is set
+    // Select a repo so the Actions section (with remove button) renders
+    const repoSelect = screen.getAllByRole('combobox')[0];
+    fireEvent.change(repoSelect, { target: { value: 'user/repo1' } });
+
+    // Wait for active config summary + remove button
+    await waitFor(() => {
+      expect(screen.getByText('settings.devWorkflow.activeConfiguration')).toBeInTheDocument();
+    });
+
     const removeBtn = screen.getByRole('button', { name: 'settings.devWorkflow.remove' });
     fireEvent.click(removeBtn);
 
-    // localStorage should be cleared
-    expect(localStorage.getItem('openhuman:dev-workflow-config')).toBeNull();
-    // Active config summary gone
-    expect(screen.queryByText('settings.devWorkflow.activeConfiguration')).toBeNull();
+    // Verify cron_remove was called
+    await waitFor(() => {
+      expect(hoisted.cronRemove).toHaveBeenCalledWith('cron-1');
+    });
   });
 
   test('shows branches fetched from upstream when fork is detected', async () => {
