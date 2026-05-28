@@ -34,7 +34,7 @@ use crate::rpc::RpcOutcome;
 
 use crate::openhuman::agent::harness::session::Agent;
 use crate::openhuman::agent::harness::subagent_runner::with_autonomous_iter_cap;
-use crate::openhuman::skills::{registry, run_log};
+use crate::openhuman::skills::{preflight, registry, run_log};
 
 /// Iteration cap for an autonomous skill run (orchestrator + sub-agents). High
 /// enough to "run until done", while the repeated-failure circuit breaker still
@@ -827,6 +827,77 @@ pub(crate) async fn spawn_skill_run_background(
             missing.join(", ")
         ));
     }
+
+    // ── Preflight gates ─────────────────────────────────────────────
+    // Run BEFORE the orchestrator is built so failures surface
+    // synchronously to the caller (skills_run RPC or the run_skill
+    // agent tool) instead of leaking through as cryptic orchestrator
+    // output. Today only the [github] gate exists; future gates can
+    // chain here.
+    if let Some(github_cfg) = skill.github.as_ref() {
+        let config_snapshot = match Config::load_or_init().await {
+            Ok(c) => c,
+            Err(e) => {
+                return Err(format!(
+                    "skill_run preflight: failed to load config to gate `{}`: {e:#}",
+                    skill.definition.id
+                ));
+            }
+        };
+        let probes = preflight::LivePreflightProbes::new(&config_snapshot);
+        if let Err(gate_err) =
+            preflight::run_github_preflight(Some(github_cfg), &probes).await
+        {
+            let tag = gate_err.tag();
+            // Materialise a run-log entry on disk so the gate failure
+            // shows up in `<workspace>/skills/.runs/` (and therefore
+            // in the FE's "Recent runs" list / log viewer) even though
+            // the orchestrator never booted. We write a header then a
+            // matching FAILED footer so `scan_runs` parses it cleanly.
+            let gate_run_id = uuid::Uuid::new_v4().to_string();
+            let gate_log_path =
+                run_log::run_log_path(&workspace, &skill.definition.id, &gate_run_id);
+            let body = gate_err.to_user_message(Some(&gate_log_path.display().to_string()));
+            let header_prompt = format!(
+                "preflight gate: github\n\
+                 gate decision: FAILED ({tag})\n\
+                 detail: {body}"
+            );
+            if let Err(e) = run_log::write_header(
+                &gate_log_path,
+                &skill.definition.id,
+                &gate_run_id,
+                &inputs,
+                &header_prompt,
+            )
+            .await
+            {
+                tracing::warn!(
+                    error = %e,
+                    "[skills] preflight gate: failed to write run-log header"
+                );
+            }
+            if let Err(e) = run_log::write_footer(&gate_log_path, "FAILED", 0, &body).await {
+                tracing::warn!(
+                    error = %e,
+                    "[skills] preflight gate: failed to write run-log footer"
+                );
+            }
+            tracing::warn!(
+                skill_id = %skill.definition.id,
+                gate = "github",
+                tag = %tag,
+                gate_log = %gate_log_path.display(),
+                "[skills] spawn_skill_run_background: preflight gate failed"
+            );
+            return Err(format!("[preflight:github:{tag}] {body}"));
+        }
+        tracing::info!(
+            skill_id = %skill.definition.id,
+            "[skills] spawn_skill_run_background: github preflight passed"
+        );
+    }
+
     // Focus the orchestrator on this single skill: its SKILL.md rides in
     // the task prompt as guidelines + the resolved inputs; the
     // orchestrator's own system prompt and full tool access are kept.
