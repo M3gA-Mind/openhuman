@@ -622,8 +622,36 @@ fn handle_skills_run(params: Map<String, Value>) -> ControllerFuture {
                 let ms = started.elapsed().as_millis() as u64;
                 match result {
                     Ok(out) => {
-                        let _ = run_log::write_footer(&log_path, "DONE", ms, &out).await;
-                        tracing::info!(run_id = %run_id, "[skills][rpc] skill_run: completed");
+                        // Reject the degenerate "model emitted the same
+                        // paragraph N times in one generation" final-response
+                        // failure mode (observed on runs adcd2dfd / 1bcb32a2
+                        // / dffae55d). Without this check the autonomous loop
+                        // accepts a no-tool-calls response as final and marks
+                        // the run DONE even though no actual work shipped.
+                        // Surface as DEGENERATE so callers never confuse it
+                        // with a real result.
+                        if let Some((line, count)) =
+                            run_log::detect_repeated_line(&out, 30, 4)
+                        {
+                            let preview = line.chars().take(160).collect::<String>();
+                            let body = format!(
+                                "degenerate-response: autonomous run halted before marking DONE.\n\
+                                 the model's final assistant message repeats the same line {count}× — \
+                                 this is the known one-generation low-entropy loop failure mode, not a real result.\n\n\
+                                 repeated line (truncated to 160 chars):\n  {preview}\n\n\
+                                 full final output follows below for forensic review:\n\n{out}",
+                            );
+                            let _ =
+                                run_log::write_footer(&log_path, "DEGENERATE", ms, &body).await;
+                            tracing::warn!(
+                                run_id = %run_id,
+                                repeats = count,
+                                "[skills][rpc] skill_run: degenerate final response rejected"
+                            );
+                        } else {
+                            let _ = run_log::write_footer(&log_path, "DONE", ms, &out).await;
+                            tracing::info!(run_id = %run_id, "[skills][rpc] skill_run: completed");
+                        }
                     }
                     Err(e) => {
                         let _ =

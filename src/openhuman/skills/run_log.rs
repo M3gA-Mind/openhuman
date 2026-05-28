@@ -186,6 +186,37 @@ pub async fn drain_to_log(mut rx: Receiver<AgentProgress>, path: PathBuf) {
     }
 }
 
+/// Detect the degenerate "model emitted the same paragraph many times in one
+/// generation" final-response failure mode we keep seeing on autonomous runs
+/// (e.g. `"Now I understand the structure..." × 23`, `"Good, the repo is
+/// cloned. Let me narrow down..." × 8`). When this fires we don't want the
+/// autonomous-skill path to mark the run `DONE` and have callers treat the
+/// degenerate text as a real result — we want it surfaced as `DEGENERATE` with
+/// the offending line attached, so the caller can retry / fail loud.
+///
+/// Splits on line boundaries (each repeat we've observed lands on its own
+/// line or paragraph), trims, counts non-trivial lines (`>= min_len` chars),
+/// and returns the most-repeated line if its count reaches `min_count`.
+pub fn detect_repeated_line(
+    text: &str,
+    min_len: usize,
+    min_count: usize,
+) -> Option<(String, usize)> {
+    use std::collections::HashMap;
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for line in text.lines() {
+        let t = line.trim();
+        if t.len() >= min_len {
+            *counts.entry(t).or_insert(0) += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .filter(|(_, c)| *c >= min_count)
+        .max_by_key(|(_, c)| *c)
+        .map(|(line, count)| (line.to_string(), count))
+}
+
 /// Final footer: status, duration, and the agent's final output text.
 pub async fn write_footer(
     path: &Path,
@@ -206,6 +237,42 @@ pub async fn write_footer(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn detect_repeated_line_catches_real_failure_modes() {
+        // The exact text shapes we observed in run adcd2dfd (×23) and
+        // dffae55d (×8). With defaults (min_len=30, min_count=4) both must
+        // trip and the worst offender is returned.
+        let adcd = std::iter::repeat(
+            "Now I understand the structure. The keys need to go into the chunk files.",
+        )
+        .take(23)
+        .collect::<Vec<_>>()
+        .join("\n");
+        let (line, n) = detect_repeated_line(&adcd, 30, 4).expect("must trip");
+        assert_eq!(n, 23);
+        assert!(line.contains("Now I understand the structure"));
+
+        let dffae = std::iter::repeat("Good, the repo is cloned. Let me narrow down the search.")
+            .take(8)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let (_, n2) = detect_repeated_line(&dffae, 30, 4).expect("must trip");
+        assert_eq!(n2, 8);
+    }
+
+    #[test]
+    fn detect_repeated_line_does_not_false_positive_on_legitimate_output() {
+        // Normal prose with each sentence on its own line and no repeats
+        // should not trip. Also short lines (`OK`, `Done`) under min_len
+        // must be ignored even when repeated, so a verbose log of "OK"
+        // markers doesn't look like degeneracy.
+        let prose = "First, I read the issue and identified the failing test.\n\
+                     Then I edited src/foo.rs to add a None-guard around the dereference.\n\
+                     Finally I ran cargo test -p foo and confirmed the fix.\n\
+                     OK\nOK\nOK\nOK\nOK\nOK\nOK\nOK";
+        assert!(detect_repeated_line(prose, 30, 4).is_none());
+    }
 
     #[test]
     fn log_path_is_under_runs_and_sanitised() {
