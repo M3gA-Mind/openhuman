@@ -792,24 +792,10 @@ pub async fn api_error(provider: &str, response: reqwest::Response) -> anyhow::E
     let is_context_window_exceeded = is_context_window_exceeded_message(&body);
 
     if is_auth_failure && is_backend {
-        tracing::warn!(
-            domain = "llm_provider",
-            operation = "api_error",
-            provider = provider,
-            status = status_str.as_str(),
-            "[llm_provider] backend auth failure ({status}) — publishing SessionExpired"
-        );
-        // `message` already embeds the sanitized body via
-        // `sanitize_api_error(&body)`, but the leading `{provider} API
-        // error ({status})` prefix and any caller-controlled provider
-        // name aren't scrubbed — re-run sanitize on the final string so
-        // the SessionExpired subscriber's logs never persist secrets.
-        crate::core::event_bus::publish_global(
-            crate::core::event_bus::DomainEvent::SessionExpired {
-                source: "llm_provider.openhuman_backend".to_string(),
-                reason: sanitize_api_error(&message),
-            },
-        );
+        // Single source of truth for backend session-expiry handling (warn +
+        // SessionExpired publish + final-string sanitize) — shared with the
+        // hand-rolled `chat_completions` chain in `compatible.rs`.
+        publish_backend_session_expired("api_error", provider, status, &message);
     } else if is_budget_exhausted_user_state {
         log_budget_exhausted_http_400("api_error", provider, None, status);
     } else if is_custom_openai_upstream_bad_request {
@@ -1914,23 +1900,30 @@ mod tests {
         init_global(1024);
         let mut rx = global().expect("event bus initialized").raw_receiver();
 
-        let msg =
-            r#"OpenHuman API error (401 Unauthorized): {"success":false,"error":"Invalid token"}"#;
+        // `TEST_MARKER_A` makes this event distinguishable from the sibling
+        // `chat_completions_backend_401_*` test's event on the shared global
+        // bus (both run in parallel against the same singleton). The `sk-`
+        // token probes that `sanitize_api_error` actually scrubs secrets out
+        // of the SessionExpired reason rather than just emitting the event.
+        let secret = "sk-LIVEA0123456789abcdefSECRET";
+        let msg = format!(
+            r#"OpenHuman API error (401 Unauthorized): {{"success":false,"error":"TEST_MARKER_A Invalid token {secret}"}}"#
+        );
         publish_backend_session_expired(
             "chat_completions",
             crate::openhuman::inference::provider::openhuman_backend::PROVIDER_LABEL,
             reqwest::StatusCode::UNAUTHORIZED,
-            msg,
+            &msg,
         );
 
-        let mut saw = false;
+        let mut reason_seen: Option<String> = None;
         loop {
             match rx.try_recv() {
                 Ok(DomainEvent::SessionExpired { source, reason }) => {
                     if source == "llm_provider.openhuman_backend"
-                        && reason.contains("Invalid token")
+                        && reason.contains("TEST_MARKER_A")
                     {
-                        saw = true;
+                        reason_seen = Some(reason);
                         break;
                     }
                 }
@@ -1939,9 +1932,16 @@ mod tests {
                 Err(_) => break,
             }
         }
+        let reason = reason_seen.expect(
+            "publish_backend_session_expired must emit SessionExpired(source=llm_provider.openhuman_backend) carrying TEST_MARKER_A",
+        );
         assert!(
-            saw,
-            "publish_backend_session_expired must emit SessionExpired(source=llm_provider.openhuman_backend)"
+            reason.contains("[REDACTED]"),
+            "sanitize_api_error must redact the sk- token in the reason: {reason}"
+        );
+        assert!(
+            !reason.contains(secret),
+            "raw secret must not survive into the SessionExpired reason: {reason}"
         );
     }
 
@@ -1959,9 +1959,16 @@ mod tests {
         let mut rx = global().expect("event bus initialized").raw_receiver();
 
         async fn unauthorized_handler() -> Response {
+            // `TEST_MARKER_B` distinguishes this event from the sibling
+            // `publish_backend_session_expired_*` test on the shared global
+            // bus; the `sk-` token probes end-to-end redaction through
+            // `api_error` → `publish_backend_session_expired`.
             (
                 StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({"success": false, "error": "Invalid token"})),
+                Json(serde_json::json!({
+                    "success": false,
+                    "error": "TEST_MARKER_B Invalid token sk-LIVEB9876543210fedcbaSECRET"
+                })),
             )
                 .into_response()
         }
@@ -1998,14 +2005,14 @@ mod tests {
             "error must carry the backend 401 envelope: {msg}"
         );
 
-        let mut saw = false;
+        let mut reason_seen: Option<String> = None;
         loop {
             match rx.try_recv() {
                 Ok(DomainEvent::SessionExpired { source, reason }) => {
                     if source == "llm_provider.openhuman_backend"
-                        && reason.contains("Invalid token")
+                        && reason.contains("TEST_MARKER_B")
                     {
-                        saw = true;
+                        reason_seen = Some(reason);
                         break;
                     }
                 }
@@ -2014,9 +2021,16 @@ mod tests {
                 Err(_) => break,
             }
         }
+        let reason = reason_seen.expect(
+            "backend 401 on chat_completions must publish SessionExpired carrying TEST_MARKER_B, not report to Sentry",
+        );
         assert!(
-            saw,
-            "backend 401 on chat_completions must publish SessionExpired, not report to Sentry"
+            reason.contains("[REDACTED]"),
+            "sanitize_api_error must redact the sk- token end-to-end: {reason}"
+        );
+        assert!(
+            !reason.contains("sk-LIVEB9876543210fedcbaSECRET"),
+            "raw secret must not survive into the SessionExpired reason: {reason}"
         );
     }
 }
