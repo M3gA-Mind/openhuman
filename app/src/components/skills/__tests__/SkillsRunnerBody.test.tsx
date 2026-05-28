@@ -79,6 +79,13 @@ vi.mock('../inputs/BranchPicker', () => ({
     />
   ),
 }));
+// SmartIssuePicker mounts Composio + needs the i18n context's `t` to
+// resolve a bunch of keys; we just stub the marker so the gating
+// assertion below is unambiguous (its internal behaviour has its own
+// unit coverage on the subcomponent itself).
+vi.mock('../SmartIssuePicker', () => ({
+  default: () => <div data-testid="smart-issue-picker-stub" />,
+}));
 
 // Mock data ──────────────────────────────────────────────────────────
 
@@ -350,3 +357,66 @@ describe('SkillsRunnerBody — per-job history viewer', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('SkillsRunnerBody — SmartIssuePicker conditional mount', () => {
+  beforeEach(() => {
+    Object.values(hoisted).forEach((fn) => fn.mockReset());
+    hoisted.recentRuns.mockResolvedValue([]);
+    hoisted.cronList.mockResolvedValue({ result: [] });
+    hoisted.cronRuns.mockResolvedValue({ result: { runs: [] } });
+  });
+
+  it('renders SmartIssuePicker when the picked skill is dev-workflow', async () => {
+    hoisted.listSkills.mockResolvedValue([{ id: 'dev-workflow', name: 'Dev Workflow' }]);
+    hoisted.describeSkill.mockResolvedValue({
+      id: 'dev-workflow',
+      name: 'Dev Workflow',
+      when_to_use: 'Autonomous developer.',
+      inputs: [
+        { name: 'repo', type: 'string', required: true, description: 'upstream repo' },
+        { name: 'upstream', type: 'string', required: true, description: 'upstream alias' },
+        { name: 'target_branch', type: 'string', required: true, description: 'PR base' },
+        { name: 'fork_owner', type: 'string', required: true, description: 'fork owner' },
+      ],
+    });
+
+    const Body = await importBody();
+    render(<Body />);
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+    const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'dev-workflow' } });
+
+    expect(await screen.findByTestId('smart-issue-picker-stub')).toBeInTheDocument();
+    // The four managed inputs should NOT appear as plain text fields
+    // — they're driven by the picker. We probe one of them.
+    expect(screen.queryByLabelText(/target_branch/)).not.toBeInTheDocument();
+  });
+
+  it('does NOT render SmartIssuePicker for generic skills', async () => {
+    hoisted.listSkills.mockResolvedValue([
+      { id: 'github-issue-crusher', name: 'GitHub Issue Crusher' },
+    ]);
+    hoisted.describeSkill.mockResolvedValue({
+      id: 'github-issue-crusher',
+      name: 'GitHub Issue Crusher',
+      when_to_use: 'Crush issues.',
+      inputs: [
+        { name: 'repo', type: 'string', required: true, description: 'repo' },
+        { name: 'issue_number', type: 'integer', required: true, description: 'issue' },
+      ],
+    });
+
+    const Body = await importBody();
+    render(<Body />);
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+    const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'github-issue-crusher' } });
+
+    await waitFor(() => expect(hoisted.describeSkill).toHaveBeenCalled());
+    expect(screen.queryByTestId('smart-issue-picker-stub')).not.toBeInTheDocument();
+    // The generic schema-driven repo field IS rendered via the
+    // existing RepoPicker stub.
+    expect(await screen.findByTestId('repo-picker-stub')).toBeInTheDocument();
+  });
+});
+

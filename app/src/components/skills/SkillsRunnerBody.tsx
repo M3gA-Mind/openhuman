@@ -36,6 +36,18 @@ import {
 } from '../../utils/tauriCommands/cron';
 import BranchPicker from './inputs/BranchPicker';
 import RepoPicker from './inputs/RepoPicker';
+import SmartIssuePicker from './SmartIssuePicker';
+
+// Skills that opt out of the generic schema-driven form for a curated
+// composite picker. Today only `dev-workflow` qualifies — its inputs
+// (repo, upstream, target_branch, fork_owner) all flow from a single
+// GitHub repo selection with fork detection.
+//
+// TODO(picker-schema): replace this hard-coded set with a schema-level
+// signal in `skill.toml` — e.g. `[[inputs]] picker = "github-issue"`.
+// See docs/skills-runner-unification.md open question 1.
+const SMART_PICKER_SKILL_IDS = new Set(['dev-workflow']);
+const SMART_PICKER_INPUT_NAMES = new Set(['repo', 'upstream', 'target_branch', 'fork_owner']);
 
 // Input-name conventions that trigger rich pickers instead of the
 // default text/number/checkbox controls. Skill authors who use these
@@ -865,11 +877,52 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
                   </p>
                 ) : (
                   <div className="space-y-4">
-                    {description.inputs.map((inp) =>
-                      renderField(inp, formValues[inp.name] ?? defaultForType(inp.type), (next) =>
-                        setFormValues((prev) => ({ ...prev, [inp.name]: next }))
-                      )
+                    {SMART_PICKER_SKILL_IDS.has(description.id) && (
+                      <SmartIssuePicker
+                        values={{
+                          repo:
+                            typeof formValues.repo === 'string' ? (formValues.repo as string) : '',
+                          upstream:
+                            typeof formValues.upstream === 'string'
+                              ? (formValues.upstream as string)
+                              : '',
+                          target_branch:
+                            typeof formValues.target_branch === 'string'
+                              ? (formValues.target_branch as string)
+                              : '',
+                          fork_owner:
+                            typeof formValues.fork_owner === 'string'
+                              ? (formValues.fork_owner as string)
+                              : '',
+                        }}
+                        onPatchInputs={(patch) =>
+                          setFormValues((prev) => ({ ...prev, ...patch }))
+                        }
+                      />
                     )}
+                    {description.inputs
+                      .filter((inp) => {
+                        // When the smart picker is mounted, hide the
+                        // inputs it manages — the picker already drives
+                        // them via onPatchInputs and the user shouldn't
+                        // see duplicate raw text fields for the same
+                        // values. Other (future) inputs render as
+                        // normal.
+                        if (
+                          SMART_PICKER_SKILL_IDS.has(description.id) &&
+                          SMART_PICKER_INPUT_NAMES.has(inp.name)
+                        ) {
+                          return false;
+                        }
+                        return true;
+                      })
+                      .map((inp) =>
+                        renderField(
+                          inp,
+                          formValues[inp.name] ?? defaultForType(inp.type),
+                          (next) => setFormValues((prev) => ({ ...prev, [inp.name]: next }))
+                        )
+                      )}
                   </div>
                 )}
 
