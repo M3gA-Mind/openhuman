@@ -23,7 +23,15 @@ const Routines = () => {
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<CoreCronJob[]>([]);
   const [runsByJob, setRunsByJob] = useState<Record<string, CoreCronRun[]>>({});
-  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [busyKeys, setBusyKeys] = useState<Set<string>>(new Set());
+
+  const addBusy = (key: string) => setBusyKeys(prev => new Set(prev).add(key));
+  const removeBusy = (key: string) =>
+    setBusyKeys(prev => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
 
   const loadJobs = useCallback(async () => {
     log('loading routines');
@@ -53,7 +61,7 @@ const Routines = () => {
 
   const handleToggle = async (job: CoreCronJob) => {
     const key = `toggle:${job.id}`;
-    setBusyKey(key);
+    addBusy(key);
     setError(null);
     try {
       const response = await openhumanCronUpdate(job.id, { enabled: !job.enabled });
@@ -63,13 +71,13 @@ const Routines = () => {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
     } finally {
-      setBusyKey(null);
+      removeBusy(key);
     }
   };
 
   const handleRunNow = async (jobId: string) => {
     const key = `run:${jobId}`;
-    setBusyKey(key);
+    addBusy(key);
     setError(null);
     try {
       await openhumanCronRun(jobId);
@@ -86,13 +94,13 @@ const Routines = () => {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
     } finally {
-      setBusyKey(null);
+      removeBusy(key);
     }
   };
 
   const handleLoadRuns = async (jobId: string) => {
     const key = `runs:${jobId}`;
-    setBusyKey(key);
+    addBusy(key);
     try {
       const runs = await openhumanCronRuns(jobId, 10);
       setRunsByJob(prev => ({ ...prev, [jobId]: runs.result }));
@@ -100,7 +108,7 @@ const Routines = () => {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
     } finally {
-      setBusyKey(null);
+      removeBusy(key);
     }
   };
 
@@ -182,7 +190,7 @@ const Routines = () => {
               key={job.id}
               job={job}
               runs={runsByJob[job.id] ?? []}
-              busyKey={busyKey}
+              busyKeys={busyKeys}
               onToggle={() => void handleToggle(job)}
               onRunNow={() => void handleRunNow(job.id)}
               onLoadRuns={() => void handleLoadRuns(job.id)}

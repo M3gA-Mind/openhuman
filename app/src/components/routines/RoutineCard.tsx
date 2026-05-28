@@ -6,18 +6,18 @@ import RoutineRunHistory from './RoutineRunHistory';
 interface RoutineCardProps {
   job: CoreCronJob;
   runs: CoreCronRun[];
-  busyKey: string | null;
+  busyKeys: Set<string>;
   onToggle: () => void;
   onRunNow: () => void;
   onLoadRuns: () => void;
 }
 
-const RoutineCard = ({ job, runs, busyKey, onToggle, onRunNow, onLoadRuns }: RoutineCardProps) => {
+const RoutineCard = ({ job, runs, busyKeys, onToggle, onRunNow, onLoadRuns }: RoutineCardProps) => {
   const { t } = useT();
 
-  const isToggling = busyKey === `toggle:${job.id}`;
-  const isRunning = busyKey === `run:${job.id}`;
-  const isLoadingRuns = busyKey === `runs:${job.id}`;
+  const isToggling = busyKeys.has(`toggle:${job.id}`);
+  const isRunning = busyKeys.has(`run:${job.id}`);
+  const isLoadingRuns = busyKeys.has(`runs:${job.id}`);
 
   const isSuccess = job.last_status === 'ok' || job.last_status === 'success';
   const isError = job.last_status === 'error';

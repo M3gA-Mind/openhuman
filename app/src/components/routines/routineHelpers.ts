@@ -1,5 +1,6 @@
 import type { CoreCronSchedule } from '../../utils/tauriCommands';
 
+/** Day names indexed by cron day-of-week (0 = Sunday). */
 const WEEKDAY_NAMES = [
   'Sunday',
   'Monday',
