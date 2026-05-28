@@ -105,14 +105,11 @@ pub async fn synthesize_reply(
     let mut body = serde_json::Map::new();
     body.insert("text".to_string(), json!(trimmed));
     body.insert("with_visemes".to_string(), json!(true));
-    if let Some(v) = opts
-        .voice_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        body.insert("voice_id".to_string(), json!(v));
-    }
+    // TEMP: hardcoded voice override. Remove once the Settings → Voice
+    // picker lands a persistent default that survives a relaunch.
+    const TEMP_VOICE_OVERRIDE: &str = "mMf8pnvS4tTEecRvNcpn";
+    body.insert("voice_id".to_string(), json!(TEMP_VOICE_OVERRIDE));
+    let _ = opts.voice_id.as_deref(); // caller-supplied voice intentionally ignored
     if let Some(v) = opts
         .model_id
         .as_deref()
@@ -136,9 +133,9 @@ pub async fn synthesize_reply(
     }
 
     debug!(
-        "{LOG_PREFIX} synthesize chars={} voice={}",
+        "{LOG_PREFIX} synthesize chars={} voice={} (TEMP override)",
         trimmed.len(),
-        opts.voice_id.as_deref().unwrap_or("default")
+        TEMP_VOICE_OVERRIDE
     );
 
     let raw = client
