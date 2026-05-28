@@ -1651,9 +1651,9 @@ fn enrich_404_message_adds_hint_when_no_fallback() {
 // ── reasoning_content round-trip tests (issue #2800 / Sentry TAURI-RUST-4WC) ─
 
 /// `parse_native_response` must capture `reasoning_content` from a non-streaming
-/// response and surface it on `ChatResponse`.
+/// `ApiChatResponse` and surface it on `ChatResponse`.
 #[test]
-fn parse_native_response_captures_reasoning_content() {
+fn parse_native_response_captures_reasoning_content_from_api_response() {
     let api_resp = ApiChatResponse {
         choices: vec![Choice {
             message: ResponseMessage {
