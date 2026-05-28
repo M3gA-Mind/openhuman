@@ -233,7 +233,7 @@ describe('DevWorkflowPanel', () => {
 
     // Click save
     const saveBtn = screen.getByRole('button', {
-      name: /settings\.devWorkflow\.(save|update)Configuration/,
+      name: /settings\.devWorkflow\.saveConfiguration/,
     });
     fireEvent.click(saveBtn);
 
@@ -502,7 +502,7 @@ describe('DevWorkflowPanel', () => {
     });
 
     const saveBtn = screen.getByRole('button', {
-      name: /settings\.devWorkflow\.(save|update)Configuration/,
+      name: /settings\.devWorkflow\.saveConfiguration/,
     });
     fireEvent.click(saveBtn);
 
@@ -888,7 +888,7 @@ describe('DevWorkflowPanel', () => {
     });
 
     const saveBtn = screen.getByRole('button', {
-      name: /settings\.devWorkflow\.(save|update)Configuration/,
+      name: /settings\.devWorkflow\.saveConfiguration/,
     });
     fireEvent.click(saveBtn);
 

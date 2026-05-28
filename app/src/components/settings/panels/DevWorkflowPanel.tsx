@@ -500,6 +500,9 @@ const DevWorkflowPanel = () => {
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
+                  role="switch"
+                  aria-checked={existingJob.enabled}
                   onClick={() => void handleToggle()}
                   className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${
                     existingJob.enabled ? 'bg-sage-500' : 'bg-neutral-300 dark:bg-neutral-600'
@@ -522,7 +525,7 @@ const DevWorkflowPanel = () => {
                 {t('settings.devWorkflow.activeConfigRepository')}
               </dt>
               <dd className="font-mono text-sage-900 dark:text-sage-200">
-                {existingJob.name?.replace('dev-workflow-', '').replace('-', '/') ?? '—'}
+                {existingJob.name?.replace(/^dev-workflow-/, '') ?? '—'}
               </dd>
               <dt className="text-sage-600 dark:text-sage-400">
                 {t('settings.devWorkflow.activeConfigSchedule')}
@@ -765,17 +768,8 @@ const DevWorkflowPanel = () => {
                   onClick={() => void handleSave()}
                   disabled={!canSave}
                   className="px-4 py-2 rounded-md bg-primary-600 hover:bg-primary-500 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                  {existingJob
-                    ? t('settings.devWorkflow.updateConfiguration')
-                    : t('settings.devWorkflow.saveConfiguration')}
+                  {t('settings.devWorkflow.saveConfiguration')}
                 </button>
-                {existingJob && (
-                  <button
-                    onClick={() => void handleRemove()}
-                    className="px-4 py-2 rounded-md bg-coral-600 hover:bg-coral-500 text-white text-sm font-medium transition-colors">
-                    {t('settings.devWorkflow.remove')}
-                  </button>
-                )}
                 {saveStatus === 'saved' && (
                   <span className="text-xs text-sage-600 dark:text-sage-400 font-medium">
                     {t('settings.devWorkflow.saved')}
