@@ -189,6 +189,7 @@ struct SkillsUninstallResult {
 pub fn all_skills_controller_schemas() -> Vec<ControllerSchema> {
     vec![
         skills_schemas("skills_list"),
+        skills_schemas("skills_describe"),
         skills_schemas("skills_read_resource"),
         skills_schemas("skills_create"),
         skills_schemas("skills_install_from_url"),
@@ -202,6 +203,10 @@ pub fn all_skills_registered_controllers() -> Vec<RegisteredController> {
         RegisteredController {
             schema: skills_schemas("skills_list"),
             handler: handle_skills_list,
+        },
+        RegisteredController {
+            schema: skills_schemas("skills_describe"),
+            handler: handle_skills_describe,
         },
         RegisteredController {
             schema: skills_schemas("skills_read_resource"),
@@ -430,6 +435,43 @@ pub fn skills_schemas(function: &str) -> ControllerSchema {
                 },
             ],
         },
+        "skills_describe" => ControllerSchema {
+            namespace: "skills",
+            function: "describe",
+            description: "Describe a single skill by id — returns its display name, summary, and the declared `[[inputs]]` block. Used by the Settings → Skills Runner panel to render dynamic input controls and let the user fill in the right fields before clicking Run Now or scheduling a cron. `skills_list` does NOT carry `inputs` (it stays the lightweight enumeration); call this once per skill the user picks.",
+            inputs: vec![FieldSchema {
+                name: "skill_id",
+                ty: TypeSchema::String,
+                comment: "Skill id from `skills_list` (e.g. \"github-issue-crusher\", \"pr-review-shepherd\", \"dev-workflow\").",
+                required: true,
+            }],
+            outputs: vec![
+                FieldSchema {
+                    name: "id",
+                    ty: TypeSchema::String,
+                    comment: "Echo of the resolved skill id.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "display_name",
+                    ty: TypeSchema::String,
+                    comment: "Human-friendly display name (falls back to the id when unset).",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "when_to_use",
+                    ty: TypeSchema::String,
+                    comment: "Short one-line summary from skill.toml `when_to_use` — what the skill does and when to pick it.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "inputs",
+                    ty: TypeSchema::String,
+                    comment: "JSON-encoded array of `[[inputs]]` entries; each entry: `{ name, description, required, type }`. Renderable as a dynamic form.",
+                    required: true,
+                },
+            ],
+        },
         "skills_uninstall" => ControllerSchema {
             namespace: "skills",
             function: "uninstall",
@@ -493,6 +535,72 @@ fn handle_skills_list(params: Map<String, Value>) -> ControllerFuture {
         let summaries = skills.into_iter().map(SkillSummary::from).collect();
         to_json(RpcOutcome::new(
             SkillsListResult { skills: summaries },
+            Vec::new(),
+        ))
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct SkillsDescribeParams {
+    skill_id: String,
+}
+
+/// One input declaration as serialised over the wire to the FE form
+/// renderer. Mirrors `registry::SkillInput` but with a fully-explicit
+/// `type` field (the FE renders different controls per kind) and stable
+/// JSON keys regardless of frontmatter casing.
+#[derive(serde::Serialize)]
+struct SkillInputDescription {
+    name: String,
+    description: String,
+    required: bool,
+    #[serde(rename = "type")]
+    kind: String,
+}
+
+#[derive(serde::Serialize)]
+struct SkillsDescribeResult {
+    id: String,
+    display_name: String,
+    when_to_use: String,
+    inputs: Vec<SkillInputDescription>,
+}
+
+/// `openhuman.skills_describe` — return a single skill's display metadata
+/// and its declared `[[inputs]]` so the Skills Runner panel can render
+/// the right form controls. `skills_list` deliberately stays the cheap
+/// enumeration without input declarations (its `Skill` source struct
+/// predates `[[inputs]]`); on the user picking one we fetch the full
+/// `SkillDefinition` (which carries inputs) and project the small,
+/// FE-shaped subset they need.
+fn handle_skills_describe(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let payload = deserialize_params::<SkillsDescribeParams>(params)?;
+        let workspace = resolve_workspace_dir().await;
+        let skill = registry::get_skill(&workspace, &payload.skill_id)
+            .ok_or_else(|| format!("skills_describe: unknown skill '{}'", payload.skill_id))?;
+        let inputs = skill
+            .inputs
+            .iter()
+            .map(|i| SkillInputDescription {
+                name: i.name.clone(),
+                description: i.description.clone(),
+                required: i.required,
+                kind: i.kind.clone().unwrap_or_else(|| "string".to_string()),
+            })
+            .collect();
+        let display_name = skill
+            .definition
+            .display_name
+            .clone()
+            .unwrap_or_else(|| skill.definition.id.clone());
+        to_json(RpcOutcome::new(
+            SkillsDescribeResult {
+                id: skill.definition.id.clone(),
+                display_name,
+                when_to_use: skill.definition.when_to_use.clone(),
+                inputs,
+            },
             Vec::new(),
         ))
     })
@@ -615,11 +723,9 @@ pub(crate) async fn spawn_skill_run_background(
             let bridge = tokio::spawn(run_log::drain_to_log(rx, log_path.clone()));
 
             let started = std::time::Instant::now();
-            let result = with_autonomous_iter_cap(
-                SKILL_RUN_MAX_ITERATIONS,
-                agent.run_single(&task_prompt),
-            )
-            .await;
+            let result =
+                with_autonomous_iter_cap(SKILL_RUN_MAX_ITERATIONS, agent.run_single(&task_prompt))
+                    .await;
             agent.set_on_progress(None);
             drop(agent);
             let _ = bridge.await;
@@ -648,8 +754,7 @@ pub(crate) async fn spawn_skill_run_background(
                     }
                 }
                 Err(e) => {
-                    let _ =
-                        run_log::write_footer(&log_path, "FAILED", ms, &format!("{e:#}")).await;
+                    let _ = run_log::write_footer(&log_path, "FAILED", ms, &format!("{e:#}")).await;
                     tracing::warn!(run_id = %run_id, error = ?e, "[skills] skill_run: failed");
                 }
             }
