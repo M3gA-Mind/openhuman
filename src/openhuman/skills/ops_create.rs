@@ -1,12 +1,47 @@
 //! Skill creation: scaffolding new SKILL.md-based skills on disk.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use super::ops_discover::{discover_skills_inner, is_workspace_trusted};
 use super::ops_types::{
     Skill, SkillScope, MAX_DESCRIPTION_LEN, MAX_NAME_LEN, RESOURCE_DIRS, SKILL_MD,
 };
+
+/// One declared `[[inputs]]` entry as supplied at create time by the
+/// Create-a-Skill form.
+///
+/// Wire shape (kebab-case-free, mirrors what
+/// `crate::openhuman::skills::registry::SkillInput` expects when the
+/// emitted `skill.toml` is parsed back at run time):
+///
+/// ```json
+/// { "name": "repo", "description": "owner/name", "required": true, "type": "string" }
+/// ```
+///
+/// `description` and `type` are optional; when omitted the on-disk
+/// `[[inputs]]` entry leaves them absent (the registry's
+/// `SkillInput` defaults already cover this — `description = ""`,
+/// `kind = None`). `required` defaults to `true` because that is the
+/// only sensible default for a user who bothered to add a row.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SkillCreateInputDef {
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default = "default_required")]
+    pub required: bool,
+    /// Type hint — accepted values are `"string"` (default), `"integer"`,
+    /// and `"boolean"`. The registry parser stores this verbatim in
+    /// `SkillInput.kind`; it is the Skills Runner that uses it to pick
+    /// the right form control (text / number / checkbox).
+    #[serde(default, rename = "type")]
+    pub type_: Option<String>,
+}
+
+fn default_required() -> bool {
+    true
+}
 
 /// Input for [`create_skill`]. Mirrors the `skills.create` JSON-RPC payload.
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -30,6 +65,12 @@ pub struct CreateSkillParams {
     /// Optional tool hints (written to frontmatter `allowed-tools`).
     #[serde(default, rename = "allowed-tools", alias = "allowed_tools")]
     pub allowed_tools: Vec<String>,
+    /// Declared `[[inputs]]` for the skill. When non-empty,
+    /// `create_skill_inner` writes a sibling `skill.toml` next to the
+    /// generated `SKILL.md` so the Skills Runner can render dynamic
+    /// form controls for the inputs at run time.
+    #[serde(default)]
+    pub inputs: Vec<SkillCreateInputDef>,
 }
 
 /// Scaffold a new SKILL.md-based skill on disk.

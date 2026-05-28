@@ -28,7 +28,7 @@ use crate::openhuman::config::Config;
 use crate::openhuman::skills::ops::{
     create_skill, discover_skills, install_skill_from_url, is_workspace_trusted,
     read_skill_resource, uninstall_skill, CreateSkillParams, InstallSkillFromUrlParams, Skill,
-    SkillScope, UninstallSkillParams,
+    SkillCreateInputDef, SkillScope, UninstallSkillParams,
 };
 use crate::rpc::RpcOutcome;
 
@@ -67,6 +67,14 @@ struct SkillsCreateParams {
     tags: Vec<String>,
     #[serde(default, rename = "allowed-tools", alias = "allowed_tools")]
     allowed_tools: Vec<String>,
+    /// Declared `[[inputs]]` entries supplied by the Create-a-Skill form.
+    /// Empty when the user added no rows; otherwise written into a sibling
+    /// `skill.toml` alongside `SKILL.md` so the Skills Runner can render
+    /// dynamic form controls at run time. Wire-shape per row:
+    /// `{ name, description?, required, type? }` — see
+    /// [`SkillCreateInputDef`] in `ops_create.rs`.
+    #[serde(default)]
+    inputs: Vec<SkillCreateInputDef>,
 }
 
 impl From<SkillsCreateParams> for CreateSkillParams {
@@ -79,6 +87,7 @@ impl From<SkillsCreateParams> for CreateSkillParams {
             author: p.author,
             tags: p.tags,
             allowed_tools: p.allowed_tools,
+            inputs: p.inputs,
         }
     }
 }
@@ -390,6 +399,12 @@ pub fn skills_schemas(function: &str) -> ControllerSchema {
                     name: "allowed_tools",
                     ty: TypeSchema::Array(Box::new(TypeSchema::String)),
                     comment: "Optional tool hints (maps to frontmatter.allowed-tools).",
+                    required: false,
+                },
+                FieldSchema {
+                    name: "inputs",
+                    ty: TypeSchema::Array(Box::new(TypeSchema::String)),
+                    comment: "Optional declared `[[inputs]]` entries (each `{ name, description, required, type }`). When non-empty, a sibling `skill.toml` is written alongside `SKILL.md` so the Skills Runner can render dynamic form controls at run time.",
                     required: false,
                 },
             ],
