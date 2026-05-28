@@ -155,11 +155,18 @@ impl<'de> Deserialize<'de> for Schedule {
                     },
                 }
 
-                let tagged = ScheduleTagged::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                let tagged =
+                    ScheduleTagged::deserialize(de::value::MapAccessDeserializer::new(map))?;
                 Ok(match tagged {
-                    ScheduleTagged::Cron { expr, tz, active_hours } => {
-                        Schedule::Cron { expr, tz, active_hours }
-                    }
+                    ScheduleTagged::Cron {
+                        expr,
+                        tz,
+                        active_hours,
+                    } => Schedule::Cron {
+                        expr,
+                        tz,
+                        active_hours,
+                    },
                     ScheduleTagged::At { at } => Schedule::At { at },
                     ScheduleTagged::Every { every_ms } => Schedule::Every { every_ms },
                 })
