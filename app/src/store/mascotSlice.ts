@@ -18,6 +18,11 @@ export const SUPPORTED_MASCOT_COLORS: readonly MascotColor[] = [
   'custom',
 ];
 
+export const SUPPORTED_PRESET_MASCOT_TYPES = ['openhuman', 'toshi'] as const;
+export type PresetMascotType = (typeof SUPPORTED_PRESET_MASCOT_TYPES)[number];
+export const DEFAULT_PRESET_MASCOT_TYPE: PresetMascotType = 'openhuman';
+
+
 export const DEFAULT_MASCOT_COLOR: MascotColor = 'yellow';
 
 export type MascotVoiceGender = 'male' | 'female';
@@ -126,6 +131,13 @@ export interface MascotState {
   customMascotGifUrl: string | null;
   customPrimaryColor: string;
   customSecondaryColor: string;
+  /**
+   * Which built-in mascot preset to use when no custom override
+   * (`customMascotGifUrl`, `selectedMascotId`) is active. Selecting a
+   * preset clears both overrides so the preset renders immediately.
+   * Defaults to 'openhuman' (the Rive-animated default).
+   */
+  presetMascotType: PresetMascotType;
 }
 
 const initialState: MascotState = {
@@ -137,6 +149,7 @@ const initialState: MascotState = {
   customMascotGifUrl: null,
   customPrimaryColor: '#F7D145',
   customSecondaryColor: '#B23C05',
+  presetMascotType: DEFAULT_PRESET_MASCOT_TYPE,
 };
 
 function isMascotColor(value: unknown): value is MascotColor {
@@ -216,6 +229,18 @@ const mascotSlice = createSlice({
     setCustomSecondaryColor(state, action: PayloadAction<string>) {
       state.customSecondaryColor = action.payload;
     },
+    /**
+     * Switch between built-in mascot presets. Selecting any preset clears
+     * `customMascotGifUrl` and `selectedMascotId` so the preset renders
+     * immediately without the user needing to clear those overrides first.
+     */
+    setPresetMascotType(state, action: PayloadAction<PresetMascotType>) {
+      if ((SUPPORTED_PRESET_MASCOT_TYPES as readonly string[]).includes(action.payload)) {
+        state.presetMascotType = action.payload;
+        state.customMascotGifUrl = null;
+        state.selectedMascotId = null;
+      }
+    },
   },
   extraReducers: builder => {
     builder.addCase(resetUserScopedState, () => initialState);
@@ -234,6 +259,7 @@ const mascotSlice = createSlice({
           customMascotGifUrl?: unknown;
           customPrimaryColor?: unknown;
           customSecondaryColor?: unknown;
+          presetMascotType?: unknown;
         };
       };
       if (rehydrateAction.key !== 'mascot') return;
@@ -279,6 +305,12 @@ const mascotSlice = createSlice({
       const rsc = rehydrateAction.payload?.customSecondaryColor;
       state.customSecondaryColor =
         typeof rsc === 'string' && rsc.length > 0 ? rsc : initialState.customSecondaryColor;
+      const rpt = rehydrateAction.payload?.presetMascotType;
+      state.presetMascotType =
+        rpt != null &&
+        (SUPPORTED_PRESET_MASCOT_TYPES as readonly string[]).includes(rpt as string)
+          ? (rpt as PresetMascotType)
+          : DEFAULT_PRESET_MASCOT_TYPE;
     });
   },
 });
@@ -292,6 +324,7 @@ export const {
   setCustomMascotGifUrl,
   setCustomPrimaryColor,
   setCustomSecondaryColor,
+  setPresetMascotType,
 } = mascotSlice.actions;
 
 export const selectMascotColor = (state: { mascot: MascotState }): MascotColor =>
@@ -317,6 +350,9 @@ export const selectCustomPrimaryColor = (state: { mascot: MascotState }): string
 
 export const selectCustomSecondaryColor = (state: { mascot: MascotState }): string =>
   state.mascot.customSecondaryColor;
+
+export const selectPresetMascotType = (state: { mascot: MascotState }): PresetMascotType =>
+  state.mascot.presetMascotType;
 
 /**
  * Resolve the voice id the next reply will be synthesised with, taking

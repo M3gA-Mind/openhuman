@@ -249,6 +249,9 @@ const id5: TranslationMap = {
   'settings.mascot.active': 'Aktif',
   'settings.mascot.characterDesc': 'Deskripsi karakter',
   'settings.mascot.characterHeading': 'Judul karakter',
+  'settings.mascot.character.presetsLabel': 'Desain maskot',
+  'settings.mascot.character.presetOpenhuman': 'OpenHuman',
+  'settings.mascot.character.presetToshi': 'Toshi',
   // TODO: translate custom GIF mascot strings.
   'settings.mascot.customGifError':
     'Masukkan HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL, atau jalur .gif lokal.',
@@ -279,6 +282,7 @@ const id5: TranslationMap = {
   'settings.mascot.voice.previewError': 'Pratinjau suara gagal',
   'settings.mascot.voice.previewing': 'Memuat pratinjau…',
   'settings.mascot.voice.reset': 'Atur ulang ke default',
+  'settings.mascot.voice.toshiLockedNotice': 'Toshi uses a dedicated voice',
   'settings.mascot.voice.useLocaleDefault': 'Cocokkan bahasa aplikasi',
   'settings.mascot.voice.useLocaleDefaultDesc':
     'Pilih otomatis suara untuk bahasa antarmuka saat ini.',

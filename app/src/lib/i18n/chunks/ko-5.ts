@@ -167,6 +167,9 @@ const ko5: TranslationMap = {
   'settings.mascot.active': '활성',
   'settings.mascot.characterDesc': '캐릭터 설명',
   'settings.mascot.characterHeading': '캐릭터 제목',
+  'settings.mascot.character.presetsLabel': '마스코트 디자인',
+  'settings.mascot.character.presetOpenhuman': 'OpenHuman',
+  'settings.mascot.character.presetToshi': 'Toshi',
   'settings.mascot.customGifError':
     'HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL 또는 로컬 .gif 경로를 입력하세요.',
   'settings.mascot.customGifHeading': '사용자 지정 GIF 아바타',
@@ -194,6 +197,7 @@ const ko5: TranslationMap = {
   'settings.mascot.voice.previewError': '음성 미리듣기 실패',
   'settings.mascot.voice.previewing': '미리듣는 중…',
   'settings.mascot.voice.reset': '기본값으로 초기화',
+  'settings.mascot.voice.toshiLockedNotice': 'Toshi uses a dedicated voice',
   'settings.mascot.voice.useLocaleDefault': '앱 언어와 일치',
   'settings.mascot.voice.useLocaleDefaultDesc':
     '현재 인터페이스 언어에 맞는 음성을 자동으로 선택합니다.',

@@ -249,6 +249,9 @@ const hi5: TranslationMap = {
   'settings.mascot.active': 'एक्टिव',
   'settings.mascot.characterDesc': 'कैरेक्टर विवरण',
   'settings.mascot.characterHeading': 'कैरेक्टर शीर्षक',
+  'settings.mascot.character.presetsLabel': 'मैस्कट डिज़ाइन',
+  'settings.mascot.character.presetOpenhuman': 'OpenHuman',
+  'settings.mascot.character.presetToshi': 'Toshi',
   // TODO: translate custom GIF mascot strings.
   'settings.mascot.customGifError':
     'एक HTTPS .gif URL, लूपबैक HTTP .gif URL, फ़ाइल:// .gif URL, या स्थानीय .gif पथ दर्ज करें।',
@@ -279,6 +282,7 @@ const hi5: TranslationMap = {
   'settings.mascot.voice.previewError': 'वॉइस पूर्वावलोकन विफल हुआ',
   'settings.mascot.voice.previewing': 'पूर्वावलोकन हो रहा है…',
   'settings.mascot.voice.reset': 'डिफ़ॉल्ट पर रीसेट करें',
+  'settings.mascot.voice.toshiLockedNotice': 'Toshi uses a dedicated voice',
   'settings.mascot.voice.useLocaleDefault': 'ऐप भाषा से मिलाएँ',
   'settings.mascot.voice.useLocaleDefaultDesc':
     'वर्तमान इंटरफ़ेस भाषा के लिए स्वचालित रूप से एक आवाज़ चुनें।',

@@ -249,6 +249,9 @@ const bn5: TranslationMap = {
   'settings.mascot.active': 'সক্রিয়',
   'settings.mascot.characterDesc': 'চরিত্রের বিবরণ',
   'settings.mascot.characterHeading': 'চরিত্রের শিরোনাম',
+  'settings.mascot.character.presetsLabel': 'মাসকট ডিজাইন',
+  'settings.mascot.character.presetOpenhuman': 'OpenHuman',
+  'settings.mascot.character.presetToshi': 'Toshi',
   // TODO: translate custom GIF mascot strings.
   'settings.mascot.customGifError':
     'একটি HTTPS .gif URL, লুপব্যাক HTTP .gif URL, file:// .gif URL, অথবা স্থানীয় .gif পাথ লিখুন।',
@@ -279,6 +282,7 @@ const bn5: TranslationMap = {
   'settings.mascot.voice.previewError': 'ভয়েস প্রিভিউ ব্যর্থ হয়েছে',
   'settings.mascot.voice.previewing': 'প্রিভিউ চলছে…',
   'settings.mascot.voice.reset': 'ডিফল্টে রিসেট করুন',
+  'settings.mascot.voice.toshiLockedNotice': 'Toshi uses a dedicated voice',
   'settings.mascot.voice.useLocaleDefault': 'অ্যাপের ভাষার সাথে মিলান',
   'settings.mascot.voice.useLocaleDefaultDesc':
     'বর্তমান ইন্টারফেস ভাষার জন্য স্বয়ংক্রিয়ভাবে একটি ভয়েস বেছে নিন।',

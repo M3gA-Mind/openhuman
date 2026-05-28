@@ -8,8 +8,16 @@ import {
   selectCustomPrimaryColor,
   selectCustomSecondaryColor,
   selectMascotColor,
+  selectPresetMascotType,
 } from '../../store/mascotSlice';
-import { CustomGifMascot, getMascotPalette, hexToArgbInt, RiveMascot } from './Mascot';
+import {
+  CustomGifMascot,
+  getMascotPalette,
+  hexToArgbInt,
+  RiveMascot,
+  shapeToVisemeId,
+  ToshiMascot,
+} from './Mascot';
 import { useHumanMascot } from './useHumanMascot';
 
 const SPEAK_REPLIES_KEY = 'human.speakReplies';
@@ -25,11 +33,13 @@ const HumanPage = () => {
     window.localStorage.setItem(SPEAK_REPLIES_KEY, speakReplies ? '1' : '0');
   }, [speakReplies]);
 
-  const { face } = useHumanMascot({ speakReplies });
+  const { face, viseme: visemeShape } = useHumanMascot({ speakReplies });
+  const visemeId = shapeToVisemeId(visemeShape);
   const mascotColor = useAppSelector(selectMascotColor);
   const customPrimary = useAppSelector(selectCustomPrimaryColor);
   const customSecondary = useAppSelector(selectCustomSecondaryColor);
   const customMascotGifUrl = useAppSelector(selectCustomMascotGifUrl);
+  const presetMascotType = useAppSelector(selectPresetMascotType);
   const palette = getMascotPalette(mascotColor);
   const primaryColor = useMemo(
     () => hexToArgbInt(mascotColor === 'custom' ? customPrimary : palette.bodyFill),
@@ -54,8 +64,15 @@ const HumanPage = () => {
         <div className="relative w-[min(80vh,90%)] aspect-square">
           {customMascotGifUrl ? (
             <CustomGifMascot src={customMascotGifUrl} face={face} />
+          ) : presetMascotType === 'toshi' ? (
+            <ToshiMascot face={face} viseme={visemeId} />
           ) : (
-            <RiveMascot face={face} primaryColor={primaryColor} secondaryColor={secondaryColor} />
+            <RiveMascot
+              face={face}
+              viseme={visemeId}
+              primaryColor={primaryColor}
+              secondaryColor={secondaryColor}
+            />
           )}
         </div>
       </div>

@@ -250,6 +250,9 @@ const ru5: TranslationMap = {
   'settings.mascot.active': 'Активно',
   'settings.mascot.characterDesc': 'Описание персонажа',
   'settings.mascot.characterHeading': 'Персонаж',
+  'settings.mascot.character.presetsLabel': 'Дизайн талисмана',
+  'settings.mascot.character.presetOpenhuman': 'OpenHuman',
+  'settings.mascot.character.presetToshi': 'Toshi',
   // TODO: translate custom GIF mascot strings.
   'settings.mascot.customGifError':
     'Введите HTTPS .gif URL, петлевой путь HTTP .gif URL, file:// .gif URL или локальный путь .gif.',
@@ -280,6 +283,7 @@ const ru5: TranslationMap = {
   'settings.mascot.voice.previewError': 'Не удалось воспроизвести предпросмотр голоса',
   'settings.mascot.voice.previewing': 'Воспроизведение предпросмотра…',
   'settings.mascot.voice.reset': 'Сбросить к значениям по умолчанию',
+  'settings.mascot.voice.toshiLockedNotice': 'Toshi uses a dedicated voice',
   'settings.mascot.voice.useLocaleDefault': 'Соответствовать языку приложения',
   'settings.mascot.voice.useLocaleDefaultDesc':
     'Автоматически выбрать голос для текущего языка интерфейса.',

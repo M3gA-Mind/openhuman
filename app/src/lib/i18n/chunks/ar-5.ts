@@ -243,6 +243,9 @@ const ar5: TranslationMap = {
   'settings.mascot.active': 'نشط',
   'settings.mascot.characterDesc': 'وصف الشخصية',
   'settings.mascot.characterHeading': 'عنوان الشخصية',
+  'settings.mascot.character.presetsLabel': 'تصميم المسكوت',
+  'settings.mascot.character.presetOpenhuman': 'OpenHuman',
+  'settings.mascot.character.presetToshi': 'Toshi',
   // TODO: translate custom GIF mascot strings.
   'settings.mascot.customGifError':
     'أدخل HTTPS .gif URL، أو الاسترجاع HTTP .gif URL، أو file:// .gif URL، أو مسار .gif المحلي.',
@@ -273,6 +276,7 @@ const ar5: TranslationMap = {
   'settings.mascot.voice.previewError': 'تعذّرت معاينة الصوت',
   'settings.mascot.voice.previewing': 'جاري المعاينة…',
   'settings.mascot.voice.reset': 'إعادة تعيين إلى الافتراضي',
+  'settings.mascot.voice.toshiLockedNotice': 'Toshi uses a dedicated voice',
   'settings.mascot.voice.useLocaleDefault': 'مطابقة لغة التطبيق',
   'settings.mascot.voice.useLocaleDefaultDesc': 'اختيار صوت تلقائياً للغة الواجهة الحالية.',
   'settings.memoryWindow.balanced.badge': 'موصى به',

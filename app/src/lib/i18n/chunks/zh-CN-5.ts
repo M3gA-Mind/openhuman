@@ -233,6 +233,9 @@ const zhCN5: TranslationMap = {
   'settings.mascot.active': '活跃',
   'settings.mascot.characterDesc': '选择你的 OpenHuman 角色',
   'settings.mascot.characterHeading': '角色',
+  'settings.mascot.character.presetsLabel': '吉祥物设计',
+  'settings.mascot.character.presetOpenhuman': 'OpenHuman',
+  'settings.mascot.character.presetToshi': 'Toshi',
   'settings.mascot.customGifError':
     '输入 HTTPS .gif 链接、本地回环 HTTP .gif 链接、file:// .gif 链接或本地 .gif 路径。',
   'settings.mascot.customGifHeading': '自定义 GIF 头像',
@@ -262,6 +265,7 @@ const zhCN5: TranslationMap = {
   'settings.mascot.voice.previewError': '声音试听失败',
   'settings.mascot.voice.previewing': '试听中…',
   'settings.mascot.voice.reset': '重置为默认值',
+  'settings.mascot.voice.toshiLockedNotice': 'Toshi uses a dedicated voice',
   'settings.mascot.voice.useLocaleDefault': '匹配应用语言',
   'settings.mascot.voice.useLocaleDefaultDesc': '为当前界面语言自动选择一个声音。',
   'settings.memoryWindow.balanced.badge': '推荐',

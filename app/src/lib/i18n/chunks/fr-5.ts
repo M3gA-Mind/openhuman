@@ -255,6 +255,9 @@ const fr5: TranslationMap = {
   'settings.mascot.active': 'Actif',
   'settings.mascot.characterDesc': 'Description du personnage',
   'settings.mascot.characterHeading': 'Titre du personnage',
+  'settings.mascot.character.presetsLabel': 'Design de mascotte',
+  'settings.mascot.character.presetOpenhuman': 'OpenHuman',
+  'settings.mascot.character.presetToshi': 'Toshi',
   // TODO: translate custom GIF mascot strings.
   'settings.mascot.customGifError':
     'Entrez un HTTPS .gif URL, un bouclage HTTP .gif URL, un fichier:// .gif URL ou un chemin local .gif.',
@@ -285,6 +288,7 @@ const fr5: TranslationMap = {
   'settings.mascot.voice.previewError': "Échec de l'aperçu de la voix",
   'settings.mascot.voice.previewing': 'Aperçu en cours…',
   'settings.mascot.voice.reset': 'Réinitialiser à la valeur par défaut',
+  'settings.mascot.voice.toshiLockedNotice': 'Toshi uses a dedicated voice',
   'settings.mascot.voice.useLocaleDefault': "Faire correspondre à la langue de l'application",
   'settings.mascot.voice.useLocaleDefaultDesc':
     "Choisir automatiquement une voix pour la langue de l'interface actuelle.",

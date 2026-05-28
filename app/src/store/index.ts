@@ -139,7 +139,7 @@ const persistedThreadReducer = persistReducer(threadPersistConfig, threadReducer
 const mascotPersistConfig = {
   key: 'mascot',
   storage,
-  whitelist: ['color', 'voiceId', 'customMascotGifUrl'],
+  whitelist: ['color', 'voiceId', 'customMascotGifUrl', 'presetMascotType'],
 };
 const persistedMascotReducer = persistReducer(mascotPersistConfig, mascotReducer);
 

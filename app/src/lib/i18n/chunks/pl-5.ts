@@ -305,6 +305,9 @@ const pl5: TranslationMap = {
   'settings.mascot.active': 'Aktywny',
   'settings.mascot.characterDesc': 'Wybierz charakter maskotki OpenHuman.',
   'settings.mascot.characterHeading': 'Charakter',
+  'settings.mascot.character.presetsLabel': 'Projekt maskotki',
+  'settings.mascot.character.presetOpenhuman': 'OpenHuman',
+  'settings.mascot.character.presetToshi': 'Toshi',
   'settings.mascot.customGifError':
     'Wprowadź URL .gif HTTPS, URL .gif loopback HTTP, URL file:// .gif lub lokalną ścieżkę .gif.',
   'settings.mascot.customGifHeading': 'Własny awatar GIF',
@@ -334,6 +337,7 @@ const pl5: TranslationMap = {
   'settings.mascot.voice.previewError': 'Podgląd głosu nie powiódł się',
   'settings.mascot.voice.previewing': 'Odsłuchiwanie…',
   'settings.mascot.voice.reset': 'Przywróć domyślny',
+  'settings.mascot.voice.toshiLockedNotice': 'Toshi uses a dedicated voice',
   'settings.mascot.voice.useLocaleDefault': 'Dopasuj do języka aplikacji',
   'settings.mascot.voice.useLocaleDefaultDesc':
     'Automatyczny dobór głosu do bieżącego języka interfejsu.',

@@ -264,6 +264,9 @@ const de5: TranslationMap = {
   'settings.mascot.active': 'Aktiv',
   'settings.mascot.characterDesc': 'Charakterbeschreibung',
   'settings.mascot.characterHeading': 'Zeichenüberschrift',
+  'settings.mascot.character.presetsLabel': 'Maskottchen-Design',
+  'settings.mascot.character.presetOpenhuman': 'OpenHuman',
+  'settings.mascot.character.presetToshi': 'Toshi',
   'settings.mascot.customGifError':
     'GIF konnte nicht geladen werden. Bitte überprüfe die URL und versuche es erneut.',
   'settings.mascot.customGifHeading': 'Benutzerdefinierter GIF-Avatar',
@@ -294,6 +297,7 @@ const de5: TranslationMap = {
   'settings.mascot.voice.previewError': 'Die Sprachvorschau ist fehlgeschlagen',
   'settings.mascot.voice.previewing': 'Vorschau...',
   'settings.mascot.voice.reset': 'Auf Standard zurücksetzen',
+  'settings.mascot.voice.toshiLockedNotice': 'Toshi uses a dedicated voice',
   'settings.mascot.voice.useLocaleDefault': 'Passe die App-Sprache an',
   'settings.mascot.voice.useLocaleDefaultDesc':
     'Wähle automatisch eine Stimme für die aktuelle Schnittstellensprache aus.',

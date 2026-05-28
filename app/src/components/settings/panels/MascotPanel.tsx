@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { CustomGifMascot, RiveMascot } from '../../../features/human/Mascot';
+import { CustomGifMascot, RiveMascot, ToshiMascot } from '../../../features/human/Mascot';
 import { BackendMascot } from '../../../features/human/Mascot/backend/BackendMascot';
 import type { MascotDetail, MascotSummary } from '../../../features/human/Mascot/backend/types';
 import {
@@ -16,6 +16,7 @@ import {
   DEFAULT_MASCOT_COLOR,
   isCustomMascotGifUrl,
   type MascotVoiceGender,
+  type PresetMascotType,
   selectCustomMascotGifUrl,
   selectCustomPrimaryColor,
   selectCustomSecondaryColor,
@@ -24,6 +25,7 @@ import {
   selectMascotVoiceGender,
   selectMascotVoiceId,
   selectMascotVoiceUseLocaleDefault,
+  selectPresetMascotType,
   selectSelectedMascotId,
   setCustomMascotGifUrl,
   setCustomPrimaryColor,
@@ -32,6 +34,7 @@ import {
   setMascotVoiceGender,
   setMascotVoiceId,
   setMascotVoiceUseLocaleDefault,
+  setPresetMascotType,
   setSelectedMascotId,
   SUPPORTED_MASCOT_COLORS,
 } from '../../../store/mascotSlice';
@@ -67,6 +70,7 @@ const MascotPanel = () => {
   const customSecondary = useAppSelector(selectCustomSecondaryColor);
   const selectedMascotId = useAppSelector(selectSelectedMascotId);
   const customMascotGifUrl = useAppSelector(selectCustomMascotGifUrl);
+  const presetMascotType = useAppSelector(selectPresetMascotType);
   const storedVoiceId = useAppSelector(selectMascotVoiceId);
   const voiceGender = useAppSelector(selectMascotVoiceGender);
   const useLocaleDefault = useAppSelector(selectMascotVoiceUseLocaleDefault);
@@ -149,6 +153,12 @@ const MascotPanel = () => {
       }
     };
   }, []);
+
+  const handleSelectPreset = (type: PresetMascotType) => {
+    dispatch(setPresetMascotType(type));
+    setCustomGifDraft('');
+    setCustomGifError(null);
+  };
 
   const handleSelectBackend = (id: string | null) => {
     dispatch(setSelectedMascotId(id));
@@ -291,7 +301,8 @@ const MascotPanel = () => {
   };
 
   const localeDefaultVoiceId = defaultVoiceIdForLocale(locale, voiceGender);
-  const presetPickerDisabled = useLocaleDefault;
+  const isToshiActive = presetMascotType === 'toshi' && !customMascotGifUrl && !selectedMascotId;
+  const presetPickerDisabled = useLocaleDefault || isToshiActive;
   const isCustomVoice =
     !presetPickerDisabled && (voicePasteMode || !isCuratedVoicePreset(effectiveVoiceId));
   const visibleActiveDetail = selectedMascotId ? activeDetail : null;
@@ -422,7 +433,13 @@ const MascotPanel = () => {
           <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500 mb-2 px-1">
             {t('settings.mascot.voice.heading')}
           </h3>
-          <div className="bg-white dark:bg-neutral-900 rounded-xl border border-stone-200 dark:border-neutral-800 p-4 space-y-4">
+          {isToshiActive && (
+            <p className="mb-2 px-1 text-xs text-stone-500 dark:text-neutral-400">
+              {t('settings.mascot.voice.toshiLockedNotice')}
+            </p>
+          )}
+          <div
+            className={`bg-white dark:bg-neutral-900 rounded-xl border border-stone-200 dark:border-neutral-800 p-4 space-y-4${isToshiActive ? ' opacity-50 pointer-events-none select-none' : ''}`}>
             <div
               role="radiogroup"
               aria-label={t('settings.mascot.voice.genderHeading')}
@@ -566,6 +583,58 @@ const MascotPanel = () => {
           <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-neutral-500 mb-2 px-1">
             {t('settings.mascot.characterHeading')}
           </h3>
+
+          {/* Built-in preset tiles */}
+          <div className="mb-3 bg-white dark:bg-neutral-900 rounded-xl border border-stone-200 dark:border-neutral-800 p-4">
+            <span className="text-xs font-medium text-stone-600 dark:text-neutral-300 block mb-3">
+              {t('settings.mascot.character.presetsLabel')}
+            </span>
+            <div
+              className="grid grid-cols-2 gap-3"
+              role="radiogroup"
+              aria-label={t('settings.mascot.character.presetsLabel')}>
+              {(
+                [
+                  { id: 'openhuman', labelKey: 'settings.mascot.character.presetOpenhuman' },
+                  { id: 'toshi', labelKey: 'settings.mascot.character.presetToshi' },
+                ] as { id: PresetMascotType; labelKey: string }[]
+              ).map(preset => {
+                const isActive =
+                  preset.id === presetMascotType && !customMascotGifUrl && !selectedMascotId;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    data-testid={`mascot-preset-${preset.id}`}
+                    onClick={() => handleSelectPreset(preset.id)}
+                    className={`flex flex-col items-center gap-2 rounded-xl border-2 p-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+                      isActive
+                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-500/10'
+                        : 'border-stone-200 dark:border-neutral-800 hover:border-stone-300 dark:hover:border-neutral-700 bg-stone-50 dark:bg-neutral-800/60'
+                    }`}>
+                    <div className="w-16 h-16 flex items-center justify-center">
+                      {preset.id === 'openhuman' ? (
+                        <RiveMascot
+                          face="idle"
+                          size={64}
+                          primaryColor={primaryColorArgb}
+                          secondaryColor={secondaryColorArgb}
+                        />
+                      ) : (
+                        <ToshiMascot face="idle" />
+                      )}
+                    </div>
+                    <span className="text-xs font-medium text-stone-700 dark:text-neutral-200">
+                      {t(preset.labelKey)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="mb-3 bg-white dark:bg-neutral-900 rounded-xl border border-stone-200 dark:border-neutral-800 p-4 space-y-3">
             <label className="block space-y-1">
               <span className="text-xs font-medium text-stone-600 dark:text-neutral-300">

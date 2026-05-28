@@ -1,10 +1,12 @@
+export { ToshiMascot, TOSHI_RIV_SRC } from './ToshiMascot';
+export type { ToshiMascotProps } from './ToshiMascot';
 export { Ghosty } from './Ghosty';
 export type { GhostyProps, MascotFace } from './Ghosty';
 export { CustomGifMascot } from './CustomGifMascot';
 export type { CustomGifMascotProps } from './CustomGifMascot';
-export { RiveMascot } from './RiveMascot';
+export { RiveMascot, OPENHUMAN_RIV_SRC } from './RiveMascot';
 export type { RiveMascotProps } from './RiveMascot';
-export { lerpViseme, VISEMES, visemePath } from './visemes';
+export { lerpViseme, shapeToVisemeId, VISEMES, visemePath } from './visemes';
 export type { VisemeId, VisemeShape } from './visemes';
 export { getMascotPalette, hexToArgbInt } from './mascotPalette';
 export type { MascotColor, MascotPalette } from './mascotPalette';

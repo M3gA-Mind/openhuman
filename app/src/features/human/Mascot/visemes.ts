@@ -28,6 +28,25 @@ export const VISEMES: Record<VisemeId, VisemeShape> = {
 
 export const REST_SMILE_PATH = 'M478,570 Q520,617 562,570 Q520,597 478,570 Z';
 
+/**
+ * Snap a (possibly lerped) VisemeShape to the nearest discrete VisemeId using
+ * Euclidean distance in (openness, width) space. Used by Rive mascots that
+ * drive mouth poses via integer indices rather than continuous shapes.
+ */
+export function shapeToVisemeId(shape: VisemeShape): VisemeId {
+  let best: VisemeId = 'REST';
+  let bestDist = Infinity;
+  for (const id of Object.keys(VISEMES) as VisemeId[]) {
+    const s = VISEMES[id];
+    const d = (shape.openness - s.openness) ** 2 + (shape.width - s.width) ** 2;
+    if (d < bestDist) {
+      bestDist = d;
+      best = id;
+    }
+  }
+  return best;
+}
+
 /** Linear interpolation between two viseme shapes. */
 export function lerpViseme(a: VisemeShape, b: VisemeShape, t: number): VisemeShape {
   const k = Math.max(0, Math.min(1, t));

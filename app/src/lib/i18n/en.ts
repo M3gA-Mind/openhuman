@@ -3216,6 +3216,9 @@ const en: TranslationMap = {
   'settings.mascot.active': 'Active',
   'settings.mascot.characterDesc': 'Choose your OpenHuman character.',
   'settings.mascot.characterHeading': 'Character',
+  'settings.mascot.character.presetsLabel': 'Mascot design',
+  'settings.mascot.character.presetOpenhuman': 'OpenHuman',
+  'settings.mascot.character.presetToshi': 'Toshi',
   'settings.mascot.customGifError':
     'Enter an HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL, or local .gif path.',
   'settings.mascot.customGifHeading': 'Custom GIF avatar',
@@ -3263,6 +3266,7 @@ const en: TranslationMap = {
   'settings.mascot.voice.previewText': "Hi, I'm your assistant. This is a voice preview.",
   'settings.mascot.voice.previewing': 'Previewing…',
   'settings.mascot.voice.reset': 'Reset to default',
+  'settings.mascot.voice.toshiLockedNotice': 'Toshi uses a dedicated voice',
   'settings.mascot.voice.useLocaleDefault': 'Match the app language',
   'settings.mascot.voice.useLocaleDefaultDesc':
     'Auto-pick a voice for the current interface language.',
