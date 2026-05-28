@@ -469,6 +469,163 @@ const DevWorkflowPanel = () => {
           {t('settings.developerMenu.devWorkflow.panelDesc')}
         </p>
 
+        {/* Active config summary — shown at top regardless of repo loading */}
+        {cronLoading && (
+          <div className="text-xs text-neutral-500 dark:text-neutral-400">
+            {t('settings.devWorkflow.loadingRepositories')}
+          </div>
+        )}
+        {existingJob && (
+          <div className="px-4 py-3 rounded-lg border border-sage-200 dark:border-sage-500/30 bg-sage-50 dark:bg-sage-500/10">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-sage-900 dark:text-sage-200">
+                {t('settings.devWorkflow.activeConfiguration')}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => void handleToggle()}
+                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${
+                    existingJob.enabled ? 'bg-sage-500' : 'bg-neutral-300 dark:bg-neutral-600'
+                  }`}>
+                  <span
+                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
+                      existingJob.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
+                <span className="text-xs text-sage-600 dark:text-sage-400">
+                  {existingJob.enabled
+                    ? t('settings.devWorkflow.enabled')
+                    : t('settings.devWorkflow.paused')}
+                </span>
+              </div>
+            </div>
+            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+              <dt className="text-sage-600 dark:text-sage-400">
+                {t('settings.devWorkflow.activeConfigRepository')}
+              </dt>
+              <dd className="font-mono text-sage-900 dark:text-sage-200">
+                {existingJob.name?.replace('dev-workflow-', '').replace('-', '/') ?? '—'}
+              </dd>
+              <dt className="text-sage-600 dark:text-sage-400">
+                {t('settings.devWorkflow.activeConfigSchedule')}
+              </dt>
+              <dd className="text-sage-900 dark:text-sage-200">
+                {SCHEDULE_PRESETS.find(p => p.value === existingJob.expression)
+                  ? t(SCHEDULE_PRESETS.find(p => p.value === existingJob.expression)!.labelKey)
+                  : existingJob.expression}
+              </dd>
+              <dt className="text-sage-600 dark:text-sage-400">
+                {t('settings.devWorkflow.nextRun')}
+              </dt>
+              <dd className="text-sage-900 dark:text-sage-200">
+                {existingJob.next_run ? new Date(existingJob.next_run).toLocaleString() : '—'}
+              </dd>
+              {existingJob.last_run && (
+                <>
+                  <dt className="text-sage-600 dark:text-sage-400">
+                    {t('settings.devWorkflow.lastRun')}
+                  </dt>
+                  <dd className="text-sage-900 dark:text-sage-200">
+                    {new Date(existingJob.last_run).toLocaleString()}
+                    {existingJob.last_status && (
+                      <span
+                        className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                          existingJob.last_status === 'ok'
+                            ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
+                            : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300'
+                        }`}>
+                        {existingJob.last_status}
+                      </span>
+                    )}
+                  </dd>
+                </>
+              )}
+            </dl>
+
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={() => void handleRunNow()}
+                disabled={running}
+                className="px-3 py-1.5 rounded-md bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-300 text-xs font-medium hover:bg-primary-200 dark:hover:bg-primary-500/30 transition-colors disabled:opacity-50">
+                {running ? t('settings.devWorkflow.running') : t('settings.devWorkflow.runNow')}
+              </button>
+              <button
+                onClick={() => void handleRemove()}
+                className="px-3 py-1.5 rounded-md bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300 text-xs font-medium hover:bg-coral-200 dark:hover:bg-coral-500/30 transition-colors">
+                {t('settings.devWorkflow.remove')}
+              </button>
+            </div>
+
+            {existingJob.last_output && (
+              <div className="mt-3">
+                <div className="text-xs font-medium text-sage-600 dark:text-sage-400 mb-1">
+                  {t('settings.devWorkflow.lastOutput')}
+                </div>
+                <pre className="px-3 py-2 rounded-md bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-[11px] text-neutral-700 dark:text-neutral-300 font-mono whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                  {existingJob.last_output}
+                </pre>
+              </div>
+            )}
+
+            {runHistory.length > 0 && (
+              <div className="mt-3">
+                <button
+                  onClick={() => setHistoryExpanded(!historyExpanded)}
+                  className="text-xs text-sage-600 dark:text-sage-400 hover:text-sage-800 dark:hover:text-sage-200 transition-colors">
+                  {historyExpanded ? '▾' : '▸'} {t('settings.devWorkflow.recentRuns')} (
+                  {runHistory.length})
+                </button>
+                {historyExpanded && (
+                  <div className="mt-1.5 space-y-1">
+                    {runHistory.map(run => (
+                      <div key={run.id} className="rounded bg-white dark:bg-neutral-800">
+                        <button
+                          onClick={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
+                          className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-neutral-50 dark:hover:bg-neutral-750 rounded transition-colors">
+                          <div className="flex items-center gap-2">
+                            <span className="text-neutral-400">
+                              {expandedRunId === run.id ? '▾' : '▸'}
+                            </span>
+                            <span className="text-neutral-600 dark:text-neutral-400">
+                              {new Date(run.started_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {run.duration_ms != null && (
+                              <span className="text-neutral-500 dark:text-neutral-500">
+                                {(run.duration_ms / 1000).toFixed(1)}s
+                              </span>
+                            )}
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                run.status === 'ok'
+                                  ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
+                                  : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300'
+                              }`}>
+                              {run.status}
+                            </span>
+                          </div>
+                        </button>
+                        {expandedRunId === run.id && run.output && (
+                          <pre className="mx-2 mb-2 px-3 py-2 rounded-md bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-[11px] text-neutral-700 dark:text-neutral-300 font-mono whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+                            {run.output}
+                          </pre>
+                        )}
+                        {expandedRunId === run.id && !run.output && (
+                          <div className="mx-2 mb-2 px-3 py-2 text-[11px] text-neutral-400 dark:text-neutral-500 italic">
+                            {t('settings.devWorkflow.noOutput')}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Repo selector */}
         <div>
           <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
@@ -609,154 +766,6 @@ const DevWorkflowPanel = () => {
               <span className="text-xs text-coral-600 dark:text-coral-400 font-medium">
                 {t('settings.devWorkflow.cronSaveError')}
               </span>
-            )}
-          </div>
-        )}
-
-        {/* Active config summary — cron job status */}
-        {cronLoading && (
-          <div className="text-xs text-neutral-500 dark:text-neutral-400">
-            {t('settings.devWorkflow.loadingRepositories')}
-          </div>
-        )}
-        {existingJob && (
-          <div className="mt-2 px-4 py-3 rounded-lg border border-sage-200 dark:border-sage-500/30 bg-sage-50 dark:bg-sage-500/10">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold text-sage-900 dark:text-sage-200">
-                {t('settings.devWorkflow.activeConfiguration')}
-              </div>
-              <div className="flex items-center gap-2">
-                {/* Enable/Disable toggle */}
-                <button
-                  onClick={() => void handleToggle()}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${
-                    existingJob.enabled ? 'bg-sage-500' : 'bg-neutral-300 dark:bg-neutral-600'
-                  }`}>
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
-                      existingJob.enabled ? 'translate-x-4' : 'translate-x-0.5'
-                    }`}
-                  />
-                </button>
-                <span className="text-xs text-sage-600 dark:text-sage-400">
-                  {existingJob.enabled
-                    ? t('settings.devWorkflow.enabled')
-                    : t('settings.devWorkflow.paused')}
-                </span>
-              </div>
-            </div>
-            <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-              <dt className="text-sage-600 dark:text-sage-400">
-                {t('settings.devWorkflow.activeConfigRepository')}
-              </dt>
-              <dd className="font-mono text-sage-900 dark:text-sage-200">
-                {existingJob.name?.replace('dev-workflow-', '').replace('-', '/') ?? '—'}
-              </dd>
-              <dt className="text-sage-600 dark:text-sage-400">
-                {t('settings.devWorkflow.nextRun')}
-              </dt>
-              <dd className="text-sage-900 dark:text-sage-200">
-                {existingJob.next_run ? new Date(existingJob.next_run).toLocaleString() : '—'}
-              </dd>
-              {existingJob.last_run && (
-                <>
-                  <dt className="text-sage-600 dark:text-sage-400">
-                    {t('settings.devWorkflow.lastRun')}
-                  </dt>
-                  <dd className="text-sage-900 dark:text-sage-200">
-                    {new Date(existingJob.last_run).toLocaleString()}
-                    {existingJob.last_status && (
-                      <span
-                        className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                          existingJob.last_status === 'ok'
-                            ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
-                            : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300'
-                        }`}>
-                        {existingJob.last_status}
-                      </span>
-                    )}
-                  </dd>
-                </>
-              )}
-            </dl>
-
-            {/* Run Now button */}
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                onClick={() => void handleRunNow()}
-                disabled={running}
-                className="px-3 py-1.5 rounded-md bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-300 text-xs font-medium hover:bg-primary-200 dark:hover:bg-primary-500/30 transition-colors disabled:opacity-50">
-                {running ? t('settings.devWorkflow.running') : t('settings.devWorkflow.runNow')}
-              </button>
-            </div>
-
-            {/* Last output */}
-            {existingJob.last_output && (
-              <div className="mt-3">
-                <div className="text-xs font-medium text-sage-600 dark:text-sage-400 mb-1">
-                  {t('settings.devWorkflow.lastOutput')}
-                </div>
-                <pre className="px-3 py-2 rounded-md bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-[11px] text-neutral-700 dark:text-neutral-300 font-mono whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
-                  {existingJob.last_output}
-                </pre>
-              </div>
-            )}
-
-            {/* Run History */}
-            {runHistory.length > 0 && (
-              <div className="mt-3">
-                <button
-                  onClick={() => setHistoryExpanded(!historyExpanded)}
-                  className="text-xs text-sage-600 dark:text-sage-400 hover:text-sage-800 dark:hover:text-sage-200 transition-colors">
-                  {historyExpanded ? '▾' : '▸'} {t('settings.devWorkflow.recentRuns')} (
-                  {runHistory.length})
-                </button>
-                {historyExpanded && (
-                  <div className="mt-1.5 space-y-1">
-                    {runHistory.map(run => (
-                      <div key={run.id} className="rounded bg-white dark:bg-neutral-800">
-                        <button
-                          onClick={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
-                          className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-neutral-50 dark:hover:bg-neutral-750 rounded transition-colors">
-                          <div className="flex items-center gap-2">
-                            <span className="text-neutral-400">
-                              {expandedRunId === run.id ? '▾' : '▸'}
-                            </span>
-                            <span className="text-neutral-600 dark:text-neutral-400">
-                              {new Date(run.started_at).toLocaleString()}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {run.duration_ms != null && (
-                              <span className="text-neutral-500 dark:text-neutral-500">
-                                {(run.duration_ms / 1000).toFixed(1)}s
-                              </span>
-                            )}
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                                run.status === 'ok'
-                                  ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
-                                  : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300'
-                              }`}>
-                              {run.status}
-                            </span>
-                          </div>
-                        </button>
-                        {expandedRunId === run.id && run.output && (
-                          <pre className="mx-2 mb-2 px-3 py-2 rounded-md bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-[11px] text-neutral-700 dark:text-neutral-300 font-mono whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
-                            {run.output}
-                          </pre>
-                        )}
-                        {expandedRunId === run.id && !run.output && (
-                          <div className="mx-2 mb-2 px-3 py-2 text-[11px] text-neutral-400 dark:text-neutral-500 italic">
-                            {t('settings.devWorkflow.noOutput')}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             )}
           </div>
         )}
