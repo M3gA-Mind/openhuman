@@ -8,7 +8,7 @@ The repo and issue are **given**. Do **not**:
 - create gists, send email, or use **any non-GitHub integration** (Gmail, Drive, etc.);
 - create repositories or touch anything outside fixing `#{issue}`.
 
-Go straight: read the issue → ensure fork → clone → pin git identity → edit → verify → commit + push → open the **draft** PR.
+Go straight: read the issue → ensure fork → clone → pin git identity → **codegraph_search to locate** → edit → verify → commit + push → open the **draft** PR.
 
 ## Tools — name the delegate, do not improvise
 You only have two delegation tools in this skill. Pick the right one for each step — naming the tool *literally*:
@@ -18,8 +18,13 @@ You only have two delegation tools in this skill. Pick the right one for each st
 
 **One identity end to end**: commit author == push credential == PR opener (the authed GitHub account). Pin the commit identity in the clone (step 4) — otherwise commits show "Unverified".
 
+## codegraph_search is MANDATORY for locating code
+Every "find where to edit" brief MUST start with `codegraph_search`. `codegraph_search` auto-indexes the repo on its first call (~30–90s build on a fresh repo — this is normal, not a hang; subsequent calls are millisecond-cheap). Only after `codegraph_search` returns may the worker call `grep` / `glob` / `file_read` / `shell` to refine. **A locate brief that calls `grep` before `codegraph_search` is malformed — rewrite it before sending.**
+
+Why it's mandatory even for "obvious" string searches: codegraph returns ranked structural+semantic hits across the whole repo with one call; a blind grep returns every occurrence and forces the worker to re-rank by hand. Even for literal-string queries (i18n keys, error strings, config names) codegraph is strictly better signal-per-call than grep — and we want every run to exercise it so we discover where it actually falls short.
+
 ## How to delegate (this is how it scales)
-You are the orchestrator: you hold this plan and hand each worker a **complete, scoped brief** — never a vague one. Every brief MUST state: the repo (`{repo}`), the issue (`#{issue}`), the exact subtask + the specific files, the constraints (*"do not search or explore — act only on this"*), and the **literal tool calls** the worker should make (`edit`, `apply_patch`, `codegraph_search`, `shell`, `git_operations`, …).
+You are the orchestrator: you hold this plan and hand each worker a **complete, scoped brief** — never a vague one. Every brief MUST state: the repo (`{repo}`), the issue (`#{issue}`), the exact subtask + the specific files, the constraints (*"do not search or explore — act only on this"*), and the **literal tool calls** the worker should make (`codegraph_search`, `edit`, `apply_patch`, `shell`, `git_operations`, …) in the order they should be called.
 
 A worker should never have to guess, search, or explore. If a brief would require that, you haven't scoped it enough — rewrite it.
 
@@ -35,7 +40,7 @@ A worker should never have to guess, search, or explore. If a brief would requir
 
 2. **Ensure the fork** — `delegate_run_code`. Brief: run `gh api user --jq .login` to obtain `<fork-owner>`. Check whether `<fork-owner>/<repo-name>` exists with `gh repo view <fork-owner>/<repo-name>`. If not, run `gh repo fork {repo} --remote=false --clone=false`. Report `<fork-owner>` back.
 
-3. **Clone upstream** — `delegate_run_code`. Brief: run `git clone https://github.com/{repo} <local-dir>`, then call `codegraph_index` on `<local-dir>` in the background (do not wait). Report the clone path back.
+3. **Clone upstream** — `delegate_run_code`. Brief: run `git clone https://github.com/{repo} <local-dir>` and report the path back. **Do NOT call `codegraph_index` here** — `codegraph_search` in step 5 auto-indexes on its first call, so a separate index call is redundant and wastes a turn.
 
 4. **Pin the LOCAL git identity in the clone** — `delegate_run_code`. Brief: run these exact `shell` commands inside `<local-dir>`. Never `--global`; never clobber the host's global config:
    ```
@@ -44,7 +49,13 @@ A worker should never have to guess, search, or explore. If a brief would requir
    ```
    This pins the commit author to the authed GitHub account so commits stay **verified**.
 
-5. **Locate the edit site** — `delegate_run_code`. Brief: "In `<local-dir>`, call `codegraph_search` for `<symbol-or-string-from-issue>`. Read the top 3 hits with `file_read`. Use `grep` / `glob` / `lsp` only to refine, or as fallback when `codegraph_search` reports `coverage: partial` or `none`. **Locate only — do NOT edit in this brief.** Report back the exact files + lines that must change."
+5. **Locate the edit site (codegraph-first, NO exceptions)** — `delegate_run_code`. The brief MUST be exactly this shape:
+
+   > "In `<local-dir>`, your **FIRST tool call MUST be `codegraph_search`** with `query=<concrete symbol, identifier, literal string, or short phrase from the issue>`. Do **NOT** call `grep`, `glob`, `file_read`, or `shell` before `codegraph_search` returns. codegraph auto-indexes on first call (expect ~30–90s on a fresh clone — this is the index build, **not a hang**; do not retry, do not switch to grep). After `codegraph_search` returns, inspect the result:
+   >  - If `coverage` is `full` and the top hits look relevant: call `file_read` on the top 3 hits and report back files + lines to change.
+   >  - If `coverage` is `partial`: call `grep` **scoped to the directories codegraph already returned**, then `file_read` the refined hits.
+   >  - If and only if `coverage` is `none` or hits are zero, fall back to a blind `grep` / `glob` over the tree.
+   > **Locate only — do NOT edit in this brief.** Report back: (a) the `codegraph_search` query you used, (b) the top results + coverage, (c) the exact files + lines that must change."
 
 6. **Apply the fix** — `delegate_run_code`. Brief: "In `<local-dir>`, apply these edits — list each file by path with the before/after: `<file1>`: change `<X>` → `<Y>`. `<file2>`: …. Use **`edit`** (single-line / small change) or **`apply_patch`** (multi-file or multi-line change) for **existing** files; use `file_write` ONLY for brand-new files; never use `shell` redirection (`>`) for edits. After each file, call `shell` `git -C <local-dir> diff <file>` and confirm the diff matches. Stop after the listed files — do not edit anything else."
 
@@ -71,10 +82,11 @@ A worker should never have to guess, search, or explore. If a brief would requir
 
 ## Rules
 - **Routing:** reads → `delegate_to_integrations_agent { toolkit: "github" }`; **every** step that touches a file or runs a shell command → `delegate_run_code`. **Never** delegate file edits to `tools_agent` / `spawn_worker_thread` — those workers don't have `edit`/`apply_patch`/`file_write` and will stall in read-mode.
+- **codegraph_search is mandatory** (step 5): every locate brief MUST call `codegraph_search` as its first tool call; `grep` / `glob` / `file_read` / `shell` are refinement or fallback only. A brief that omits `codegraph_search` is malformed — rewrite it.
+- **No redundant `codegraph_index` call**: step 3 must NOT call `codegraph_index` — search in step 5 auto-indexes on first use.
 - **Scope:** only changes that fix `#{issue}`. No exploring, no gists, no non-GitHub integrations.
 - **Two repos:** issue + PR target = upstream `{repo}`; branch + commits = the fork; the PR is **cross-repo, draft** (head = fork, base = upstream).
 - **One identity end to end** (step 4): commit author == push credential == PR opener.
 - **DRAFT always** (step 9): `--draft` is required.
-- **codegraph is an accelerant, not a gate** — fall back to `grep`/`lsp` if it's cold.
-- **Scoped briefs** — workers must never have to guess or explore. Every brief names literal tool calls.
+- **Scoped briefs** — workers must never have to guess or explore. Every brief names literal tool calls in order.
 - **Stop** when the draft PR is open, or surface a blocker plainly and stop — don't thrash.
