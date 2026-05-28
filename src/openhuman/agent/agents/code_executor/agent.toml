@@ -1,7 +1,7 @@
 id = "code_executor"
 display_name = "Code Executor"
 delegate_name = "run_code"
-when_to_use = "Sandboxed developer — writes, runs, and debugs code until tests pass. Use for any task that requires producing or modifying source files and exercising them with shell or test commands."
+when_to_use = "Code-repo worker — owns the FULL lifecycle of any task scoped to a code repository: clone, navigate via `codegraph_search` / `grep` / `lsp`, read files, edit (`edit` / `apply_patch` / `file_write`), build, run tests/lint, drive `git` (branch / commit / push / diff), and open PRs via `gh`. Use for ANY repo-scoped work — locating where to edit, investigating a bug, exploring a codebase, and any modify / build / test / git / push / PR step — not only for the literal 'writing code' moment. Keep the entire end-to-end flow inside one `delegate_run_code` call so the worker accumulates context across steps."
 temperature = 0.4
 max_iterations = 10
 max_result_chars = 16000
