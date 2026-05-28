@@ -900,6 +900,24 @@ const bn5: TranslationMap = {
   'settings.modelHealth.modal.apply': 'Apply Replacement',
   'settings.modelHealth.tag.cheaper': 'CHEAPER',
   'settings.modelHealth.tag.better': 'BETTER',
+
+  // /skills IA restructure (Phase 2/3) — dashboard + new-skill page.
+  'skills.dashboard.title': 'Skills',
+  'skills.dashboard.scheduledHeading': 'Scheduled skills',
+  'skills.dashboard.emptyTitle': 'No scheduled skills',
+  'skills.dashboard.emptyBody':
+    'Run a bundled skill once or save a recurring schedule to see it here.',
+  'skills.dashboard.create': 'Create a Skill',
+  'skills.dashboard.run': 'Run a Skill',
+  'skills.dashboard.enable': 'Enable scheduled skill',
+  'skills.dashboard.disable': 'Disable scheduled skill',
+  'skills.dashboard.lastRun': 'Last run',
+  'skills.dashboard.nextRun': 'Next run',
+  'skills.dashboard.cardOpenRunner': 'Open in runner',
+  'skills.dashboard.loadError': 'Failed to load scheduled skills',
+  'skills.new.title': 'Create a skill',
+  'skills.new.placeholderBody':
+    'Authoring form arrives soon. For now, use the “New skill” button on the runner page.',
 };
 
 export default bn5;

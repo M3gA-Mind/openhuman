@@ -15,7 +15,9 @@ import Notifications from './pages/Notifications';
 import Onboarding from './pages/onboarding/Onboarding';
 import Rewards from './pages/Rewards';
 import Settings from './pages/Settings';
+import SkillNew from './pages/SkillNew';
 import Skills from './pages/Skills';
+import SkillsDashboard from './pages/SkillsDashboard';
 import WebCallbackPage from './pages/WebCallbackPage';
 import Welcome from './pages/Welcome';
 
@@ -79,11 +81,33 @@ const AppRoutes = () => {
         }
       />
 
+      {/* New IA: /skills landing dashboard, /skills/run is the picker+runner
+          page (old top-level Skills), /skills/new is the create-a-skill page.
+          Order matters here — keep `/skills/new` and `/skills/run` *before*
+          `/skills` so they win the prefix match. */}
+      <Route
+        path="/skills/new"
+        element={
+          <ProtectedRoute requireAuth={true}>
+            <SkillNew />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/skills/run"
+        element={
+          <ProtectedRoute requireAuth={true}>
+            <Skills />
+          </ProtectedRoute>
+        }
+      />
+
       <Route
         path="/skills"
         element={
           <ProtectedRoute requireAuth={true}>
-            <Skills />
+            <SkillsDashboard />
           </ProtectedRoute>
         }
       />
