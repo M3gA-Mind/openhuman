@@ -4,11 +4,14 @@ use serde_json::{Map, Value};
 use crate::core::all::{ControllerFuture, RegisteredController};
 use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
 
+use ethers_core::types::U256;
+
 use super::execution::{
     balances, chain_status, execute_prepared, network_defaults, prepare_contract_call,
     prepare_swap, prepare_transfer, supported_assets, ExecutePreparedParams,
     PrepareContractCallParams, PrepareSwapParams, PrepareTransferParams,
 };
+use super::uniswap::buy_toshi_on_base;
 use super::ops::{WalletAccount, WalletSetupParams, WalletSetupSource};
 use super::{encode_erc20_transfer, WalletChain};
 
@@ -28,6 +31,14 @@ struct EncodeErc20TransferParams {
     chain: WalletChain,
     to_address: String,
     amount_raw: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BuyToshiOnBaseParams {
+    /// Amount of ETH to spend, expressed in wei (1 ETH = 10^18 wei).
+    /// 0.01 ETH = "10000000000000000".
+    eth_amount_wei: String,
 }
 
 pub fn all_controller_schemas() -> Vec<ControllerSchema> {
@@ -55,6 +66,7 @@ pub fn all_wallet_controller_schemas() -> Vec<ControllerSchema> {
         wallet_schemas("prepare_swap"),
         wallet_schemas("prepare_contract_call"),
         wallet_schemas("execute_prepared"),
+        wallet_schemas("buy_toshi_on_base"),
     ]
 }
 
@@ -103,6 +115,10 @@ pub fn all_wallet_registered_controllers() -> Vec<RegisteredController> {
         RegisteredController {
             schema: wallet_schemas("execute_prepared"),
             handler: handle_execute_prepared,
+        },
+        RegisteredController {
+            schema: wallet_schemas("buy_toshi_on_base"),
+            handler: handle_buy_toshi_on_base,
         },
     ]
 }
@@ -321,6 +337,22 @@ pub fn wallet_schemas(function: &str) -> ControllerSchema {
                 required: true,
             }],
         },
+        "buy_toshi_on_base" => ControllerSchema {
+            namespace: "wallet",
+            function: "buy_toshi_on_base",
+            description:
+                "One-shot ETH→TOSHI swap on Base via Uniswap V3 (1% pool). Prepares the quote against QuoterV2, applies 1% slippage, and broadcasts via the user's locally-derived EVM signer. msg.value is auto-wrapped to WETH by SwapRouter02.",
+            inputs: vec![required_json(
+                "ethAmountWei",
+                "Amount of ETH to spend, in wei (decimal string). 0.01 ETH = '10000000000000000'.",
+            )],
+            outputs: vec![FieldSchema {
+                name: "result",
+                ty: TypeSchema::Json,
+                comment: "ExecutionResult with transactionHash and Basescan explorerUrl.",
+                required: true,
+            }],
+        },
         _ => ControllerSchema {
             namespace: "wallet",
             function: "unknown",
@@ -425,6 +457,20 @@ fn handle_execute_prepared(params: Map<String, Value>) -> ControllerFuture {
     })
 }
 
+fn handle_buy_toshi_on_base(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let parsed: BuyToshiOnBaseParams = serde_json::from_value(Value::Object(params))
+            .map_err(|e| format!("invalid params: {e}"))?;
+        let amount = U256::from_dec_str(parsed.eth_amount_wei.trim()).map_err(|e| {
+            format!(
+                "invalid ethAmountWei '{}': {e}",
+                parsed.eth_amount_wei
+            )
+        })?;
+        buy_toshi_on_base(amount).await?.into_cli_compatible_json()
+    })
+}
+
 fn required_json(name: &'static str, comment: &'static str) -> FieldSchema {
     FieldSchema {
         name,
@@ -440,12 +486,12 @@ mod tests {
 
     #[test]
     fn all_schemas_lists_every_controller() {
-        assert_eq!(all_wallet_controller_schemas().len(), 11);
+        assert_eq!(all_wallet_controller_schemas().len(), 12);
     }
 
     #[test]
     fn all_controllers_lists_every_handler() {
-        assert_eq!(all_wallet_registered_controllers().len(), 11);
+        assert_eq!(all_wallet_registered_controllers().len(), 12);
     }
 
     #[test]

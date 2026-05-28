@@ -30,7 +30,7 @@ use super::defaults::{
 use super::ops::{status as wallet_status, WalletAccount, WalletChain};
 
 const LOG_PREFIX: &str = "[wallet]";
-const QUOTE_TTL_MS: u64 = 5 * 60 * 1000;
+pub(super) const QUOTE_TTL_MS: u64 = 5 * 60 * 1000;
 const QUOTE_STORE_CAP: usize = 64;
 
 static QUOTE_STORE: Lazy<Mutex<Vec<PreparedTransaction>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -196,12 +196,12 @@ pub(crate) fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn next_quote_id() -> String {
+pub(super) fn next_quote_id() -> String {
     let n = QUOTE_COUNTER.fetch_add(1, Ordering::Relaxed);
     format!("q_{}_{}", now_ms(), n)
 }
 
-async fn require_account(chain: WalletChain) -> Result<WalletAccount, String> {
+pub(super) async fn require_account(chain: WalletChain) -> Result<WalletAccount, String> {
     let status = wallet_status().await?.value;
     if !status.configured {
         return Err("wallet is not configured; run wallet setup first".to_string());
@@ -307,7 +307,7 @@ fn asset_to_supported(asset: WalletAssetDefinition) -> SupportedAsset {
     }
 }
 
-fn store_quote(quote: PreparedTransaction) -> PreparedTransaction {
+pub(super) fn store_quote(quote: PreparedTransaction) -> PreparedTransaction {
     let mut store = QUOTE_STORE.lock();
     let cutoff = now_ms();
     store.retain(|q| q.expires_at_ms > cutoff && q.status != PreparedStatus::Consumed);

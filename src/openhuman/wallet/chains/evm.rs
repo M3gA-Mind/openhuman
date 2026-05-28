@@ -95,9 +95,22 @@ pub async fn execute_evm_quote(mut quote: PreparedTransaction) -> Result<Executi
             quote.calldata.clone(),
         ),
         PreparedKind::Swap => {
-            return Err(
-                "swap broadcast is not implemented yet; keep it in quote-only mode".to_string(),
-            );
+            // For Uniswap V3 ETH-in swaps on Base the prepare step fills in
+            // `to_address` (router), `amount_raw` (msg.value in wei), and
+            // `calldata` (encoded exactInputSingle). Everything else flows
+            // through the standard sign/broadcast path.
+            let calldata = quote.calldata.clone().ok_or_else(|| {
+                "prepared swap is missing calldata; refusing to broadcast a blind swap".to_string()
+            })?;
+            (
+                Address::from_str(&quote.to_address).map_err(|e| {
+                    format!("invalid swap router address '{}': {e}", quote.to_address)
+                })?,
+                U256::from_dec_str(&quote.amount_raw).map_err(|e| {
+                    format!("invalid prepared swap value '{}': {e}", quote.amount_raw)
+                })?,
+                Some(calldata),
+            )
         }
     };
 
