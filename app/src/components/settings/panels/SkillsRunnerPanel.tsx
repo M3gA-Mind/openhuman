@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import {
+  type RunLogSlice,
   type ScannedRun,
   type SkillDescription,
   type SkillRunStarted,
@@ -181,6 +182,14 @@ const SkillsRunnerPanel = () => {
   const [recentRuns, setRecentRuns] = useState<ScannedRun[]>([]);
   const [recentRunsLoading, setRecentRunsLoading] = useState(false);
   const [recentRunsRefreshNonce, setRecentRunsRefreshNonce] = useState(0);
+
+  // Inline log viewer: one row expanded at a time. The viewer state map
+  // is keyed by run_id so we keep paginated state per run without
+  // refetching when the user collapses-and-re-expands the same row.
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<
+    Record<string, { content: string; offset: number; complete: boolean; loading: boolean; error: string | null }>
+  >({});
 
   // ── Initial load: skills_list ──────────────────────────────────────
   useEffect(() => {
@@ -371,6 +380,92 @@ const SkillsRunnerPanel = () => {
       setSavingSchedule(false);
     }
   }, [description, formValues, missingRequired, schedule, t, loadScheduledJobs]);
+
+  // ── Log viewer: fetch on expand + tail-poll while running ──────────
+  useEffect(() => {
+    if (!expandedRunId) return;
+    let cancelled = false;
+    const runId = expandedRunId;
+
+    // If we already loaded the full file and it's complete, don't refetch
+    // — the user might just be re-expanding the same row.
+    const existing = viewer[runId];
+    if (existing?.complete) return;
+
+    const fetchSlice = async (fromOffset: number): Promise<void> => {
+      try {
+        setViewer((prev) => ({
+          ...prev,
+          [runId]: {
+            content: prev[runId]?.content ?? '',
+            offset: prev[runId]?.offset ?? 0,
+            complete: prev[runId]?.complete ?? false,
+            loading: true,
+            error: null,
+          },
+        }));
+        const slice: RunLogSlice = await skillsApi.readRunLog(runId, fromOffset);
+        if (cancelled) return;
+        setViewer((prev) => {
+          const prior = prev[runId]?.content ?? '';
+          return {
+            ...prev,
+            [runId]: {
+              content: prior + slice.content,
+              offset: slice.offset,
+              complete: slice.complete,
+              loading: false,
+              error: null,
+            },
+          };
+        });
+      } catch (err: unknown) {
+        if (cancelled) return;
+        const msg = err instanceof Error ? err.message : String(err);
+        log('readRunLog error: %s', msg);
+        setViewer((prev) => ({
+          ...prev,
+          [runId]: {
+            content: prev[runId]?.content ?? '',
+            offset: prev[runId]?.offset ?? 0,
+            complete: prev[runId]?.complete ?? false,
+            loading: false,
+            error: msg,
+          },
+        }));
+      }
+    };
+
+    // Initial fetch from where we left off (0 on first open).
+    const startOffset = existing?.offset ?? 0;
+    void fetchSlice(startOffset);
+
+    // Tail every 2s while the run isn't complete. Re-reads the freshest
+    // offset from state on each tick by ref-closure through fetchSlice.
+    const interval = setInterval(() => {
+      const state = viewer[runId];
+      if (cancelled || state?.complete) {
+        clearInterval(interval);
+        return;
+      }
+      void fetchSlice(state?.offset ?? startOffset);
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // We intentionally don't depend on `viewer` here — the interval reads
+    // the freshest offset from state each tick, and re-running this
+    // effect on every viewer update would tear down and re-create the
+    // timer on every poll. Equally, depending on `viewer` would cause
+    // an infinite re-render loop because setViewer happens inside.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedRunId]);
+
+  const toggleExpand = useCallback((runId: string) => {
+    setExpandedRunId((prev) => (prev === runId ? null : runId));
+  }, []);
 
   // ── Schedule-row actions ───────────────────────────────────────────
   const handleRunJobNow = useCallback(
@@ -738,29 +833,67 @@ const SkillsRunnerPanel = () => {
                   return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
                 })();
                 const dur = r.duration_ms !== null ? `${Math.round(r.duration_ms / 1000)}s` : '—';
+                const expanded = expandedRunId === r.run_id;
+                const v = viewer[r.run_id];
                 return (
                   <div
                     key={r.run_id}
-                    className="rounded border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 px-3 py-2 text-xs"
+                    className="rounded border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 text-xs overflow-hidden"
                   >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span
-                        className={`px-1.5 py-0.5 rounded text-xs font-medium ${badgeClass}`}
-                      >
-                        {r.status}
-                      </span>
-                      <span className="font-mono text-stone-700 dark:text-stone-300">
-                        {r.run_id.slice(0, 8)}
-                      </span>
-                      <span className="text-stone-600 dark:text-stone-400">{r.skill_id}</span>
-                      <span className="text-stone-500 dark:text-stone-400 ml-auto">{dur}</span>
-                    </div>
-                    <div className="text-stone-500 dark:text-stone-400 truncate">
-                      {r.started}
-                    </div>
-                    <div className="text-stone-400 dark:text-stone-500 font-mono text-[10px] truncate">
-                      {r.log_path}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleExpand(r.run_id)}
+                      className="w-full text-left px-3 py-2 hover:bg-stone-100 dark:hover:bg-stone-800 focus:outline-none focus:bg-stone-100 dark:focus:bg-stone-800"
+                      aria-expanded={expanded}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-stone-500 dark:text-stone-400">
+                          {expanded ? '▾' : '▸'}
+                        </span>
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-xs font-medium ${badgeClass}`}
+                        >
+                          {r.status}
+                        </span>
+                        <span className="font-mono text-stone-700 dark:text-stone-300">
+                          {r.run_id.slice(0, 8)}
+                        </span>
+                        <span className="text-stone-600 dark:text-stone-400">{r.skill_id}</span>
+                        <span className="text-stone-500 dark:text-stone-400 ml-auto">{dur}</span>
+                      </div>
+                      <div className="text-stone-500 dark:text-stone-400 truncate pl-5">
+                        {r.started}
+                      </div>
+                      <div className="text-stone-400 dark:text-stone-500 font-mono text-[10px] truncate pl-5">
+                        {r.log_path}
+                      </div>
+                    </button>
+
+                    {expanded && (
+                      <div className="border-t border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-950">
+                        {/* Live indicator while tailing */}
+                        {!v?.complete && (
+                          <div className="px-3 py-1.5 text-[10px] text-stone-500 dark:text-stone-400 border-b border-stone-100 dark:border-stone-800 flex items-center gap-2">
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                            <span>
+                              {t('settings.skillsRunner.viewer.tailing')}
+                              {v?.loading ? ` · ${t('settings.skillsRunner.viewer.fetching')}` : ''}
+                            </span>
+                            <span className="ml-auto text-stone-400 dark:text-stone-500">
+                              {v?.offset ?? 0} B
+                            </span>
+                          </div>
+                        )}
+                        {v?.error && (
+                          <div className="px-3 py-2 text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950 border-b border-red-100 dark:border-red-900">
+                            {t('settings.skillsRunner.viewer.error')} {v.error}
+                          </div>
+                        )}
+                        <pre className="px-3 py-2 m-0 max-h-96 overflow-auto font-mono text-[11px] leading-snug whitespace-pre-wrap break-words text-stone-800 dark:text-stone-200">
+                          {v?.content ?? (v?.loading ? t('settings.skillsRunner.viewer.loading') : '')}
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 );
               })}

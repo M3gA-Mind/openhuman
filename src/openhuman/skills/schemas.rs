@@ -191,6 +191,7 @@ pub fn all_skills_controller_schemas() -> Vec<ControllerSchema> {
         skills_schemas("skills_list"),
         skills_schemas("skills_describe"),
         skills_schemas("skills_recent_runs"),
+        skills_schemas("skills_read_run_log"),
         skills_schemas("skills_read_resource"),
         skills_schemas("skills_create"),
         skills_schemas("skills_install_from_url"),
@@ -212,6 +213,10 @@ pub fn all_skills_registered_controllers() -> Vec<RegisteredController> {
         RegisteredController {
             schema: skills_schemas("skills_recent_runs"),
             handler: handle_skills_recent_runs,
+        },
+        RegisteredController {
+            schema: skills_schemas("skills_read_run_log"),
+            handler: handle_skills_read_run_log,
         },
         RegisteredController {
             schema: skills_schemas("skills_read_resource"),
@@ -440,6 +445,63 @@ pub fn skills_schemas(function: &str) -> ControllerSchema {
                 },
             ],
         },
+        "skills_read_run_log" => ControllerSchema {
+            namespace: "skills",
+            function: "read_run_log",
+            description: "Read a slice of a skill run's streaming log file by run_id. The FE Skills Runner panel opens this on click of a Recent Runs row and re-calls it every 2s while the run's `status` is RUNNING to tail new bytes (use the returned `offset` as the next call's `offset`). The run id resolves to a path internally — callers don't supply a path, so no traversal surface. `max_bytes` is clamped to 262144 (256 KiB) per call; pages by re-issuing with the returned `offset`.",
+            inputs: vec![
+                FieldSchema {
+                    name: "run_id",
+                    ty: TypeSchema::String,
+                    comment: "Run id from `skills_recent_runs.runs[].run_id` (matched by 8-char prefix against the log filename).",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "offset",
+                    ty: TypeSchema::U64,
+                    comment: "Byte offset to start reading from. Default 0 (read from start); the FE passes the previous response's `offset` for tail-mode polling.",
+                    required: false,
+                },
+                FieldSchema {
+                    name: "max_bytes",
+                    ty: TypeSchema::U64,
+                    comment: "Max bytes to return in this slice. Default 65536 (64 KiB), capped at 262144 (256 KiB).",
+                    required: false,
+                },
+            ],
+            outputs: vec![
+                FieldSchema {
+                    name: "offset",
+                    ty: TypeSchema::U64,
+                    comment: "New read cursor — pass this as the next call's `offset` to tail forward.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "bytes_read",
+                    ty: TypeSchema::U64,
+                    comment: "Number of bytes returned in this slice.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "content",
+                    ty: TypeSchema::String,
+                    comment: "The slice contents (UTF-8, lossy-decoded so a partial multibyte tail doesn't error).",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "eof",
+                    ty: TypeSchema::Bool,
+                    comment: "True if the read reached end-of-file. May still be FALSE-complete (run still streaming).",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "complete",
+                    ty: TypeSchema::Bool,
+                    comment: "True once the run footer (`--- result ---`) has landed in the file. The FE stops polling when this flips true.",
+                    required: true,
+                },
+            ],
+        },
         "skills_recent_runs" => ControllerSchema {
             namespace: "skills",
             function: "recent_runs",
@@ -638,6 +700,38 @@ fn handle_skills_describe(params: Map<String, Value>) -> ControllerFuture {
             },
             Vec::new(),
         ))
+    })
+}
+
+#[derive(serde::Deserialize)]
+struct SkillsReadRunLogParams {
+    run_id: String,
+    #[serde(default)]
+    offset: Option<u64>,
+    #[serde(default)]
+    max_bytes: Option<u64>,
+}
+
+/// `openhuman.skills_read_run_log` — return a slice of a skill run's
+/// log file, identified by `run_id` (NOT a path — no traversal surface).
+/// FE Skills Runner panel uses this to render the streaming log inline
+/// when the user clicks a Recent Runs row, and tails it every 2s while
+/// `complete` is false.
+fn handle_skills_read_run_log(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let payload = deserialize_params::<SkillsReadRunLogParams>(params)?;
+        let workspace = resolve_workspace_dir().await;
+        let path = run_log::find_run_log_path(&workspace, &payload.run_id)
+            .ok_or_else(|| format!("skills_read_run_log: unknown run_id '{}'", payload.run_id))?;
+        let offset = payload.offset.unwrap_or(0);
+        // 64 KiB default per-call slice, hard cap at 256 KiB to keep the
+        // RPC response sane; the FE re-issues with the returned offset
+        // to page through larger logs.
+        let max_bytes = payload.max_bytes.unwrap_or(64 * 1024).min(256 * 1024) as usize;
+        match run_log::read_run_log_slice(&path, offset, max_bytes) {
+            Ok(slice) => to_json(RpcOutcome::new(slice, Vec::new())),
+            Err(e) => Err(format!("skills_read_run_log: read failed: {e}")),
+        }
     })
 }
 

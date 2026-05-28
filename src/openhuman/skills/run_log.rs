@@ -338,6 +338,110 @@ pub fn scan_runs(workspace: &Path, skill_id: Option<&str>, limit: usize) -> Vec<
     runs
 }
 
+/// Look up the on-disk log path for a given `run_id` by scanning the
+/// `<workspace>/skills/.runs/` directory. Used by
+/// `openhuman.skills_read_run_log` to resolve a stable id back to a path
+/// without trusting the caller to send one (no path-traversal surface).
+pub fn find_run_log_path(workspace: &Path, run_id: &str) -> Option<PathBuf> {
+    if run_id.is_empty() {
+        return None;
+    }
+    let dir = runs_dir(workspace);
+    let entries = std::fs::read_dir(&dir).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !name.ends_with(".log") {
+            continue;
+        }
+        // File names are `<skill>_<utc>_<run-id-prefix>.log`. The run-id
+        // prefix is the first 8 chars of the uuid (see
+        // `runs_dir`/`run_log_path` + `short` helper). Match against the
+        // prefix to avoid having to read the file's header.
+        let short = run_id.get(..8).unwrap_or(run_id);
+        if name.contains(&format!("_{short}.log")) {
+            return Some(path);
+        }
+    }
+    None
+}
+
+/// Read a slice of a run log file. Returns the bytes from `offset`
+/// forward, capped at `max_bytes`, plus `eof` (true if we hit end-of-
+/// file) and a flag indicating whether the `--- result ---` footer is
+/// present in the file as a whole (so the FE can stop polling). Used by
+/// `openhuman.skills_read_run_log` for the chat-style log viewer's
+/// scroll + tail behaviour.
+pub fn read_run_log_slice(
+    path: &Path,
+    offset: u64,
+    max_bytes: usize,
+) -> std::io::Result<RunLogSlice> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path)?;
+    let file_size = f.metadata()?.len();
+    if offset >= file_size {
+        // No new bytes. Still return a (cheap) check for footer presence
+        // so the FE knows whether to keep polling.
+        let complete = file_has_footer(path)?;
+        return Ok(RunLogSlice {
+            offset,
+            bytes_read: 0,
+            content: String::new(),
+            eof: true,
+            complete,
+        });
+    }
+    f.seek(SeekFrom::Start(offset))?;
+    let want = ((file_size - offset).min(max_bytes as u64)) as usize;
+    let mut buf = vec![0u8; want];
+    f.read_exact(&mut buf)?;
+    let content = String::from_utf8_lossy(&buf).into_owned();
+    let bytes_read = buf.len() as u64;
+    let new_offset = offset + bytes_read;
+    let eof = new_offset >= file_size;
+    let complete = if eof {
+        // If we read to EOF, the slice itself tells us if the footer
+        // landed in our current chunk — otherwise re-scan from disk.
+        content.contains("\n--- result ---\n")
+            || content.starts_with("--- result ---\n")
+            || file_has_footer(path)?
+    } else {
+        // Mid-file read — cheap re-scan to know if we should keep polling.
+        file_has_footer(path)?
+    };
+    Ok(RunLogSlice {
+        offset: new_offset,
+        bytes_read,
+        content,
+        eof,
+        complete,
+    })
+}
+
+/// One slice of a run log file. `offset` is the *new* read cursor (the
+/// FE uses it as the next call's `offset` so successive reads tail
+/// cleanly). `complete` is true once the run footer landed — the FE can
+/// then stop the polling timer.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RunLogSlice {
+    pub offset: u64,
+    pub bytes_read: u64,
+    pub content: String,
+    pub eof: bool,
+    pub complete: bool,
+}
+
+/// Cheap check for whether `path` contains the `--- result ---` footer
+/// anywhere. Reads the file once. Used to decide if the FE should keep
+/// polling.
+fn file_has_footer(path: &Path) -> std::io::Result<bool> {
+    let text = std::fs::read_to_string(path)?;
+    Ok(text.contains("\n--- result ---\n"))
+}
+
 /// Final footer: status, duration, and the agent's final output text.
 pub async fn write_footer(
     path: &Path,
@@ -433,6 +537,57 @@ mod tests {
         let one = scan_runs(tmp.path(), None, 1);
         assert_eq!(one.len(), 1);
         assert_eq!(one[0].run_id, "bbbbbbbb-1111-2222-3333-444444444444");
+    }
+
+    #[test]
+    fn read_run_log_slice_pages_and_detects_footer_completion() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let runs = runs_dir(tmp.path());
+        std::fs::create_dir_all(&runs).unwrap();
+
+        // (a) Still-running file — no footer. read should return content
+        //     with complete=false so the FE keeps polling.
+        let running = "==== skill_run: pr-review-shepherd ====\n\
+                       run_id : 11111111-aaaa-bbbb-cccc-dddddddddddd\n\
+                       started: 2026-05-28T09:00:00.000000000+00:00 UTC\n\n\
+                       --- task prompt ---\nfoo\n\
+                       --- steps ---\nstep 1\nstep 2\n";
+        std::fs::write(runs.join("pr-review-shepherd_20260528T090000Z_11111111.log"), running)
+            .unwrap();
+
+        let path = find_run_log_path(tmp.path(), "11111111-aaaa-bbbb-cccc-dddddddddddd")
+            .expect("must find log by run id");
+        let s1 = read_run_log_slice(&path, 0, 1024).expect("read ok");
+        assert!(s1.bytes_read > 0);
+        assert!(s1.eof, "small file fits in one read");
+        assert!(!s1.complete, "no footer ⇒ keep polling");
+        assert!(s1.content.contains("step 2"));
+
+        // Second call from the cursor returns zero bytes + still incomplete.
+        let s2 = read_run_log_slice(&path, s1.offset, 1024).expect("tail ok");
+        assert_eq!(s2.bytes_read, 0);
+        assert!(s2.eof);
+        assert!(!s2.complete);
+
+        // (b) Append the footer — next read should flip complete=true.
+        let mut more = String::new();
+        more.push_str("\n--- result ---\n");
+        more.push_str("status  : DONE\nduration: 1234 ms\nfinished: 2026-05-28T09:00:01.000000000+00:00 UTC\n\nfinal output here\n");
+        let full = format!("{running}{more}");
+        std::fs::write(&path, &full).unwrap();
+        let s3 = read_run_log_slice(&path, s1.offset, 4096).expect("read tail ok");
+        assert!(s3.bytes_read > 0);
+        assert!(s3.complete, "footer landed ⇒ FE stops polling");
+        assert!(s3.content.contains("status  : DONE"));
+    }
+
+    #[test]
+    fn find_run_log_path_returns_none_for_unknown_id() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        std::fs::create_dir_all(runs_dir(tmp.path())).unwrap();
+        assert!(find_run_log_path(tmp.path(), "ffffffff-no-such-id").is_none());
+        // Empty id is always None — handler rejects later for clarity.
+        assert!(find_run_log_path(tmp.path(), "").is_none());
     }
 
     #[test]

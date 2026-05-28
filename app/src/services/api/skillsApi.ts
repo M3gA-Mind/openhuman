@@ -332,6 +332,29 @@ export const skillsApi = {
   },
 
   /**
+   * Read a slice of a skill run's streaming log file by run_id. Pass
+   * `offset` to tail forward — the returned `offset` is the cursor for
+   * the next call. Stop polling once `complete: true` (footer landed).
+   */
+  readRunLog: async (
+    runId: string,
+    offset?: number,
+    maxBytes?: number
+  ): Promise<RunLogSlice> => {
+    log('readRunLog: request runId=%s offset=%s maxBytes=%s', runId, offset ?? 0, maxBytes ?? 'default');
+    const params: Record<string, unknown> = { run_id: runId };
+    if (offset !== undefined) params.offset = offset;
+    if (maxBytes !== undefined) params.max_bytes = maxBytes;
+    const response = await callCoreRpc<Envelope<RunLogSlice> | RunLogSlice>({
+      method: 'openhuman.skills_read_run_log',
+      params,
+    });
+    const raw = unwrapEnvelope(response);
+    log('readRunLog: response bytes=%d eof=%s complete=%s', raw.bytes_read, raw.eof, raw.complete);
+    return raw;
+  },
+
+  /**
    * Recent autonomous skill runs from `<workspace>/skills/.runs/`. Sorted
    * by start time descending. Pass `skillId` to filter to one skill,
    * omit for cross-skill. `limit` defaults to 20 (max 100).
@@ -378,6 +401,24 @@ export interface SkillRunStarted {
   status: string; // "started"
   skill_id: string;
   log: string; // absolute path to the streaming log
+}
+
+/**
+ * Slice of a run log file returned by `openhuman.skills_read_run_log`.
+ * Mirrors `crate::openhuman::skills::run_log::RunLogSlice`. The FE
+ * passes the returned `offset` as the next call's `offset` to tail
+ * forward; polling can stop once `complete: true` (the `--- result ---`
+ * footer has landed in the file).
+ */
+export interface RunLogSlice {
+  /** New read cursor — next call's `offset`. */
+  offset: number;
+  bytes_read: number;
+  content: string;
+  /** True if the read reached end-of-file (may still be incomplete). */
+  eof: boolean;
+  /** True once the run footer landed in the file. FE stops polling. */
+  complete: boolean;
 }
 
 /**
