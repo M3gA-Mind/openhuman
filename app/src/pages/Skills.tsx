@@ -17,6 +17,7 @@ import InstallSkillDialog from '../components/skills/InstallSkillDialog';
 // import MeetingBotsCard from '../components/skills/MeetingBotsCard';
 import ScreenIntelligenceSetupModal from '../components/skills/ScreenIntelligenceSetupModal';
 import UnifiedSkillCard from '../components/skills/SkillCard';
+import SkillsRunnerBody from '../components/skills/SkillsRunnerBody';
 import { SKILL_CATEGORY_ORDER, type SkillCategory } from '../components/skills/skillCategories';
 import SkillCategoryFilter from '../components/skills/SkillCategoryFilter';
 import SkillDetailDrawer from '../components/skills/SkillDetailDrawer';
@@ -350,7 +351,7 @@ interface SkillItem {
 
 // ─── Main Skills Page ──────────────────────────────────────────────────────────
 
-type ConnectionsTab = 'channels' | 'composio' | 'mcp';
+type ConnectionsTab = 'channels' | 'composio' | 'mcp' | 'runners';
 
 export default function Skills() {
   const { t } = useT();
@@ -935,10 +936,30 @@ export default function Skills() {
                 { value: 'composio', label: t('skills.tabs.composio') },
                 { value: 'channels', label: t('skills.tabs.channels') },
                 { value: 'mcp', label: t('skills.tabs.mcp') },
+                { value: 'runners', label: t('skills.tabs.runners') },
               ]}
             />
             {
               <>
+                {activeTab === 'runners' && (
+                  <div className="rounded-2xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-soft animate-fade-up">
+                    <SkillsRunnerBody />
+                    {/* Pointer to the specialized Dev Workflow setup (cron-driven
+                        autonomous developer with repo/fork/branch picker) — its
+                        UI doesn't generalize cleanly so it stays under Settings
+                        and we link to it from here for discoverability. */}
+                    <div className="mt-6 pt-4 border-t border-stone-200 dark:border-neutral-800 text-sm text-stone-600 dark:text-stone-400">
+                      {t('skills.runners.specialized.devWorkflowBlurb')}{' '}
+                      <button
+                        type="button"
+                        onClick={() => navigate('/settings/dev-workflow')}
+                        className="text-primary-600 hover:text-primary-700 underline underline-offset-2"
+                      >
+                        {t('skills.runners.specialized.openDevWorkflow')}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {activeTab === 'channels' && channelsGroup && (
                   <div className="rounded-2xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3 shadow-soft animate-fade-up">
                     <div className="px-1 pb-3 pt-1">
