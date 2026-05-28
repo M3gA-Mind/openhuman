@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
-import { fetchWalletStatus, type WalletAccount, type WalletStatus } from '../../../services/walletApi';
+import {
+  fetchWalletStatus,
+  type WalletAccount,
+  type WalletStatus,
+} from '../../../services/walletApi';
 import SettingsHeader from '../components/SettingsHeader';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 
@@ -49,7 +53,10 @@ const WalletAddressesPanel = () => {
     try {
       await navigator.clipboard.writeText(address);
       setCopiedAddress(address);
-      window.setTimeout(() => setCopiedAddress(current => (current === address ? null : current)), 1500);
+      window.setTimeout(
+        () => setCopiedAddress(current => (current === address ? null : current)),
+        1500
+      );
     } catch (error) {
       console.warn('[wallet-addresses-panel] clipboard write failed', error);
     }
@@ -70,9 +77,7 @@ const WalletAddressesPanel = () => {
         </p>
 
         {loading && (
-          <p className="text-xs text-stone-400 dark:text-neutral-500">
-            {t('common.loading')}
-          </p>
+          <p className="text-xs text-stone-400 dark:text-neutral-500">{t('common.loading')}</p>
         )}
 
         {loadError && !loading && (
@@ -115,9 +120,7 @@ const WalletAddressesPanel = () => {
                       type="button"
                       onClick={() => void copyToClipboard(account.address)}
                       className="text-[11px] text-ocean-600 dark:text-ocean-400 hover:underline whitespace-nowrap">
-                      {copiedAddress === account.address
-                        ? t('common.copied')
-                        : t('common.copy')}
+                      {copiedAddress === account.address ? t('common.copied') : t('common.copy')}
                     </button>
                   </div>
                   <div className="mt-1.5 text-[11px] text-stone-500 dark:text-neutral-400">

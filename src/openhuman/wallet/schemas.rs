@@ -11,8 +11,8 @@ use super::execution::{
     prepare_swap, prepare_transfer, supported_assets, ExecutePreparedParams,
     PrepareContractCallParams, PrepareSwapParams, PrepareTransferParams,
 };
-use super::uniswap::buy_toshi_on_base;
 use super::ops::{WalletAccount, WalletSetupParams, WalletSetupSource};
+use super::uniswap::buy_toshi_on_base;
 use super::{encode_erc20_transfer, WalletChain};
 
 #[derive(Debug, Deserialize)]
@@ -461,12 +461,8 @@ fn handle_buy_toshi_on_base(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let parsed: BuyToshiOnBaseParams = serde_json::from_value(Value::Object(params))
             .map_err(|e| format!("invalid params: {e}"))?;
-        let amount = U256::from_dec_str(parsed.eth_amount_wei.trim()).map_err(|e| {
-            format!(
-                "invalid ethAmountWei '{}': {e}",
-                parsed.eth_amount_wei
-            )
-        })?;
+        let amount = U256::from_dec_str(parsed.eth_amount_wei.trim())
+            .map_err(|e| format!("invalid ethAmountWei '{}': {e}", parsed.eth_amount_wei))?;
         buy_toshi_on_base(amount).await?.into_cli_compatible_json()
     })
 }

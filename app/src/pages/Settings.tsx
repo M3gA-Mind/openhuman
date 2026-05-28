@@ -32,7 +32,6 @@ import NotificationsTabbedPanel from '../components/settings/panels/Notification
 import PersonaPanel from '../components/settings/panels/PersonaPanel';
 import PrivacyPanel from '../components/settings/panels/PrivacyPanel';
 import RecoveryPhrasePanel from '../components/settings/panels/RecoveryPhrasePanel';
-import WalletAddressesPanel from '../components/settings/panels/WalletAddressesPanel';
 import ScreenAwarenessDebugPanel from '../components/settings/panels/ScreenAwarenessDebugPanel';
 import ScreenIntelligencePanel from '../components/settings/panels/ScreenIntelligencePanel';
 import SearchPanel from '../components/settings/panels/SearchPanel';
@@ -43,6 +42,7 @@ import TeamPanel from '../components/settings/panels/TeamPanel';
 import ToolsPanel from '../components/settings/panels/ToolsPanel';
 import VoiceDebugPanel from '../components/settings/panels/VoiceDebugPanel';
 import VoicePanel from '../components/settings/panels/VoicePanel';
+import WalletAddressesPanel from '../components/settings/panels/WalletAddressesPanel';
 import WebhooksDebugPanel from '../components/settings/panels/WebhooksDebugPanel';
 import SettingsHome from '../components/settings/SettingsHome';
 import SettingsSectionPage from '../components/settings/SettingsSectionPage';

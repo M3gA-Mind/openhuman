@@ -22,7 +22,6 @@ export const SUPPORTED_PRESET_MASCOT_TYPES = ['openhuman', 'toshi'] as const;
 export type PresetMascotType = (typeof SUPPORTED_PRESET_MASCOT_TYPES)[number];
 export const DEFAULT_PRESET_MASCOT_TYPE: PresetMascotType = 'openhuman';
 
-
 export const DEFAULT_MASCOT_COLOR: MascotColor = 'yellow';
 
 export type MascotVoiceGender = 'male' | 'female';
@@ -307,8 +306,7 @@ const mascotSlice = createSlice({
         typeof rsc === 'string' && rsc.length > 0 ? rsc : initialState.customSecondaryColor;
       const rpt = rehydrateAction.payload?.presetMascotType;
       state.presetMascotType =
-        rpt != null &&
-        (SUPPORTED_PRESET_MASCOT_TYPES as readonly string[]).includes(rpt as string)
+        rpt != null && (SUPPORTED_PRESET_MASCOT_TYPES as readonly string[]).includes(rpt as string)
           ? (rpt as PresetMascotType)
           : DEFAULT_PRESET_MASCOT_TYPE;
     });

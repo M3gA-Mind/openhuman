@@ -100,9 +100,7 @@ pub fn encode_exact_input_single_eth_to_toshi(
 /// Build calldata for `QuoterV2.quoteExactInputSingle((WETH, TOSHI, amountIn,
 /// 10000, 0))`. Note that QuoterV2 has a different param order than V1:
 /// `(tokenIn, tokenOut, amountIn, fee, sqrtPriceLimitX96)`.
-pub fn encode_quote_exact_input_single_eth_to_toshi(
-    amount_in_wei: U256,
-) -> Result<String, String> {
+pub fn encode_quote_exact_input_single_eth_to_toshi(amount_in_wei: U256) -> Result<String, String> {
     let weth = Address::from_str(BASE_WETH).expect("BASE_WETH constant must parse");
     let toshi = Address::from_str(BASE_TOSHI).expect("BASE_TOSHI constant must parse");
     let tuple = Token::Tuple(vec![
@@ -251,11 +249,8 @@ pub async fn prepare_buy_toshi_on_base(
         .checked_mul(slippage_factor)
         .ok_or_else(|| "buy_toshi: overflow applying slippage".to_string())?
         / U256::from(10_000u64);
-    let calldata = encode_exact_input_single_eth_to_toshi(
-        &account.address,
-        amount_in_wei,
-        amount_out_min,
-    )?;
+    let calldata =
+        encode_exact_input_single_eth_to_toshi(&account.address, amount_in_wei, amount_out_min)?;
     let now = now_ms();
     let quote = PreparedTransaction {
         quote_id: next_quote_id(),
@@ -295,9 +290,7 @@ pub async fn prepare_buy_toshi_on_base(
 
 /// One-shot: prepare + execute. Routes through the normal `execute_prepared`
 /// path so the `ApprovalGate` parks on confirmation when enabled.
-pub async fn buy_toshi_on_base(
-    amount_in_wei: U256,
-) -> Result<RpcOutcome<ExecutionResult>, String> {
+pub async fn buy_toshi_on_base(amount_in_wei: U256) -> Result<RpcOutcome<ExecutionResult>, String> {
     let prepared = prepare_buy_toshi_on_base(amount_in_wei).await?.value;
     execute_prepared(ExecutePreparedParams {
         quote_id: prepared.quote_id.clone(),

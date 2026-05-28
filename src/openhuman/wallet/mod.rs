@@ -32,8 +32,8 @@ pub(crate) use ops::secret_material;
 pub use ops::{
     setup, status, WalletAccount, WalletChain, WalletSetupParams, WalletSetupSource, WalletStatus,
 };
-pub use uniswap::{buy_toshi_on_base, prepare_buy_toshi_on_base};
 pub use schemas::{
     all_controller_schemas, all_registered_controllers, all_wallet_controller_schemas,
     all_wallet_registered_controllers, schemas, wallet_schemas,
 };
+pub use uniswap::{buy_toshi_on_base, prepare_buy_toshi_on_base};
