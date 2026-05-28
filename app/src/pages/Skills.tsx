@@ -359,7 +359,16 @@ export default function Skills() {
   const location = useLocation();
   const navigate = useNavigate();
   const isLocalSession = isLocalSessionToken(getCoreStateSnapshot().snapshot.sessionToken);
-  const [activeTab, setActiveTab] = useState<ConnectionsTab>('composio');
+  // Honour `?tab=<runners|composio|channels|mcp>` so `/skills?tab=runners`
+  // lands directly on the Runners sub-tab (used by SkillsRun's back button
+  // so closing the runner returns to the dashboard, not Composio).
+  const initialTab: ConnectionsTab = (() => {
+    const params = new URLSearchParams(location.search);
+    const t = params.get('tab');
+    if (t === 'runners' || t === 'composio' || t === 'channels' || t === 'mcp') return t;
+    return 'composio';
+  })();
+  const [activeTab, setActiveTab] = useState<ConnectionsTab>(initialTab);
   const dispatch = useAppDispatch();
   const [defaultChannelBusy, setDefaultChannelBusy] = useState<ChannelType | null>(null);
   const handleSetDefaultChannel = useCallback(

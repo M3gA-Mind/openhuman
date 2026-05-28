@@ -33,7 +33,7 @@ export default function SkillsRun() {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => navigate('/skills')}
+              onClick={() => navigate('/skills?tab=runners')}
               aria-label={t('common.back')}
               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-stone-600 dark:text-neutral-300 hover:bg-stone-100 dark:hover:bg-neutral-800 transition-colors"
             >
