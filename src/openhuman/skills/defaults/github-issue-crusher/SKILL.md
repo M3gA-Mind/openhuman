@@ -48,6 +48,15 @@ Fix the **single** GitHub issue named in the inputs, end to end, then open a **D
    ```
    `--draft` is non-negotiable for autonomous runs — CI runs and a human reviews before promotion to ready.
 
+10. **Hand off Phase 6 to the shepherd, then exit.** Once the draft PR URL is in hand, invoke the `pr-review-shepherd` skill as a fresh background run so the CI + review loop continues autonomously while *this* skill exits cleanly:
+    ```
+    run_skill {
+      "skill_id": "pr-review-shepherd",
+      "inputs": { "repo": "{repo}", "pr": <pr-number-just-opened> }
+    }
+    ```
+    The call returns immediately with the shepherd's `run_id` + `log` path. Include both in your final response so the user can track the shepherd, then stop — do not stay around polling CI yourself, that's the shepherd's job.
+
 ## Rules
 - **Scope:** only changes that fix `#{issue}`. No unrelated cleanup, no other issues.
 - **Source of truth** is the filesystem + `git` + `codegraph` — re-read / re-search rather than relying on recall.

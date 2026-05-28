@@ -137,6 +137,14 @@ pub fn all_tools_with_runtime(
         // follow-up; the tool emits a stable marker today.
         Box::new(TodoTool::new()),
         Box::new(PlanExitTool::new()),
+        // Skill chaining: let an in-flight autonomous skill (e.g.
+        // `github-issue-crusher`) kick off another bundled skill_run as a
+        // fresh background job (e.g. `pr-review-shepherd` against the PR it
+        // just opened) so each skill stays narrow + composable. Thin
+        // wrapper over `skills::schemas::spawn_skill_run_background` — the
+        // same helper `openhuman.skills_run` JSON-RPC uses, so RPC callers
+        // and tool callers share one spawn path.
+        Box::new(RunSkillTool::new()),
         Box::new(CurrentTimeTool::new()),
         Box::new(CodegraphIndexTool::new(
             config.clone(),

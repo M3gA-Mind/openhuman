@@ -505,169 +505,177 @@ struct SkillsRunParams {
     inputs: Option<Value>,
 }
 
+/// Outcome of [`spawn_skill_run_background`]: the new run's `run_id`, the
+/// canonical `skill_id` the registry resolved it to, and the path of the
+/// streaming log file every step + the footer get written to.
+pub(crate) struct SkillRunStarted {
+    pub run_id: String,
+    pub skill_id: String,
+    pub log_path: std::path::PathBuf,
+}
+
+/// Spawn a single autonomous skill_run as a detached `tokio::spawn`. Used by
+/// both the `openhuman.skills_run` JSON-RPC controller and the `run_skill`
+/// agent tool (which lets the orchestrator chain one skill into another —
+/// e.g. `github-issue-crusher` → `pr-review-shepherd` once the draft PR is
+/// open).
+///
+/// Returns immediately with the run handle; the actual work runs in the
+/// background until DONE / DEGENERATE / FAILED. Errors (unknown skill,
+/// missing required inputs) surface as `Err(String)` *before* the spawn so
+/// callers can reject malformed invocations synchronously.
+pub(crate) async fn spawn_skill_run_background(
+    skill_id_param: String,
+    inputs_param: Option<Value>,
+) -> Result<SkillRunStarted, String> {
+    let workspace = resolve_workspace_dir().await;
+    let skill = registry::get_skill(&workspace, &skill_id_param)
+        .ok_or_else(|| format!("skill_run: unknown skill '{skill_id_param}'"))?;
+    let inputs = inputs_param.unwrap_or(Value::Null);
+    let missing = registry::missing_required_inputs(&skill.inputs, &inputs);
+    if !missing.is_empty() {
+        return Err(format!(
+            "skill_run: missing required inputs: {}",
+            missing.join(", ")
+        ));
+    }
+    // Focus the orchestrator on this single skill: its SKILL.md rides in
+    // the task prompt as guidelines + the resolved inputs; the
+    // orchestrator's own system prompt and full tool access are kept.
+    let guidelines = match &skill.definition.system_prompt {
+        crate::openhuman::agent::harness::definition::PromptSource::Inline(s) => s.clone(),
+        _ => String::new(),
+    };
+    let inputs_block = registry::render_inputs_block(&skill.inputs, &inputs);
+    let skill_id = skill.definition.id.clone();
+    let task_prompt = format!(
+        "You are running a single skill: **{skill_id}**. Follow these guidelines exactly and \
+         focus solely on completing this one task — do not pick up unrelated work.\n\n\
+         # Skill guidelines\n{guidelines}\n\n{inputs_block}",
+    );
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let log_path = run_log::run_log_path(&workspace, &skill_id, &run_id);
+    tracing::info!(
+        skill_id = %skill_id,
+        run_id = %run_id,
+        log = %log_path.display(),
+        "[skills] spawn_skill_run_background: starting orchestrator run"
+    );
+
+    // Detached: build the orchestrator Agent inside the spawn so config /
+    // toolchain are loaded fresh per run; the parent returns the handle
+    // immediately. Same flow handle_skills_run used to inline — extracted
+    // so the `run_skill` agent tool can re-use it for skill chaining.
+    {
+        let run_id = run_id.clone();
+        let skill_id = skill_id.clone();
+        let inputs = inputs.clone();
+        let log_path = log_path.clone();
+        tokio::spawn(async move {
+            if let Err(e) =
+                run_log::write_header(&log_path, &skill_id, &run_id, &inputs, &task_prompt).await
+            {
+                tracing::warn!(run_id = %run_id, error = %e, "[skills] skill_run: header write failed");
+            }
+            let mut config = match Config::load_or_init().await {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = run_log::write_footer(
+                        &log_path,
+                        "FAILED",
+                        0,
+                        &format!("load config: {e:#}"),
+                    )
+                    .await;
+                    return;
+                }
+            };
+            config.agent.max_tool_iterations = SKILL_RUN_MAX_ITERATIONS;
+            config.http_request.allowed_domains = vec!["*".to_string()];
+            let mut agent = match Agent::from_config_for_agent(&config, "orchestrator") {
+                Ok(a) => a,
+                Err(e) => {
+                    let _ = run_log::write_footer(
+                        &log_path,
+                        "FAILED",
+                        0,
+                        &format!("build agent: {e:#}"),
+                    )
+                    .await;
+                    return;
+                }
+            };
+            agent.set_event_context(run_id.clone(), "skill");
+            agent.set_agent_definition_name(format!(
+                "orchestrator-skill-{}",
+                &run_id.get(..8).unwrap_or(&run_id)
+            ));
+            let (tx, rx) = tokio::sync::mpsc::channel(256);
+            agent.set_on_progress(Some(tx));
+            let bridge = tokio::spawn(run_log::drain_to_log(rx, log_path.clone()));
+
+            let started = std::time::Instant::now();
+            let result = with_autonomous_iter_cap(
+                SKILL_RUN_MAX_ITERATIONS,
+                agent.run_single(&task_prompt),
+            )
+            .await;
+            agent.set_on_progress(None);
+            drop(agent);
+            let _ = bridge.await;
+
+            let ms = started.elapsed().as_millis() as u64;
+            match result {
+                Ok(out) => {
+                    if let Some((line, count)) = run_log::detect_repeated_line(&out, 30, 4) {
+                        let preview = line.chars().take(160).collect::<String>();
+                        let body = format!(
+                            "degenerate-response: autonomous run halted before marking DONE.\n\
+                             the model's final assistant message repeats the same line {count}× — \
+                             this is the known one-generation low-entropy loop failure mode, not a real result.\n\n\
+                             repeated line (truncated to 160 chars):\n  {preview}\n\n\
+                             full final output follows below for forensic review:\n\n{out}",
+                        );
+                        let _ = run_log::write_footer(&log_path, "DEGENERATE", ms, &body).await;
+                        tracing::warn!(
+                            run_id = %run_id,
+                            repeats = count,
+                            "[skills] skill_run: degenerate final response rejected"
+                        );
+                    } else {
+                        let _ = run_log::write_footer(&log_path, "DONE", ms, &out).await;
+                        tracing::info!(run_id = %run_id, "[skills] skill_run: completed");
+                    }
+                }
+                Err(e) => {
+                    let _ =
+                        run_log::write_footer(&log_path, "FAILED", ms, &format!("{e:#}")).await;
+                    tracing::warn!(run_id = %run_id, error = ?e, "[skills] skill_run: failed");
+                }
+            }
+        });
+    }
+
+    Ok(SkillRunStarted {
+        run_id,
+        skill_id,
+        log_path,
+    })
+}
+
 fn handle_skills_run(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let payload = deserialize_params::<SkillsRunParams>(params)?;
-        let workspace = resolve_workspace_dir().await;
-        let skill = registry::get_skill(&workspace, &payload.skill_id)
-            .ok_or_else(|| format!("skill_run: unknown skill '{}'", payload.skill_id))?;
-        let inputs = payload.inputs.unwrap_or(Value::Null);
-        let missing = registry::missing_required_inputs(&skill.inputs, &inputs);
-        if !missing.is_empty() {
-            return Err(format!(
-                "skill_run: missing required inputs: {}",
-                missing.join(", ")
-            ));
-        }
-        // Focus the orchestrator on this single skill: its SKILL.md rides in
-        // the task prompt as guidelines + the resolved inputs; the
-        // orchestrator's own system prompt and full tool access are kept.
-        let guidelines = match &skill.definition.system_prompt {
-            crate::openhuman::agent::harness::definition::PromptSource::Inline(s) => s.clone(),
-            _ => String::new(),
+        let started = match spawn_skill_run_background(payload.skill_id, payload.inputs).await {
+            Ok(s) => s,
+            Err(e) => return Err(e),
         };
-        let inputs_block = registry::render_inputs_block(&skill.inputs, &inputs);
-        let skill_id = skill.definition.id.clone();
-        let task_prompt = format!(
-            "You are running a single skill: **{skill_id}**. Follow these guidelines exactly and \
-             focus solely on completing this one task — do not pick up unrelated work.\n\n\
-             # Skill guidelines\n{guidelines}\n\n{inputs_block}",
-        );
-        let run_id = uuid::Uuid::new_v4().to_string();
-        let log_path = run_log::run_log_path(&workspace, &skill_id, &run_id);
-        tracing::info!(
-            skill_id = %skill_id,
-            run_id = %run_id,
-            log = %log_path.display(),
-            "[skills][rpc] skill_run: starting orchestrator run"
-        );
-
-        // Detached: build the orchestrator Agent, stream every step to the run
-        // log, and return the run id immediately. Running a full turn (not a
-        // bare subagent) establishes its own parent context, so there is no
-        // NoParentContext failure, and the AgentProgress sink gives a complete
-        // tool-by-tool trace.
-        {
-            let run_id = run_id.clone();
-            let skill_id = skill_id.clone();
-            let inputs = inputs.clone();
-            let log_path = log_path.clone();
-            tokio::spawn(async move {
-                if let Err(e) =
-                    run_log::write_header(&log_path, &skill_id, &run_id, &inputs, &task_prompt)
-                        .await
-                {
-                    tracing::warn!(run_id = %run_id, error = %e, "[skills][rpc] skill_run: header write failed");
-                }
-                let mut config = match Config::load_or_init().await {
-                    Ok(c) => c,
-                    Err(e) => {
-                        let _ = run_log::write_footer(
-                            &log_path,
-                            "FAILED",
-                            0,
-                            &format!("load config: {e:#}"),
-                        )
-                        .await;
-                        return;
-                    }
-                };
-                // Autonomous skill run: lift the orchestrator's iteration cap and
-                // open web fetch to all public hosts (the SSRF private-host block
-                // stays). Sub-agents get the lifted cap via with_autonomous_iter_cap
-                // around run_single below; approval prompts don't apply (a
-                // background run carries no chat context, so the gate never parks).
-                config.agent.max_tool_iterations = SKILL_RUN_MAX_ITERATIONS;
-                config.http_request.allowed_domains = vec!["*".to_string()];
-                let mut agent = match Agent::from_config_for_agent(&config, "orchestrator") {
-                    Ok(a) => a,
-                    Err(e) => {
-                        let _ = run_log::write_footer(
-                            &log_path,
-                            "FAILED",
-                            0,
-                            &format!("build agent: {e:#}"),
-                        )
-                        .await;
-                        return;
-                    }
-                };
-                agent.set_event_context(run_id.clone(), "skill");
-                // Per-run unique agent_definition_name → the session transcript
-                // path becomes `…_orchestrator-skill-<short>.jsonl`, so the
-                // resume lookup (`find_latest_transcript` keys on workspace +
-                // agent name) cannot match any prior run's transcript. Every
-                // skill_run gets a FRESH transcript, eliminating the
-                // resume-poisoning empty-response wedge.
-                agent.set_agent_definition_name(format!(
-                    "orchestrator-skill-{}",
-                    &run_id.get(..8).unwrap_or(&run_id)
-                ));
-                let (tx, rx) = tokio::sync::mpsc::channel(256);
-                agent.set_on_progress(Some(tx));
-                let bridge = tokio::spawn(run_log::drain_to_log(rx, log_path.clone()));
-
-                let started = std::time::Instant::now();
-                // Scope the lifted iteration cap over the whole run — the
-                // orchestrator turn and every inline sub-agent loop.
-                let result = with_autonomous_iter_cap(
-                    SKILL_RUN_MAX_ITERATIONS,
-                    agent.run_single(&task_prompt),
-                )
-                .await;
-                agent.set_on_progress(None); // drop the sender → bridge drains and exits
-                drop(agent);
-                let _ = bridge.await;
-
-                let ms = started.elapsed().as_millis() as u64;
-                match result {
-                    Ok(out) => {
-                        // Reject the degenerate "model emitted the same
-                        // paragraph N times in one generation" final-response
-                        // failure mode (observed on runs adcd2dfd / 1bcb32a2
-                        // / dffae55d). Without this check the autonomous loop
-                        // accepts a no-tool-calls response as final and marks
-                        // the run DONE even though no actual work shipped.
-                        // Surface as DEGENERATE so callers never confuse it
-                        // with a real result.
-                        if let Some((line, count)) =
-                            run_log::detect_repeated_line(&out, 30, 4)
-                        {
-                            let preview = line.chars().take(160).collect::<String>();
-                            let body = format!(
-                                "degenerate-response: autonomous run halted before marking DONE.\n\
-                                 the model's final assistant message repeats the same line {count}× — \
-                                 this is the known one-generation low-entropy loop failure mode, not a real result.\n\n\
-                                 repeated line (truncated to 160 chars):\n  {preview}\n\n\
-                                 full final output follows below for forensic review:\n\n{out}",
-                            );
-                            let _ =
-                                run_log::write_footer(&log_path, "DEGENERATE", ms, &body).await;
-                            tracing::warn!(
-                                run_id = %run_id,
-                                repeats = count,
-                                "[skills][rpc] skill_run: degenerate final response rejected"
-                            );
-                        } else {
-                            let _ = run_log::write_footer(&log_path, "DONE", ms, &out).await;
-                            tracing::info!(run_id = %run_id, "[skills][rpc] skill_run: completed");
-                        }
-                    }
-                    Err(e) => {
-                        let _ =
-                            run_log::write_footer(&log_path, "FAILED", ms, &format!("{e:#}")).await;
-                        tracing::warn!(run_id = %run_id, error = ?e, "[skills][rpc] skill_run: failed");
-                    }
-                }
-            });
-        }
-
         to_json(RpcOutcome::new(
             serde_json::json!({
-                "run_id": run_id,
+                "run_id": started.run_id,
                 "status": "started",
-                "skill_id": skill_id,
-                "log": log_path.display().to_string(),
+                "skill_id": started.skill_id,
+                "log": started.log_path.display().to_string(),
             }),
             Vec::new(),
         ))
