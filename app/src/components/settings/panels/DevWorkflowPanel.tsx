@@ -90,7 +90,8 @@ const DevWorkflowPanel = () => {
     setCronLoading(true);
     try {
       const res = await openhumanCronList();
-      const jobs = (res as { data?: CoreCronJob[] }).data ?? (res as unknown as CoreCronJob[]);
+      // RPC returns { result: CronJob[], logs: [...] }
+      const jobs = (res as { result?: CoreCronJob[] }).result ?? [];
       const jobList = Array.isArray(jobs) ? jobs : [];
       const found = jobList.find((j: CoreCronJob) => j.name?.startsWith('dev-workflow') ?? false);
       if (found) {
@@ -306,7 +307,9 @@ const DevWorkflowPanel = () => {
     if (!existingJob) return;
     try {
       const res = await openhumanCronRuns(existingJob.id, 5);
-      const runs = (res as { data?: CoreCronRun[] }).data ?? (res as unknown as CoreCronRun[]);
+      // RPC returns { result: { runs: CronRun[] }, logs: [...] }
+      const raw = (res as { result?: { runs?: CoreCronRun[] } }).result;
+      const runs = raw?.runs ?? [];
       setRunHistory(Array.isArray(runs) ? runs : []);
       log(
         'loaded %d run history entries for job %s',

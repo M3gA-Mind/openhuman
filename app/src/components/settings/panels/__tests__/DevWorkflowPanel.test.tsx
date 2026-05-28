@@ -102,10 +102,10 @@ describe('DevWorkflowPanel', () => {
     vi.clearAllMocks();
     hoisted.listConnections.mockResolvedValue(githubConnection);
     hoisted.composioExecute.mockResolvedValue(reposResponse);
-    hoisted.cronList.mockResolvedValue({ data: [] });
-    hoisted.cronAdd.mockResolvedValue({ data: { id: 'cron-1', name: 'dev-workflow-user-repo1' } });
-    hoisted.cronRemove.mockResolvedValue({ data: { job_id: 'cron-1', removed: true } });
-    hoisted.cronRuns.mockResolvedValue({ data: [] });
+    hoisted.cronList.mockResolvedValue({ result: [], logs: [] });
+    hoisted.cronAdd.mockResolvedValue({ result: { id: 'cron-1', name: 'dev-workflow-user-repo1' }, logs: [] });
+    hoisted.cronRemove.mockResolvedValue({ result: { job_id: 'cron-1', removed: true }, logs: [] });
+    hoisted.cronRuns.mockResolvedValue({ result: { runs: [] }, logs: [] });
   });
 
   test('renders header immediately and populates repo dropdown on successful fetch', async () => {
@@ -263,30 +263,17 @@ describe('DevWorkflowPanel', () => {
       created_at: '2026-01-01T00:00:00Z',
       next_run: '2026-01-01T01:00:00Z',
     };
-    hoisted.cronList.mockResolvedValue({ data: [existingCronJob] });
-    // Call sequence: LIST_REPOS → GET_A_REPO (non-fork) → LIST_BRANCHES
-    hoisted.composioExecute
-      .mockResolvedValueOnce(reposResponse)
-      .mockResolvedValueOnce(repoMetaNonFork)
-      .mockResolvedValueOnce(branchesResponse);
+    hoisted.cronList.mockResolvedValue({ result: [existingCronJob], logs: [] });
 
     const Panel = await importPanel();
     renderWithProviders(<Panel />);
 
-    // Wait for repos to load
-    await waitFor(() => {
-      expect(screen.getByRole('option', { name: /user\/repo1/ })).toBeInTheDocument();
-    });
-
-    // Select a repo so the Actions section (with remove button) renders
-    const repoSelect = screen.getAllByRole('combobox')[0];
-    fireEvent.change(repoSelect, { target: { value: 'user/repo1' } });
-
-    // Wait for active config summary + remove button
+    // Active config card shows at top regardless of repo loading
     await waitFor(() => {
       expect(screen.getByText('settings.devWorkflow.activeConfiguration')).toBeInTheDocument();
     });
 
+    // Remove button is in the active config card
     const removeBtn = screen.getByRole('button', { name: 'settings.devWorkflow.remove' });
     fireEvent.click(removeBtn);
 
@@ -355,7 +342,7 @@ describe('DevWorkflowPanel', () => {
       created_at: '2026-01-01T00:00:00Z',
       next_run: '2026-01-01T01:00:00Z',
     };
-    hoisted.cronList.mockResolvedValue({ data: [existingCronJob] });
+    hoisted.cronList.mockResolvedValue({ result: [existingCronJob], logs: [] });
     hoisted.cronUpdate.mockResolvedValue({ data: { ...existingCronJob, enabled: false } });
 
     const Panel = await importPanel();
@@ -391,7 +378,7 @@ describe('DevWorkflowPanel', () => {
       created_at: '2026-01-01T00:00:00Z',
       next_run: '2026-01-01T01:00:00Z',
     };
-    hoisted.cronList.mockResolvedValue({ data: [existingCronJob] });
+    hoisted.cronList.mockResolvedValue({ result: [existingCronJob], logs: [] });
     hoisted.cronRun.mockResolvedValue({
       data: { job_id: 'cron-1', status: 'ok', duration_ms: 100, output: 'done' },
     });
@@ -428,18 +415,21 @@ describe('DevWorkflowPanel', () => {
       last_run: '2026-01-01T00:30:00Z',
       last_status: 'ok',
     };
-    hoisted.cronList.mockResolvedValue({ data: [existingCronJob] });
+    hoisted.cronList.mockResolvedValue({ result: [existingCronJob], logs: [] });
     hoisted.cronRuns.mockResolvedValue({
-      data: [
-        {
-          id: 1,
-          job_id: 'cron-1',
-          started_at: '2026-01-01T00:30:00Z',
-          finished_at: '2026-01-01T00:31:00Z',
-          status: 'ok',
-          duration_ms: 60000,
-        },
-      ],
+      result: {
+        runs: [
+          {
+            id: 1,
+            job_id: 'cron-1',
+            started_at: '2026-01-01T00:30:00Z',
+            finished_at: '2026-01-01T00:31:00Z',
+            status: 'ok',
+            duration_ms: 60000,
+          },
+        ],
+      },
+      logs: [],
     });
 
     const Panel = await importPanel();
@@ -477,7 +467,7 @@ describe('DevWorkflowPanel', () => {
       last_run: '2026-01-01T00:30:00Z',
       last_status: 'error',
     };
-    hoisted.cronList.mockResolvedValue({ data: [existingCronJob] });
+    hoisted.cronList.mockResolvedValue({ result: [existingCronJob], logs: [] });
 
     const Panel = await importPanel();
     renderWithProviders(<Panel />);
