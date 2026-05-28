@@ -808,7 +808,12 @@ impl OpenAiCompatibleProvider {
         // the next turn for thinking models (e.g. DeepSeek-R1, Qwen3) whose APIs
         // return HTTP 400 ("reasoning_content in thinking mode must be passed back")
         // when the field is omitted from subsequent assistant messages.
-        let reasoning_content = message.reasoning_content.clone();
+        let reasoning_content = message
+            .reasoning_content
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned);
         let mut tool_calls = message
             .tool_calls
             .unwrap_or_default()
