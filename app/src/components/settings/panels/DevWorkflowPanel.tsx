@@ -82,6 +82,7 @@ const DevWorkflowPanel = () => {
   const [cronLoading, setCronLoading] = useState(false);
   const [runHistory, setRunHistory] = useState<CoreCronRun[]>([]);
   const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
   const [running, setRunning] = useState(false);
 
   // ── Load existing cron job on mount ─────────────────────────────────
@@ -89,7 +90,8 @@ const DevWorkflowPanel = () => {
     setCronLoading(true);
     try {
       const res = await openhumanCronList();
-      const jobs = (res as { data?: CoreCronJob[] }).data ?? (res as unknown as CoreCronJob[]);
+      // RPC returns { result: CronJob[], logs: [...] }
+      const jobs = (res as { result?: CoreCronJob[] }).result ?? [];
       const jobList = Array.isArray(jobs) ? jobs : [];
       const found = jobList.find((j: CoreCronJob) => j.name?.startsWith('dev-workflow') ?? false);
       if (found) {
@@ -305,7 +307,9 @@ const DevWorkflowPanel = () => {
     if (!existingJob) return;
     try {
       const res = await openhumanCronRuns(existingJob.id, 5);
-      const runs = (res as { data?: CoreCronRun[] }).data ?? (res as unknown as CoreCronRun[]);
+      // RPC returns { result: { runs: CronRun[] }, logs: [...] }
+      const raw = (res as { result?: { runs?: CoreCronRun[] } }).result;
+      const runs = raw?.runs ?? [];
       setRunHistory(Array.isArray(runs) ? runs : []);
       log(
         'loaded %d run history entries for job %s',
@@ -330,11 +334,49 @@ const DevWorkflowPanel = () => {
     const [owner] = selectedRepo.split('/');
     const upstreamName = forkInfo ? forkInfo.upstreamFullName : selectedRepo;
 
+    const repoName = upstreamName.split('/')[1] ?? selectedRepo.split('/')[1] ?? '';
+    const skillPrompt = [
+      `You are running the dev-workflow skill. Follow these guidelines exactly.`,
+      ``,
+      `# Dev Workflow — Autonomous Issue Crusher`,
+      ``,
+      `Find a GitHub issue on \`${upstreamName}\`, implement a fix, and deliver a PR.`,
+      ``,
+      `## Repos`,
+      `- **Upstream** = \`${upstreamName}\` — issues live here, PRs target \`${targetBranch}\`.`,
+      `- **Fork** = \`${owner}/${repoName}\` — push the fix branch here.`,
+      `- Commit through the GitHub API — no local git push.`,
+      ``,
+      `## Issue Selection (smart fallback)`,
+      `1. **First**: Look for open issues assigned to \`${owner}\` on \`${upstreamName}\` with no linked PR.`,
+      `2. **If none assigned**: Find unassigned open issues. Prefer issues labeled \`good first issue\`, \`bug\`, \`help wanted\`, or \`easy\`. Prefer issues with detailed descriptions (>500 chars). Skip issues that already have an open PR linked.`,
+      `3. **Self-assign**: Once you pick an unassigned issue, assign it to \`${owner}\` using GITHUB_ADD_ASSIGNEES so no one else picks it up concurrently.`,
+      `4. **If no suitable issues at all**: Exit cleanly — report "no suitable issues found".`,
+      ``,
+      `## Implementation Steps`,
+      `1. Read the full issue body, comments, and labels.`,
+      `2. Ensure fork \`${owner}/${repoName}\` exists (create if needed).`,
+      `3. Clone \`${upstreamName}\` locally, branch \`dev-workflow/<issue>-<slug>\` off \`${targetBranch}\`.`,
+      `4. Run \`codegraph_index\` on the repo.`,
+      `5. Use \`codegraph_search\` to find relevant code. Fall back to grep/glob if coverage isn't full.`,
+      `6. Implement the minimal correct fix. Re-read files and git diff — don't trust memory.`,
+      `7. Run tests. Iterate until green.`,
+      `8. Push via GitHub API (blob → tree → commit → update-ref). Do NOT git push.`,
+      `9. Open cross-repo PR: \`${upstreamName}:${targetBranch}\` ← \`${owner}:<branch>\`. Body: Closes #N + summary + how you verified.`,
+      ``,
+      `## Rules`,
+      `- One PR per run, then stop.`,
+      `- Only fix the picked issue — no unrelated changes.`,
+      `- codegraph is an accelerant, not a gate — fall back to grep if cold.`,
+      `- If too large/risky (would touch >20 files or needs multi-system changes), comment on the issue explaining why and skip.`,
+      `- Never force-push or push to upstream directly.`,
+    ].join('\n');
+
     const cronParams: CronAddParams = {
       name: `dev-workflow-${selectedRepo.replace('/', '-')}`,
       schedule: { kind: 'cron', expr: schedule },
       job_type: 'agent',
-      prompt: `Run the dev-workflow skill.\n\nInputs:\n- repo: ${selectedRepo}\n- upstream: ${upstreamName}\n- target_branch: ${targetBranch}\n- fork_owner: ${owner}`,
+      prompt: skillPrompt,
       session_target: 'isolated',
       delivery: { mode: 'proactive', best_effort: true },
     };
@@ -435,165 +477,32 @@ const DevWorkflowPanel = () => {
           {t('settings.developerMenu.devWorkflow.panelDesc')}
         </p>
 
-        {/* Repo selector */}
-        <div>
-          <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
-            {t('settings.devWorkflow.githubRepository')}
-          </label>
-          {reposError && (
-            <div className="mb-2 px-3 py-2 rounded-md bg-coral-50 dark:bg-coral-500/10 border border-coral-200 dark:border-coral-500/30 text-xs text-coral-700 dark:text-coral-300">
-              {reposError}
-            </div>
-          )}
-          <select
-            value={selectedRepo}
-            onChange={e => void onRepoSelect(e.target.value)}
-            disabled={reposLoading}
-            className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50">
-            <option value="">
-              {reposLoading
-                ? t('settings.devWorkflow.loadingRepositories')
-                : t('settings.devWorkflow.selectRepository')}
-            </option>
-            {repos.map(r => (
-              <option key={r.fullName} value={r.fullName}>
-                {r.fullName} {r.private ? t('settings.devWorkflow.privateTag') : ''}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Fork info */}
-        {forkLoading && (
-          <div className="text-xs text-neutral-500 dark:text-neutral-400">
-            {t('settings.devWorkflow.detectingForkInfo')}
-          </div>
-        )}
-        {forkInfo && (
-          <div className="px-3 py-2 rounded-md bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/30">
-            <div className="text-xs font-medium text-primary-800 dark:text-primary-300">
-              {t('settings.devWorkflow.forkDetected')}
-            </div>
-            <div className="text-xs text-primary-700 dark:text-primary-200 mt-0.5">
-              {t('settings.devWorkflow.upstream')}{' '}
-              <span className="font-mono">{forkInfo.upstreamFullName}</span>
-            </div>
-            <div className="text-xs text-primary-600 dark:text-primary-300 mt-0.5">
-              {t('settings.devWorkflow.forkPrNote')}
-            </div>
-          </div>
-        )}
-        {selectedRepo && !forkLoading && !forkInfo && (
-          <div className="px-3 py-2 rounded-md bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
-            <div className="text-xs text-neutral-600 dark:text-neutral-400">
-              {t('settings.devWorkflow.notForkNote')}
-            </div>
-          </div>
-        )}
-
-        {/* Branch selector */}
-        {branches.length > 0 && (
-          <div>
-            <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
-              {t('settings.devWorkflow.targetBranch')}
-            </label>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
-              {t('settings.devWorkflow.targetBranchNote')}
-              {forkInfo ? ` on ${forkInfo.upstreamFullName}` : ''}.
-            </p>
-            <select
-              value={targetBranch}
-              onChange={e => {
-                setTargetBranch(e.target.value);
-                setSaveStatus('idle');
-              }}
-              disabled={branchesLoading}
-              className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50">
-              {branches.map(b => (
-                <option key={b.name} value={b.name}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        {branchesLoading && (
-          <div className="text-xs text-neutral-500 dark:text-neutral-400">
-            {t('settings.devWorkflow.loadingBranches')}
-          </div>
-        )}
-
-        {/* Schedule */}
-        {selectedRepo && (
-          <div>
-            <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
-              {t('settings.devWorkflow.runFrequency')}
-            </label>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
-              {t('settings.devWorkflow.runFrequencyNote')}
-            </p>
-            <select
-              value={schedule}
-              onChange={e => {
-                setSchedule(e.target.value);
-                setSaveStatus('idle');
-              }}
-              className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
-              {SCHEDULE_PRESETS.map(p => (
-                <option key={p.value} value={p.value}>
-                  {t(p.labelKey)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {/* Actions */}
-        {selectedRepo && (
-          <div className="flex items-center gap-3 pt-2">
-            <button
-              onClick={() => void handleSave()}
-              disabled={!canSave}
-              className="px-4 py-2 rounded-md bg-primary-600 hover:bg-primary-500 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-              {existingJob
-                ? t('settings.devWorkflow.updateConfiguration')
-                : t('settings.devWorkflow.saveConfiguration')}
-            </button>
-            {existingJob && (
-              <button
-                onClick={() => void handleRemove()}
-                className="px-4 py-2 rounded-md bg-coral-600 hover:bg-coral-500 text-white text-sm font-medium transition-colors">
-                {t('settings.devWorkflow.remove')}
-              </button>
-            )}
-            {saveStatus === 'saved' && (
-              <span className="text-xs text-sage-600 dark:text-sage-400 font-medium">
-                {t('settings.devWorkflow.saved')}
-              </span>
-            )}
-            {saveStatus === 'error' && (
-              <span className="text-xs text-coral-600 dark:text-coral-400 font-medium">
-                {t('settings.devWorkflow.cronSaveError')}
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* Active config summary — cron job status */}
+        {/* Active config summary — shown at top regardless of repo loading */}
         {cronLoading && (
           <div className="text-xs text-neutral-500 dark:text-neutral-400">
             {t('settings.devWorkflow.loadingRepositories')}
           </div>
         )}
         {existingJob && (
-          <div className="mt-2 px-4 py-3 rounded-lg border border-sage-200 dark:border-sage-500/30 bg-sage-50 dark:bg-sage-500/10">
+          <div className="px-4 py-3 rounded-lg border border-sage-200 dark:border-sage-500/30 bg-sage-50 dark:bg-sage-500/10">
+            {/* Running indicator */}
+            {running && (
+              <div className="mb-3 px-3 py-2 rounded-md bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/30 flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-primary-500 animate-pulse" />
+                <span className="text-xs font-medium text-primary-700 dark:text-primary-300">
+                  {t('settings.devWorkflow.runningStatus')}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold text-sage-900 dark:text-sage-200">
                 {t('settings.devWorkflow.activeConfiguration')}
               </div>
               <div className="flex items-center gap-2">
-                {/* Enable/Disable toggle */}
                 <button
+                  type="button"
+                  role="switch"
+                  aria-checked={existingJob.enabled}
                   onClick={() => void handleToggle()}
                   className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${
                     existingJob.enabled ? 'bg-sage-500' : 'bg-neutral-300 dark:bg-neutral-600'
@@ -616,7 +525,15 @@ const DevWorkflowPanel = () => {
                 {t('settings.devWorkflow.activeConfigRepository')}
               </dt>
               <dd className="font-mono text-sage-900 dark:text-sage-200">
-                {existingJob.name?.replace('dev-workflow-', '').replace('-', '/') ?? '—'}
+                {existingJob.name?.replace(/^dev-workflow-/, '') ?? '—'}
+              </dd>
+              <dt className="text-sage-600 dark:text-sage-400">
+                {t('settings.devWorkflow.activeConfigSchedule')}
+              </dt>
+              <dd className="text-sage-900 dark:text-sage-200">
+                {SCHEDULE_PRESETS.find(p => p.value === existingJob.expression)
+                  ? t(SCHEDULE_PRESETS.find(p => p.value === existingJob.expression)!.labelKey)
+                  : existingJob.expression}
               </dd>
               <dt className="text-sage-600 dark:text-sage-400">
                 {t('settings.devWorkflow.nextRun')}
@@ -646,7 +563,6 @@ const DevWorkflowPanel = () => {
               )}
             </dl>
 
-            {/* Run Now button */}
             <div className="mt-3 flex items-center gap-2">
               <button
                 onClick={() => void handleRunNow()}
@@ -654,9 +570,24 @@ const DevWorkflowPanel = () => {
                 className="px-3 py-1.5 rounded-md bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-300 text-xs font-medium hover:bg-primary-200 dark:hover:bg-primary-500/30 transition-colors disabled:opacity-50">
                 {running ? t('settings.devWorkflow.running') : t('settings.devWorkflow.runNow')}
               </button>
+              <button
+                onClick={() => void handleRemove()}
+                className="px-3 py-1.5 rounded-md bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300 text-xs font-medium hover:bg-coral-200 dark:hover:bg-coral-500/30 transition-colors">
+                {t('settings.devWorkflow.remove')}
+              </button>
             </div>
 
-            {/* Run History */}
+            {existingJob.last_output && (
+              <div className="mt-3">
+                <div className="text-xs font-medium text-sage-600 dark:text-sage-400 mb-1">
+                  {t('settings.devWorkflow.lastOutput')}
+                </div>
+                <pre className="px-3 py-2 rounded-md bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-[11px] text-neutral-700 dark:text-neutral-300 font-mono whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                  {existingJob.last_output}
+                </pre>
+              </div>
+            )}
+
             {runHistory.length > 0 && (
               <div className="mt-3">
                 <button
@@ -668,27 +599,44 @@ const DevWorkflowPanel = () => {
                 {historyExpanded && (
                   <div className="mt-1.5 space-y-1">
                     {runHistory.map(run => (
-                      <div
-                        key={run.id}
-                        className="flex items-center justify-between px-2 py-1 rounded bg-white dark:bg-neutral-800 text-xs">
-                        <span className="text-neutral-600 dark:text-neutral-400">
-                          {new Date(run.started_at).toLocaleString()}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {run.duration_ms != null && (
-                            <span className="text-neutral-500 dark:text-neutral-500">
-                              {(run.duration_ms / 1000).toFixed(1)}s
+                      <div key={run.id} className="rounded bg-white dark:bg-neutral-800">
+                        <button
+                          onClick={() => setExpandedRunId(expandedRunId === run.id ? null : run.id)}
+                          className="w-full flex items-center justify-between px-2 py-1.5 text-xs hover:bg-neutral-50 dark:hover:bg-neutral-750 rounded transition-colors">
+                          <div className="flex items-center gap-2">
+                            <span className="text-neutral-400">
+                              {expandedRunId === run.id ? '▾' : '▸'}
                             </span>
-                          )}
-                          <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                              run.status === 'ok'
-                                ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
-                                : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300'
-                            }`}>
-                            {run.status}
-                          </span>
-                        </div>
+                            <span className="text-neutral-600 dark:text-neutral-400">
+                              {new Date(run.started_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {run.duration_ms != null && (
+                              <span className="text-neutral-500 dark:text-neutral-500">
+                                {(run.duration_ms / 1000).toFixed(1)}s
+                              </span>
+                            )}
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                run.status === 'ok'
+                                  ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
+                                  : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300'
+                              }`}>
+                              {run.status}
+                            </span>
+                          </div>
+                        </button>
+                        {expandedRunId === run.id && run.output && (
+                          <pre className="mx-2 mb-2 px-3 py-2 rounded-md bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-[11px] text-neutral-700 dark:text-neutral-300 font-mono whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+                            {run.output}
+                          </pre>
+                        )}
+                        {expandedRunId === run.id && !run.output && (
+                          <div className="mx-2 mb-2 px-3 py-2 text-[11px] text-neutral-400 dark:text-neutral-500 italic">
+                            {t('settings.devWorkflow.noOutput')}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -696,6 +644,145 @@ const DevWorkflowPanel = () => {
               </div>
             )}
           </div>
+        )}
+
+        {/* Setup form — only shown when no active config exists */}
+        {!existingJob && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
+                {t('settings.devWorkflow.githubRepository')}
+              </label>
+              {reposError && (
+                <div className="mb-2 px-3 py-2 rounded-md bg-coral-50 dark:bg-coral-500/10 border border-coral-200 dark:border-coral-500/30 text-xs text-coral-700 dark:text-coral-300">
+                  {reposError}
+                </div>
+              )}
+              <select
+                value={selectedRepo}
+                onChange={e => void onRepoSelect(e.target.value)}
+                disabled={reposLoading}
+                className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50">
+                <option value="">
+                  {reposLoading
+                    ? t('settings.devWorkflow.loadingRepositories')
+                    : t('settings.devWorkflow.selectRepository')}
+                </option>
+                {repos.map(r => (
+                  <option key={r.fullName} value={r.fullName}>
+                    {r.fullName} {r.private ? t('settings.devWorkflow.privateTag') : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Fork info */}
+            {forkLoading && (
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                {t('settings.devWorkflow.detectingForkInfo')}
+              </div>
+            )}
+            {forkInfo && (
+              <div className="px-3 py-2 rounded-md bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/30">
+                <div className="text-xs font-medium text-primary-800 dark:text-primary-300">
+                  {t('settings.devWorkflow.forkDetected')}
+                </div>
+                <div className="text-xs text-primary-700 dark:text-primary-200 mt-0.5">
+                  {t('settings.devWorkflow.upstream')}{' '}
+                  <span className="font-mono">{forkInfo.upstreamFullName}</span>
+                </div>
+                <div className="text-xs text-primary-600 dark:text-primary-300 mt-0.5">
+                  {t('settings.devWorkflow.forkPrNote')}
+                </div>
+              </div>
+            )}
+            {selectedRepo && !forkLoading && !forkInfo && (
+              <div className="px-3 py-2 rounded-md bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+                <div className="text-xs text-neutral-600 dark:text-neutral-400">
+                  {t('settings.devWorkflow.notForkNote')}
+                </div>
+              </div>
+            )}
+
+            {/* Branch selector */}
+            {branches.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
+                  {t('settings.devWorkflow.targetBranch')}
+                </label>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
+                  {t('settings.devWorkflow.targetBranchNote')}
+                  {forkInfo ? ` on ${forkInfo.upstreamFullName}` : ''}.
+                </p>
+                <select
+                  value={targetBranch}
+                  onChange={e => {
+                    setTargetBranch(e.target.value);
+                    setSaveStatus('idle');
+                  }}
+                  disabled={branchesLoading}
+                  className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 disabled:opacity-50">
+                  {branches.map(b => (
+                    <option key={b.name} value={b.name}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {branchesLoading && (
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                {t('settings.devWorkflow.loadingBranches')}
+              </div>
+            )}
+
+            {/* Schedule */}
+            {selectedRepo && (
+              <div>
+                <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1.5">
+                  {t('settings.devWorkflow.runFrequency')}
+                </label>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-1.5">
+                  {t('settings.devWorkflow.runFrequencyNote')}
+                </p>
+                <select
+                  value={schedule}
+                  onChange={e => {
+                    setSchedule(e.target.value);
+                    setSaveStatus('idle');
+                  }}
+                  className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-primary-500 focus:border-primary-500">
+                  {SCHEDULE_PRESETS.map(p => (
+                    <option key={p.value} value={p.value}>
+                      {t(p.labelKey)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Actions */}
+            {selectedRepo && (
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  onClick={() => void handleSave()}
+                  disabled={!canSave}
+                  className="px-4 py-2 rounded-md bg-primary-600 hover:bg-primary-500 text-white text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                  {t('settings.devWorkflow.saveConfiguration')}
+                </button>
+                {saveStatus === 'saved' && (
+                  <span className="text-xs text-sage-600 dark:text-sage-400 font-medium">
+                    {t('settings.devWorkflow.saved')}
+                  </span>
+                )}
+                {saveStatus === 'error' && (
+                  <span className="text-xs text-coral-600 dark:text-coral-400 font-medium">
+                    {t('settings.devWorkflow.cronSaveError')}
+                  </span>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

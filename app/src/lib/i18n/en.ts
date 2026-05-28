@@ -3114,6 +3114,10 @@ const en: TranslationMap = {
   'settings.devWorkflow.running': 'Running\u2026',
   'settings.devWorkflow.recentRuns': 'Recent runs',
   'settings.devWorkflow.cronSaveError': 'Failed to save configuration',
+  'settings.devWorkflow.lastOutput': 'Last output',
+  'settings.devWorkflow.noOutput': 'No output captured',
+  'settings.devWorkflow.runningStatus':
+    'Agent is running — picking an issue and working on a fix...',
   'settings.devWorkflow.errorNotConnected':
     'GitHub is not connected. Please connect GitHub via Settings > Advanced > Composio first.',
   'settings.devWorkflow.errorToolNotEnabled':
