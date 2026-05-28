@@ -273,6 +273,36 @@ const en: TranslationMap = {
   'memory.tab.settings': 'Settings',
   'memory.analyzeNow': 'Analyze Now',
 
+  // Memory Tree status panel (#1856 Part 1)
+  'memoryTree.status.title': 'Memory Tree',
+  'memoryTree.status.autoSyncLabel': 'Auto-sync',
+  'memoryTree.status.autoSyncDescription':
+    'Pause to stop new ingestion. Existing wiki stays queryable.',
+  'memoryTree.status.statusTile': 'Status',
+  'memoryTree.status.lastSyncTile': 'Last sync',
+  'memoryTree.status.totalChunksTile': 'Total chunks',
+  'memoryTree.status.wikiSizeTile': 'Wiki size',
+  'memoryTree.status.statusRunning': 'Running',
+  'memoryTree.status.statusPaused': 'Paused',
+  'memoryTree.status.statusSyncing': 'Syncing',
+  'memoryTree.status.statusError': 'Error',
+  'memoryTree.status.statusIdle': 'Idle',
+  'memoryTree.status.never': 'Never',
+  'memoryTree.status.fetchError': "Couldn't fetch Memory Tree status",
+  'memoryTree.status.retry': 'Retry',
+  'memoryTree.status.toggleFailed': "Couldn't toggle auto-sync",
+  // Relative-time buckets surfaced by the last-sync tile. `{count}` is
+  // replaced client-side at the call site (the runtime `t()` does not
+  // interpolate — see I18nContext.tsx).
+  'memoryTree.status.justNow': 'just now',
+  'memoryTree.status.secondsAgo': '{count}s ago',
+  'memoryTree.status.minuteAgo': '1 min ago',
+  'memoryTree.status.minutesAgo': '{count} min ago',
+  'memoryTree.status.hourAgo': '1 hr ago',
+  'memoryTree.status.hoursAgo': '{count} hr ago',
+  'memoryTree.status.dayAgo': '1 day ago',
+  'memoryTree.status.daysAgo': '{count} days ago',
+
   // Notifications / Alerts
   'alerts.title': 'Alerts',
   'alerts.empty': 'No alerts yet',
@@ -632,6 +662,19 @@ const en: TranslationMap = {
   'settings.search.placeholderStored': '•••••••• (stored)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
+  'settings.search.allowedSitesLabel': 'Allowed websites',
+  'settings.search.allowedSitesHint':
+    'Hosts the assistant may open and read — via web fetch and the browser tool — one per line, e.g. reuters.com. A host also covers its subdomains. Web search itself is not restricted by this list.',
+  'settings.search.allowedSitesAllOn':
+    'The assistant can open any public website. Local and private addresses stay blocked.',
+  'settings.search.allowedSitesPlaceholder': 'reuters.com\napnews.com\ngithub.com',
+  'settings.search.allowedSitesSave': 'Save websites',
+  'settings.search.accessModeAria': 'Web access mode',
+  'settings.search.accessAllowAll': 'Allow all',
+  'settings.search.accessCustom': 'Custom',
+  'settings.search.accessBlockAll': 'Block all',
+  'settings.search.accessBlockAllHint':
+    'All web access is blocked — the assistant cannot open or read any website.',
   // ─── Embeddings settings ───────────────────────────────────
   'settings.embeddings.title': 'Embeddings',
   'settings.embeddings.description':
@@ -2009,6 +2052,8 @@ const en: TranslationMap = {
   'channels.telegram.savedRestartRequired': 'Channel saved. Restart the app to activate it.',
   'channels.web.alwaysAvailable': 'Always available',
   'chat.approval.approve': 'Approve',
+  'chat.approval.alwaysAllow': 'Always allow',
+  'chat.approval.alwaysAllowHint': 'Stop asking for this tool — add it to your Always-allow list',
   'chat.approval.deciding': 'Working…',
   'chat.approval.deny': 'Deny',
   'chat.approval.error': 'Could not record your decision — try again.',
@@ -2971,6 +3016,55 @@ const en: TranslationMap = {
   'settings.developerMenu.agentChat.title': 'Agent Chat',
   'settings.developerMenu.agentChat.desc':
     'Test agent conversation with model and temperature overrides',
+  'settings.developerMenu.devWorkflow.title': 'Dev Workflow',
+  'settings.developerMenu.devWorkflow.desc':
+    'Autonomous agent that picks your GitHub issues and raises PRs on a schedule',
+  'settings.developerMenu.devWorkflow.panelDesc':
+    'Configure an autonomous developer agent that picks GitHub issues assigned to you and raises pull requests automatically on a schedule.',
+  'settings.devWorkflow.githubRepository': 'GitHub Repository',
+  'settings.devWorkflow.loadingRepositories': 'Loading repositories...',
+  'settings.devWorkflow.selectRepository': 'Select a repository',
+  'settings.devWorkflow.privateTag': '(private)',
+  'settings.devWorkflow.detectingForkInfo': 'Detecting fork info...',
+  'settings.devWorkflow.forkDetected': 'Fork detected',
+  'settings.devWorkflow.upstream': 'Upstream:',
+  'settings.devWorkflow.forkPrNote': 'PRs will be raised against the upstream repository.',
+  'settings.devWorkflow.notForkNote':
+    'Not a fork. PRs will be raised against this repository directly.',
+  'settings.devWorkflow.targetBranch': 'Target Branch',
+  'settings.devWorkflow.targetBranchNote': 'PRs will be raised against this branch',
+  'settings.devWorkflow.loadingBranches': 'Loading branches...',
+  'settings.devWorkflow.runFrequency': 'Run Frequency',
+  'settings.devWorkflow.runFrequencyNote':
+    'How often the agent should check for issues and raise PRs.',
+  'settings.devWorkflow.updateConfiguration': 'Update Configuration',
+  'settings.devWorkflow.saveConfiguration': 'Save Configuration',
+  'settings.devWorkflow.remove': 'Remove',
+  'settings.devWorkflow.saved': 'Saved',
+  'settings.devWorkflow.activeConfiguration': 'Active Configuration',
+  'settings.devWorkflow.activeConfigRepository': 'Repository:',
+  'settings.devWorkflow.activeConfigUpstream': 'Upstream:',
+  'settings.devWorkflow.activeConfigTargetBranch': 'Target branch:',
+  'settings.devWorkflow.activeConfigSchedule': 'Schedule:',
+  'settings.devWorkflow.enabled': 'Enabled',
+  'settings.devWorkflow.paused': 'Paused',
+  'settings.devWorkflow.nextRun': 'Next run',
+  'settings.devWorkflow.lastRun': 'Last run',
+  'settings.devWorkflow.runNow': 'Run now',
+  'settings.devWorkflow.running': 'Running\u2026',
+  'settings.devWorkflow.recentRuns': 'Recent runs',
+  'settings.devWorkflow.cronSaveError': 'Failed to save configuration',
+  'settings.devWorkflow.errorNotConnected':
+    'GitHub is not connected. Please connect GitHub via Settings > Advanced > Composio first.',
+  'settings.devWorkflow.errorToolNotEnabled':
+    'GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER tool is not enabled on this backend. Please ask your admin to enable it in the Composio integration (backend#842).',
+  'settings.devWorkflow.errorNotAuthenticated': 'Not authenticated. Please sign in first.',
+  'settings.devWorkflow.errorNoRepositories': 'No repositories found for this GitHub account.',
+  'settings.devWorkflow.schedule.every30min': 'Every 30 minutes',
+  'settings.devWorkflow.schedule.everyHour': 'Every hour',
+  'settings.devWorkflow.schedule.every2hours': 'Every 2 hours',
+  'settings.devWorkflow.schedule.every6hours': 'Every 6 hours',
+  'settings.devWorkflow.schedule.onceDaily': 'Once daily (9 AM)',
   'settings.developerMenu.cronJobs.title': 'Cron Jobs',
   'settings.developerMenu.cronJobs.desc': 'View and configure scheduled jobs for runtime skills',
   'settings.developerMenu.localModelDebug.title': 'Local Model Debug',
@@ -3042,6 +3136,10 @@ const en: TranslationMap = {
   'settings.agentAccess.confine.desc':
     'Restrict the agent to the workspace directory (plus any granted folders), whichever access mode is selected. When off, it can reach anywhere your user can — except the always-blocked credential and system directories.',
   'settings.agentAccess.grantedFolders': 'Granted folders',
+  'settings.agentAccess.alwaysAllow': 'Always-allowed tools',
+  'settings.agentAccess.alwaysAllowDesc':
+    'Tools you marked "Always allow" in chat run without asking. Remove one to be prompted again.',
+  'settings.agentAccess.alwaysAllowNone': 'No always-allowed tools yet.',
   'settings.agentAccess.grantedDesc':
     'Folders the agent may read and write, in addition to the workspace. Credential stores (~/.ssh, ~/.gnupg, ~/.aws, keychains) and system directories (/etc, /System, C:\\Windows, …) are always blocked, even inside a granted folder.',
   'settings.agentAccess.noneGranted': 'No folders granted.',

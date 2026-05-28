@@ -17,6 +17,7 @@ import ComposioTriagePanel from '../components/settings/panels/ComposioTriagePan
 import CronJobsPanel from '../components/settings/panels/CronJobsPanel';
 import DeveloperOptionsPanel from '../components/settings/panels/DeveloperOptionsPanel';
 import DevicesComingSoonPanel from '../components/settings/panels/DevicesComingSoonPanel';
+import DevWorkflowPanel from '../components/settings/panels/DevWorkflowPanel';
 import EmbeddingsPanel from '../components/settings/panels/EmbeddingsPanel';
 import HeartbeatPanel from '../components/settings/panels/HeartbeatPanel';
 import LedgerUsagePanel from '../components/settings/panels/LedgerUsagePanel';
@@ -439,6 +440,7 @@ const Settings = () => {
         <Route path="search" element={wrapSettingsPage(<SearchPanel />)} />
         <Route path="agent-chat" element={wrapSettingsPage(<AgentChatPanel />)} />
         <Route path="cron-jobs" element={wrapSettingsPage(<CronJobsPanel />)} />
+        <Route path="dev-workflow" element={wrapSettingsPage(<DevWorkflowPanel />)} />
         <Route
           path="screen-awareness-debug"
           element={wrapSettingsPage(<ScreenAwarenessDebugPanel />)}
