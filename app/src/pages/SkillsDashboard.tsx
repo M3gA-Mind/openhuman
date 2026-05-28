@@ -18,7 +18,7 @@ import createDebug from 'debug';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { cronToHuman } from '../lib/cron/cronToHuman';
+import ScheduledCronCard from '../components/skills/ScheduledCronCard';
 import { useT } from '../lib/i18n/I18nContext';
 import {
   type CoreCronJob,
@@ -50,23 +50,6 @@ function extractSkillId(jobName: string): string {
   const dashBeforeEq = tail.lastIndexOf('-', eqIdx);
   if (dashBeforeEq === -1) return tail;
   return tail.slice(0, dashBeforeEq);
-}
-
-/**
- * Pull the cron expression out of the schedule discriminated-union.
- * Today only `kind: 'cron'` carries an `expr`; the other variants
- * (`at`, `every`) render their own shape.
- */
-function formatSchedule(job: CoreCronJob): string {
-  const s = job.schedule as { kind?: string; expr?: string; at?: string; every_ms?: number };
-  if (!s) return job.expression ?? '';
-  if (s.kind === 'cron' && s.expr) return cronToHuman(s.expr);
-  if (s.kind === 'at' && s.at) return new Date(s.at).toLocaleString();
-  if (s.kind === 'every' && s.every_ms) {
-    const minutes = Math.round(s.every_ms / 60_000);
-    return `Every ${minutes} minutes`;
-  }
-  return cronToHuman(job.expression ?? '');
 }
 
 /** Group jobs by skill_id and present a single card per skill (newest first). */
@@ -259,111 +242,25 @@ export default function SkillsDashboard() {
             <div className="space-y-2">
               {groups.map((group) => {
                 const job = group.primary;
-                const isActive = job.enabled;
                 const isBusy = busyJobId === job.id;
+                // testIdRoot keys the rendered testids:
+                //   `skill-card-<id>`           — card root
+                //   `skill-card-<id>-open`      — clickable surface
+                //   `skill-card-<id>-toggle`    — enable/disable switch
+                //   `skill-card-<id>-title`     — title/skill_id text
+                //   `skill-card-<id>-schedule`  — cronToHuman line
+                // Used by SkillsDashboard.test.tsx and any future e2e specs.
                 return (
-                  <div
+                  <ScheduledCronCard
                     key={group.skillId}
-                    data-testid={`skill-card-${group.skillId}`}
-                    className={`rounded-2xl border shadow-soft transition-colors ${
-                      isActive
-                        ? 'border-sage-200 dark:border-sage-500/30 bg-sage-50 dark:bg-sage-500/10'
-                        : 'border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900'
-                    }`}
-                  >
-                    {/* Whole-card click → runner with the skill pre-picked.
-                        We split into two stacked clickable surfaces so the
-                        toggle inside isn't accidentally consuming card-click
-                        events. */}
-                    <button
-                      type="button"
-                      data-testid={`skill-card-open-${group.skillId}`}
-                      aria-label={t('skills.dashboard.cardOpenRunner')}
-                      onClick={() => goRunSkill(group.skillId)}
-                      className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 rounded-2xl"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`font-mono text-sm font-semibold truncate ${
-                              isActive
-                                ? 'text-sage-900 dark:text-sage-100'
-                                : 'text-stone-700 dark:text-neutral-200'
-                            }`}
-                          >
-                            {group.skillId}
-                          </span>
-                          {group.jobs.length > 1 && (
-                            <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-stone-200 dark:bg-neutral-700 text-stone-700 dark:text-neutral-300">
-                              ×{group.jobs.length}
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-0.5 text-xs text-stone-600 dark:text-neutral-400">
-                          {formatSchedule(job)}
-                        </div>
-                        <div className="mt-1 text-[11px] text-stone-500 dark:text-neutral-500">
-                          {job.last_run && (
-                            <span>
-                              {t('skills.dashboard.lastRun')}:{' '}
-                              {new Date(job.last_run).toLocaleString()}
-                              {job.last_status && (
-                                <span
-                                  className={`ml-1.5 px-1 py-0.5 rounded text-[10px] font-medium ${
-                                    job.last_status === 'ok'
-                                      ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
-                                      : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300'
-                                  }`}
-                                >
-                                  {job.last_status}
-                                </span>
-                              )}
-                            </span>
-                          )}
-                          {job.last_run && job.next_run && <span className="mx-1">·</span>}
-                          {job.next_run && (
-                            <span>
-                              {t('skills.dashboard.nextRun')}:{' '}
-                              {new Date(job.next_run).toLocaleString()}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {/* Toggle — DevWorkflowPanel:502-516 style. Wrapped in
-                          a span (not a button-inside-button) and onClick
-                          stopPropagation so toggling doesn't navigate. */}
-                      <span
-                        className="flex items-center gap-1.5 shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={job.enabled}
-                          aria-label={
-                            job.enabled
-                              ? t('skills.dashboard.disable')
-                              : t('skills.dashboard.enable')
-                          }
-                          data-testid={`skill-toggle-${group.skillId}`}
-                          disabled={isBusy}
-                          onClick={() => void handleToggle(job)}
-                          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors disabled:opacity-50 ${
-                            job.enabled ? 'bg-sage-500' : 'bg-neutral-300 dark:bg-neutral-600'
-                          }`}
-                        >
-                          <span
-                            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
-                              job.enabled ? 'translate-x-4' : 'translate-x-0.5'
-                            }`}
-                          />
-                        </button>
-                        <span className="text-[10px] text-stone-500 dark:text-neutral-400 min-w-[44px]">
-                          {job.enabled ? t('common.enabled') : t('common.disabled')}
-                        </span>
-                      </span>
-                    </button>
-                  </div>
+                    job={job}
+                    title={group.skillId}
+                    badgeCount={group.jobs.length}
+                    onToggle={() => void handleToggle(job)}
+                    onClick={() => goRunSkill(group.skillId)}
+                    testIdRoot={`skill-card-${group.skillId}`}
+                    busy={isBusy}
+                  />
                 );
               })}
             </div>

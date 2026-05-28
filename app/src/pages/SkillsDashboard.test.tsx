@@ -100,10 +100,12 @@ describe('SkillsDashboard', () => {
 
     await screen.findByTestId('skill-card-github-issue-crusher');
     expect(screen.queryByTestId('skills-dashboard-empty')).not.toBeInTheDocument();
-    // Only one card should be visible — the other two filtered out.
-    // (Match the card root testid `skill-card-<id>` and exclude the inner
-    // `skill-card-open-<id>` clickable surface.)
-    expect(screen.queryAllByTestId(/^skill-card-(?!open-)/)).toHaveLength(1);
+    // Only one card root should be visible — the other two filtered out.
+    // The shared ScheduledCronCard component emits child testids of the
+    // form `<root>-open`, `<root>-title`, etc., so we match the root
+    // exactly rather than a regex.
+    expect(screen.queryAllByTestId('skill-card-github-issue-crusher')).toHaveLength(1);
+    expect(screen.queryAllByTestId('skill-card-dev-workflow')).toHaveLength(0);
   });
 
   it('groups multiple jobs for the same skill into one card with an ×N badge', async () => {
@@ -123,7 +125,10 @@ describe('SkillsDashboard', () => {
     // Multi-job badge.
     expect(screen.getByText('×2')).toBeInTheDocument();
     // Picks the enabled job as primary → toggle aria-checked is true.
-    expect(screen.getByTestId('skill-toggle-dev-workflow')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('skill-card-dev-workflow-toggle')).toHaveAttribute(
+      'aria-checked',
+      'true'
+    );
   });
 
   it('renders the schedule via cronToHuman', async () => {
@@ -143,7 +148,7 @@ describe('SkillsDashboard', () => {
     });
     renderDashboard();
 
-    const card = await screen.findByTestId('skill-card-open-dev-workflow');
+    const card = await screen.findByTestId('skill-card-dev-workflow-open');
     fireEvent.click(card);
     expect(screen.getByTestId('runner-landed')).toBeInTheDocument();
   });
@@ -183,7 +188,7 @@ describe('SkillsDashboard', () => {
     });
 
     renderDashboard();
-    const toggle = await screen.findByTestId('skill-toggle-dev-workflow');
+    const toggle = await screen.findByTestId('skill-card-dev-workflow-toggle');
     expect(toggle).toHaveAttribute('aria-checked', 'true');
 
     fireEvent.click(toggle);
@@ -197,7 +202,7 @@ describe('SkillsDashboard', () => {
     });
     // aria-checked flipped after reload.
     await waitFor(() => {
-      expect(screen.getByTestId('skill-toggle-dev-workflow')).toHaveAttribute(
+      expect(screen.getByTestId('skill-card-dev-workflow-toggle')).toHaveAttribute(
         'aria-checked',
         'false'
       );
