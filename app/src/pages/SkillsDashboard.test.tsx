@@ -88,24 +88,29 @@ describe('SkillsDashboard', () => {
     expect(screen.getByTestId('runner-landed')).toBeInTheDocument();
   });
 
-  it('filters out cron jobs that do not start with the skill-run- prefix', async () => {
+  it('surfaces skill-run-* AND legacy dev-workflow-* crons, drops unrelated ones', async () => {
+    // The legacy `dev-workflow-<repo>` naming (written by
+    // DevWorkflowPanel before the unified `skill-run-` convention)
+    // must surface on the dashboard so users can toggle / edit the
+    // dev-workflow schedule they already set up. Anything that doesn't
+    // match either prefix (memory-tree maintenance, etc.) stays out.
     hoisted.cronList.mockResolvedValue({
       result: [
-        makeJob({ id: 'j-keep', name: 'skill-run-github-issue-crusher-repo=foo-bar' }),
-        makeJob({ id: 'j-drop', name: 'dev-workflow-owner/repo' }), // legacy
-        makeJob({ id: 'j-drop2', name: 'unrelated-user-cron' }),
+        makeJob({ id: 'j-modern', name: 'skill-run-github-issue-crusher-repo=foo-bar' }),
+        makeJob({ id: 'j-legacy', name: 'dev-workflow-tinyhumansai-openhuman' }),
+        makeJob({ id: 'j-unrelated', name: 'memory-tree-maintenance' }),
       ],
     });
     renderDashboard();
 
     await screen.findByTestId('skill-card-github-issue-crusher');
     expect(screen.queryByTestId('skills-dashboard-empty')).not.toBeInTheDocument();
-    // Only one card root should be visible — the other two filtered out.
-    // The shared ScheduledCronCard component emits child testids of the
-    // form `<root>-open`, `<root>-title`, etc., so we match the root
-    // exactly rather than a regex.
     expect(screen.queryAllByTestId('skill-card-github-issue-crusher')).toHaveLength(1);
-    expect(screen.queryAllByTestId('skill-card-dev-workflow')).toHaveLength(0);
+    // Legacy dev-workflow naming is mapped to skill_id 'dev-workflow'
+    // and gets its own card.
+    expect(screen.queryAllByTestId('skill-card-dev-workflow')).toHaveLength(1);
+    // Unrelated cron doesn't get a card.
+    expect(screen.queryAllByTestId('skill-card-memory-tree-maintenance')).toHaveLength(0);
   });
 
   it('groups multiple jobs for the same skill into one card with an ×N badge', async () => {

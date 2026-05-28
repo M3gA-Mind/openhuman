@@ -17,7 +17,7 @@ import InstallSkillDialog from '../components/skills/InstallSkillDialog';
 // import MeetingBotsCard from '../components/skills/MeetingBotsCard';
 import ScreenIntelligenceSetupModal from '../components/skills/ScreenIntelligenceSetupModal';
 import UnifiedSkillCard from '../components/skills/SkillCard';
-import SkillsRunnerBody from '../components/skills/SkillsRunnerBody';
+import SkillsDashboard from './SkillsDashboard';
 import { SKILL_CATEGORY_ORDER, type SkillCategory } from '../components/skills/skillCategories';
 import SkillCategoryFilter from '../components/skills/SkillCategoryFilter';
 import SkillDetailDrawer from '../components/skills/SkillDetailDrawer';
@@ -943,7 +943,13 @@ export default function Skills() {
               <>
                 {activeTab === 'runners' && (
                   <div className="rounded-2xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-soft animate-fade-up">
-                    <SkillsRunnerBody />
+                    {/* The Runners sub-tab IS the scheduled-skills dashboard:
+                        header + [+ Create a Skill] + [▷ Run a Skill] CTAs
+                        plus the list of enable/disable cards. The picker +
+                        runner UX itself lives at /skills/run (a focused
+                        single-purpose page reached via the "Run a Skill"
+                        button or a card click). */}
+                    <SkillsDashboard />
                     {/* Pointer to the specialized Dev Workflow setup (cron-driven
                         autonomous developer with repo/fork/branch picker) — its
                         UI doesn't generalize cleanly so it stays under Settings

@@ -71,9 +71,6 @@ function recognizeSkillCron(jobName: string): { skillId: string } | null {
   return null;
 }
 
-function extractSkillId(jobName: string): string {
-  return recognizeSkillCron(jobName)?.skillId ?? jobName;
-}
 
 /** Group jobs by skill_id and present a single card per skill (newest first). */
 interface SkillGroup {

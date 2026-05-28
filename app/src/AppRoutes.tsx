@@ -17,6 +17,7 @@ import Rewards from './pages/Rewards';
 import Settings from './pages/Settings';
 import SkillNew from './pages/SkillNew';
 import Skills from './pages/Skills';
+import SkillsRun from './pages/SkillsRun';
 import WebCallbackPage from './pages/WebCallbackPage';
 import Welcome from './pages/Welcome';
 
@@ -94,6 +95,15 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute requireAuth={true}>
             <SkillNew />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/skills/run"
+        element={
+          <ProtectedRoute requireAuth={true}>
+            <SkillsRun />
           </ProtectedRoute>
         }
       />
