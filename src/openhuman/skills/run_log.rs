@@ -268,37 +268,49 @@ pub fn scan_runs(workspace: &Path, skill_id: Option<&str>, limit: usize) -> Vec<
         let mut duration_ms: Option<u64> = None;
         let mut finished: Option<String> = None;
         let mut seen_result = false;
+        // The on-disk format from `write_header` / `write_footer` is
+        // label-then-colon-then-value, with the labels right-padded for
+        // visual alignment in the log — e.g. `status  : DONE`,
+        // `duration: 617236 ms`, `run_id : <uuid>`. Splitting on the FIRST
+        // `:` and trimming both halves is robust to that padding without
+        // hand-tracking each label's exact whitespace.
         for line in text.lines() {
-            // Header
-            if let Some(rest) = line.strip_prefix("==== skill_run:") {
-                sid = rest
+            if line.starts_with("==== skill_run:") {
+                // Header banner: `==== skill_run: <id> ====`
+                sid = line
+                    .trim_start_matches("==== skill_run:")
                     .trim()
                     .trim_end_matches('=')
                     .trim()
                     .to_string();
-            } else if let Some(rest) = line.strip_prefix("run_id ") {
-                rid = rest.trim_start_matches(':').trim().to_string();
-            } else if let Some(rest) = line.strip_prefix("started:") {
-                started = rest.trim().to_string();
+                continue;
             }
-            // Footer (only fields that appear AFTER `--- result ---`)
             if line.starts_with("--- result ---") {
                 seen_result = true;
                 continue;
             }
-            if seen_result {
-                if let Some(rest) = line.strip_prefix("status ") {
-                    status = rest.trim_start_matches(':').trim().to_string();
-                } else if let Some(rest) = line.strip_prefix("duration:") {
+            let Some((label_raw, value_raw)) = line.split_once(':') else {
+                continue;
+            };
+            let label = label_raw.trim();
+            let value = value_raw.trim();
+            match (label, seen_result) {
+                // Header fields (before --- result ---)
+                ("run_id", false) => rid = value.to_string(),
+                ("started", false) => started = value.to_string(),
+                // Footer fields (after --- result ---)
+                ("status", true) => status = value.to_string(),
+                ("duration", true) => {
                     // Format: "<n> ms"
-                    let trimmed = rest.trim();
-                    let num = trimmed.trim_end_matches(" ms").trim();
+                    let num = value.trim_end_matches(" ms").trim();
                     if let Ok(n) = num.parse::<u64>() {
                         duration_ms = Some(n);
                     }
-                } else if let Some(rest) = line.strip_prefix("finished:") {
-                    finished = Some(rest.trim().trim_end_matches(" UTC").trim().to_string());
                 }
+                ("finished", true) => {
+                    finished = Some(value.trim_end_matches(" UTC").trim().to_string());
+                }
+                _ => {}
             }
         }
         if sid.is_empty() || rid.is_empty() {
