@@ -701,6 +701,50 @@ pub(super) fn log_context_window_exceeded(
     );
 }
 
+/// Whether a provider non-2xx response is the OpenHuman **backend** rejecting
+/// the app session JWT (`401`/`403`). This is expected user-session state
+/// (token expired / revoked / rotated server-side), not a product bug — the
+/// auth domain owns recovery. `401`/`403` from **other** providers (OpenAI,
+/// Anthropic, …) mean a misconfigured BYO API key and stay Sentry-actionable,
+/// so the predicate is provider-scoped to [`openhuman_backend::PROVIDER_LABEL`].
+pub(super) fn is_backend_auth_failure(provider: &str, status: reqwest::StatusCode) -> bool {
+    matches!(status.as_u16(), 401 | 403) && provider == openhuman_backend::PROVIDER_LABEL
+}
+
+/// Handle a backend session-expiry auth failure: publish a
+/// [`crate::core::event_bus::DomainEvent::SessionExpired`] so the credentials
+/// subscriber clears the session and flips the scheduler-gate signed-out
+/// override (halting downstream LLM work — see OPENHUMAN-TAURI-1T), and skip
+/// the Sentry report. Mirrors the `is_auth_failure && is_backend` arm in
+/// [`api_error`], factored out for the hand-rolled provider HTTP-error chains
+/// in [`super::compatible::OpenAiCompatibleProvider`] which consume the
+/// response body inline and so can't delegate to `api_error`. The
+/// `chat_completions` chain lacked this branch and reported the backend
+/// `401 Invalid token` to Sentry — that drift was TAURI-RUST-N.
+///
+/// `message` is the already-formatted `"{provider} API error ({status}): …"`
+/// string; it embeds the sanitized body, but the prefix and caller-controlled
+/// provider name aren't scrubbed, so re-run [`sanitize_api_error`] on the final
+/// string before it reaches the SessionExpired subscriber's logs.
+pub(super) fn publish_backend_session_expired(
+    operation: &str,
+    provider: &str,
+    status: reqwest::StatusCode,
+    message: &str,
+) {
+    tracing::warn!(
+        domain = "llm_provider",
+        operation = operation,
+        provider = provider,
+        status = status.as_u16(),
+        "[llm_provider] backend auth failure ({status}) — publishing SessionExpired"
+    );
+    crate::core::event_bus::publish_global(crate::core::event_bus::DomainEvent::SessionExpired {
+        source: "llm_provider.openhuman_backend".to_string(),
+        reason: sanitize_api_error(message),
+    });
+}
+
 /// Build a sanitized provider error from a failed HTTP response.
 ///
 /// Reports the failure to Sentry with `provider` and `status` tags so
@@ -1818,5 +1862,161 @@ mod tests {
                 "non-object body error must be non-empty: {err}"
             );
         }
+    }
+
+    /// `is_backend_auth_failure` is the polarity guard that decides whether a
+    /// 401/403 is the OpenHuman backend's expired session (silence + drive
+    /// reauth) or a third-party BYO-key rejection (actionable, must reach
+    /// Sentry). Getting this wrong in either direction is a regression:
+    /// over-matching silences real misconfig; under-matching is TAURI-RUST-N.
+    #[test]
+    fn is_backend_auth_failure_only_matches_openhuman_backend_401_403() {
+        use reqwest::StatusCode;
+        let backend = crate::openhuman::inference::provider::openhuman_backend::PROVIDER_LABEL;
+
+        assert!(is_backend_auth_failure(backend, StatusCode::UNAUTHORIZED));
+        assert!(is_backend_auth_failure(backend, StatusCode::FORBIDDEN));
+
+        // Non-auth backend statuses stay reportable (real server bugs / transient).
+        for s in [
+            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::BAD_REQUEST,
+            StatusCode::NOT_FOUND,
+        ] {
+            assert!(
+                !is_backend_auth_failure(backend, s),
+                "backend {s} must not be treated as session-expiry"
+            );
+        }
+
+        // Third-party BYO-key 401/403 (user's own key revoked) must NOT be
+        // silenced — that is actionable misconfiguration for Sentry.
+        for provider in ["custom_openai", "OpenAI", "Anthropic", "openrouter"] {
+            assert!(
+                !is_backend_auth_failure(provider, StatusCode::UNAUTHORIZED),
+                "{provider} 401 must reach Sentry as actionable BYO-key error"
+            );
+            assert!(
+                !is_backend_auth_failure(provider, StatusCode::FORBIDDEN),
+                "{provider} 403 must reach Sentry as actionable BYO-key error"
+            );
+        }
+    }
+
+    /// `publish_backend_session_expired` must emit a `SessionExpired` event on
+    /// the `auth` domain with the canonical source and a sanitized reason, so
+    /// the credentials subscriber can drive reauth.
+    #[tokio::test]
+    async fn publish_backend_session_expired_emits_sanitized_session_expired() {
+        use crate::core::event_bus::{global, init_global, DomainEvent};
+
+        init_global(1024);
+        let mut rx = global().expect("event bus initialized").raw_receiver();
+
+        let msg =
+            r#"OpenHuman API error (401 Unauthorized): {"success":false,"error":"Invalid token"}"#;
+        publish_backend_session_expired(
+            "chat_completions",
+            crate::openhuman::inference::provider::openhuman_backend::PROVIDER_LABEL,
+            reqwest::StatusCode::UNAUTHORIZED,
+            msg,
+        );
+
+        let mut saw = false;
+        loop {
+            match rx.try_recv() {
+                Ok(DomainEvent::SessionExpired { source, reason }) => {
+                    if source == "llm_provider.openhuman_backend"
+                        && reason.contains("Invalid token")
+                    {
+                        saw = true;
+                        break;
+                    }
+                }
+                Ok(_) => continue,
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
+                Err(_) => break,
+            }
+        }
+        assert!(
+            saw,
+            "publish_backend_session_expired must emit SessionExpired(source=llm_provider.openhuman_backend)"
+        );
+    }
+
+    /// End-to-end regression for TAURI-RUST-N: a backend `401 Invalid token`
+    /// on the hand-rolled `chat_completions` path must publish `SessionExpired`
+    /// (driving reauth) and surface the typed error — NOT spam Sentry. The
+    /// provider is labelled exactly like the OpenHuman backend provider, which
+    /// is what gates the backend-auth-failure branch.
+    #[tokio::test]
+    async fn chat_completions_backend_401_publishes_session_expired() {
+        use crate::core::event_bus::{global, init_global, DomainEvent};
+        use axum::routing::post;
+
+        init_global(1024);
+        let mut rx = global().expect("event bus initialized").raw_receiver();
+
+        async fn unauthorized_handler() -> Response {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"success": false, "error": "Invalid token"})),
+            )
+                .into_response()
+        }
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("local_addr");
+        let app = Router::new().route("/chat/completions", post(unauthorized_handler));
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve");
+        });
+
+        let provider =
+            crate::openhuman::inference::provider::compatible::OpenAiCompatibleProvider::new_no_responses_fallback(
+                crate::openhuman::inference::provider::openhuman_backend::PROVIDER_LABEL,
+                &format!("http://{addr}"),
+                Some("expired-jwt"),
+                crate::openhuman::inference::provider::compatible::AuthStyle::Bearer,
+            );
+
+        let err = crate::openhuman::inference::provider::traits::Provider::chat_with_system(
+            &provider,
+            None,
+            "hi",
+            "reasoning-quick-v1",
+            0.0,
+        )
+        .await
+        .expect_err("backend 401 must surface as an error");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("OpenHuman API error (401") && msg.contains("Invalid token"),
+            "error must carry the backend 401 envelope: {msg}"
+        );
+
+        let mut saw = false;
+        loop {
+            match rx.try_recv() {
+                Ok(DomainEvent::SessionExpired { source, reason }) => {
+                    if source == "llm_provider.openhuman_backend"
+                        && reason.contains("Invalid token")
+                    {
+                        saw = true;
+                        break;
+                    }
+                }
+                Ok(_) => continue,
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
+                Err(_) => break,
+            }
+        }
+        assert!(
+            saw,
+            "backend 401 on chat_completions must publish SessionExpired, not report to Sentry"
+        );
     }
 }
