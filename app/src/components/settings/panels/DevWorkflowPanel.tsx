@@ -331,11 +331,44 @@ const DevWorkflowPanel = () => {
     const [owner] = selectedRepo.split('/');
     const upstreamName = forkInfo ? forkInfo.upstreamFullName : selectedRepo;
 
+    const repoName = upstreamName.split('/')[1] ?? selectedRepo.split('/')[1] ?? '';
+    const skillPrompt = [
+      `You are running the dev-workflow skill. Follow these guidelines exactly.`,
+      ``,
+      `# Dev Workflow — Autonomous Issue Crusher`,
+      ``,
+      `Pick one GitHub issue assigned to \`${owner}\` on \`${upstreamName}\` and deliver a PR.`,
+      ``,
+      `## Repos`,
+      `- **Upstream** = \`${upstreamName}\` — issues live here, PRs target \`${targetBranch}\`.`,
+      `- **Fork** = \`${owner}/${repoName}\` — push the fix branch here.`,
+      `- Commit through the GitHub API — no local git push.`,
+      ``,
+      `## Steps`,
+      `1. Pick the oldest open issue assigned to \`${owner}\` with no linked PR (use composio GITHUB_LIST_REPOSITORY_ISSUES on \`${upstreamName}\`). If none, exit cleanly.`,
+      `2. Read the full issue body, comments, and labels.`,
+      `3. Ensure fork \`${owner}/${repoName}\` exists (create if needed).`,
+      `4. Clone \`${upstreamName}\` locally, branch \`dev-workflow/<issue>-<slug>\` off \`${targetBranch}\`.`,
+      `5. Run \`codegraph_index\` on the repo.`,
+      `6. Use \`codegraph_search\` to find relevant code. Fall back to grep/glob if coverage isn't full.`,
+      `7. Implement the minimal correct fix. Re-read files and git diff — don't trust memory.`,
+      `8. Run tests. Iterate until green.`,
+      `9. Push via GitHub API (blob → tree → commit → update-ref). Do NOT git push.`,
+      `10. Open cross-repo PR: \`${upstreamName}:${targetBranch}\` ← \`${owner}:<branch>\`. Body: Closes #N + summary.`,
+      ``,
+      `## Rules`,
+      `- One PR per run, then stop.`,
+      `- Only fix the picked issue — no unrelated changes.`,
+      `- codegraph is an accelerant, not a gate — fall back to grep if cold.`,
+      `- If too large/risky, comment on the issue and skip.`,
+      `- Never force-push or push to upstream directly.`,
+    ].join('\n');
+
     const cronParams: CronAddParams = {
       name: `dev-workflow-${selectedRepo.replace('/', '-')}`,
       schedule: { kind: 'cron', expr: schedule },
       job_type: 'agent',
-      prompt: `Run the dev-workflow skill.\n\nInputs:\n- repo: ${selectedRepo}\n- upstream: ${upstreamName}\n- target_branch: ${targetBranch}\n- fork_owner: ${owner}`,
+      prompt: skillPrompt,
       session_target: 'isolated',
       delivery: { mode: 'proactive', best_effort: true },
     };
