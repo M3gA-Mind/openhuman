@@ -15,6 +15,7 @@
  *  - aria-checked reflects the new state once the list refreshes.
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock the i18n hook with a stable identity-returning t() so our
@@ -124,6 +125,20 @@ async function importBody() {
   return mod.SkillsRunnerBody;
 }
 
+/**
+ * Wrap the body in a MemoryRouter so the URL-binding effect (added in
+ * Phase 4 of the /skills IA restructure) has a router context to read
+ * `?skill=` from / write back to. Default entry is `/skills/run`
+ * matching where the runner now lives.
+ */
+function renderBody(Body: React.ComponentType, initialPath = '/skills/run') {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Body />
+    </MemoryRouter>
+  );
+}
+
 // Tests ──────────────────────────────────────────────────────────────
 
 describe('SkillsRunnerBody — saved-schedule toggle', () => {
@@ -140,7 +155,7 @@ describe('SkillsRunnerBody — saved-schedule toggle', () => {
 
   it('renders the toggle in the enabled state for an enabled job', async () => {
     const Body = await importBody();
-    render(<Body />);
+    renderBody(Body);
 
     // Wait for skills_list to resolve and populate the dropdown.
     await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
@@ -160,7 +175,7 @@ describe('SkillsRunnerBody — saved-schedule toggle', () => {
 
   it('calls openhumanCronUpdate with { enabled: false } when toggled on→off', async () => {
     const Body = await importBody();
-    render(<Body />);
+    renderBody(Body);
 
     await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
     const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
@@ -195,7 +210,7 @@ describe('SkillsRunnerBody — saved-schedule toggle', () => {
     hoisted.cronList.mockResolvedValueOnce({ result: [makeJob({ enabled: false })] });
 
     const Body = await importBody();
-    render(<Body />);
+    renderBody(Body);
 
     await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
     const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
@@ -244,7 +259,7 @@ describe('SkillsRunnerBody — per-job history viewer', () => {
 
   it('loads cron_runs and renders history rows on first toggle', async () => {
     const Body = await importBody();
-    render(<Body />);
+    renderBody(Body);
     await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
     const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: SKILL_ID } });
@@ -260,7 +275,7 @@ describe('SkillsRunnerBody — per-job history viewer', () => {
 
   it("expands a run row to show its captured output, hides on collapse", async () => {
     const Body = await importBody();
-    render(<Body />);
+    renderBody(Body);
     await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
     const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: SKILL_ID } });
@@ -301,7 +316,7 @@ describe('SkillsRunnerBody — per-job history viewer', () => {
     hoisted.cronList.mockResolvedValue({ result: jobs });
 
     const Body = await importBody();
-    render(<Body />);
+    renderBody(Body);
     await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
     const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: SKILL_ID } });
@@ -331,7 +346,7 @@ describe('SkillsRunnerBody — per-job history viewer', () => {
       result: [makeJob({ enabled: false })],
     });
     const Body = await importBody();
-    render(<Body />);
+    renderBody(Body);
     await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
     const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: SKILL_ID } });
@@ -344,7 +359,7 @@ describe('SkillsRunnerBody — per-job history viewer', () => {
   it('shows the empty-history placeholder when cron_runs returns no rows', async () => {
     hoisted.cronRuns.mockResolvedValue({ result: { runs: [] } });
     const Body = await importBody();
-    render(<Body />);
+    renderBody(Body);
     await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
     const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: SKILL_ID } });
@@ -381,7 +396,7 @@ describe('SkillsRunnerBody — SmartIssuePicker conditional mount', () => {
     });
 
     const Body = await importBody();
-    render(<Body />);
+    renderBody(Body);
     await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
     const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'dev-workflow' } });
@@ -407,7 +422,7 @@ describe('SkillsRunnerBody — SmartIssuePicker conditional mount', () => {
     });
 
     const Body = await importBody();
-    render(<Body />);
+    renderBody(Body);
     await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
     const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'github-issue-crusher' } });
@@ -417,6 +432,79 @@ describe('SkillsRunnerBody — SmartIssuePicker conditional mount', () => {
     // The generic schema-driven repo field IS rendered via the
     // existing RepoPicker stub.
     expect(await screen.findByTestId('repo-picker-stub')).toBeInTheDocument();
+  });
+});
+
+// ── Phase 4: URL ?skill= preselect binding ───────────────────────────
+
+describe('SkillsRunnerBody — URL ?skill= preselect', () => {
+  beforeEach(() => {
+    Object.values(hoisted).forEach((fn) => fn.mockReset());
+    hoisted.listSkills.mockResolvedValue([
+      { id: 'dev-workflow', name: 'Dev Workflow' },
+      { id: 'github-issue-crusher', name: 'GitHub Issue Crusher' },
+    ]);
+    hoisted.describeSkill.mockResolvedValue({
+      id: 'dev-workflow',
+      name: 'Dev Workflow',
+      when_to_use: 'Autonomous developer.',
+      inputs: [],
+    });
+    hoisted.recentRuns.mockResolvedValue([]);
+    hoisted.cronList.mockResolvedValue({ result: [] });
+    hoisted.cronRuns.mockResolvedValue({ result: { runs: [] } });
+  });
+
+  it('pre-selects the skill from the ?skill= query on mount', async () => {
+    const Body = await importBody();
+    renderBody(Body, '/skills/run?skill=dev-workflow');
+
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+
+    // The picker should already be pointing at dev-workflow without any
+    // user interaction. We assert this two ways: (a) the <select>'s
+    // value matches, and (b) describeSkill was fetched for it.
+    const select = (await screen.findByLabelText(
+      'settings.skillsRunner.skill'
+    )) as HTMLSelectElement;
+    expect(select.value).toBe('dev-workflow');
+    await waitFor(() =>
+      expect(hoisted.describeSkill).toHaveBeenCalledWith('dev-workflow')
+    );
+  });
+
+  it('does not preselect when no ?skill= is present', async () => {
+    const Body = await importBody();
+    renderBody(Body, '/skills/run');
+
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+    const select = (await screen.findByLabelText(
+      'settings.skillsRunner.skill'
+    )) as HTMLSelectElement;
+    expect(select.value).toBe('');
+    expect(hoisted.describeSkill).not.toHaveBeenCalled();
+  });
+
+  it('ignores ?skill= when the value is not in the skills_list (picker stays empty, describeSkill called once with empty=never)', async () => {
+    // ?skill=unknown-skill is treated as best-effort: we set the state
+    // but the picker shows "Select a skill" since the option isn't in
+    // the list. The describe call IS attempted (we don't pre-filter
+    // against the catalog) — but the cancellation effect tears it
+    // down if the value never resolves to a real skill.
+    hoisted.describeSkill.mockRejectedValue(new Error('unknown skill'));
+    const Body = await importBody();
+    renderBody(Body, '/skills/run?skill=does-not-exist');
+
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(hoisted.describeSkill).toHaveBeenCalledWith('does-not-exist')
+    );
+    // The dropdown value won't render as an option (not in the list),
+    // so its current value normalises to '' visually — but the state
+    // we care about is that the error surfaces, not crashes.
+    expect(
+      await screen.findByText(/settings.skillsRunner.error.describe/)
+    ).toBeInTheDocument();
   });
 });
 

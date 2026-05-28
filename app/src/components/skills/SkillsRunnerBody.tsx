@@ -14,6 +14,7 @@
 
 import createDebug from 'debug';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { useT } from '../../lib/i18n/I18nContext';
 import {
@@ -226,8 +227,14 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(null);
 
-  // Active skill + its full description (inputs declared)
-  const [selectedSkillId, setSelectedSkillId] = useState('');
+  // Active skill + its full description (inputs declared).
+  // Pre-seeded from the URL `?skill=<id>` query so the SkillsDashboard
+  // (and any other surface that deep-links to a specific skill — e.g.
+  // future "schedule again" CTAs from the run-history view) can land
+  // the user with the picker already pointed at the right skill.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialSkillId = searchParams.get('skill') ?? '';
+  const [selectedSkillId, setSelectedSkillId] = useState(initialSkillId);
   const [description, setDescription] = useState<SkillDescription | null>(null);
   const [descLoading, setDescLoading] = useState(false);
   const [descError, setDescError] = useState<string | null>(null);
@@ -301,6 +308,38 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
   const [viewer, setViewer] = useState<
     Record<string, { content: string; offset: number; complete: boolean; loading: boolean; error: string | null }>
   >({});
+
+  // ── Keep URL ?skill= in sync with the picker ──────────────────────
+  // Two-way binding so a manual picker change is reflected in the URL
+  // (refresh-stable, back-button-friendly, shareable). `replace: true`
+  // avoids stacking a history entry on every dropdown change. We only
+  // touch the search-params when the value actually drifted to keep
+  // React Router's effect bookkeeping quiet.
+  useEffect(() => {
+    const current = searchParams.get('skill') ?? '';
+    if (current === selectedSkillId) return;
+    const next = new URLSearchParams(searchParams);
+    if (selectedSkillId) {
+      next.set('skill', selectedSkillId);
+    } else {
+      next.delete('skill');
+    }
+    setSearchParams(next, { replace: true });
+  }, [selectedSkillId, searchParams, setSearchParams]);
+
+  // ── React to URL changes (e.g. back/forward nav) ──────────────────
+  // If the URL skill param drifts from the picker (back/forward, or
+  // a programmatic navigate from elsewhere), follow the URL.
+  useEffect(() => {
+    const urlSkillId = searchParams.get('skill') ?? '';
+    if (urlSkillId !== selectedSkillId) {
+      log('URL drift detected: url=%s picker=%s — following URL', urlSkillId, selectedSkillId);
+      setSelectedSkillId(urlSkillId);
+    }
+    // Only re-run when the URL changes; selectedSkillId is the read of
+    // the other side of the binding and is handled by the sync effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // ── Initial load: skills_list ──────────────────────────────────────
   useEffect(() => {
