@@ -593,6 +593,16 @@ fn handle_skills_run(params: Map<String, Value>) -> ControllerFuture {
                     }
                 };
                 agent.set_event_context(run_id.clone(), "skill");
+                // Per-run unique agent_definition_name → the session transcript
+                // path becomes `…_orchestrator-skill-<short>.jsonl`, so the
+                // resume lookup (`find_latest_transcript` keys on workspace +
+                // agent name) cannot match any prior run's transcript. Every
+                // skill_run gets a FRESH transcript, eliminating the
+                // resume-poisoning empty-response wedge.
+                agent.set_agent_definition_name(format!(
+                    "orchestrator-skill-{}",
+                    &run_id.get(..8).unwrap_or(&run_id)
+                ));
                 let (tx, rx) = tokio::sync::mpsc::channel(256);
                 agent.set_on_progress(Some(tx));
                 let bridge = tokio::spawn(run_log::drain_to_log(rx, log_path.clone()));
