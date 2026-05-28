@@ -340,30 +340,35 @@ const DevWorkflowPanel = () => {
       ``,
       `# Dev Workflow — Autonomous Issue Crusher`,
       ``,
-      `Pick one GitHub issue assigned to \`${owner}\` on \`${upstreamName}\` and deliver a PR.`,
+      `Find a GitHub issue on \`${upstreamName}\`, implement a fix, and deliver a PR.`,
       ``,
       `## Repos`,
       `- **Upstream** = \`${upstreamName}\` — issues live here, PRs target \`${targetBranch}\`.`,
       `- **Fork** = \`${owner}/${repoName}\` — push the fix branch here.`,
       `- Commit through the GitHub API — no local git push.`,
       ``,
-      `## Steps`,
-      `1. Pick the oldest open issue assigned to \`${owner}\` with no linked PR (use composio GITHUB_LIST_REPOSITORY_ISSUES on \`${upstreamName}\`). If none, exit cleanly.`,
-      `2. Read the full issue body, comments, and labels.`,
-      `3. Ensure fork \`${owner}/${repoName}\` exists (create if needed).`,
-      `4. Clone \`${upstreamName}\` locally, branch \`dev-workflow/<issue>-<slug>\` off \`${targetBranch}\`.`,
-      `5. Run \`codegraph_index\` on the repo.`,
-      `6. Use \`codegraph_search\` to find relevant code. Fall back to grep/glob if coverage isn't full.`,
-      `7. Implement the minimal correct fix. Re-read files and git diff — don't trust memory.`,
-      `8. Run tests. Iterate until green.`,
-      `9. Push via GitHub API (blob → tree → commit → update-ref). Do NOT git push.`,
-      `10. Open cross-repo PR: \`${upstreamName}:${targetBranch}\` ← \`${owner}:<branch>\`. Body: Closes #N + summary.`,
+      `## Issue Selection (smart fallback)`,
+      `1. **First**: Look for open issues assigned to \`${owner}\` on \`${upstreamName}\` with no linked PR.`,
+      `2. **If none assigned**: Find unassigned open issues. Prefer issues labeled \`good first issue\`, \`bug\`, \`help wanted\`, or \`easy\`. Prefer issues with detailed descriptions (>500 chars). Skip issues that already have an open PR linked.`,
+      `3. **Self-assign**: Once you pick an unassigned issue, assign it to \`${owner}\` using GITHUB_ADD_ASSIGNEES so no one else picks it up concurrently.`,
+      `4. **If no suitable issues at all**: Exit cleanly — report "no suitable issues found".`,
+      ``,
+      `## Implementation Steps`,
+      `1. Read the full issue body, comments, and labels.`,
+      `2. Ensure fork \`${owner}/${repoName}\` exists (create if needed).`,
+      `3. Clone \`${upstreamName}\` locally, branch \`dev-workflow/<issue>-<slug>\` off \`${targetBranch}\`.`,
+      `4. Run \`codegraph_index\` on the repo.`,
+      `5. Use \`codegraph_search\` to find relevant code. Fall back to grep/glob if coverage isn't full.`,
+      `6. Implement the minimal correct fix. Re-read files and git diff — don't trust memory.`,
+      `7. Run tests. Iterate until green.`,
+      `8. Push via GitHub API (blob → tree → commit → update-ref). Do NOT git push.`,
+      `9. Open cross-repo PR: \`${upstreamName}:${targetBranch}\` ← \`${owner}:<branch>\`. Body: Closes #N + summary + how you verified.`,
       ``,
       `## Rules`,
       `- One PR per run, then stop.`,
       `- Only fix the picked issue — no unrelated changes.`,
       `- codegraph is an accelerant, not a gate — fall back to grep if cold.`,
-      `- If too large/risky, comment on the issue and skip.`,
+      `- If too large/risky (would touch >20 files or needs multi-system changes), comment on the issue explaining why and skip.`,
       `- Never force-push or push to upstream directly.`,
     ].join('\n');
 
@@ -480,6 +485,15 @@ const DevWorkflowPanel = () => {
         )}
         {existingJob && (
           <div className="px-4 py-3 rounded-lg border border-sage-200 dark:border-sage-500/30 bg-sage-50 dark:bg-sage-500/10">
+            {/* Running indicator */}
+            {running && (
+              <div className="mb-3 px-3 py-2 rounded-md bg-primary-50 dark:bg-primary-500/10 border border-primary-200 dark:border-primary-500/30 flex items-center gap-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-primary-500 animate-pulse" />
+                <span className="text-xs font-medium text-primary-700 dark:text-primary-300">
+                  {t('settings.devWorkflow.runningStatus')}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold text-sage-900 dark:text-sage-200">
                 {t('settings.devWorkflow.activeConfiguration')}
