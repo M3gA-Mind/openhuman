@@ -142,4 +142,136 @@ describe('CreateSkillForm', () => {
     await Promise.resolve();
     expect(hoisted.createSkill).not.toHaveBeenCalled();
   });
+
+  // ── Inputs editor ───────────────────────────────────────────────────
+  // The form gained an optional [[inputs]] editor in 5d77839f. These
+  // tests pin its contract end-to-end: the rows the user adds become the
+  // `inputs` field on the createSkill payload, name validation blocks
+  // submission, and removing a row drops it from the payload.
+
+  /** Fill name + description so the rest of the form is submittable. */
+  function fillRequiredFields() {
+    fireEvent.change(screen.getByLabelText(/skills.create.name/i), {
+      target: { value: 'My Skill' },
+    });
+    fireEvent.change(screen.getByLabelText(/skills.create.description/i), {
+      target: { value: 'Does the thing.' },
+    });
+  }
+
+  /** Find the most-recently-added input row's inner controls. */
+  function lastRow() {
+    const rows = document.querySelectorAll<HTMLDivElement>(
+      '[data-testid^="create-skill-input-row-"]'
+    );
+    return rows[rows.length - 1];
+  }
+
+  it('zero inputs submits a payload without an `inputs` field', async () => {
+    hoisted.createSkill.mockResolvedValue({ id: 'x', name: 'x', scope: 'user', legacy: false });
+    render(<CreateSkillForm formId={FORM_ID} onCreated={vi.fn()} />);
+    fillRequiredFields();
+    fireEvent.submit(document.getElementById(FORM_ID)!);
+    await waitFor(() => {
+      expect(hoisted.createSkill).toHaveBeenCalledWith({
+        name: 'My Skill',
+        description: 'Does the thing.',
+        scope: 'user',
+      });
+    });
+    const payload = hoisted.createSkill.mock.calls[0]![0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('inputs');
+  });
+
+  it('one filled input row ships in the payload with name + required: true', async () => {
+    hoisted.createSkill.mockResolvedValue({ id: 'x', name: 'x', scope: 'user', legacy: false });
+    render(<CreateSkillForm formId={FORM_ID} onCreated={vi.fn()} />);
+    fillRequiredFields();
+
+    fireEvent.click(screen.getByTestId('create-skill-add-input'));
+    const row = lastRow();
+    const [nameInput, descInput] = row.querySelectorAll<HTMLInputElement>('input[type="text"]');
+    fireEvent.change(nameInput, { target: { value: 'repo' } });
+    fireEvent.change(descInput, { target: { value: 'owner/name' } });
+
+    fireEvent.submit(document.getElementById(FORM_ID)!);
+    await waitFor(() => {
+      expect(hoisted.createSkill).toHaveBeenCalledWith({
+        name: 'My Skill',
+        description: 'Does the thing.',
+        scope: 'user',
+        inputs: [{ name: 'repo', required: true, description: 'owner/name' }],
+      });
+    });
+  });
+
+  it('blocks submission while any row has an invalid name', async () => {
+    hoisted.createSkill.mockResolvedValue({ id: 'x', name: 'x', scope: 'user', legacy: false });
+    render(<CreateSkillForm formId={FORM_ID} onCreated={vi.fn()} />);
+    fillRequiredFields();
+
+    fireEvent.click(screen.getByTestId('create-skill-add-input'));
+    // Add a row but leave the name empty — submission must be blocked.
+    fireEvent.submit(document.getElementById(FORM_ID)!);
+    await Promise.resolve();
+    expect(hoisted.createSkill).not.toHaveBeenCalled();
+
+    // Fill the name with an invalid character (leading digit).
+    const row = lastRow();
+    const [nameInput] = row.querySelectorAll<HTMLInputElement>('input[type="text"]');
+    fireEvent.change(nameInput, { target: { value: '2repo' } });
+    fireEvent.submit(document.getElementById(FORM_ID)!);
+    await Promise.resolve();
+    expect(hoisted.createSkill).not.toHaveBeenCalled();
+
+    // Inline error visible.
+    expect(screen.getByText(/nameError/i)).toBeInTheDocument();
+  });
+
+  it('remove row drops it from the payload — submission then succeeds', async () => {
+    hoisted.createSkill.mockResolvedValue({ id: 'x', name: 'x', scope: 'user', legacy: false });
+    render(<CreateSkillForm formId={FORM_ID} onCreated={vi.fn()} />);
+    fillRequiredFields();
+
+    fireEvent.click(screen.getByTestId('create-skill-add-input'));
+    const row = lastRow();
+    const removeBtn = row.querySelector<HTMLButtonElement>(
+      '[data-testid^="create-skill-remove-input-"]'
+    )!;
+    fireEvent.click(removeBtn);
+
+    // After removal, zero rows → submission goes through with no
+    // `inputs` field at all (back to the no-inputs payload shape).
+    fireEvent.submit(document.getElementById(FORM_ID)!);
+    await waitFor(() => {
+      expect(hoisted.createSkill).toHaveBeenCalledTimes(1);
+    });
+    const payload = hoisted.createSkill.mock.calls[0]![0] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('inputs');
+  });
+
+  it('integer + required=false carry through the type + required flags', async () => {
+    hoisted.createSkill.mockResolvedValue({ id: 'x', name: 'x', scope: 'user', legacy: false });
+    render(<CreateSkillForm formId={FORM_ID} onCreated={vi.fn()} />);
+    fillRequiredFields();
+
+    fireEvent.click(screen.getByTestId('create-skill-add-input'));
+    const row = lastRow();
+    const [nameInput] = row.querySelectorAll<HTMLInputElement>('input[type="text"]');
+    fireEvent.change(nameInput, { target: { value: 'issue' } });
+    // Flip type → integer, uncheck required.
+    const typeSelect = row.querySelector<HTMLSelectElement>('select')!;
+    fireEvent.change(typeSelect, { target: { value: 'integer' } });
+    const requiredCheckbox = row.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    fireEvent.click(requiredCheckbox);
+
+    fireEvent.submit(document.getElementById(FORM_ID)!);
+    await waitFor(() => {
+      expect(hoisted.createSkill).toHaveBeenCalledWith(
+        expect.objectContaining({
+          inputs: [{ name: 'issue', required: false, type: 'integer' }],
+        })
+      );
+    });
+  });
 });
