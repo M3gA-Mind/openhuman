@@ -11,6 +11,23 @@
 id = "dev-workflow"
 when_to_use = "Autonomous developer — picks GitHub issues assigned to the user and raises pull requests. Runs on a schedule via cron."
 
+# Preflight gate (see src/openhuman/skills/preflight.rs). dev-workflow
+# touches GitHub via Composio AND uses local git for the working tree,
+# so both subsystems must be ready before the orchestrator boots:
+#
+#   * Composio GitHub connection is active
+#   * local `git` is on PATH
+#   * `git config --global user.{name,email}` are both set
+#   * (strict) Composio username == local git user.name (case-insensitive)
+#
+# Strict identity match is the default — if Composio is signed in as
+# `alice` but local git claims to be `bob`, the PR you push will be
+# authored by `bob` while the OAuth-driven Composio call comes from
+# `alice`. That mismatch produces broken commits no fix-up can recover.
+[github]
+required = true
+identity_match = "strict"
+
 [[inputs]]
 name = "repo"
 description = "The UPSTREAM repo to pick issues from and target PRs against, as owner/name (e.g. acme/web)."
