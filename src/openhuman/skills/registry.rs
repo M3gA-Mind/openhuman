@@ -67,11 +67,22 @@ pub fn render_inputs_block(defs: &[SkillInput], provided: &serde_json::Value) ->
 /// Default skills shipped *with* OpenHuman — bundled into the binary and
 /// materialised into `<workspace>/skills/<id>/` on first load. Each entry is
 /// `(id, skill.toml, SKILL.md)`.
-const DEFAULT_SKILLS: &[(&str, &str, &str)] = &[(
-    "github-issue-crusher",
-    include_str!("defaults/github-issue-crusher/skill.toml"),
-    include_str!("defaults/github-issue-crusher/SKILL.md"),
-)];
+const DEFAULT_SKILLS: &[(&str, &str, &str)] = &[
+    (
+        "github-issue-crusher",
+        include_str!("defaults/github-issue-crusher/skill.toml"),
+        include_str!("defaults/github-issue-crusher/SKILL.md"),
+    ),
+    // Phase-6 companion to github-issue-crusher: takes a single open PR and
+    // iterates check → fix → push → re-check until both gates close (CI green
+    // AND every actionable reviewer/bot comment addressed), surfaces a real
+    // blocker, or notices the PR was merged / closed.
+    (
+        "pr-review-shepherd",
+        include_str!("defaults/pr-review-shepherd/skill.toml"),
+        include_str!("defaults/pr-review-shepherd/SKILL.md"),
+    ),
+];
 
 /// Seed the bundled [`DEFAULT_SKILLS`] into `<workspace>/skills/<id>/` when
 /// absent. Idempotent and non-destructive: an existing `skill.toml` (already
