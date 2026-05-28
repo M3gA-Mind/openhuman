@@ -27,7 +27,7 @@ vi.mock('../../../services/api/skillsApi', () => ({
   skillsApi: { createSkill: hoisted.createSkill },
 }));
 
-import CreateSkillForm, { previewSlug, splitCsv } from '../CreateSkillForm';
+import CreateSkillForm, { previewSlug } from '../CreateSkillForm';
 
 const FORM_ID = 'create-skill-test-form';
 
@@ -46,12 +46,6 @@ describe('previewSlug', () => {
     // NFKD decomposes é → e + combining acute; the combining mark is
     // outside ASCII alnum so it's dropped, leaving `cafe-beans`.
     expect(previewSlug('café & beans')).toBe('cafe-beans');
-  });
-});
-
-describe('splitCsv', () => {
-  it('trims entries and drops empties', () => {
-    expect(splitCsv('a , b,, c ,')).toEqual(['a', 'b', 'c']);
   });
 });
 
@@ -91,7 +85,12 @@ describe('CreateSkillForm', () => {
     expect(onStateChange).toHaveBeenLastCalledWith({ valid: true, submitting: false });
   });
 
-  it('submits with the trimmed payload, dropping empty optional fields', async () => {
+  it('submits the trimmed minimal payload (name + description + scope=user)', async () => {
+    // The form was simplified to name + description only — scope is
+    // hard-coded to 'user' (the only sensible default for skills created
+    // through the UI), and the previous license/author/tags/allowed-tools
+    // fields were dropped. Anyone needing project-scoped or
+    // tagged skills edits the workspace SKILL.md directly.
     const created = { id: 'my-skill', name: 'My Skill', scope: 'user', legacy: false };
     hoisted.createSkill.mockResolvedValue(created);
     const onCreated = vi.fn();
@@ -104,9 +103,6 @@ describe('CreateSkillForm', () => {
     fireEvent.change(screen.getByLabelText(/skills.create.description/i), {
       target: { value: '  Does the thing.  ' },
     });
-    fireEvent.change(screen.getByLabelText(/skills.create.tags/i), {
-      target: { value: 'tag-a, tag-b ,, ' },
-    });
 
     // The form has no internal submit button — fire a submit event on
     // the <form id> directly (this is what `<button form=...>` does
@@ -118,7 +114,6 @@ describe('CreateSkillForm', () => {
         name: 'My Skill',
         description: 'Does the thing.',
         scope: 'user',
-        tags: ['tag-a', 'tag-b'],
       });
     });
     expect(onCreated).toHaveBeenCalledWith(created);

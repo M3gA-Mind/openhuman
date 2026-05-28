@@ -77,8 +77,6 @@ export interface CreateSkillFormProps {
   autoFocus?: boolean;
 }
 
-const INITIAL_SCOPE: SkillScope = 'user';
-
 /**
  * Client-side slug preview — mirrors the Rust `slugify_skill_name`
  * heuristic (lowercase, ASCII alphanumerics + `-`, collapse repeats,
@@ -103,23 +101,19 @@ export function previewSlug(name: string): string {
   return out.replace(/^-+|-+$/g, '');
 }
 
-export function splitCsv(raw: string): string[] {
-  return raw
-    .split(',')
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}
-
 const CreateSkillForm = forwardRef<CreateSkillFormHandle, CreateSkillFormProps>(
   function CreateSkillForm({ formId, onCreated, onStateChange, autoFocus = false }, ref) {
     const { t } = useT();
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
-    const [scope, setScope] = useState<SkillScope>(INITIAL_SCOPE);
-    const [license, setLicense] = useState('');
-    const [author, setAuthor] = useState('');
-    const [tagsCsv, setTagsCsv] = useState('');
-    const [allowedToolsCsv, setAllowedToolsCsv] = useState('');
+    // Scope is fixed to 'user' — the form previously exposed a radio
+    // toggle for user/project plus license/author/tags/allowed-tools
+    // fields. None of those were useful in practice and they cluttered
+    // the create flow; user-scoped is the only sensible default for
+    // dashboard-created skills. Project-scoped skills are still
+    // creatable by editing the workspace skill files directly. The
+    // backend payload still requires `scope` so we hold it as a const.
+    const scope: SkillScope = 'user';
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -153,12 +147,6 @@ const CreateSkillForm = forwardRef<CreateSkillFormHandle, CreateSkillFormProps>(
         description: description.trim(),
         scope,
       };
-      if (license.trim()) payload.license = license.trim();
-      if (author.trim()) payload.author = author.trim();
-      const tags = splitCsv(tagsCsv);
-      if (tags.length > 0) payload.tags = tags;
-      const allowedTools = splitCsv(allowedToolsCsv);
-      if (allowedTools.length > 0) payload.allowedTools = allowedTools;
 
       log('submit name=%s scope=%s', payload.name, payload.scope);
       setSubmitting(true);
@@ -173,17 +161,7 @@ const CreateSkillForm = forwardRef<CreateSkillFormHandle, CreateSkillFormProps>(
         setError(message);
         setSubmitting(false);
       }
-    }, [
-      allowedToolsCsv,
-      author,
-      description,
-      formValid,
-      license,
-      name,
-      onCreated,
-      scope,
-      tagsCsv,
-    ]);
+    }, [description, formValid, name, onCreated]);
 
     useImperativeHandle(
       ref,
@@ -249,129 +227,6 @@ const CreateSkillForm = forwardRef<CreateSkillFormHandle, CreateSkillFormProps>(
             className="mt-1 w-full rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 shadow-sm transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
             placeholder={t('skills.create.descriptionPlaceholder')}
           />
-        </div>
-
-        {/* Scope */}
-        <fieldset>
-          <legend className="block text-xs font-medium text-stone-600 dark:text-neutral-300">
-            {t('skills.create.scope')}
-          </legend>
-          <div className="mt-1 flex gap-2">
-            {(['user', 'project'] as const).map((s) => {
-              const selected = scope === s;
-              return (
-                <label
-                  key={s}
-                  className={`flex flex-1 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
-                    selected
-                      ? 'border-primary-500 bg-primary-50 text-primary-900'
-                      : 'border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-stone-700 dark:text-neutral-200 hover:border-stone-300 dark:border-neutral-700'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="create-skill-scope"
-                    value={s}
-                    checked={selected}
-                    onChange={() => setScope(s)}
-                    className="h-3 w-3 accent-primary-500"
-                  />
-                  <span>{t(`scope.${s}`)}</span>
-                </label>
-              );
-            })}
-          </div>
-          <p className="mt-1 text-[11px] text-stone-500 dark:text-neutral-400">
-            {scope === 'user'
-              ? t('skills.create.scopeUserHint')
-              : t('skills.create.scopeProjectHint')}
-          </p>
-        </fieldset>
-
-        {/* License / Author */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label
-              htmlFor="create-skill-license"
-              className="block text-xs font-medium text-stone-600 dark:text-neutral-300"
-            >
-              {t('skills.create.license')}
-            </label>
-            <input
-              id="create-skill-license"
-              type="text"
-              value={license}
-              onChange={(e) => setLicense(e.target.value)}
-              maxLength={64}
-              className="mt-1 w-full rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 shadow-sm transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
-              placeholder={t('skills.create.licensePlaceholder')}
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="create-skill-author"
-              className="block text-xs font-medium text-stone-600 dark:text-neutral-300"
-            >
-              {t('skills.create.author')}
-            </label>
-            <input
-              id="create-skill-author"
-              type="text"
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-              maxLength={128}
-              className="mt-1 w-full rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 shadow-sm transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
-              placeholder={t('skills.create.authorPlaceholder')}
-            />
-          </div>
-        </div>
-
-        {/* Tags */}
-        <div>
-          <label
-            htmlFor="create-skill-tags"
-            className="block text-xs font-medium text-stone-600 dark:text-neutral-300"
-          >
-            {t('skills.create.tags')}
-            <span className="ml-1 font-normal text-stone-400 dark:text-neutral-500">
-              {t('skills.create.commaSeparated')}
-            </span>
-          </label>
-          <input
-            id="create-skill-tags"
-            type="text"
-            value={tagsCsv}
-            onChange={(e) => setTagsCsv(e.target.value)}
-            maxLength={256}
-            className="mt-1 w-full rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 shadow-sm transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
-            placeholder={t('skills.create.tagsPlaceholder')}
-          />
-        </div>
-
-        {/* Allowed tools */}
-        <div>
-          <label
-            htmlFor="create-skill-tools"
-            className="block text-xs font-medium text-stone-600 dark:text-neutral-300"
-          >
-            {t('skills.create.allowedTools')}
-            <span className="ml-1 font-normal text-stone-400 dark:text-neutral-500">
-              {t('skills.create.commaSeparated')}
-            </span>
-          </label>
-          <input
-            id="create-skill-tools"
-            type="text"
-            value={allowedToolsCsv}
-            onChange={(e) => setAllowedToolsCsv(e.target.value)}
-            maxLength={512}
-            className="mt-1 w-full rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm font-mono text-stone-900 dark:text-neutral-100 shadow-sm transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
-            placeholder={t('skills.create.allowedToolsPlaceholder')}
-          />
-          <p className="mt-1 text-[11px] text-stone-500 dark:text-neutral-400">
-            {t('skills.create.allowedToolsHelp')}{' '}
-            <code className="font-mono">allowed-tools:</code>.
-          </p>
         </div>
 
         {/* Error */}
