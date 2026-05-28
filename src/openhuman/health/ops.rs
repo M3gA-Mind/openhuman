@@ -41,7 +41,7 @@ pub fn system_info() -> RpcOutcome<SystemInfo> {
         pid = info.pid,
         "[health] system_info requested"
     );
-    RpcOutcome::single_log(info, "system_info requested")
+    RpcOutcome::new(info, vec![])
 }
 
 #[cfg(test)]
