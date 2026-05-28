@@ -213,8 +213,14 @@ const pt5: TranslationMap = {
   'settings.devWorkflow.activeConfigUpstream': 'Upstream:',
   'settings.devWorkflow.activeConfigTargetBranch': 'Target branch:',
   'settings.devWorkflow.activeConfigSchedule': 'Schedule:',
-  'settings.devWorkflow.phase2Note':
-    'Phase 2: This will automatically create a cron job to pick issues and raise PRs.',
+  'settings.devWorkflow.enabled': 'Enabled',
+  'settings.devWorkflow.paused': 'Paused',
+  'settings.devWorkflow.nextRun': 'Next run',
+  'settings.devWorkflow.lastRun': 'Last run',
+  'settings.devWorkflow.runNow': 'Run now',
+  'settings.devWorkflow.running': 'Running…',
+  'settings.devWorkflow.recentRuns': 'Recent runs',
+  'settings.devWorkflow.cronSaveError': 'Failed to save configuration',
   'settings.devWorkflow.errorNotConnected':
     'GitHub is not connected. Please connect GitHub via Settings > Advanced > Composio first.',
   'settings.devWorkflow.errorToolNotEnabled':

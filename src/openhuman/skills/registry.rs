@@ -67,11 +67,18 @@ pub fn render_inputs_block(defs: &[SkillInput], provided: &serde_json::Value) ->
 /// Default skills shipped *with* OpenHuman — bundled into the binary and
 /// materialised into `<workspace>/skills/<id>/` on first load. Each entry is
 /// `(id, skill.toml, SKILL.md)`.
-const DEFAULT_SKILLS: &[(&str, &str, &str)] = &[(
-    "github-issue-crusher",
-    include_str!("defaults/github-issue-crusher/skill.toml"),
-    include_str!("defaults/github-issue-crusher/SKILL.md"),
-)];
+const DEFAULT_SKILLS: &[(&str, &str, &str)] = &[
+    (
+        "github-issue-crusher",
+        include_str!("defaults/github-issue-crusher/skill.toml"),
+        include_str!("defaults/github-issue-crusher/SKILL.md"),
+    ),
+    (
+        "dev-workflow",
+        include_str!("defaults/dev-workflow/skill.toml"),
+        include_str!("defaults/dev-workflow/SKILL.md"),
+    ),
+];
 
 /// Seed the bundled [`DEFAULT_SKILLS`] into `<workspace>/skills/<id>/` when
 /// absent. Idempotent and non-destructive: an existing `skill.toml` (already
@@ -281,5 +288,35 @@ mod tests {
             std::fs::read_to_string(&toml).unwrap().contains("edited"),
             "existing skill.toml must not be clobbered"
         );
+    }
+
+    #[test]
+    fn dev_workflow_default_skill_seeds_and_loads() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let skills = load_skills(tmp.path());
+        let s = skills
+            .iter()
+            .find(|s| s.definition.id == "dev-workflow")
+            .expect("dev-workflow bundled default seeded + loaded");
+        assert_eq!(
+            s.inputs.len(),
+            4,
+            "repo + upstream + target_branch + fork_owner"
+        );
+        assert_eq!(s.inputs[0].name, "repo");
+        assert_eq!(s.inputs[1].name, "upstream");
+        assert_eq!(s.inputs[2].name, "target_branch");
+        assert_eq!(s.inputs[3].name, "fork_owner");
+        // Prompt from SKILL.md
+        match &s.definition.system_prompt {
+            PromptSource::Inline(text) => {
+                assert!(text.contains("Dev Workflow"), "SKILL.md content present");
+                assert!(
+                    text.contains("{fork_owner}"),
+                    "template placeholders preserved"
+                );
+            }
+            other => panic!("expected inline prompt, got {other:?}"),
+        }
     }
 }

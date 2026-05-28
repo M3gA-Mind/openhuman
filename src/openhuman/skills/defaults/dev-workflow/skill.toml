@@ -1,0 +1,32 @@
+# dev-workflow — a DEFAULT skill shipped with OpenHuman.
+# Bundled into the binary and seeded into <workspace>/skills/ on first load
+# (idempotent — never clobbers user edits). Parsed as a SkillDefinition:
+# AgentDefinition fields are flattened in, plus the declared [[inputs]]. At
+# skills_run time it runs as the `orchestrator` agent, focused by SKILL.md,
+# with these inputs rendered into the task prompt.
+#
+# Autonomous developer: picks GitHub issues assigned to the user on an upstream
+# repo, implements fixes using codegraph-accelerated code navigation, and opens
+# cross-repo PRs from a fork.
+id = "dev-workflow"
+when_to_use = "Autonomous developer — picks GitHub issues assigned to the user and raises pull requests. Runs on a schedule via cron."
+
+[[inputs]]
+name = "repo"
+description = "The UPSTREAM repo to pick issues from and target PRs against, as owner/name (e.g. acme/web)."
+required = true
+
+[[inputs]]
+name = "upstream"
+description = "Alias for the upstream repo full name. Same as repo if this IS the upstream."
+required = true
+
+[[inputs]]
+name = "target_branch"
+description = "Branch on the upstream to base PRs against (e.g. main)."
+required = true
+
+[[inputs]]
+name = "fork_owner"
+description = "GitHub username of the fork owner — the fix branch is pushed to fork_owner/repo."
+required = true
