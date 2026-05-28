@@ -30,6 +30,7 @@ import {
   openhumanCronList,
   openhumanCronRemove,
   openhumanCronRun,
+  openhumanCronUpdate,
 } from '../../utils/tauriCommands/cron';
 import BranchPicker from './inputs/BranchPicker';
 import RepoPicker from './inputs/RepoPicker';
@@ -547,6 +548,21 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
     [loadScheduledJobs]
   );
 
+  // Mirror DevWorkflowPanel:439 — flip `enabled` and refresh the list.
+  // We intentionally keep this generic on `job_id` so it works for any
+  // skill, not just dev-workflow.
+  const handleToggleJob = useCallback(
+    async (job: CoreCronJob) => {
+      try {
+        await openhumanCronUpdate(job.id, { enabled: !job.enabled });
+        await loadScheduledJobs();
+      } catch (err: unknown) {
+        log('toggleJob error: %s', err instanceof Error ? err.message : String(err));
+      }
+    },
+    [loadScheduledJobs]
+  );
+
   // ── Form-field renderer ────────────────────────────────────────────
   // Convention-based rich pickers: if the input's name is one of the
   // repo/branch conventional names, render a Composio-backed picker
@@ -841,6 +857,7 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
                       {scheduledJobs.map((job) => (
                         <div
                           key={job.id}
+                          data-testid={`scheduled-job-${job.id}`}
                           className="flex items-center justify-between gap-2 rounded border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 px-3 py-2 text-xs"
                         >
                           <div className="flex-1 min-w-0">
@@ -854,6 +871,33 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
                                 return s?.expr ?? '';
                               })()}
                             </div>
+                          </div>
+                          {/* Enable/disable toggle — styling lifted from
+                              DevWorkflowPanel:502-516 so the visual is
+                              identical to the dev-workflow active-config
+                              card users already know. */}
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={job.enabled}
+                              aria-label={t('settings.skillsRunner.scheduleToggleAria')}
+                              onClick={() => void handleToggleJob(job)}
+                              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${
+                                job.enabled ? 'bg-sage-500' : 'bg-neutral-300 dark:bg-neutral-600'
+                              }`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
+                                  job.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                                }`}
+                              />
+                            </button>
+                            <span className="text-[10px] text-stone-500 dark:text-stone-400 min-w-[44px]">
+                              {job.enabled
+                                ? t('settings.skillsRunner.scheduleEnabled')
+                                : t('settings.skillsRunner.scheduleDisabled')}
+                            </span>
                           </div>
                           <button
                             type="button"
