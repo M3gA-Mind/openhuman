@@ -261,10 +261,6 @@ const en: TranslationMap = {
   'skills.tabs.channels': 'Channels',
   'skills.tabs.mcp': 'MCP Servers',
   'skills.tabs.runners': 'Runners',
-  'skills.runners.specialized.devWorkflowBlurb':
-    'Looking for the recurring autonomous-developer workflow with a repo / fork / branch picker?',
-  'skills.runners.specialized.openDevWorkflow': 'Open Dev Workflow setup →',
-
   // Intelligence / Memory
   'memory.title': 'Memory',
   'memory.search': 'Search memories...',
