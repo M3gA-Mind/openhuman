@@ -81,6 +81,20 @@ interface RawSkillsReadResourceResult {
  * the JSON-RPC envelope per SKILL.md frontmatter convention (with
  * `allowed_tools` accepted as an alias by the Rust deserializer).
  */
+/**
+ * One declared `[[inputs]]` row supplied at create time by
+ * `CreateSkillForm.tsx`. Mirrors the Rust `SkillCreateInputDef` wire
+ * shape — `description` and `type` are optional; `required` defaults
+ * to `true` on the Rust side when omitted (we send it explicitly to
+ * stay loud).
+ */
+export interface CreateSkillInputDef {
+  name: string;
+  description?: string;
+  required: boolean;
+  type?: 'string' | 'integer' | 'boolean';
+}
+
 export interface CreateSkillInput {
   name: string;
   description: string;
@@ -89,6 +103,13 @@ export interface CreateSkillInput {
   author?: string;
   tags?: string[];
   allowedTools?: string[];
+  /**
+   * Optional list of `[[inputs]]` rows. When non-empty the Rust side
+   * writes a sibling `skill.toml` next to the generated SKILL.md so
+   * the Skills Runner can render dynamic form controls per input.
+   * Omit / pass `[]` to scaffold an input-less skill.
+   */
+  inputs?: CreateSkillInputDef[];
 }
 
 interface RawSkillsCreateResult {
@@ -224,6 +245,9 @@ export const skillsApi = {
         ...(input.author !== undefined ? { author: input.author } : {}),
         ...(input.tags !== undefined ? { tags: input.tags } : {}),
         ...(input.allowedTools !== undefined ? { 'allowed-tools': input.allowedTools } : {}),
+        ...(input.inputs !== undefined && input.inputs.length > 0
+          ? { inputs: input.inputs }
+          : {}),
       },
     });
     const raw = unwrapEnvelope(response);

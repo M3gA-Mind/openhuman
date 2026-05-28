@@ -42,10 +42,35 @@ import {
 import { useT } from '../../lib/i18n/I18nContext';
 import {
   type CreateSkillInput,
+  type CreateSkillInputDef,
   type SkillScope,
   type SkillSummary,
   skillsApi,
 } from '../../services/api/skillsApi';
+
+/** Mirrors `SkillCreateInputDef` shape used as wire payload, with one
+ *  extra `localId` for stable React keys across re-renders (the wire
+ *  payload strips this field at submit time). */
+interface InputRow {
+  localId: string;
+  name: string;
+  description: string;
+  required: boolean;
+  type: 'string' | 'integer' | 'boolean';
+}
+
+const NAME_RE = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
+let nextLocalId = 0;
+function newRow(): InputRow {
+  nextLocalId += 1;
+  return {
+    localId: `row-${nextLocalId}`,
+    name: '',
+    description: '',
+    required: true,
+    type: 'string',
+  };
+}
 
 const log = debug('skills:create-form');
 
@@ -116,6 +141,7 @@ const CreateSkillForm = forwardRef<CreateSkillFormHandle, CreateSkillFormProps>(
     const scope: SkillScope = 'user';
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [inputs, setInputs] = useState<InputRow[]>([]);
 
     const firstFieldRef = useRef<HTMLInputElement | null>(null);
 
@@ -123,7 +149,21 @@ const CreateSkillForm = forwardRef<CreateSkillFormHandle, CreateSkillFormProps>(
 
     const nameValid = slug.length > 0;
     const descriptionValid = description.trim().length > 0;
-    const formValid = nameValid && descriptionValid && !submitting;
+    // Each row must have a non-empty, regex-valid name. Empty rows block
+    // submission so the user explicitly removes them rather than getting
+    // a malformed [[inputs]] entry silently dropped on the Rust side.
+    const inputsValid = inputs.every((r) => NAME_RE.test(r.name.trim()));
+    const formValid = nameValid && descriptionValid && inputsValid && !submitting;
+
+    const addRow = useCallback(() => {
+      setInputs((cur) => [...cur, newRow()]);
+    }, []);
+    const removeRow = useCallback((localId: string) => {
+      setInputs((cur) => cur.filter((r) => r.localId !== localId));
+    }, []);
+    const updateRow = useCallback((localId: string, patch: Partial<InputRow>) => {
+      setInputs((cur) => cur.map((r) => (r.localId === localId ? { ...r, ...patch } : r)));
+    }, []);
 
     // Surface state to the wrapper for its submit button's disabled prop.
     useEffect(() => {
@@ -147,8 +187,21 @@ const CreateSkillForm = forwardRef<CreateSkillFormHandle, CreateSkillFormProps>(
         description: description.trim(),
         scope,
       };
+      if (inputs.length > 0) {
+        payload.inputs = inputs.map<CreateSkillInputDef>((r) => {
+          const def: CreateSkillInputDef = {
+            name: r.name.trim(),
+            required: r.required,
+          };
+          const desc = r.description.trim();
+          if (desc) def.description = desc;
+          // Default 'string' on the Rust side, omit to keep payload tidy.
+          if (r.type !== 'string') def.type = r.type;
+          return def;
+        });
+      }
 
-      log('submit name=%s scope=%s', payload.name, payload.scope);
+      log('submit name=%s scope=%s inputs=%d', payload.name, payload.scope, inputs.length);
       setSubmitting(true);
       setError(null);
       try {
@@ -161,7 +214,7 @@ const CreateSkillForm = forwardRef<CreateSkillFormHandle, CreateSkillFormProps>(
         setError(message);
         setSubmitting(false);
       }
-    }, [description, formValid, name, onCreated]);
+    }, [description, formValid, inputs, name, onCreated]);
 
     useImperativeHandle(
       ref,
@@ -227,6 +280,127 @@ const CreateSkillForm = forwardRef<CreateSkillFormHandle, CreateSkillFormProps>(
             className="mt-1 w-full rounded-lg border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-3 py-2 text-sm text-stone-900 dark:text-neutral-100 shadow-sm transition-colors focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
             placeholder={t('skills.create.descriptionPlaceholder')}
           />
+        </div>
+
+        {/* Inputs (optional) — declare [[inputs]] for the generated
+            skill.toml. The Skills Runner reads this to render dynamic
+            form controls per input (text / number / checkbox). The
+            section stays optional — formValid doesn't depend on
+            non-empty rows — but every row that exists must have a
+            valid, non-empty name (regex enforced) so the Rust side
+            never receives a malformed [[inputs]] entry. */}
+        <div>
+          <div className="flex items-baseline justify-between">
+            <label className="block text-xs font-medium text-stone-600 dark:text-neutral-300">
+              {t('skills.create.inputs.heading')}
+              <span className="ml-1 font-normal text-stone-400 dark:text-neutral-500">
+                {t('skills.create.optional')}
+              </span>
+            </label>
+            <button
+              type="button"
+              data-testid="create-skill-add-input"
+              onClick={addRow}
+              className="text-xs font-medium text-primary-600 hover:text-primary-700"
+            >
+              + {t('skills.create.inputs.add')}
+            </button>
+          </div>
+          <p className="mt-0.5 text-[11px] text-stone-500 dark:text-neutral-400">
+            {t('skills.create.inputs.help')}
+          </p>
+          {inputs.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {inputs.map((row) => {
+                const trimmed = row.name.trim();
+                const showNameErr = row.name.length > 0 && !NAME_RE.test(trimmed);
+                return (
+                  <div
+                    key={row.localId}
+                    data-testid={`create-skill-input-row-${row.localId}`}
+                    className="rounded-lg border border-stone-200 dark:border-neutral-800 bg-stone-50 dark:bg-neutral-950/40 p-3"
+                  >
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                      <div>
+                        <input
+                          type="text"
+                          value={row.name}
+                          onChange={(e) => updateRow(row.localId, { name: e.target.value })}
+                          maxLength={64}
+                          placeholder={t('skills.create.inputs.row.namePlaceholder')}
+                          aria-label={t('skills.create.inputs.row.name')}
+                          className={`w-full rounded-md border bg-white dark:bg-neutral-900 px-2 py-1.5 text-xs text-stone-900 dark:text-neutral-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 ${showNameErr ? 'border-coral-400' : 'border-stone-200 dark:border-neutral-800 focus:border-primary-500'}`}
+                        />
+                        {showNameErr && (
+                          <p className="mt-0.5 text-[10px] text-coral-600">
+                            {t('skills.create.inputs.row.nameError')}
+                          </p>
+                        )}
+                      </div>
+                      <input
+                        type="text"
+                        value={row.description}
+                        onChange={(e) =>
+                          updateRow(row.localId, { description: e.target.value })
+                        }
+                        maxLength={256}
+                        placeholder={t('skills.create.inputs.row.descriptionPlaceholder')}
+                        aria-label={t('skills.create.inputs.row.description')}
+                        className="w-full rounded-md border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-2 py-1.5 text-xs text-stone-900 dark:text-neutral-100 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+                      />
+                      <button
+                        type="button"
+                        data-testid={`create-skill-remove-input-${row.localId}`}
+                        onClick={() => removeRow(row.localId)}
+                        aria-label={t('skills.create.inputs.row.remove')}
+                        className="self-center rounded-md px-2 py-1.5 text-xs text-stone-500 hover:bg-coral-100 hover:text-coral-700"
+                      >
+                        🗑
+                      </button>
+                    </div>
+                    <div className="mt-2 flex items-center gap-3 text-[11px]">
+                      <label className="flex items-center gap-1">
+                        <span className="text-stone-500 dark:text-neutral-400">
+                          {t('skills.create.inputs.row.type')}:
+                        </span>
+                        <select
+                          value={row.type}
+                          onChange={(e) =>
+                            updateRow(row.localId, {
+                              type: e.target.value as InputRow['type'],
+                            })
+                          }
+                          aria-label={t('skills.create.inputs.row.type')}
+                          className="rounded border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-1 py-0.5 text-[11px] text-stone-900 dark:text-neutral-100"
+                        >
+                          <option value="string">{t('skills.create.inputs.type.string')}</option>
+                          <option value="integer">
+                            {t('skills.create.inputs.type.integer')}
+                          </option>
+                          <option value="boolean">
+                            {t('skills.create.inputs.type.boolean')}
+                          </option>
+                        </select>
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="checkbox"
+                          checked={row.required}
+                          onChange={(e) =>
+                            updateRow(row.localId, { required: e.target.checked })
+                          }
+                          className="h-3 w-3 accent-primary-500"
+                        />
+                        <span className="text-stone-500 dark:text-neutral-400">
+                          {t('skills.create.inputs.row.required')}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Error */}
