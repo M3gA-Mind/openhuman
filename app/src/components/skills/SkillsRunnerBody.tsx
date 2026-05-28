@@ -26,10 +26,12 @@ import {
 } from '../../services/api/skillsApi';
 import {
   type CoreCronJob,
+  type CoreCronRun,
   openhumanCronAdd,
   openhumanCronList,
   openhumanCronRemove,
   openhumanCronRun,
+  openhumanCronRuns,
   openhumanCronUpdate,
 } from '../../utils/tauriCommands/cron';
 import BranchPicker from './inputs/BranchPicker';
@@ -233,6 +235,19 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
   // Scheduled jobs owned by this panel (cron_list filtered by name prefix)
   const [scheduledJobs, setScheduledJobs] = useState<CoreCronJob[]>([]);
   const [scheduledJobsLoading, setScheduledJobsLoading] = useState(false);
+
+  // Per-job run history (lazy-loaded on row expand). Keyed by job_id so
+  // we keep history across re-expansions without re-fetching. Each entry
+  // tracks { runs, loading, expandedRunId } for that schedule. The
+  // expandedRunId is per-job so multiple history sections can each
+  // independently expand a different run's output (unlike the cross-
+  // skill recent-runs viewer below which is single-expand).
+  const [historyState, setHistoryState] = useState<
+    Record<
+      string,
+      { runs: CoreCronRun[]; loading: boolean; expanded: boolean; expandedRunId: number | null }
+    >
+  >({});
 
   // Recent runs (skill-scoped if a skill is picked, cross-skill otherwise)
   const [recentRuns, setRecentRuns] = useState<ScannedRun[]>([]);
@@ -563,6 +578,84 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
     [loadScheduledJobs]
   );
 
+  // ── Per-job history fetch ──────────────────────────────────────────
+  // Ports DevWorkflowPanel:306-322 (loadRunHistory). The structured
+  // cron `runs` list complements the cross-skill "Recent runs" panel
+  // at the bottom of the body, which scans skill_run log files; here
+  // we get authoritative cron-run records keyed off the specific
+  // schedule (status / duration / output stored at tick time).
+  const loadJobHistory = useCallback(async (jobId: string) => {
+    setHistoryState((prev) => ({
+      ...prev,
+      [jobId]: {
+        runs: prev[jobId]?.runs ?? [],
+        loading: true,
+        expanded: true,
+        expandedRunId: prev[jobId]?.expandedRunId ?? null,
+      },
+    }));
+    try {
+      const res = await openhumanCronRuns(jobId, 5);
+      const raw = (res as { result?: { runs?: CoreCronRun[] } | CoreCronRun[] }).result;
+      const runs = Array.isArray(raw) ? raw : (raw?.runs ?? []);
+      setHistoryState((prev) => ({
+        ...prev,
+        [jobId]: {
+          runs: Array.isArray(runs) ? runs : [],
+          loading: false,
+          expanded: true,
+          expandedRunId: prev[jobId]?.expandedRunId ?? null,
+        },
+      }));
+      log('loaded %d history entries for job %s', Array.isArray(runs) ? runs.length : 0, jobId);
+    } catch (err: unknown) {
+      log('loadJobHistory error: %s', err instanceof Error ? err.message : String(err));
+      setHistoryState((prev) => ({
+        ...prev,
+        [jobId]: {
+          runs: prev[jobId]?.runs ?? [],
+          loading: false,
+          expanded: true,
+          expandedRunId: prev[jobId]?.expandedRunId ?? null,
+        },
+      }));
+    }
+  }, []);
+
+  const toggleJobHistory = useCallback(
+    (jobId: string) => {
+      setHistoryState((prev) => {
+        const cur = prev[jobId];
+        if (cur?.expanded) {
+          return {
+            ...prev,
+            [jobId]: { ...cur, expanded: false },
+          };
+        }
+        return prev;
+      });
+      const cur = historyState[jobId];
+      if (!cur?.expanded) {
+        void loadJobHistory(jobId);
+      }
+    },
+    [historyState, loadJobHistory]
+  );
+
+  const toggleHistoryRun = useCallback((jobId: string, runId: number) => {
+    setHistoryState((prev) => {
+      const cur = prev[jobId];
+      if (!cur) return prev;
+      return {
+        ...prev,
+        [jobId]: {
+          ...cur,
+          expandedRunId: cur.expandedRunId === runId ? null : runId,
+        },
+      };
+    });
+  }, []);
+
   // ── Form-field renderer ────────────────────────────────────────────
   // Convention-based rich pickers: if the input's name is one of the
   // repo/branch conventional names, render a Composio-backed picker
@@ -854,67 +947,157 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
                       <div className="text-xs font-medium text-stone-600 dark:text-stone-400">
                         {t('settings.skillsRunner.schedule.existing')}
                       </div>
-                      {scheduledJobs.map((job) => (
-                        <div
-                          key={job.id}
-                          data-testid={`scheduled-job-${job.id}`}
-                          className="flex items-center justify-between gap-2 rounded border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 px-3 py-2 text-xs"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="font-mono truncate text-stone-700 dark:text-stone-300">
-                              {job.name ?? job.id}
+                      {scheduledJobs.map((job) => {
+                        const hist = historyState[job.id];
+                        return (
+                          <div
+                            key={job.id}
+                            data-testid={`scheduled-job-${job.id}`}
+                            className="rounded border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 text-xs"
+                          >
+                            <div className="flex items-center justify-between gap-2 px-3 py-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-mono truncate text-stone-700 dark:text-stone-300">
+                                  {job.name ?? job.id}
+                                </div>
+                                <div className="text-stone-500 dark:text-stone-400">
+                                  {/* schedule.expr may be undefined on some shapes; just stringify */}
+                                  {(() => {
+                                    const s = job.schedule as { expr?: string } | undefined;
+                                    return s?.expr ?? '';
+                                  })()}
+                                </div>
+                              </div>
+                              {/* Enable/disable toggle — styling lifted from
+                                  DevWorkflowPanel:502-516 so the visual is
+                                  identical to the dev-workflow active-config
+                                  card users already know. */}
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={job.enabled}
+                                  aria-label={t('settings.skillsRunner.scheduleToggleAria')}
+                                  onClick={() => void handleToggleJob(job)}
+                                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${
+                                    job.enabled ? 'bg-sage-500' : 'bg-neutral-300 dark:bg-neutral-600'
+                                  }`}
+                                >
+                                  <span
+                                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
+                                      job.enabled ? 'translate-x-4' : 'translate-x-0.5'
+                                    }`}
+                                  />
+                                </button>
+                                <span className="text-[10px] text-stone-500 dark:text-stone-400 min-w-[44px]">
+                                  {job.enabled
+                                    ? t('settings.skillsRunner.scheduleEnabled')
+                                    : t('settings.skillsRunner.scheduleDisabled')}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleRunJobNow(job.id)}
+                                className="rounded bg-primary-600 hover:bg-primary-700 px-2 py-1 text-xs font-medium text-white"
+                              >
+                                {t('settings.skillsRunner.schedule.runNow')}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleRemoveJob(job.id)}
+                                className="rounded bg-red-600 hover:bg-red-700 px-2 py-1 text-xs font-medium text-white"
+                              >
+                                {t('settings.skillsRunner.schedule.remove')}
+                              </button>
                             </div>
-                            <div className="text-stone-500 dark:text-stone-400">
-                              {/* schedule.expr may be undefined on some shapes; just stringify */}
-                              {(() => {
-                                const s = job.schedule as { expr?: string } | undefined;
-                                return s?.expr ?? '';
-                              })()}
+
+                            {/* Per-job run history (lazy on first expand).
+                                Ports DevWorkflowPanel:591-645's pattern:
+                                a disclosure toggle reveals up to 5 runs
+                                each with status badge + duration; click
+                                a run to expand its captured output. */}
+                            <div className="px-3 pb-2 border-t border-stone-100 dark:border-stone-800">
+                              <button
+                                type="button"
+                                onClick={() => toggleJobHistory(job.id)}
+                                aria-expanded={Boolean(hist?.expanded)}
+                                data-testid={`history-toggle-${job.id}`}
+                                className="mt-2 text-[11px] text-stone-600 dark:text-stone-400 hover:underline"
+                              >
+                                {hist?.expanded ? '▾' : '▸'}{' '}
+                                {t('settings.skillsRunner.schedule.history')}
+                                {hist?.runs?.length ? ` (${hist.runs.length})` : ''}
+                              </button>
+                              {hist?.expanded && (
+                                <div className="mt-1.5 space-y-1">
+                                  {hist.loading && hist.runs.length === 0 ? (
+                                    <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                                      {t('settings.skillsRunner.schedule.historyLoading')}
+                                    </p>
+                                  ) : hist.runs.length === 0 ? (
+                                    <p className="text-[11px] italic text-stone-500 dark:text-stone-400">
+                                      {t('settings.skillsRunner.schedule.historyEmpty')}
+                                    </p>
+                                  ) : (
+                                    hist.runs.map((r) => {
+                                      const open = hist.expandedRunId === r.id;
+                                      const okClass =
+                                        r.status === 'ok'
+                                          ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
+                                          : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300';
+                                      return (
+                                        <div
+                                          key={r.id}
+                                          className="rounded bg-white dark:bg-stone-800"
+                                        >
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleHistoryRun(job.id, r.id)}
+                                            aria-expanded={open}
+                                            data-testid={`history-run-${job.id}-${r.id}`}
+                                            className="w-full flex items-center justify-between px-2 py-1.5 hover:bg-stone-50 dark:hover:bg-stone-700 rounded"
+                                          >
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-stone-400">
+                                                {open ? '▾' : '▸'}
+                                              </span>
+                                              <span className="text-stone-600 dark:text-stone-400">
+                                                {new Date(r.started_at).toLocaleString()}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              {r.duration_ms != null && (
+                                                <span className="text-stone-500">
+                                                  {(r.duration_ms / 1000).toFixed(1)}s
+                                                </span>
+                                              )}
+                                              <span
+                                                className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${okClass}`}
+                                              >
+                                                {r.status}
+                                              </span>
+                                            </div>
+                                          </button>
+                                          {open && r.output && (
+                                            <pre className="mx-2 mb-2 px-3 py-2 rounded-md bg-stone-100 dark:bg-stone-900 border border-stone-200 dark:border-stone-700 text-[11px] text-stone-700 dark:text-stone-300 font-mono whitespace-pre-wrap break-words max-h-64 overflow-y-auto">
+                                              {r.output}
+                                            </pre>
+                                          )}
+                                          {open && !r.output && (
+                                            <div className="mx-2 mb-2 px-3 py-2 text-[11px] italic text-stone-400 dark:text-stone-500">
+                                              {t('settings.skillsRunner.schedule.historyNoOutput')}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
-                          {/* Enable/disable toggle — styling lifted from
-                              DevWorkflowPanel:502-516 so the visual is
-                              identical to the dev-workflow active-config
-                              card users already know. */}
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-checked={job.enabled}
-                              aria-label={t('settings.skillsRunner.scheduleToggleAria')}
-                              onClick={() => void handleToggleJob(job)}
-                              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${
-                                job.enabled ? 'bg-sage-500' : 'bg-neutral-300 dark:bg-neutral-600'
-                              }`}
-                            >
-                              <span
-                                className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
-                                  job.enabled ? 'translate-x-4' : 'translate-x-0.5'
-                                }`}
-                              />
-                            </button>
-                            <span className="text-[10px] text-stone-500 dark:text-stone-400 min-w-[44px]">
-                              {job.enabled
-                                ? t('settings.skillsRunner.scheduleEnabled')
-                                : t('settings.skillsRunner.scheduleDisabled')}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void handleRunJobNow(job.id)}
-                            className="rounded bg-primary-600 hover:bg-primary-700 px-2 py-1 text-xs font-medium text-white"
-                          >
-                            {t('settings.skillsRunner.schedule.runNow')}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleRemoveJob(job.id)}
-                            className="rounded bg-red-600 hover:bg-red-700 px-2 py-1 text-xs font-medium text-white"
-                          >
-                            {t('settings.skillsRunner.schedule.remove')}
-                          </button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

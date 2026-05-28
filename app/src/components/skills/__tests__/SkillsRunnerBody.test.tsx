@@ -30,6 +30,7 @@ const hoisted = vi.hoisted(() => ({
   cronRemove: vi.fn(),
   cronRun: vi.fn(),
   cronUpdate: vi.fn(),
+  cronRuns: vi.fn(),
   listSkills: vi.fn(),
   describeSkill: vi.fn(),
   runSkill: vi.fn(),
@@ -43,6 +44,7 @@ vi.mock('../../../utils/tauriCommands/cron', () => ({
   openhumanCronRemove: hoisted.cronRemove,
   openhumanCronRun: hoisted.cronRun,
   openhumanCronUpdate: hoisted.cronUpdate,
+  openhumanCronRuns: hoisted.cronRuns,
 }));
 
 vi.mock('../../../services/api/skillsApi', () => ({
@@ -126,6 +128,7 @@ describe('SkillsRunnerBody — saved-schedule toggle', () => {
     hoisted.recentRuns.mockResolvedValue([]);
     hoisted.cronList.mockResolvedValue({ result: [makeJob({ enabled: true })] });
     hoisted.cronUpdate.mockResolvedValue({ result: makeJob({ enabled: false }) });
+    hoisted.cronRuns.mockResolvedValue({ result: { runs: [] } });
   });
 
   it('renders the toggle in the enabled state for an enabled job', async () => {
@@ -201,5 +204,86 @@ describe('SkillsRunnerBody — saved-schedule toggle', () => {
     await waitFor(() =>
       expect(hoisted.cronUpdate).toHaveBeenCalledWith('job-1', { enabled: true })
     );
+  });
+});
+
+// ── Per-job history expand ──────────────────────────────────────────
+
+function makeRun(
+  id: number,
+  overrides: Partial<{ status: string; output: string | null; duration_ms: number }> = {}
+) {
+  return {
+    id,
+    job_id: 'job-1',
+    started_at: '2026-05-29T10:00:00Z',
+    finished_at: '2026-05-29T10:00:51Z',
+    status: 'ok',
+    output: 'hello world\nrun output line 2',
+    duration_ms: 51000,
+    ...overrides,
+  };
+}
+
+describe('SkillsRunnerBody — per-job history viewer', () => {
+  beforeEach(() => {
+    Object.values(hoisted).forEach((fn) => fn.mockReset());
+    hoisted.listSkills.mockResolvedValue(skillsList);
+    hoisted.describeSkill.mockResolvedValue(skillDescription);
+    hoisted.recentRuns.mockResolvedValue([]);
+    hoisted.cronList.mockResolvedValue({ result: [makeJob({ enabled: true })] });
+    hoisted.cronRuns.mockResolvedValue({ result: { runs: [makeRun(1), makeRun(2)] } });
+  });
+
+  it('loads cron_runs and renders history rows on first toggle', async () => {
+    const Body = await importBody();
+    render(<Body />);
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+    const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: SKILL_ID } });
+    await waitFor(() => expect(hoisted.cronList).toHaveBeenCalled());
+
+    const historyToggle = await screen.findByTestId('history-toggle-job-1');
+    fireEvent.click(historyToggle);
+
+    await waitFor(() => expect(hoisted.cronRuns).toHaveBeenCalledWith('job-1', 5));
+    expect(await screen.findByTestId('history-run-job-1-1')).toBeInTheDocument();
+    expect(screen.getByTestId('history-run-job-1-2')).toBeInTheDocument();
+  });
+
+  it("expands a run row to show its captured output, hides on collapse", async () => {
+    const Body = await importBody();
+    render(<Body />);
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+    const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: SKILL_ID } });
+    await waitFor(() => expect(hoisted.cronList).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByTestId('history-toggle-job-1'));
+    const runRow = await screen.findByTestId('history-run-job-1-1');
+
+    expect(screen.queryByText(/hello world/)).not.toBeInTheDocument();
+    fireEvent.click(runRow);
+    expect(await screen.findByText(/hello world/)).toBeInTheDocument();
+    expect(runRow).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(runRow);
+    await waitFor(() => expect(screen.queryByText(/hello world/)).not.toBeInTheDocument());
+  });
+
+  it('shows the empty-history placeholder when cron_runs returns no rows', async () => {
+    hoisted.cronRuns.mockResolvedValue({ result: { runs: [] } });
+    const Body = await importBody();
+    render(<Body />);
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+    const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: SKILL_ID } });
+    await waitFor(() => expect(hoisted.cronList).toHaveBeenCalled());
+
+    fireEvent.click(await screen.findByTestId('history-toggle-job-1'));
+    await waitFor(() => expect(hoisted.cronRuns).toHaveBeenCalled());
+    expect(
+      await screen.findByText('settings.skillsRunner.schedule.historyEmpty')
+    ).toBeInTheDocument();
   });
 });
