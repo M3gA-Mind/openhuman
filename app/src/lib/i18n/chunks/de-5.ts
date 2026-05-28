@@ -228,6 +228,10 @@ const de5: TranslationMap = {
   'settings.skillsRunner.schedule.historyNoOutput': 'No output captured.',
   'settings.skillsRunner.schedule.active': 'Active',
   'settings.skillsRunner.schedule.lastRunLabel': 'last:',
+  'settings.devWorkflow.movedHeading': 'Dev Workflow moved to Skills',
+  'settings.devWorkflow.movedBody':
+    'The dev-workflow setup (repo, fork detection, branch picker, schedule, run history) is now the dev-workflow skill on the Skills page. Open it there to configure or run it.',
+  'settings.devWorkflow.movedOpenSkills': 'Open Skills',
   'settings.devWorkflow.nextRun': 'Next run',
   'settings.devWorkflow.lastRun': 'Last run',
   'settings.devWorkflow.runNow': 'Run now',

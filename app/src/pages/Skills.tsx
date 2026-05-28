@@ -17,7 +17,6 @@ import InstallSkillDialog from '../components/skills/InstallSkillDialog';
 // import MeetingBotsCard from '../components/skills/MeetingBotsCard';
 import ScreenIntelligenceSetupModal from '../components/skills/ScreenIntelligenceSetupModal';
 import UnifiedSkillCard from '../components/skills/SkillCard';
-import SkillsRunnerBody from '../components/skills/SkillsRunnerBody';
 import { SKILL_CATEGORY_ORDER, type SkillCategory } from '../components/skills/skillCategories';
 import SkillCategoryFilter from '../components/skills/SkillCategoryFilter';
 import SkillDetailDrawer from '../components/skills/SkillDetailDrawer';
@@ -28,6 +27,7 @@ import {
   SkillCategoryIcon,
 } from '../components/skills/skillIcons';
 import SkillSearchBar from '../components/skills/SkillSearchBar';
+import SkillsRunnerBody from '../components/skills/SkillsRunnerBody';
 import UninstallSkillConfirmDialog from '../components/skills/UninstallSkillConfirmDialog';
 import VoiceSetupModal from '../components/skills/VoiceSetupModal';
 import { useAutocompleteSkillStatus } from '../features/autocomplete/useAutocompleteSkillStatus';
@@ -944,20 +944,12 @@ export default function Skills() {
                 {activeTab === 'runners' && (
                   <div className="rounded-2xl border border-stone-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-6 shadow-soft animate-fade-up">
                     <SkillsRunnerBody />
-                    {/* Pointer to the specialized Dev Workflow setup (cron-driven
-                        autonomous developer with repo/fork/branch picker) — its
-                        UI doesn't generalize cleanly so it stays under Settings
-                        and we link to it from here for discoverability. */}
-                    <div className="mt-6 pt-4 border-t border-stone-200 dark:border-neutral-800 text-sm text-stone-600 dark:text-stone-400">
-                      {t('skills.runners.specialized.devWorkflowBlurb')}{' '}
-                      <button
-                        type="button"
-                        onClick={() => navigate('/settings/dev-workflow')}
-                        className="text-primary-600 hover:text-primary-700 underline underline-offset-2"
-                      >
-                        {t('skills.runners.specialized.openDevWorkflow')}
-                      </button>
-                    </div>
+                    {/* The bespoke /settings/dev-workflow link previously
+                        lived here. After the Skills Runner unification
+                        (docs/skills-runner-unification.md) the dev-workflow
+                        repo/fork/branch picker is rendered inline by
+                        SkillsRunnerBody itself, so no separate destination
+                        is needed. */}
                   </div>
                 )}
                 {activeTab === 'channels' && channelsGroup && (
