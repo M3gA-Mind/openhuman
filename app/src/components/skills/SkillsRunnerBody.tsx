@@ -31,6 +31,43 @@ import {
   openhumanCronRemove,
   openhumanCronRun,
 } from '../../utils/tauriCommands/cron';
+import BranchPicker from './inputs/BranchPicker';
+import RepoPicker from './inputs/RepoPicker';
+
+// Input-name conventions that trigger rich pickers instead of the
+// default text/number/checkbox controls. Skill authors who use these
+// conventional names get the picker for free; nothing in skill.toml
+// needs to change. (We pick a generous overlap that covers both
+// github-issue-crusher and dev-workflow's input naming.)
+const REPO_INPUT_NAMES = new Set([
+  'repo',
+  'repository',
+  'upstream',
+  'fork',
+  'fork_owner',
+]);
+const BRANCH_INPUT_NAMES = new Set([
+  'branch',
+  'target_branch',
+  'base_branch',
+  'pr_base',
+  'head_branch',
+]);
+
+/**
+ * Given the form-value map of the currently-selected skill, return the
+ * best `owner/name` value to feed a BranchPicker. The convention is
+ * "the value of the first repo-shaped input present", with `repo`
+ * preferred over `upstream` over the others.
+ */
+function resolveLinkedRepo(formValues: Record<string, InputValue>): string {
+  const priority = ['repo', 'repository', 'upstream', 'fork'];
+  for (const k of priority) {
+    const v = formValues[k];
+    if (typeof v === 'string' && v.includes('/')) return v;
+  }
+  return '';
+}
 
 const log = createDebug('app:skills:SkillsRunnerBody');
 
@@ -511,6 +548,10 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
   );
 
   // ── Form-field renderer ────────────────────────────────────────────
+  // Convention-based rich pickers: if the input's name is one of the
+  // repo/branch conventional names, render a Composio-backed picker
+  // instead of a plain text input. Falls through to the type-based
+  // string/integer/boolean handling for everything else.
   const renderField = (
     inp: SkillDescription['inputs'][number],
     value: InputValue,
@@ -530,6 +571,38 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
     const desc = inp.description ? (
       <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">{inp.description}</p>
     ) : null;
+
+    // Rich picker: repo-shaped input → Composio github_repo picker.
+    if (REPO_INPUT_NAMES.has(inp.name)) {
+      return (
+        <div key={inp.name}>
+          {commonLabel}
+          <RepoPicker
+            id={id}
+            value={typeof value === 'string' ? value : ''}
+            onChange={onChange}
+          />
+          {desc}
+        </div>
+      );
+    }
+    // Rich picker: branch-shaped input → branch dropdown, depends on
+    // the resolved sibling repo-shaped input value.
+    if (BRANCH_INPUT_NAMES.has(inp.name)) {
+      const linkedRepo = resolveLinkedRepo(formValues);
+      return (
+        <div key={inp.name}>
+          {commonLabel}
+          <BranchPicker
+            id={id}
+            value={typeof value === 'string' ? value : ''}
+            onChange={onChange}
+            repo={linkedRepo}
+          />
+          {desc}
+        </div>
+      );
+    }
 
     if (inp.type === 'boolean') {
       return (

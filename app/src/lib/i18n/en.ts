@@ -3071,6 +3071,16 @@ const en: TranslationMap = {
   'settings.skillsRunner.viewer.tailing': 'Live tailing',
   'settings.skillsRunner.viewer.fetching': 'fetching',
   'settings.skillsRunner.viewer.error': 'Log read failed:',
+  'settings.skillsRunner.repoPicker.loading': 'Loading repositories…',
+  'settings.skillsRunner.repoPicker.select': 'Select a repository…',
+  'settings.skillsRunner.repoPicker.empty':
+    'No repositories returned. Connect GitHub via Composio to populate this list.',
+  'settings.skillsRunner.repoPicker.notConnected':
+    'GitHub isn’t connected via Composio. Connect it under Skills → Composio first.',
+  'settings.skillsRunner.repoPicker.privateTag': '(private)',
+  'settings.skillsRunner.branchPicker.needRepo': 'Pick a repo first…',
+  'settings.skillsRunner.branchPicker.loading': 'Loading branches…',
+  'settings.skillsRunner.branchPicker.select': 'Select a branch…',
   'settings.devWorkflow.githubRepository': 'GitHub Repository',
   'settings.devWorkflow.loadingRepositories': 'Loading repositories...',
   'settings.devWorkflow.selectRepository': 'Select a repository',
