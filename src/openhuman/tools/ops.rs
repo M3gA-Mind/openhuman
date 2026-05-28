@@ -171,6 +171,7 @@ pub fn all_tools_with_runtime(
         Box::new(WalletStatusTool::new()),
         Box::new(WalletChainStatusTool::new()),
         Box::new(WalletPrepareTransferTool::new()),
+        Box::new(WalletBuyToshiOnBaseTool::new()),
         Box::new(MemoryStoreTool::new(memory.clone(), security.clone())),
         Box::new(MemoryRecallTool::new(memory.clone())),
         Box::new(MemoryForgetTool::new(memory.clone(), security.clone())),
