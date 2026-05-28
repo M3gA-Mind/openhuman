@@ -166,11 +166,13 @@ describe('SkillsRunnerBody — saved-schedule toggle', () => {
 
     await waitFor(() => expect(hoisted.cronList).toHaveBeenCalled());
 
-    const toggle = await screen.findByRole('switch', {
-      name: 'settings.skillsRunner.scheduleToggleAria',
-    });
+    // The runner now renders saved schedules through ScheduledCronCard,
+    // which emits a single `<root>-toggle` testid per card. Querying
+    // by testid keeps us independent of the card's internal aria-label.
+    const toggle = await screen.findByTestId('scheduled-job-job-1-toggle');
     expect(toggle).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByText('settings.skillsRunner.scheduleEnabled')).toBeInTheDocument();
+    // Card uses the shared `common.enabled` / `common.disabled` label.
+    expect(screen.getByText('common.enabled')).toBeInTheDocument();
   });
 
   it('calls openhumanCronUpdate with { enabled: false } when toggled on→off', async () => {
@@ -186,9 +188,7 @@ describe('SkillsRunnerBody — saved-schedule toggle', () => {
     // the disabled job so the UI refresh reflects the new state.
     hoisted.cronList.mockResolvedValueOnce({ result: [makeJob({ enabled: false })] });
 
-    const toggle = await screen.findByRole('switch', {
-      name: 'settings.skillsRunner.scheduleToggleAria',
-    });
+    const toggle = await screen.findByTestId('scheduled-job-job-1-toggle');
     fireEvent.click(toggle);
 
     await waitFor(() =>
@@ -199,11 +199,12 @@ describe('SkillsRunnerBody — saved-schedule toggle', () => {
     await waitFor(() => expect(hoisted.cronList).toHaveBeenCalledTimes(2));
 
     await waitFor(() =>
-      expect(
-        screen.getByRole('switch', { name: 'settings.skillsRunner.scheduleToggleAria' })
-      ).toHaveAttribute('aria-checked', 'false')
+      expect(screen.getByTestId('scheduled-job-job-1-toggle')).toHaveAttribute(
+        'aria-checked',
+        'false'
+      )
     );
-    expect(screen.getByText('settings.skillsRunner.scheduleDisabled')).toBeInTheDocument();
+    expect(screen.getByText('common.disabled')).toBeInTheDocument();
   });
 
   it('round-trips off→on as well', async () => {
@@ -217,9 +218,7 @@ describe('SkillsRunnerBody — saved-schedule toggle', () => {
     fireEvent.change(select, { target: { value: SKILL_ID } });
     await waitFor(() => expect(hoisted.cronList).toHaveBeenCalled());
 
-    const toggle = await screen.findByRole('switch', {
-      name: 'settings.skillsRunner.scheduleToggleAria',
-    });
+    const toggle = await screen.findByTestId('scheduled-job-job-1-toggle');
     expect(toggle).toHaveAttribute('aria-checked', 'false');
 
     fireEvent.click(toggle);
@@ -323,22 +322,37 @@ describe('SkillsRunnerBody — per-job history viewer', () => {
     await waitFor(() => expect(hoisted.cronList).toHaveBeenCalled());
 
     // The recent enabled job should be marked active (only one active
-    // badge present, and it's on the recent job).
-    const badges = await screen.findAllByTestId(/^active-badge-/);
+    // badge present, and it's on the recent job). ScheduledCronCard
+    // emits the badge as `<root>-active-badge` where `<root>` is the
+    // runner's `scheduled-job-<jobId>` testIdRoot.
+    const badges = await screen.findAllByTestId(/-active-badge$/);
     expect(badges).toHaveLength(1);
-    expect(badges[0]).toHaveAttribute('data-testid', 'active-badge-job-recent-enabled');
+    expect(badges[0]).toHaveAttribute(
+      'data-testid',
+      'scheduled-job-job-recent-enabled-active-badge'
+    );
 
-    // Sort order: recent enabled, old enabled, paused. We assert by
-    // reading the rendered scheduled-job rows in DOM order.
-    const rows = screen.getAllByTestId(/^scheduled-job-/);
-    expect(rows.map((r) => r.getAttribute('data-testid'))).toEqual([
+    // Sort order: recent enabled, old enabled, paused. We pull the
+    // rendered card roots and assert their relative DOM order. The
+    // card emits a number of helper testids (`*-toggle`, `*-open`,
+    // etc.) prefixed with the same root — narrow the regex to just
+    // the card root by anchoring on a job-id pattern.
+    const rows = ['job-recent-enabled', 'job-old-enabled', 'job-paused'].map((id) =>
+      screen.getByTestId(`scheduled-job-${id}`)
+    );
+    expect(rows[0]).toHaveAttribute('data-active', 'true');
+    expect(rows[1]).toHaveAttribute('data-active', 'true');
+    expect(rows[2]).toHaveAttribute('data-active', 'false');
+    // Confirm DOM order by walking the parent's children.
+    const parent = rows[0].parentElement!;
+    const cardChildren = Array.from(parent.children).filter((el) =>
+      el.getAttribute('data-testid')?.startsWith('scheduled-job-job-')
+    );
+    expect(cardChildren.map((el) => el.getAttribute('data-testid'))).toEqual([
       'scheduled-job-job-recent-enabled',
       'scheduled-job-job-old-enabled',
       'scheduled-job-job-paused',
     ]);
-    expect(rows[0]).toHaveAttribute('data-active', 'true');
-    expect(rows[1]).toHaveAttribute('data-active', 'false');
-    expect(rows[2]).toHaveAttribute('data-active', 'false');
   });
 
   it('does not show an Active badge when no schedules are enabled', async () => {
@@ -353,7 +367,7 @@ describe('SkillsRunnerBody — per-job history viewer', () => {
     await waitFor(() => expect(hoisted.cronList).toHaveBeenCalled());
 
     await screen.findByTestId('scheduled-job-job-1');
-    expect(screen.queryByTestId(/^active-badge-/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId(/-active-badge$/)).not.toBeInTheDocument();
   });
 
   it('shows the empty-history placeholder when cron_runs returns no rows', async () => {

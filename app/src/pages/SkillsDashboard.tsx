@@ -32,24 +32,47 @@ const log = createDebug('app:pages:SkillsDashboard');
 const CRON_NAME_PREFIX = 'skill-run-';
 
 /**
- * Extract the skill_id from a cron job name. Format is
- *   `skill-run-<skill_id>[-input1=v1_input2=v2…]`
- * The first `-` after the prefix delimits the skill_id from the
- * input-encoded suffix. If we can't recognise the shape (e.g. the
- * job pre-dates the convention), fall back to the full name minus
- * prefix so users still see *something* identifying.
+ * Legacy: DevWorkflowPanel saved its cron with the literal
+ * `dev-workflow-<repo>` name (e.g. `dev-workflow-tinyhumansai-openhuman`)
+ * before SkillsRunnerBody introduced the unified `skill-run-` prefix.
+ * Recognise both so the dashboard surfaces existing dev-workflow
+ * schedules without forcing the user to delete + re-save them through
+ * the new runner UI.
  */
+const LEGACY_DEV_WORKFLOW_PREFIX = 'dev-workflow-';
+const LEGACY_DEV_WORKFLOW_SKILL_ID = 'dev-workflow';
+
+/**
+ * Recognise a cron job name as belonging to a skill schedule and return
+ * its skill_id. Returns `null` for cron jobs that don't belong on the
+ * Runners dashboard (e.g. memory-tree maintenance, channels polling).
+ *
+ * Two name shapes are recognised today:
+ *   - `skill-run-<skill_id>[-input1=v1_input2=v2…]` (current convention,
+ *     written by SkillsRunnerBody for every bundled skill incl. the
+ *     "new" dev-workflow path)
+ *   - `dev-workflow-<repo>` (legacy DevWorkflowPanel naming) → mapped
+ *     back to `skill_id = "dev-workflow"`
+ */
+function recognizeSkillCron(jobName: string): { skillId: string } | null {
+  if (jobName.startsWith(CRON_NAME_PREFIX)) {
+    const tail = jobName.slice(CRON_NAME_PREFIX.length);
+    // Split on the first `-input=` marker (input pairs always contain `=`).
+    const eqIdx = tail.indexOf('=');
+    if (eqIdx === -1) return { skillId: tail };
+    // Walk back from `=` to the last `-` before it — that's the input-pair separator.
+    const dashBeforeEq = tail.lastIndexOf('-', eqIdx);
+    if (dashBeforeEq === -1) return { skillId: tail };
+    return { skillId: tail.slice(0, dashBeforeEq) };
+  }
+  if (jobName.startsWith(LEGACY_DEV_WORKFLOW_PREFIX)) {
+    return { skillId: LEGACY_DEV_WORKFLOW_SKILL_ID };
+  }
+  return null;
+}
+
 function extractSkillId(jobName: string): string {
-  const tail = jobName.startsWith(CRON_NAME_PREFIX)
-    ? jobName.slice(CRON_NAME_PREFIX.length)
-    : jobName;
-  // Split on the first `-input=` marker (input pairs always contain `=`).
-  const eqIdx = tail.indexOf('=');
-  if (eqIdx === -1) return tail;
-  // Walk back from `=` to the last `-` before it — that's the input-pair separator.
-  const dashBeforeEq = tail.lastIndexOf('-', eqIdx);
-  if (dashBeforeEq === -1) return tail;
-  return tail.slice(0, dashBeforeEq);
+  return recognizeSkillCron(jobName)?.skillId ?? jobName;
 }
 
 /** Group jobs by skill_id and present a single card per skill (newest first). */
@@ -63,14 +86,13 @@ interface SkillGroup {
 function groupBySkill(jobs: CoreCronJob[]): SkillGroup[] {
   const byId = new Map<string, CoreCronJob[]>();
   for (const job of jobs) {
-    const name = job.name ?? '';
-    if (!name.startsWith(CRON_NAME_PREFIX)) continue;
-    const skillId = extractSkillId(name);
-    const bucket = byId.get(skillId);
+    const recognised = recognizeSkillCron(job.name ?? '');
+    if (!recognised) continue;
+    const bucket = byId.get(recognised.skillId);
     if (bucket) {
       bucket.push(job);
     } else {
-      byId.set(skillId, [job]);
+      byId.set(recognised.skillId, [job]);
     }
   }
   const groups: SkillGroup[] = [];
@@ -114,7 +136,10 @@ export default function SkillsDashboard() {
     try {
       const resp = await openhumanCronList();
       const all = (resp.result ?? []) as CoreCronJob[];
-      const filtered = all.filter((j) => (j.name ?? '').startsWith(CRON_NAME_PREFIX));
+      // Accept both the current `skill-run-` prefix and the legacy
+      // `dev-workflow-` naming DevWorkflowPanel uses, via the shared
+      // recogniser at the top of the file.
+      const filtered = all.filter((j) => recognizeSkillCron(j.name ?? '') !== null);
       log('loaded %d skill cron jobs (of %d total)', filtered.length, all.length);
       setJobs(filtered);
     } catch (err: unknown) {

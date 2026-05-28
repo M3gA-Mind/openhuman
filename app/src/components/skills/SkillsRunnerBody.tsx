@@ -37,6 +37,7 @@ import {
 } from '../../utils/tauriCommands/cron';
 import BranchPicker from './inputs/BranchPicker';
 import RepoPicker from './inputs/RepoPicker';
+import ScheduledCronCard from './ScheduledCronCard';
 import SmartIssuePicker from './SmartIssuePicker';
 
 // Skills that opt out of the generic schema-driven form for a curated
@@ -483,7 +484,19 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
       const resp = await openhumanCronList();
       const allJobs = (resp.result ?? []) as CoreCronJob[];
       const wanted = `${CRON_NAME_PREFIX}${selectedSkillId}`;
-      setScheduledJobs(allJobs.filter((j) => (j.name ?? '').startsWith(wanted)));
+      // For the special dev-workflow skill, also surface legacy crons
+      // saved by DevWorkflowPanel (named `dev-workflow-<repo>`) so the
+      // user can toggle / edit them from the unified runner. Matches the
+      // recogniser in SkillsDashboard.tsx.
+      const isDevWorkflow = selectedSkillId === 'dev-workflow';
+      setScheduledJobs(
+        allJobs.filter((j) => {
+          const n = j.name ?? '';
+          if (n.startsWith(wanted)) return true;
+          if (isDevWorkflow && n.startsWith('dev-workflow-')) return true;
+          return false;
+        })
+      );
     } catch (err: unknown) {
       log('loadScheduledJobs error: %s', err instanceof Error ? err.message : String(err));
       setScheduledJobs([]);
@@ -1067,110 +1080,53 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
                       <div className="text-xs font-medium text-stone-600 dark:text-stone-400">
                         {t('settings.skillsRunner.schedule.existing')}
                       </div>
+                      {/* Per-skill saved-schedule list — uses the shared
+                          ScheduledCronCard so the runner and the global
+                          /skills dashboard render the same polished card
+                          chrome (toggle + cronToHuman + last/next run).
+                          Run-Now / Remove live in the card's `actions`
+                          slot; the lazy per-job history disclosure
+                          lives in `children`. The card emits testids
+                          `scheduled-job-<id>` (root) and
+                          `scheduled-job-<id>-toggle` (switch); the
+                          history pieces below keep their own testids
+                          (`history-toggle-<id>`, `history-run-<id>-<runId>`). */}
                       {sortedScheduledJobs.map((job) => {
                         const hist = historyState[job.id];
                         const isActive = job.id === activeJobId;
                         return (
-                          <div
+                          <ScheduledCronCard
                             key={job.id}
-                            data-testid={`scheduled-job-${job.id}`}
-                            data-active={isActive ? 'true' : 'false'}
-                            className={`rounded border text-xs ${
-                              isActive
-                                ? 'border-sage-300 dark:border-sage-500/40 bg-sage-50 dark:bg-sage-500/10'
-                                : 'border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2 px-3 py-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  {isActive && (
-                                    <span
-                                      data-testid={`active-badge-${job.id}`}
-                                      className="px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide bg-sage-200 dark:bg-sage-500/30 text-sage-800 dark:text-sage-200"
-                                    >
-                                      ★ {t('settings.skillsRunner.schedule.active')}
-                                    </span>
-                                  )}
-                                  <div className="font-mono truncate text-stone-700 dark:text-stone-300">
-                                    {job.name ?? job.id}
-                                  </div>
-                                </div>
-                                <div className="text-stone-500 dark:text-stone-400">
-                                  {/* schedule.expr may be undefined on some shapes; just stringify */}
-                                  {(() => {
-                                    const s = job.schedule as { expr?: string } | undefined;
-                                    return s?.expr ?? '';
-                                  })()}
-                                  {job.last_run && (
-                                    <>
-                                      {' · '}
-                                      {t('settings.skillsRunner.schedule.lastRunLabel')}{' '}
-                                      {new Date(job.last_run).toLocaleString()}
-                                      {job.last_status && (
-                                        <span
-                                          className={`ml-1 px-1 py-0.5 rounded text-[10px] font-medium ${
-                                            job.last_status === 'ok'
-                                              ? 'bg-sage-100 dark:bg-sage-500/20 text-sage-700 dark:text-sage-300'
-                                              : 'bg-coral-100 dark:bg-coral-500/20 text-coral-700 dark:text-coral-300'
-                                          }`}
-                                        >
-                                          {job.last_status}
-                                        </span>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              {/* Enable/disable toggle — styling lifted from
-                                  DevWorkflowPanel:502-516 so the visual is
-                                  identical to the dev-workflow active-config
-                                  card users already know. */}
-                              <div className="flex items-center gap-1">
+                            job={job}
+                            title={job.name ?? job.id}
+                            activeBadge={isActive}
+                            onToggle={() => void handleToggleJob(job)}
+                            testIdRoot={`scheduled-job-${job.id}`}
+                            actions={
+                              <>
                                 <button
                                   type="button"
-                                  role="switch"
-                                  aria-checked={job.enabled}
-                                  aria-label={t('settings.skillsRunner.scheduleToggleAria')}
-                                  onClick={() => void handleToggleJob(job)}
-                                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${
-                                    job.enabled ? 'bg-sage-500' : 'bg-neutral-300 dark:bg-neutral-600'
-                                  }`}
+                                  onClick={() => void handleRunJobNow(job.id)}
+                                  className="rounded bg-primary-600 hover:bg-primary-700 px-2 py-1 text-xs font-medium text-white"
                                 >
-                                  <span
-                                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
-                                      job.enabled ? 'translate-x-4' : 'translate-x-0.5'
-                                    }`}
-                                  />
+                                  {t('settings.skillsRunner.schedule.runNow')}
                                 </button>
-                                <span className="text-[10px] text-stone-500 dark:text-stone-400 min-w-[44px]">
-                                  {job.enabled
-                                    ? t('settings.skillsRunner.scheduleEnabled')
-                                    : t('settings.skillsRunner.scheduleDisabled')}
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => void handleRunJobNow(job.id)}
-                                className="rounded bg-primary-600 hover:bg-primary-700 px-2 py-1 text-xs font-medium text-white"
-                              >
-                                {t('settings.skillsRunner.schedule.runNow')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void handleRemoveJob(job.id)}
-                                className="rounded bg-red-600 hover:bg-red-700 px-2 py-1 text-xs font-medium text-white"
-                              >
-                                {t('settings.skillsRunner.schedule.remove')}
-                              </button>
-                            </div>
-
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRemoveJob(job.id)}
+                                  className="rounded bg-red-600 hover:bg-red-700 px-2 py-1 text-xs font-medium text-white"
+                                >
+                                  {t('settings.skillsRunner.schedule.remove')}
+                                </button>
+                              </>
+                            }
+                          >
                             {/* Per-job run history (lazy on first expand).
                                 Ports DevWorkflowPanel:591-645's pattern:
                                 a disclosure toggle reveals up to 5 runs
                                 each with status badge + duration; click
                                 a run to expand its captured output. */}
-                            <div className="px-3 pb-2 border-t border-stone-100 dark:border-stone-800">
+                            <div className="px-4 pb-3 border-t border-stone-100 dark:border-stone-800">
                               <button
                                 type="button"
                                 onClick={() => toggleJobHistory(job.id)}
@@ -1249,7 +1205,7 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
                                 </div>
                               )}
                             </div>
-                          </div>
+                          </ScheduledCronCard>
                         );
                       })}
                     </div>
