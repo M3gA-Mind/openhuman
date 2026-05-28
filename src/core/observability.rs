@@ -314,6 +314,15 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_backend_user_error_message(&lower) {
         return Some(ExpectedErrorKind::BackendUserError);
     }
+    // Session-expired BEFORE embedding-backend-auth: the OpenHuman backend's
+    // `"Invalid token"` 401 envelope can arrive via the embedding path
+    // (TAURI-RUST-4K5) and must classify as SessionExpired, not
+    // BackendUserError. The conjunctive anchor in `is_session_expired_message`
+    // is strict enough that third-party BYO-key 401s still fall through to
+    // the `is_embedding_backend_auth_failure` catch-all below.
+    if is_session_expired_message(message) {
+        return Some(ExpectedErrorKind::SessionExpired);
+    }
     if is_embedding_backend_auth_failure(&lower) {
         return Some(ExpectedErrorKind::SessionExpired);
     }
@@ -331,9 +340,6 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     }
     if crate::openhuman::inference::provider::is_budget_exhausted_message(message) {
         return Some(ExpectedErrorKind::BudgetExhausted);
-    }
-    if is_session_expired_message(message) {
-        return Some(ExpectedErrorKind::SessionExpired);
     }
     if is_prompt_injection_blocked_message(&lower) {
         return Some(ExpectedErrorKind::PromptInjectionBlocked);
