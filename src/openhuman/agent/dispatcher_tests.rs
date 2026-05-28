@@ -10,7 +10,7 @@ fn xml_dispatcher_parses_tool_calls() {
         ),
         tool_calls: vec![],
         usage: None,
-            reasoning_content: None,
+        reasoning_content: None,
     };
     let dispatcher = XmlToolDispatcher;
     let (_, calls) = dispatcher.parse_response(&response);
@@ -59,7 +59,7 @@ fn native_dispatcher_falls_back_to_xml_tool_calls() {
         ),
         tool_calls: vec![],
         usage: None,
-            reasoning_content: None,
+        reasoning_content: None,
     };
     let dispatcher = NativeToolDispatcher;
     let (text, calls) = dispatcher.parse_response(&response);
@@ -77,7 +77,7 @@ fn native_dispatcher_falls_back_to_invoke_tag() {
         ),
         tool_calls: vec![],
         usage: None,
-            reasoning_content: None,
+        reasoning_content: None,
     };
     let dispatcher = NativeToolDispatcher;
     let (text, calls) = dispatcher.parse_response(&response);
@@ -162,7 +162,7 @@ fn pformat_dispatcher_falls_back_to_json_in_tag() {
         ),
         tool_calls: vec![],
         usage: None,
-            reasoning_content: None,
+        reasoning_content: None,
     };
     let (text, calls) = dispatcher.parse_response(&response);
     assert_eq!(text, "Running it now.");

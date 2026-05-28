@@ -549,6 +549,21 @@ impl OpenAiCompatibleProvider {
             messages
                 .iter()
                 .map(|message| {
+                    // Extract reasoning_content stored in extra_metadata by the
+                    // agent harness after each assistant turn. Thinking models
+                    // (DeepSeek-R1, Qwen3, GLM-4) require this to be echoed back
+                    // verbatim in subsequent requests, or the API returns HTTP 400.
+                    let reasoning_content = if message.role == "assistant" {
+                        message
+                            .extra_metadata
+                            .as_ref()
+                            .and_then(|m| m.get("reasoning_content"))
+                            .and_then(serde_json::Value::as_str)
+                            .map(ToString::to_string)
+                    } else {
+                        None
+                    };
+
                     if message.role == "assistant" {
                         if let Ok(value) =
                             serde_json::from_str::<serde_json::Value>(&message.content)
@@ -581,14 +596,18 @@ impl OpenAiCompatibleProvider {
                                     // Replay the assistant's reasoning so
                                     // DeepSeek thinking mode accepts the
                                     // tool-call turn on the follow-up request
-                                    // (Sentry TAURI-RUST-4KB). Written by
-                                    // `build_native_assistant_history`; absent
-                                    // for non-reasoning models.
+                                    // (Sentry TAURI-RUST-4KB). Prefer the value
+                                    // embedded in the JSON content (written by
+                                    // `build_native_assistant_history` in the
+                                    // tool-loop path); fall back to the value
+                                    // stored in `extra_metadata` (written by the
+                                    // main session-turn path).
                                     let reasoning_content = value
                                         .get("reasoning_content")
                                         .and_then(serde_json::Value::as_str)
                                         .filter(|s| !s.trim().is_empty())
-                                        .map(ToString::to_string);
+                                        .map(ToString::to_string)
+                                        .or_else(|| reasoning_content.clone());
 
                                     return NativeMessage {
                                         role: "assistant".to_string(),
@@ -631,7 +650,7 @@ impl OpenAiCompatibleProvider {
                         content: Some(message.content.clone()),
                         tool_call_id: None,
                         tool_calls: None,
-                        reasoning_content: None,
+                        reasoning_content,
                     }
                 })
                 .collect();
@@ -784,16 +803,12 @@ impl OpenAiCompatibleProvider {
             .ok_or_else(|| anyhow::anyhow!("No choices in response from {}", provider_name))?;
 
         let mut text = message.effective_content_optional();
-        // Preserve the raw reasoning so the agent loop can replay it on the
-        // follow-up request. DeepSeek's thinking mode rejects an
-        // `assistant` turn that carries `tool_calls` if its
-        // `reasoning_content` is not passed back (Sentry TAURI-RUST-4KB).
-        let reasoning_content = message
-            .reasoning_content
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(ToString::to_string);
+        // Capture reasoning_content before the message fields are moved into
+        // the tool-call extractors below. This must be passed back verbatim on
+        // the next turn for thinking models (e.g. DeepSeek-R1, Qwen3) whose APIs
+        // return HTTP 400 ("reasoning_content in thinking mode must be passed back")
+        // when the field is omitted from subsequent assistant messages.
+        let reasoning_content = message.reasoning_content.clone();
         let mut tool_calls = message
             .tool_calls
             .unwrap_or_default()
@@ -837,6 +852,12 @@ impl OpenAiCompatibleProvider {
                 }
             }
         }
+
+        tracing::debug!(
+            has_reasoning_content = reasoning_content.is_some(),
+            reasoning_content_chars = reasoning_content.as_ref().map_or(0, |r| r.chars().count()),
+            "[provider:parse_native_response] reasoning_content capture"
+        );
 
         Ok(ProviderChatResponse {
             text,

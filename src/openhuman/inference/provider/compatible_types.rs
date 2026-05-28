@@ -77,12 +77,10 @@ pub(crate) struct NativeMessage {
     pub(crate) tool_call_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tool_calls: Option<Vec<ToolCall>>,
-    /// Reasoning/thinking output for an `assistant` turn, replayed back to
-    /// the provider on follow-up requests. DeepSeek's thinking mode rejects
-    /// a tool-call turn whose `reasoning_content` is not passed back
-    /// (Sentry TAURI-RUST-4KB). Only emitted for reasoning models that
-    /// produced it (most providers leave this `None`, so it never appears
-    /// on the wire for them).
+    /// Chain-of-thought reasoning returned by thinking models (DeepSeek-R1,
+    /// Qwen3, GLM-4, etc.) in the previous assistant turn. Per the API
+    /// contract it **must** be echoed back verbatim in the next request's
+    /// assistant message, or the provider returns HTTP 400.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) reasoning_content: Option<String>,
 }

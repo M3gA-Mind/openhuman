@@ -89,16 +89,14 @@ pub struct ChatResponse {
     pub tool_calls: Vec<ToolCall>,
     /// Token usage info from the provider (if available).
     pub usage: Option<UsageInfo>,
-    /// Reasoning/thinking output emitted alongside this turn (DeepSeek,
-    /// Qwen3, GLM-4, … return it in a separate `reasoning_content` field).
+    /// Raw reasoning/thinking content returned by thinking models (e.g.
+    /// DeepSeek-R1, Qwen3) in the `reasoning_content` field. This must be
+    /// passed back verbatim on the next turn — the API returns HTTP 400
+    /// ("reasoning_content in thinking mode must be passed back") if it is
+    /// omitted from the assistant message in a multi-turn conversation.
     ///
-    /// Preserved here so the agent loop can round-trip it back into the
-    /// assistant history entry for the *next* request. DeepSeek's thinking
-    /// mode **requires** the `reasoning_content` of an assistant turn that
-    /// carries `tool_calls` to be replayed verbatim on the follow-up call
-    /// (otherwise: `400 The reasoning_content in the thinking mode must be
-    /// passed back to the API.` — Sentry TAURI-RUST-4KB). `None` for
-    /// providers/models that don't emit reasoning.
+    /// Stored separately from `text` so callers can preserve it through
+    /// the conversation history without merging it into the visible reply.
     pub reasoning_content: Option<String>,
 }
 

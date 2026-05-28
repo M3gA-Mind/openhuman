@@ -878,7 +878,7 @@ async fn e2e_native_loop_executes_text_fallback_tool_calls_and_persists_history(
             ),
             tool_calls: vec![],
             usage: None,
-                    reasoning_content: None,
+            reasoning_content: None,
         },
         text_response("Completed via tool"),
     ]));
