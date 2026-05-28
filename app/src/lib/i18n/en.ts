@@ -220,6 +220,34 @@ const en: TranslationMap = {
   'home.usageExhaustedBody':
     "You're out of included usage for now. Start a subscription to unlock more ongoing capacity.",
   'home.usageExhaustedCta': 'Get a subscription',
+  'home.routinesCard': 'Your Routines',
+  'home.routinesActive': '{count} active',
+
+  // Routines
+  'routines.title': 'Your Routines',
+  'routines.subtitle': 'Things your assistant does automatically',
+  'routines.loading': 'Loading routines…',
+  'routines.empty': 'No routines yet',
+  'routines.emptyHint':
+    'Your assistant can run tasks on a schedule — like morning briefings or daily summaries.',
+  'routines.refresh': 'Refresh',
+  'routines.nextRun': 'Next run',
+  'routines.lastRunSuccess': 'Last run succeeded',
+  'routines.lastRunFailed': 'Last run failed',
+  'routines.notRunYet': 'Not run yet',
+  'routines.runNow': 'Run Now',
+  'routines.running': 'Running…',
+  'routines.viewHistory': 'View history',
+  'routines.loadingHistory': 'Loading…',
+  'routines.noHistory': 'No run history yet.',
+  'routines.statusSuccess': 'Success',
+  'routines.statusError': 'Error',
+  'routines.showOutput': 'Show output',
+  'routines.hideOutput': 'Hide output',
+  'routines.toggleEnabled': 'Enable or disable this routine',
+  'routines.typeAgent': 'Agent',
+  'routines.typeCommand': 'Command',
+  'nav.routines': 'Routines',
 
   // Chat / Conversations
   'chat.newThread': 'New thread',
@@ -1605,6 +1633,12 @@ const en: TranslationMap = {
   'chat.turn': 'turn',
   'chat.turns': 'turns',
   'chat.openWorkerThread': 'Open worker thread',
+  'chat.attachment.attach': 'Attach image',
+  'chat.attachment.remove': 'Remove {name}',
+  'chat.attachment.tooMany': 'Maximum {max} images per message',
+  'chat.attachment.tooLarge': 'Image exceeds {max} size limit',
+  'chat.attachment.unsupportedType': 'Unsupported file type. Use PNG, JPEG, WebP, GIF, or BMP.',
+  'chat.attachment.readFailed': 'Could not read file',
 
   // Memory (additional)
   'memory.searchAria': 'Search memory',
@@ -2570,7 +2604,7 @@ const en: TranslationMap = {
   'settings.ai.clearStoredKey': 'Clear stored key',
   'settings.ai.connectProvider': 'Connect',
   'settings.ai.customRouting': 'Custom routing',
-  'settings.ai.defaultResolvesTo': 'OpenHuman',
+  'settings.ai.defaultResolvesTo': 'Default resolves to',
   'settings.ai.discard': 'Discard',
   'settings.ai.editProvider': 'Edit {label}',
   'settings.ai.llmProviders': 'LLM Providers',
