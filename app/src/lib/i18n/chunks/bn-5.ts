@@ -839,6 +839,7 @@ const bn5: TranslationMap = {
   'settings.skillsRunner.error.describe': 'Failed to load inputs:',
   'settings.skillsRunner.error.missingRequired': 'Missing required input(s):',
   'settings.skillsRunner.error.run': 'Run failed to start:',
+  'settings.skillsRunner.error.preflightGate': 'Preflight gate failed',
   'settings.skillsRunner.schedule.heading': 'Schedule (recurring)',
   'settings.skillsRunner.schedule.help':
     'Save this skill + inputs as a recurring cron job. The agent will call run_skill at each tick.',

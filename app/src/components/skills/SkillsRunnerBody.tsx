@@ -37,6 +37,7 @@ import {
 } from '../../utils/tauriCommands/cron';
 import BranchPicker from './inputs/BranchPicker';
 import RepoPicker from './inputs/RepoPicker';
+import { isGithubGateFailure, parseSkillRunError } from './preflightGate';
 import ScheduledCronCard from './ScheduledCronCard';
 import SmartIssuePicker from './SmartIssuePicker';
 
@@ -1002,13 +1003,42 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
                       </p>
                     </div>
                   )}
-                  {run.status === 'error' && (
-                    <div className="rounded border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950 p-3 text-sm">
-                      <p className="text-red-800 dark:text-red-200">
-                        {t('settings.skillsRunner.error.run')} {run.message ?? ''}
-                      </p>
-                    </div>
-                  )}
+                  {run.status === 'error' && (() => {
+                    // Detect the `[preflight:<gate>:<tag>] <body>` shape
+                    // emitted by spawn_skill_run_background's preflight
+                    // branch (src/openhuman/skills/preflight.rs). When
+                    // matched, surface a dedicated "Preflight gate
+                    // failed" pill above the body so the user knows
+                    // this isn't a generic crash — there's a concrete
+                    // remediation the body describes.
+                    const parsed = parseSkillRunError(run.message);
+                    const isGateFailure = isGithubGateFailure(parsed);
+                    return (
+                      <div
+                        data-testid="skill-run-error"
+                        className="rounded border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950 p-3 text-sm"
+                      >
+                        {isGateFailure && (
+                          <div
+                            data-testid="preflight-gate-pill"
+                            className="mb-1.5 inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200"
+                          >
+                            {t('settings.skillsRunner.error.preflightGate')}
+                            {parsed.tag ? (
+                              <code className="font-mono text-[10px] opacity-80">
+                                {parsed.tag}
+                              </code>
+                            ) : null}
+                          </div>
+                        )}
+                        <p className="text-red-800 dark:text-red-200">
+                          {isGateFailure
+                            ? parsed.body
+                            : `${t('settings.skillsRunner.error.run')} ${run.message ?? ''}`}
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Schedule (cron-driven recurring) */}
