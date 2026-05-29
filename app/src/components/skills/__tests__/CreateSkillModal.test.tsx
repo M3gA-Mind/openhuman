@@ -137,4 +137,11 @@ describe('CreateSkillModal', () => {
     });
     expect(submit.disabled).toBe(false);
   });
+
+  it('close button calls onClose when not submitting', () => {
+    const onClose = vi.fn();
+    render(<CreateSkillModal onClose={onClose} onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /close/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

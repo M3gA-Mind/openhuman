@@ -32,16 +32,16 @@ describe('tauriCommands/cron — openhumanCronRun / openhumanCronRuns', () => {
   afterEach(() => vi.restoreAllMocks());
 
   describe('openhumanCronAdd', () => {
+    const params = { schedule: { kind: 'cron' as const, expr: '*/5 * * * *' }, name: 'test' };
+
     test('throws when not in Tauri', async () => {
       mockIsTauri.mockReturnValue(false);
-      await expect(
-        openhumanCronAdd({ expression: '*/5 * * * *', name: 'test', enabled: true })
-      ).rejects.toThrow('Not running in Tauri');
+      await expect(openhumanCronAdd(params)).rejects.toThrow('Not running in Tauri');
     });
 
     test('calls cron_add with params', async () => {
       mockCallCoreRpc.mockResolvedValue({ id: 'job-1' });
-      await openhumanCronAdd({ expression: '*/5 * * * *', name: 'test', enabled: true });
+      await openhumanCronAdd(params);
       expect(mockCallCoreRpc).toHaveBeenCalledWith(
         expect.objectContaining({ method: 'openhuman.cron_add' })
       );

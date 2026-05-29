@@ -39,17 +39,29 @@ describe('SmartIssuePicker', () => {
 
   it('renders repos when GitHub connection is active', async () => {
     mockListConnections.mockResolvedValue({
-      connections: [
-        { toolkit: 'github', status: 'ACTIVE', username: 'testuser' },
-      ],
+      connections: [{ toolkit: 'github', status: 'ACTIVE', username: 'testuser' }],
     });
-    mockExecute.mockResolvedValue({
-      repositories: [{ full_name: 'testuser/myrepo', private: false, default_branch: 'main' }],
-    });
+    // First call: list repos; subsequent calls: fork detect, branches
+    mockExecute
+      .mockResolvedValueOnce({
+        successful: true,
+        data: [
+          {
+            full_name: 'testuser/myrepo',
+            name: 'myrepo',
+            owner: { login: 'testuser' },
+            private: false,
+            default_branch: 'main',
+          },
+        ],
+      })
+      .mockResolvedValue({ successful: true, data: { fork: false } });
     render(<SmartIssuePicker {...baseProps} />);
     await waitFor(() => {
       expect(screen.getByRole('combobox')).toBeInTheDocument();
     });
+    // After repos load, there should be an option available
+    expect(mockExecute).toHaveBeenCalled();
   });
 
   it('pre-selects repo from values prop', async () => {

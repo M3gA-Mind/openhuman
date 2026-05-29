@@ -522,3 +522,97 @@ describe('SkillsRunnerBody — URL ?skill= preselect', () => {
   });
 });
 
+// ── Phase 5: Run Now flow ────────────────────────────────────────────
+//
+// Exercises handleRun → buildInputsPayload (lines 167-201), missing-
+// required validation (lines 415-429), and the run-result render paths
+// (lines 441-452).
+
+describe('SkillsRunnerBody — Run Now flow', () => {
+  beforeEach(() => {
+    Object.values(hoisted).forEach((fn) => fn.mockReset());
+    hoisted.listSkills.mockResolvedValue([{ id: 'pr-review-shepherd', name: 'PR Review Shepherd' }]);
+    hoisted.describeSkill.mockResolvedValue({
+      id: 'pr-review-shepherd',
+      name: 'PR Review Shepherd',
+      when_to_use: 'Shepherd PRs.',
+      inputs: [
+        { name: 'repo', type: 'string', required: true, description: 'repo owner/name' },
+        { name: 'pr_number', type: 'integer', required: false, description: 'PR number' },
+        { name: 'dry_run', type: 'boolean', required: false, description: 'Dry run?' },
+      ],
+    });
+    hoisted.recentRuns.mockResolvedValue([]);
+    hoisted.cronList.mockResolvedValue({ result: [] });
+    hoisted.cronRuns.mockResolvedValue({ result: { runs: [] } });
+    hoisted.runSkill.mockResolvedValue({
+      run_id: 'run-abc',
+      skill_id: 'pr-review-shepherd',
+      log: '/tmp/run-abc.log',
+    });
+  });
+
+  it('Run Now button is disabled while required fields are empty', async () => {
+    const Body = await importBody();
+    renderBody(Body);
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+
+    const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'pr-review-shepherd' } });
+    await waitFor(() => expect(hoisted.describeSkill).toHaveBeenCalledWith('pr-review-shepherd'));
+
+    // Run Now button should be disabled when required field is empty
+    const runBtn = await screen.findByText('settings.skillsRunner.runNow');
+    expect(runBtn.closest('button')).toBeDisabled();
+    expect(hoisted.runSkill).not.toHaveBeenCalled();
+  });
+
+  it('calls runSkill with built payload when required fields are filled', async () => {
+    const Body = await importBody();
+    renderBody(Body);
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+
+    const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'pr-review-shepherd' } });
+    await waitFor(() => expect(hoisted.describeSkill).toHaveBeenCalled());
+
+    // Fill the repo input (rendered as a RepoPicker stub <input>)
+    const repoInput = await screen.findByTestId('repo-picker-stub');
+    fireEvent.change(repoInput, { target: { value: 'owner/myrepo' } });
+
+    // Wait for button to become enabled (state update after required field filled)
+    const runBtn = await screen.findByText('settings.skillsRunner.runNow');
+    await waitFor(() => expect(runBtn.closest('button')).not.toBeDisabled());
+    fireEvent.click(runBtn.closest('button')!);
+
+    await waitFor(() =>
+      expect(hoisted.runSkill).toHaveBeenCalledWith(
+        'pr-review-shepherd',
+        expect.objectContaining({ repo: 'owner/myrepo' })
+      )
+    );
+  });
+
+  it('surfaces error when runSkill rejects', async () => {
+    hoisted.runSkill.mockRejectedValue(new Error('backend error'));
+    const Body = await importBody();
+    renderBody(Body);
+    await waitFor(() => expect(hoisted.listSkills).toHaveBeenCalled());
+
+    const select = screen.getByLabelText('settings.skillsRunner.skill') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'pr-review-shepherd' } });
+    await waitFor(() => expect(hoisted.describeSkill).toHaveBeenCalled());
+
+    const repoInput = await screen.findByTestId('repo-picker-stub');
+    fireEvent.change(repoInput, { target: { value: 'owner/myrepo' } });
+
+    const runBtn = await screen.findByText('settings.skillsRunner.runNow');
+    await waitFor(() => expect(runBtn.closest('button')).not.toBeDisabled());
+    fireEvent.click(runBtn.closest('button')!);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('skill-run-error')).toBeInTheDocument()
+    );
+  });
+});
+

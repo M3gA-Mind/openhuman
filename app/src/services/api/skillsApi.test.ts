@@ -10,6 +10,22 @@ describe('skillsApi', () => {
     mockCallCoreRpc.mockReset();
   });
 
+  describe('createSkill', () => {
+    it('includes inputs in params when non-empty', async () => {
+      mockCallCoreRpc.mockResolvedValue({
+        skill: { id: 's', name: 'S', description: '', scope: 'user' as const },
+      });
+      await skillsApi.createSkill({
+        name: 'S',
+        description: 'desc',
+        inputs: [{ name: 'repo', type: 'string' as const, description: 'repo', required: true }],
+      });
+      expect(mockCallCoreRpc).toHaveBeenCalledWith(
+        expect.objectContaining({ params: expect.objectContaining({ inputs: expect.any(Array) }) })
+      );
+    });
+  });
+
   describe('describeSkill', () => {
     it('calls openhuman.skills_describe with skill_id', async () => {
       mockCallCoreRpc.mockResolvedValue({
