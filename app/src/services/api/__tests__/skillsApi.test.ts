@@ -159,3 +159,298 @@ describe('skillsApi.installSkillFromUrl', () => {
     expect(result.stderr).toBe('warn');
   });
 });
+
+describe('skillsApi.describeSkill', () => {
+  beforeEach(async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockReset();
+  });
+
+  it('calls skills_describe with skill_id and returns the response', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    const mockDescription = {
+      id: 'my-skill',
+      display_name: 'My Skill',
+      when_to_use: 'When you need to do stuff',
+      inputs: [
+        { name: 'input1', description: 'First input', required: true, type: 'string' },
+      ],
+    };
+    vi.mocked(callCoreRpc).mockResolvedValueOnce(mockDescription);
+
+    const result = await skillsApi.describeSkill('my-skill');
+
+    expect(callCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.skills_describe',
+      params: { skill_id: 'my-skill' },
+    });
+    expect(result.id).toBe('my-skill');
+    expect(result.inputs).toHaveLength(1);
+    expect(result.inputs[0].name).toBe('input1');
+  });
+
+  it('unwraps an envelope response', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    const mockDescription = {
+      id: 'env-skill',
+      display_name: 'Env Skill',
+      when_to_use: 'Always',
+      inputs: [],
+    };
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({ data: mockDescription });
+
+    const result = await skillsApi.describeSkill('env-skill');
+    expect(result.id).toBe('env-skill');
+    expect(result.inputs).toHaveLength(0);
+  });
+
+  it('returns a skill with multiple inputs', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({
+      id: 'multi-input-skill',
+      display_name: 'Multi Input Skill',
+      when_to_use: 'When needed',
+      inputs: [
+        { name: 'name', description: 'A name', required: true, type: 'string' },
+        { name: 'count', description: 'A count', required: false, type: 'integer' },
+        { name: 'verbose', description: 'Verbosity', required: false, type: 'boolean' },
+      ],
+    });
+
+    const result = await skillsApi.describeSkill('multi-input-skill');
+    expect(result.inputs).toHaveLength(3);
+    expect(result.inputs[1].type).toBe('integer');
+  });
+});
+
+describe('skillsApi.runSkill', () => {
+  beforeEach(async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockReset();
+  });
+
+  it('calls skills_run with skill_id and inputs, returns run start info', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    const mockRunStarted = {
+      run_id: 'run-abc123',
+      status: 'started',
+      skill_id: 'my-skill',
+      log: '/home/u/.openhuman/skills/.runs/run-abc123.log',
+    };
+    vi.mocked(callCoreRpc).mockResolvedValueOnce(mockRunStarted);
+
+    const result = await skillsApi.runSkill('my-skill', { input1: 'hello' });
+
+    expect(callCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.skills_run',
+      params: { skill_id: 'my-skill', inputs: { input1: 'hello' } },
+    });
+    expect(result.run_id).toBe('run-abc123');
+    expect(result.status).toBe('started');
+    expect(result.log).toContain('run-abc123');
+  });
+
+  it('passes empty inputs object when no inputs provided', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({
+      run_id: 'run-xyz',
+      status: 'started',
+      skill_id: 'simple-skill',
+      log: '/tmp/run-xyz.log',
+    });
+
+    await skillsApi.runSkill('simple-skill', {});
+
+    const call = vi.mocked(callCoreRpc).mock.calls[0][0];
+    expect(call.params).toEqual({ skill_id: 'simple-skill', inputs: {} });
+  });
+
+  it('unwraps an envelope response', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({
+      data: {
+        run_id: 'env-run-1',
+        status: 'started',
+        skill_id: 'env-skill',
+        log: '/tmp/env-run-1.log',
+      },
+    });
+
+    const result = await skillsApi.runSkill('env-skill', { key: 'value' });
+    expect(result.run_id).toBe('env-run-1');
+    expect(result.skill_id).toBe('env-skill');
+  });
+});
+
+describe('skillsApi.readRunLog', () => {
+  beforeEach(async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockReset();
+  });
+
+  it('calls skills_read_run_log with run_id only when offset/maxBytes omitted', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    const mockSlice = {
+      offset: 512,
+      bytes_read: 512,
+      content: 'log line 1\nlog line 2\n',
+      eof: false,
+      complete: false,
+    };
+    vi.mocked(callCoreRpc).mockResolvedValueOnce(mockSlice);
+
+    const result = await skillsApi.readRunLog('run-abc123');
+
+    expect(callCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.skills_read_run_log',
+      params: { run_id: 'run-abc123' },
+    });
+    expect(result.offset).toBe(512);
+    expect(result.complete).toBe(false);
+    expect(result.content).toContain('log line 1');
+  });
+
+  it('includes offset and max_bytes when provided', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({
+      offset: 1024,
+      bytes_read: 256,
+      content: 'more log\n',
+      eof: false,
+      complete: false,
+    });
+
+    await skillsApi.readRunLog('run-abc123', 512, 256);
+
+    expect(callCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.skills_read_run_log',
+      params: { run_id: 'run-abc123', offset: 512, max_bytes: 256 },
+    });
+  });
+
+  it('returns complete=true and eof=true at end of run', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({
+      offset: 2048,
+      bytes_read: 64,
+      content: '--- result ---\nDONE\n',
+      eof: true,
+      complete: true,
+    });
+
+    const result = await skillsApi.readRunLog('run-done');
+    expect(result.complete).toBe(true);
+    expect(result.eof).toBe(true);
+  });
+
+  it('unwraps an envelope response', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({
+      data: {
+        offset: 100,
+        bytes_read: 100,
+        content: 'hello\n',
+        eof: false,
+        complete: false,
+      },
+    });
+
+    const result = await skillsApi.readRunLog('run-env', 0);
+    expect(result.bytes_read).toBe(100);
+  });
+});
+
+describe('skillsApi.recentRuns', () => {
+  beforeEach(async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockReset();
+  });
+
+  it('calls skills_recent_runs with no params when skillId/limit omitted', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({
+      runs: [
+        {
+          run_id: 'run-1',
+          skill_id: 'skill-a',
+          started: '2026-01-01T00:00:00Z',
+          status: 'DONE',
+          duration_ms: 5000,
+          finished: '2026-01-01T00:00:05Z',
+          log_path: '/tmp/run-1.log',
+        },
+      ],
+    });
+
+    const result = await skillsApi.recentRuns();
+
+    expect(callCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.skills_recent_runs',
+      params: {},
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].run_id).toBe('run-1');
+  });
+
+  it('includes skill_id when skillId is provided', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({ runs: [] });
+
+    await skillsApi.recentRuns('my-skill');
+
+    const call = vi.mocked(callCoreRpc).mock.calls[0][0];
+    expect(call.params).toEqual({ skill_id: 'my-skill' });
+  });
+
+  it('includes limit when provided', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({ runs: [] });
+
+    await skillsApi.recentRuns(undefined, 5);
+
+    const call = vi.mocked(callCoreRpc).mock.calls[0][0];
+    expect(call.params).toEqual({ limit: 5 });
+  });
+
+  it('includes both skill_id and limit when both are provided', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({ runs: [] });
+
+    await skillsApi.recentRuns('filtered-skill', 10);
+
+    const call = vi.mocked(callCoreRpc).mock.calls[0][0];
+    expect(call.params).toEqual({ skill_id: 'filtered-skill', limit: 10 });
+  });
+
+  it('unwraps an envelope response', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({
+      data: {
+        runs: [
+          {
+            run_id: 'env-run',
+            skill_id: 'env-skill',
+            started: '2026-01-01T00:00:00Z',
+            status: 'RUNNING',
+            duration_ms: null,
+            finished: null,
+            log_path: '/tmp/env-run.log',
+          },
+        ],
+      },
+    });
+
+    const result = await skillsApi.recentRuns();
+    expect(result).toHaveLength(1);
+    expect(result[0].status).toBe('RUNNING');
+    expect(result[0].duration_ms).toBeNull();
+  });
+
+  it('returns empty array when runs is empty', async () => {
+    const { callCoreRpc } = await import('../../coreRpcClient');
+    vi.mocked(callCoreRpc).mockResolvedValueOnce({ runs: [] });
+
+    const result = await skillsApi.recentRuns('empty-skill');
+    expect(result).toEqual([]);
+  });
+});
