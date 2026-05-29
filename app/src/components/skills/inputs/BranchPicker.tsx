@@ -12,7 +12,7 @@
 // original panel stays untouched.
 
 import createDebug from 'debug';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { execute as composioExecute } from '../../../lib/composio/composioApi';
 import { useT } from '../../../lib/i18n/I18nContext';
@@ -43,6 +43,11 @@ const BranchPicker = ({ value, onChange, repo, id, placeholder, disabled }: Bran
   const [branches, setBranches] = useState<GhBranch[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Monotonic request token so stale GITHUB_LIST_BRANCHES responses
+  // (a slower fetch for a previous repo) can't overwrite state for the
+  // current repo. Each call captures the seq it started with and bails
+  // before every post-await state write if a newer call has begun.
+  const requestSeqRef = useRef(0);
 
   const loadBranches = useCallback(async () => {
     if (!repo || !repo.includes('/')) {
@@ -55,6 +60,7 @@ const BranchPicker = ({ value, onChange, repo, id, placeholder, disabled }: Bran
       setBranches([]);
       return;
     }
+    const seq = ++requestSeqRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -63,6 +69,7 @@ const BranchPicker = ({ value, onChange, repo, id, placeholder, disabled }: Bran
         repo: repoName,
         per_page: 100,
       });
+      if (seq !== requestSeqRef.current) return;
       if (!res.successful) throw new Error(res.error ?? 'Failed to list branches');
       // Composio wraps GitHub branch data in a few different shapes
       // (details, data.details, branches, items, direct array under data) —
@@ -91,13 +98,14 @@ const BranchPicker = ({ value, onChange, repo, id, placeholder, disabled }: Bran
         setBranches([{ name: 'main' }, { name: 'master' }]);
       }
     } catch (err: unknown) {
+      if (seq !== requestSeqRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
       log('loadBranches error: %s', msg);
       setError(msg);
       // Even on error, give the user the standard defaults.
       setBranches([{ name: 'main' }, { name: 'master' }]);
     } finally {
-      setLoading(false);
+      if (seq === requestSeqRef.current) setLoading(false);
     }
   }, [repo]);
 

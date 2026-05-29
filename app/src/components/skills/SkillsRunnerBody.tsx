@@ -13,7 +13,7 @@
 // the Settings panel is now a thin wrapper around this body).
 
 import createDebug from 'debug';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import { useT } from '../../lib/i18n/I18nContext';
@@ -252,6 +252,16 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [scheduleSaved, setScheduleSaved] = useState(false);
+  // Timer that auto-clears the "saved" confirmation; held in a ref so we
+  // can cancel it on unmount (and before re-arming) to avoid a setState
+  // on an unmounted component.
+  const scheduleSavedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (scheduleSavedTimer.current) clearTimeout(scheduleSavedTimer.current);
+    },
+    []
+  );
 
   // Scheduled jobs owned by this panel (cron_list filtered by name prefix)
   const [scheduledJobs, setScheduledJobs] = useState<CoreCronJob[]>([]);
@@ -310,6 +320,16 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
   const [viewer, setViewer] = useState<
     Record<string, { content: string; offset: number; complete: boolean; loading: boolean; error: string | null }>
   >({});
+
+  // Mirror of `viewer` into a ref so the tail-poll interval (whose effect
+  // intentionally omits `viewer` from its deps) can read the *freshest*
+  // offset/complete on each tick instead of the value captured when the
+  // effect first ran. Without this the interval reuses a stale offset and
+  // re-appends slices it already fetched (duplicate log output).
+  const viewerRef = useRef(viewer);
+  useEffect(() => {
+    viewerRef.current = viewer;
+  }, [viewer]);
 
   // ── Keep URL ?skill= in sync with the picker ──────────────────────
   // Two-way binding so a manual picker change is reflected in the URL
@@ -534,7 +554,8 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
         delivery: { mode: 'proactive', best_effort: true },
       });
       setScheduleSaved(true);
-      setTimeout(() => setScheduleSaved(false), 3000);
+      if (scheduleSavedTimer.current) clearTimeout(scheduleSavedTimer.current);
+      scheduleSavedTimer.current = setTimeout(() => setScheduleSaved(false), 3000);
       await loadScheduledJobs();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -552,8 +573,9 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
     const runId = expandedRunId;
 
     // If we already loaded the full file and it's complete, don't refetch
-    // — the user might just be re-expanding the same row.
-    const existing = viewer[runId];
+    // — the user might just be re-expanding the same row. Read through the
+    // ref so this reflects the latest state, not a stale effect closure.
+    const existing = viewerRef.current[runId];
     if (existing?.complete) return;
 
     const fetchSlice = async (fromOffset: number): Promise<void> => {
@@ -607,7 +629,7 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
     // Tail every 2s while the run isn't complete. Re-reads the freshest
     // offset from state on each tick by ref-closure through fetchSlice.
     const interval = setInterval(() => {
-      const state = viewer[runId];
+      const state = viewerRef.current[runId];
       if (cancelled || state?.complete) {
         clearInterval(interval);
         return;
@@ -620,8 +642,8 @@ export const SkillsRunnerBody = ({ headerText, className }: SkillsRunnerBodyProp
       clearInterval(interval);
     };
     // We intentionally don't depend on `viewer` here — the interval reads
-    // the freshest offset from state each tick, and re-running this
-    // effect on every viewer update would tear down and re-create the
+    // the freshest offset from `viewerRef.current` each tick, and re-running
+    // this effect on every viewer update would tear down and re-create the
     // timer on every poll. Equally, depending on `viewer` would cause
     // an infinite re-render loop because setViewer happens inside.
     // eslint-disable-next-line react-hooks/exhaustive-deps
