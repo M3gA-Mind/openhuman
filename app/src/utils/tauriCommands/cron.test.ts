@@ -16,6 +16,7 @@ vi.mock('../../services/coreRpcClient', () => ({ callCoreRpc: vi.fn() }));
 describe('tauriCommands/cron — openhumanCronRun / openhumanCronRuns', () => {
   const mockIsTauri = isTauri as Mock;
   const mockCallCoreRpc = callCoreRpc as Mock;
+  let openhumanCronAdd: typeof import('./cron').openhumanCronAdd;
   let openhumanCronRun: typeof import('./cron').openhumanCronRun;
   let openhumanCronRuns: typeof import('./cron').openhumanCronRuns;
 
@@ -23,11 +24,29 @@ describe('tauriCommands/cron — openhumanCronRun / openhumanCronRuns', () => {
     vi.clearAllMocks();
     mockIsTauri.mockReturnValue(true);
     const m = await vi.importActual<typeof import('./cron')>('./cron');
+    openhumanCronAdd = m.openhumanCronAdd;
     openhumanCronRun = m.openhumanCronRun;
     openhumanCronRuns = m.openhumanCronRuns;
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  describe('openhumanCronAdd', () => {
+    test('throws when not in Tauri', async () => {
+      mockIsTauri.mockReturnValue(false);
+      await expect(
+        openhumanCronAdd({ expression: '*/5 * * * *', name: 'test', enabled: true })
+      ).rejects.toThrow('Not running in Tauri');
+    });
+
+    test('calls cron_add with params', async () => {
+      mockCallCoreRpc.mockResolvedValue({ id: 'job-1' });
+      await openhumanCronAdd({ expression: '*/5 * * * *', name: 'test', enabled: true });
+      expect(mockCallCoreRpc).toHaveBeenCalledWith(
+        expect.objectContaining({ method: 'openhuman.cron_add' })
+      );
+    });
+  });
 
   describe('openhumanCronRun', () => {
     test('throws when not in Tauri', async () => {
@@ -36,7 +55,12 @@ describe('tauriCommands/cron — openhumanCronRun / openhumanCronRuns', () => {
     });
 
     test('calls cron_run with job_id', async () => {
-      mockCallCoreRpc.mockResolvedValue({ job_id: 'job-1', status: 'ok', duration_ms: 100, output: '' });
+      mockCallCoreRpc.mockResolvedValue({
+        job_id: 'job-1',
+        status: 'ok',
+        duration_ms: 100,
+        output: '',
+      });
       await openhumanCronRun('job-1');
       expect(mockCallCoreRpc).toHaveBeenCalledWith(
         expect.objectContaining({ method: 'openhuman.cron_run', params: { job_id: 'job-1' } })

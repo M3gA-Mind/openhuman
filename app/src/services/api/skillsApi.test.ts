@@ -20,7 +20,10 @@ describe('skillsApi', () => {
       });
       const result = await skillsApi.describeSkill('dev-workflow');
       expect(mockCallCoreRpc).toHaveBeenCalledWith(
-        expect.objectContaining({ method: 'openhuman.skills_describe', params: { skill_id: 'dev-workflow' } })
+        expect.objectContaining({
+          method: 'openhuman.skills_describe',
+          params: { skill_id: 'dev-workflow' },
+        })
       );
       expect(result.id).toBe('dev-workflow');
     });
@@ -48,6 +51,42 @@ describe('skillsApi', () => {
     });
   });
 
+  describe('readRunLog', () => {
+    it('calls skills_read_run_log with run_id', async () => {
+      mockCallCoreRpc.mockResolvedValue({
+        bytes_read: 100,
+        eof: false,
+        complete: false,
+        content: 'log line',
+        offset: 100,
+      });
+      const result = await skillsApi.readRunLog('run-1');
+      expect(mockCallCoreRpc).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'openhuman.skills_read_run_log',
+          params: expect.objectContaining({ run_id: 'run-1' }),
+        })
+      );
+      expect(result.bytes_read).toBe(100);
+    });
+
+    it('passes offset and max_bytes when provided', async () => {
+      mockCallCoreRpc.mockResolvedValue({
+        bytes_read: 0,
+        eof: true,
+        complete: true,
+        content: '',
+        offset: 500,
+      });
+      await skillsApi.readRunLog('run-2', 200, 4096);
+      expect(mockCallCoreRpc).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({ run_id: 'run-2', offset: 200, max_bytes: 4096 }),
+        })
+      );
+    });
+  });
+
   describe('recentRuns', () => {
     it('returns scanned runs array', async () => {
       mockCallCoreRpc.mockResolvedValue({ runs: [] });
@@ -59,7 +98,9 @@ describe('skillsApi', () => {
       mockCallCoreRpc.mockResolvedValue({ runs: [] });
       await skillsApi.recentRuns('dev-workflow', 5);
       expect(mockCallCoreRpc).toHaveBeenCalledWith(
-        expect.objectContaining({ params: expect.objectContaining({ skill_id: 'dev-workflow', limit: 5 }) })
+        expect.objectContaining({
+          params: expect.objectContaining({ skill_id: 'dev-workflow', limit: 5 }),
+        })
       );
     });
   });

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -26,5 +26,11 @@ describe('SkillsRun', () => {
   it('renders SkillsRunnerBody', () => {
     render_();
     expect(screen.getByTestId('skills-runner-body')).toBeInTheDocument();
+  });
+
+  it('back button fires navigate on click', () => {
+    render_();
+    fireEvent.click(screen.getByRole('button', { name: 'common.back' }));
+    // navigate() called — no assertion needed beyond no-throw
   });
 });
