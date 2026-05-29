@@ -902,7 +902,7 @@ describe('DevWorkflowPanel', () => {
     expect(addCall.prompt).toContain('unassigned');
   });
 
-  test('update existing job calls cronUpdate instead of cronAdd', async () => {
+  test('remove on existing job calls cronRemove (not cronUpdate/cronAdd)', async () => {
     const existingCronJob = {
       id: 'cron-1',
       name: 'dev-workflow-user-repo1',
@@ -938,5 +938,47 @@ describe('DevWorkflowPanel', () => {
     await waitFor(() => {
       expect(hoisted.cronRemove).toHaveBeenCalledWith('cron-1');
     });
+    // Remove must not persist via the add/update RPCs.
+    expect(hoisted.cronAdd).not.toHaveBeenCalled();
+    expect(hoisted.cronUpdate).not.toHaveBeenCalled();
+  });
+
+  test('toggling an existing job persists via cronUpdate and never cronAdd', async () => {
+    const existingCronJob = {
+      id: 'cron-42',
+      name: 'dev-workflow-user-repo1',
+      expression: '*/30 * * * *',
+      schedule: { kind: 'cron', expr: '*/30 * * * *' },
+      command: '',
+      prompt: 'Run the dev-workflow skill.',
+      job_type: 'agent',
+      session_target: 'isolated',
+      enabled: true,
+      delivery: { mode: 'proactive', best_effort: true },
+      delete_after_run: false,
+      created_at: '2026-01-01T00:00:00Z',
+      next_run: '2026-01-01T01:00:00Z',
+    };
+    hoisted.cronList.mockResolvedValue({ result: [existingCronJob], logs: [] });
+    hoisted.cronUpdate.mockResolvedValue({ data: { ...existingCronJob, enabled: false } });
+
+    const Panel = await importPanel();
+    renderWithProviders(<Panel />);
+
+    // Wait for the active config card (existing-job UI) to render.
+    await waitFor(() => {
+      expect(screen.getByText('settings.devWorkflow.activeConfiguration')).toBeInTheDocument();
+    });
+
+    // Trigger the persist-on-existing-job action (the enable/disable switch).
+    const toggleBtn = screen.getByText('settings.devWorkflow.enabled').previousElementSibling;
+    if (toggleBtn) fireEvent.click(toggleBtn);
+
+    // cronUpdate is called with the existing job id and the toggled payload.
+    await waitFor(() => {
+      expect(hoisted.cronUpdate).toHaveBeenCalledWith('cron-42', { enabled: false });
+    });
+    // The update path must never fall through to cronAdd.
+    expect(hoisted.cronAdd).not.toHaveBeenCalled();
   });
 });
