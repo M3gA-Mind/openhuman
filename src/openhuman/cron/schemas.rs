@@ -300,7 +300,8 @@ fn handle_add(params: Map<String, Value>) -> ControllerFuture {
             .unwrap_or("isolated");
         let session_target = match session_target_str {
             "main" => crate::openhuman::cron::SessionTarget::Main,
-            _ => crate::openhuman::cron::SessionTarget::Isolated,
+            "isolated" => crate::openhuman::cron::SessionTarget::Isolated,
+            other => return Err(format!("invalid 'session_target': {other}")),
         };
         let model = params
             .get("model")
@@ -310,19 +311,32 @@ fn handle_add(params: Map<String, Value>) -> ControllerFuture {
             .get("agent_id")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        let delivery: Option<crate::openhuman::cron::DeliveryConfig> = params
-            .get("delivery")
-            .and_then(|v| serde_json::from_value(v.clone()).ok());
+        let delivery: Option<crate::openhuman::cron::DeliveryConfig> = match params.get("delivery")
+        {
+            None | Some(Value::Null) => None,
+            Some(v) => Some(
+                serde_json::from_value(v.clone())
+                    .map_err(|e| format!("invalid 'delivery': {e}"))?,
+            ),
+        };
         let delete_after_run = params
             .get("delete_after_run")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
         // Determine job type
-        let job_type = params
-            .get("job_type")
-            .and_then(|v| v.as_str())
-            .unwrap_or_else(|| if prompt.is_some() { "agent" } else { "shell" });
+        let job_type = match params.get("job_type").and_then(|v| v.as_str()) {
+            Some("shell") => "shell",
+            Some("agent") => "agent",
+            Some(other) => return Err(format!("invalid 'job_type': {other}")),
+            None => {
+                if prompt.is_some() {
+                    "agent"
+                } else {
+                    "shell"
+                }
+            }
+        };
 
         let job = match job_type {
             "shell" => {
@@ -330,8 +344,8 @@ fn handle_add(params: Map<String, Value>) -> ControllerFuture {
                 crate::openhuman::cron::store::add_shell_job(&config, name, schedule, &cmd)
                     .map_err(|e| e.to_string())?
             }
-            _ => {
-                let p = prompt.unwrap_or_default();
+            "agent" => {
+                let p = prompt.ok_or("'prompt' is required for agent jobs")?;
                 crate::openhuman::cron::store::add_agent_job_with_definition(
                     &config,
                     name,
@@ -345,6 +359,7 @@ fn handle_add(params: Map<String, Value>) -> ControllerFuture {
                 )
                 .map_err(|e| e.to_string())?
             }
+            other => return Err(format!("invalid 'job_type': {other}")),
         };
 
         to_json(RpcOutcome::single_log(job, "cron job created"))

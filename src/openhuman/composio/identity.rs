@@ -95,7 +95,7 @@ pub async fn connection_identity(config: &Config, toolkit: &str) -> Option<Strin
             } else {
                 tracing::debug!(
                     toolkit = %toolkit_norm,
-                    username = %username,
+                    resolved = true,
                     "[composio:identity] resolved username"
                 );
                 Some(username.to_string())

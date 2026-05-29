@@ -110,17 +110,28 @@ impl Tool for RunSkillTool {
         };
         let inputs = args.get("inputs").cloned();
 
-        match spawn_skill_run_background(skill_id, inputs).await {
-            Ok(started) => Ok(ToolResult::success(
-                serde_json::json!({
-                    "run_id": started.run_id,
-                    "status": "started",
-                    "skill_id": started.skill_id,
-                    "log": started.log_path.display().to_string(),
-                })
-                .to_string(),
-            )),
-            Err(e) => Ok(ToolResult::error(format!("run_skill: {e}"))),
+        tracing::debug!(skill_id = %skill_id, "[run_skill] dispatching spawn_skill_run_background");
+        match spawn_skill_run_background(skill_id.clone(), inputs).await {
+            Ok(started) => {
+                tracing::debug!(
+                    skill_id = %started.skill_id,
+                    run_id = %started.run_id,
+                    "[run_skill] spawn succeeded"
+                );
+                Ok(ToolResult::success(
+                    serde_json::json!({
+                        "run_id": started.run_id,
+                        "status": "started",
+                        "skill_id": started.skill_id,
+                        "log": started.log_path.display().to_string(),
+                    })
+                    .to_string(),
+                ))
+            }
+            Err(e) => {
+                tracing::debug!(skill_id = %skill_id, error = %e, "[run_skill] spawn failed");
+                Ok(ToolResult::error(format!("run_skill: {e}")))
+            }
         }
     }
 }

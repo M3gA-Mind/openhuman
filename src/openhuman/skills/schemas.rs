@@ -403,7 +403,7 @@ pub fn skills_schemas(function: &str) -> ControllerSchema {
                 },
                 FieldSchema {
                     name: "inputs",
-                    ty: TypeSchema::Array(Box::new(TypeSchema::String)),
+                    ty: TypeSchema::Json,
                     comment: "Optional declared `[[inputs]]` entries (each `{ name, description, required, type }`). When non-empty, a sibling `skill.toml` is written alongside `SKILL.md` so the Skills Runner can render dynamic form controls at run time.",
                     required: false,
                 },
@@ -537,7 +537,7 @@ pub fn skills_schemas(function: &str) -> ControllerSchema {
             ],
             outputs: vec![FieldSchema {
                 name: "runs",
-                ty: TypeSchema::String,
+                ty: TypeSchema::Json,
                 comment: "Array of `{ run_id, skill_id, started, status, duration_ms, finished, log_path }` — see crate::openhuman::skills::run_log::ScannedRun.",
                 required: true,
             }],
@@ -571,14 +571,14 @@ pub fn skills_schemas(function: &str) -> ControllerSchema {
                     comment: "Short one-line summary from skill.toml `when_to_use` — what the skill does and when to pick it.",
                     required: true,
                 },
-                // Wire shape: array of objects. Schema rendering keeps the
-                // type as `String` for the controller-catalog payload, but
-                // the actual JSON returned by `handle_skills_describe`
+                // Wire shape: array of objects. `handle_skills_describe`
                 // serialises this as a real array of `SkillInputDescription`
-                // objects — `{name, description, required, type}` per entry.
+                // objects — `{name, description, required, type}` per entry —
+                // so the controller-catalog type is `Json`, matching the
+                // payload rather than coercing it to a scalar string.
                 FieldSchema {
                     name: "inputs",
-                    ty: TypeSchema::String,
+                    ty: TypeSchema::Json,
                     comment: "Array of `[[inputs]]` entries; each entry: `{ name, description, required, type }`. Renderable as a dynamic form.",
                     required: true,
                 },
@@ -945,7 +945,12 @@ pub(crate) async fn spawn_skill_run_background(
                 }
             };
             config.agent.max_tool_iterations = SKILL_RUN_MAX_ITERATIONS;
-            config.http_request.allowed_domains = vec!["*".to_string()];
+            // Only apply the permissive wildcard default when the operator
+            // hasn't configured an explicit allow-list — preserve any
+            // configured egress policy instead of unconditionally widening it.
+            if config.http_request.allowed_domains.is_empty() {
+                config.http_request.allowed_domains = vec!["*".to_string()];
+            }
             let mut agent = match Agent::from_config_for_agent(&config, "orchestrator") {
                 Ok(a) => a,
                 Err(e) => {

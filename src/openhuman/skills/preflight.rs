@@ -32,12 +32,19 @@
 //! domain (see e.g. `registry.rs`'s `cfg(test)` indirections) — no new
 //! mocking framework is introduced.
 
+use std::time::Duration;
+
 use async_trait::async_trait;
 
 use crate::openhuman::composio::{self};
 use crate::openhuman::config::Config;
 
 use super::registry::{IdentityMatch, SkillGithubConfig};
+
+/// Hard cap on each local `git` subprocess probe so a wedged git
+/// (e.g. credential prompt, hung filesystem) can't stall the preflight
+/// gate indefinitely.
+const GIT_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// One reason the GitHub preflight gate refused to start a skill_run.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,17 +188,20 @@ impl<'a> PreflightProbes for LivePreflightProbes<'a> {
     }
 
     async fn git_version(&self) -> Result<(), String> {
-        match tokio::process::Command::new("git")
+        let fut = tokio::process::Command::new("git")
             .arg("--version")
-            .output()
-            .await
-        {
-            Ok(output) if output.status.success() => Ok(()),
-            Ok(output) => Err(format!(
+            .output();
+        match tokio::time::timeout(GIT_PROBE_TIMEOUT, fut).await {
+            Ok(Ok(output)) if output.status.success() => Ok(()),
+            Ok(Ok(output)) => Err(format!(
                 "`git --version` exited {}",
                 output.status.code().unwrap_or(-1)
             )),
-            Err(e) => Err(format!("`git --version` failed to spawn: {e}")),
+            Ok(Err(e)) => Err(format!("`git --version` failed to spawn: {e}")),
+            Err(_) => Err(format!(
+                "`git --version` timed out after {}s",
+                GIT_PROBE_TIMEOUT.as_secs()
+            )),
         }
     }
 
@@ -205,15 +215,16 @@ impl<'a> PreflightProbes for LivePreflightProbes<'a> {
 }
 
 async fn git_config_value(key: &str) -> String {
-    match tokio::process::Command::new("git")
+    let fut = tokio::process::Command::new("git")
         .args(["config", "--global", key])
-        .output()
-        .await
-    {
-        Ok(output) if output.status.success() => {
+        .output();
+    match tokio::time::timeout(GIT_PROBE_TIMEOUT, fut).await {
+        Ok(Ok(output)) if output.status.success() => {
             String::from_utf8_lossy(&output.stdout).trim().to_string()
         }
-        Ok(_) | Err(_) => String::new(),
+        // Non-zero exit, spawn failure, or timeout all collapse to the
+        // existing empty-string fallback (treated as "unset").
+        Ok(Ok(_)) | Ok(Err(_)) | Err(_) => String::new(),
     }
 }
 
