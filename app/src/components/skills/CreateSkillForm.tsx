@@ -212,6 +212,7 @@ const CreateSkillForm = forwardRef<CreateSkillFormHandle, CreateSkillFormProps>(
         const message = err instanceof Error ? err.message : String(err);
         log('submit-err %s', message);
         setError(message);
+      } finally {
         setSubmitting(false);
       }
     }, [description, formValid, inputs, name, onCreated]);

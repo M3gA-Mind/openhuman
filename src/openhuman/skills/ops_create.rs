@@ -109,7 +109,7 @@ pub fn create_skill(workspace_dir: &Path, params: CreateSkillParams) -> Result<S
 pub(crate) fn create_skill_inner(
     home_dir: Option<&Path>,
     workspace_dir: &Path,
-    params: CreateSkillParams,
+    mut params: CreateSkillParams,
 ) -> Result<Skill, String> {
     tracing::debug!(
         name = %params.name,
@@ -117,6 +117,8 @@ pub(crate) fn create_skill_inner(
         workspace = %workspace_dir.display(),
         "[skills] create_skill: entry"
     );
+
+    validate_inputs(&mut params.inputs)?;
 
     let display_name = params.name.trim();
     if display_name.is_empty() {
@@ -233,6 +235,29 @@ pub(crate) fn create_skill_inner(
         .find(|s| s.name == slug)
         .ok_or_else(|| format!("created skill '{slug}' but failed to re-discover"))?;
     Ok(created)
+}
+
+/// Validate the declared `[[inputs]]` before any on-disk write.
+///
+/// For each entry this trims the `name` in place, rejects empty /
+/// whitespace-only names, and enforces case-insensitive uniqueness across
+/// all input names so the emitted `skill.toml` never carries a blank or
+/// duplicate `[[inputs]]` key. Names are trimmed in place so every later
+/// consumer (e.g. [`render_skill_toml`]) sees the validated value.
+fn validate_inputs(inputs: &mut [SkillCreateInputDef]) -> Result<(), String> {
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for input in inputs.iter_mut() {
+        let trimmed = input.name.trim();
+        if trimmed.is_empty() {
+            return Err("input name must not be empty".to_string());
+        }
+        if !seen.insert(trimmed.to_ascii_lowercase()) {
+            return Err(format!("duplicate input name '{trimmed}'"));
+        }
+        let trimmed = trimmed.to_string();
+        input.name = trimmed;
+    }
+    Ok(())
 }
 
 /// Convert a human-readable skill name to a filesystem-safe slug.

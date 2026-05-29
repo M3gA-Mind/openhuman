@@ -24,7 +24,7 @@
 // see docs/skills-runner-unification.md open question 1.
 
 import createDebug from 'debug';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { execute as composioExecute, listConnections } from '../../lib/composio/composioApi';
 import { useT } from '../../lib/i18n/I18nContext';
@@ -76,6 +76,12 @@ const SmartIssuePicker = ({ values, onPatchInputs }: SmartIssuePickerProps) => {
 
   const [branches, setBranches] = useState<GhBranch[]>([]);
   const [branchesLoading, setBranchesLoading] = useState(false);
+
+  // Monotonic counter guarding against race conditions when the user
+  // changes repos faster than the async fork/branch lookups resolve:
+  // each onRepoSelect captures its own id and bails out of any state
+  // update once a newer selection has superseded it.
+  const selectionSeqRef = useRef(0);
 
   // ── Load repos via Composio ─────────────────────────────────────────
   const loadRepos = useCallback(async () => {
@@ -134,6 +140,10 @@ const SmartIssuePicker = ({ values, onPatchInputs }: SmartIssuePickerProps) => {
   // ── Fork detect + branch list on repo select ────────────────────────
   const onRepoSelect = useCallback(
     async (repoFullName: string) => {
+      // Claim this selection's id; any later selection bumps the ref and
+      // makes the work below abandon its now-stale state updates.
+      const localId = ++selectionSeqRef.current;
+
       // Reset downstream resolutions and bubble the new repo up.
       onPatchInputs({
         repo: repoFullName,
@@ -151,6 +161,7 @@ const SmartIssuePicker = ({ values, onPatchInputs }: SmartIssuePickerProps) => {
       setForkLoading(true);
       try {
         const res = await composioExecute('GITHUB_GET_A_REPOSITORY', { owner, repo });
+        if (localId !== selectionSeqRef.current) return;
         let branchOwner = owner;
         let branchRepo = repo;
         let detectedFork: ForkInfo | null = null;
@@ -190,6 +201,7 @@ const SmartIssuePicker = ({ values, onPatchInputs }: SmartIssuePickerProps) => {
           repo: branchRepo,
           per_page: 100,
         });
+        if (localId !== selectionSeqRef.current) return;
         if (branchRes.successful) {
           const raw = branchRes.data;
           let list: GhBranch[] = [];
@@ -219,10 +231,13 @@ const SmartIssuePicker = ({ values, onPatchInputs }: SmartIssuePickerProps) => {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         log('onRepoSelect error: %s', msg);
+        if (localId !== selectionSeqRef.current) return;
         setReposError(msg);
       } finally {
-        setForkLoading(false);
-        setBranchesLoading(false);
+        if (localId === selectionSeqRef.current) {
+          setForkLoading(false);
+          setBranchesLoading(false);
+        }
       }
     },
     [repos, onPatchInputs]

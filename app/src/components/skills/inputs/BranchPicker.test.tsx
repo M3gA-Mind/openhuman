@@ -32,6 +32,12 @@ describe('BranchPicker', () => {
     expect(mockExecute).toHaveBeenCalled();
   });
 
+  it('reflects a pre-selected value', async () => {
+    render(<BranchPicker {...baseProps} repo="owner/repo" value="main" />);
+    const select = await screen.findByRole('combobox');
+    await waitFor(() => expect(select).toHaveValue('main'));
+  });
+
   it('falls back to main/master when API returns empty list', async () => {
     mockExecute.mockResolvedValue({ successful: true, data: [] });
     render(<BranchPicker {...baseProps} repo="owner/repo" />);

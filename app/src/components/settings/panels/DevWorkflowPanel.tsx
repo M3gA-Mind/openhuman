@@ -96,7 +96,44 @@ const DevWorkflowPanel = () => {
       const found = jobList.find((j: CoreCronJob) => j.name?.startsWith('dev-workflow') ?? false);
       if (found) {
         setExistingJob(found);
-        log('found existing dev-workflow cron job: %s', found.id);
+
+        // Restore form state from the stored job so returning to the panel
+        // with an active job doesn't show blank dropdowns.
+        const restored: { repo?: string; schedule?: string; branch?: string } = {};
+
+        // Schedule: prefer the structured cron expr, fall back to `expression`.
+        const scheduleExpr =
+          (found.schedule?.kind === 'cron' ? found.schedule.expr : undefined) ??
+          found.expression ??
+          undefined;
+        if (scheduleExpr) {
+          setSchedule(scheduleExpr);
+          restored.schedule = scheduleExpr;
+        }
+
+        // Repo: encoded in the job name as `dev-workflow-<owner>-<repo>`
+        // where the original `/` separator became the first `-` after the prefix.
+        const repoSlug = found.name?.replace(/^dev-workflow-/, '') ?? '';
+        if (repoSlug) {
+          // Re-derive `owner/repo` by replacing only the first `-` with `/`.
+          const fullName = repoSlug.replace('-', '/');
+          setSelectedRepo(fullName);
+          restored.repo = fullName;
+        }
+
+        // Target branch: recoverable from the prompt, which embeds
+        // `PRs target \`<branch>\``.
+        const branchMatch = found.prompt?.match(/PRs target `([^`]+)`/);
+        if (branchMatch?.[1]) {
+          setTargetBranch(branchMatch[1]);
+          restored.branch = branchMatch[1];
+        }
+
+        log(
+          'found existing dev-workflow cron job: %s, restored form state: %o',
+          found.id,
+          restored
+        );
       } else {
         setExistingJob(null);
         log('no existing dev-workflow cron job found');

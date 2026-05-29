@@ -3,11 +3,13 @@
 //! subagents call these on a checked-out worktree; the embedder is the
 //! configured (cloud-default) provider, and its `signature()` keys the cache.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use serde_json::Value;
+use tracing::debug;
 
 use crate::openhuman::codegraph::{
     count_code_files, current_ref, index_ref, search_ref, CodegraphStore, IndexMode,
@@ -61,6 +63,29 @@ fn arg_str<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
     args.get(key).and_then(|v| v.as_str())
 }
 
+/// Resolve a caller-provided `path` against the workspace, refusing anything
+/// outside it. Both the requested path and the workspace are canonicalized
+/// (resolving `..`/symlinks), then `repo_dir` must live under the canonical
+/// workspace — otherwise an agent could index/search arbitrary repos on disk.
+fn resolve_repo_dir(path: &str, workspace_dir: &Path) -> anyhow::Result<PathBuf> {
+    let repo_dir = std::fs::canonicalize(path)
+        .with_context(|| format!("codegraph: cannot resolve repo path `{path}`"))?;
+    let workspace = std::fs::canonicalize(workspace_dir).with_context(|| {
+        format!(
+            "codegraph: cannot resolve workspace dir `{}`",
+            workspace_dir.display()
+        )
+    })?;
+    if !repo_dir.starts_with(&workspace) {
+        return Err(anyhow!(
+            "codegraph: repo path `{}` is outside the workspace `{}`",
+            repo_dir.display(),
+            workspace.display()
+        ));
+    }
+    Ok(repo_dir)
+}
+
 /// `codegraph_index { path, ref? }` — (re)index the worktree at `path` under its
 /// current branch (or `ref`). Incremental: only changed blobs are embedded.
 pub struct CodegraphIndexTool {
@@ -107,28 +132,65 @@ impl Tool for CodegraphIndexTool {
         let path = match arg_str(&args, "path") {
             Some(p) => p,
             None => {
+                debug!("[codegraph:index] missing `path` arg; returning error");
                 return Ok(ToolResult::error(
                     "codegraph_index: `path` (repo working dir) is required",
-                ))
+                ));
             }
         };
-        let repo_dir = Path::new(path);
+        let repo_dir = resolve_repo_dir(path, &self.workspace_dir)?;
         let git_ref = match arg_str(&args, "ref") {
             Some(r) => r.to_string(),
-            None => current_ref(repo_dir)?,
+            None => current_ref(&repo_dir)?,
         };
-        let mode = resolve_mode(arg_str(&args, "mode"), repo_dir);
-        let provider = embeddings::provider_from_config(&self.config)?;
-        let mut store = CodegraphStore::open(&codegraph_db(&self.workspace_dir))?;
-        let report = index_ref(
+        let mode = resolve_mode(arg_str(&args, "mode"), &repo_dir);
+        let rid = repo_id(&repo_dir);
+        debug!(
+            repo = %rid,
+            git_ref = %git_ref,
+            ?mode,
+            "[codegraph:index] resolved mode; indexing"
+        );
+        let provider = match embeddings::provider_from_config(&self.config) {
+            Ok(p) => p,
+            Err(e) => {
+                debug!(repo = %rid, error = %e, "[codegraph:index] provider error");
+                return Err(e);
+            }
+        };
+        let mut store = match CodegraphStore::open(&codegraph_db(&self.workspace_dir)) {
+            Ok(s) => s,
+            Err(e) => {
+                debug!(repo = %rid, error = %e, "[codegraph:index] store open error");
+                return Err(e);
+            }
+        };
+        let report = match index_ref(
             &mut store,
-            &repo_id(repo_dir),
-            repo_dir,
+            &rid,
+            &repo_dir,
             Some(&git_ref),
             &*provider,
             mode,
         )
-        .await?;
+        .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                debug!(repo = %rid, git_ref = %git_ref, error = %e, "[codegraph:index] index_ref failed");
+                return Err(e);
+            }
+        };
+        debug!(
+            repo = %rid,
+            git_ref = %git_ref,
+            ?mode,
+            files = report.files,
+            computed = report.computed,
+            cached = report.cached,
+            skipped = report.skipped,
+            "[codegraph:index] success"
+        );
         let out = serde_json::json!({
             "mode": if mode == IndexMode::Dense { "dense" } else { "lexical" },
             "files": report.files,
@@ -188,33 +250,82 @@ impl Tool for CodegraphSearchTool {
     async fn execute(&self, args: Value) -> anyhow::Result<ToolResult> {
         let query = match arg_str(&args, "query") {
             Some(q) => q,
-            None => return Ok(ToolResult::error("codegraph_search: `query` is required")),
+            None => {
+                debug!("[codegraph:search] missing `query` arg; returning error");
+                return Ok(ToolResult::error("codegraph_search: `query` is required"));
+            }
         };
         let path = match arg_str(&args, "path") {
             Some(p) => p,
             None => {
+                debug!("[codegraph:search] missing `path` arg; returning error");
                 return Ok(ToolResult::error(
                     "codegraph_search: `path` (repo working dir) is required",
-                ))
+                ));
             }
         };
-        let repo_dir = Path::new(path);
+        let repo_dir = resolve_repo_dir(path, &self.workspace_dir)?;
         let git_ref = match arg_str(&args, "ref") {
             Some(r) => r.to_string(),
-            None => current_ref(repo_dir)?,
+            None => current_ref(&repo_dir)?,
         };
         let k = args.get("k").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
-        let provider = embeddings::provider_from_config(&self.config)?;
-        let mut store = CodegraphStore::open(&codegraph_db(&self.workspace_dir))?;
-        let rid = repo_id(repo_dir);
+        let rid = repo_id(&repo_dir);
+        let provider = match embeddings::provider_from_config(&self.config) {
+            Ok(p) => p,
+            Err(e) => {
+                debug!(repo = %rid, error = %e, "[codegraph:search] provider error");
+                return Err(e);
+            }
+        };
+        let mut store = match CodegraphStore::open(&codegraph_db(&self.workspace_dir)) {
+            Ok(s) => s,
+            Err(e) => {
+                debug!(repo = %rid, error = %e, "[codegraph:search] store open error");
+                return Err(e);
+            }
+        };
         // Index-first: if this (repo, ref) has never been indexed, build it now
         // (synchronously) so the search has something to hit. Mode is size-gated
         // — BM25-only for small repos, dense above the threshold.
         if store.manifest_size(&rid, &git_ref)? == 0 {
-            let mode = auto_mode(repo_dir);
-            index_ref(&mut store, &rid, repo_dir, Some(&git_ref), &*provider, mode).await?;
+            let mode = auto_mode(&repo_dir);
+            debug!(
+                repo = %rid,
+                git_ref = %git_ref,
+                ?mode,
+                "[codegraph:search] no manifest; auto-indexing before search"
+            );
+            if let Err(e) = index_ref(
+                &mut store,
+                &rid,
+                &repo_dir,
+                Some(&git_ref),
+                &*provider,
+                mode,
+            )
+            .await
+            {
+                debug!(repo = %rid, git_ref = %git_ref, error = %e, "[codegraph:search] auto-index failed");
+                return Err(e);
+            }
         }
-        let outcome = search_ref(&mut store, &rid, &git_ref, query, &*provider, k).await?;
+        let outcome = match search_ref(&mut store, &rid, &git_ref, query, &*provider, k).await {
+            Ok(o) => o,
+            Err(e) => {
+                debug!(repo = %rid, git_ref = %git_ref, error = %e, "[codegraph:search] search_ref failed");
+                return Err(e);
+            }
+        };
+        debug!(
+            repo = %rid,
+            git_ref = %git_ref,
+            coverage = ?outcome.coverage,
+            indexed = outcome.indexed,
+            total = outcome.total,
+            hits = outcome.hits.len(),
+            "[codegraph:search] success"
+        );
         Ok(ToolResult::success(serde_json::to_string_pretty(&outcome)?))
     }
 }

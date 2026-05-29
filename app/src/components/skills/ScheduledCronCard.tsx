@@ -231,21 +231,30 @@ export default function ScheduledCronCard({
     </div>
   );
 
-  // If the caller passed onClick, render the upper row as a button so the
-  // whole header is keyboard-focusable + clickable. Otherwise render a
-  // plain div — keeps the runner from carrying a giant button it doesn't
-  // need.
+  // If the caller passed onClick, render the upper row as a clickable
+  // container. It must NOT be a real <button>: rightCluster contains the
+  // toggle/action <button>s, and nested <button> elements are invalid HTML
+  // (breaks a11y + interaction). Use a div with role="button" + keyboard
+  // handling instead. Otherwise render a plain div — keeps the runner from
+  // carrying a giant clickable surface it doesn't need.
   const upperRow = onClick ? (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       data-testid={`${rootId}-open`}
       aria-label={t('skills.dashboard.cardOpenRunner')}
       onClick={onClick}
-      className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 rounded-2xl"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          if (e.key === ' ') e.preventDefault();
+          onClick();
+        }
+      }}
+      className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 rounded-2xl"
     >
       {headingRow}
       {rightCluster}
-    </button>
+    </div>
   ) : (
     <div
       data-testid={`${rootId}-row`}
