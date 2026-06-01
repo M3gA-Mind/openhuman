@@ -251,6 +251,27 @@ test ... ok
 
 ---
 
+### Change 1.13 — Generic any-app tool + filtered list (remove play_music)
+
+**Status:** ✅ Done
+
+**Problem:** "Play Numb by Linkin Park" still failed, and the agent **hallucinated**. Transcript (`session_raw/*.jsonl`) showed:
+1. `play_music` hit a 4s timing race — results hadn't rendered, so it returned "No matching song found. Top result cells: [empty]".
+2. The agent fell back to `ax_interact list`, which dumped **273 elements**. The tool result was **truncated mid-list**, so the model reasoned over a partial view and hallucinated a wrong result ("Numb - Single by Marshmello").
+
+**Feedback:** A music-specific tool is the wrong abstraction. Build a generic tool that interacts with **any** app.
+
+**Fix:**
+- **Removed** `play_music` tool + `play_apple_music` helper and all registrations.
+- **`ax_interact` is now a robust generic any-app tool:**
+  - `ax_list_elements_filtered(app, filter)` — Rust-side label filter so `list` returns only relevant elements (fixes the truncation→hallucination root cause).
+  - `list` action takes a new `filter` param; output capped at 60 elements with a "narrow your filter" hint; empty-match returns a "UI may still be loading" hint instead of failing hard.
+  - Description rewritten to be app-agnostic and document the general **navigate-then-activate** pattern (pressing a list row/search result selects/opens it; press the action button afterward) — no hardcoded Apple Music steps.
+
+**Key learning:** Dumping a full AX tree (hundreds of elements) overflows the tool-result budget; the truncated view makes the model hallucinate. Always filter list results to keep them small and accurate.
+
+---
+
 ## Phase 2 — Always-On Listening ⏳ Not Started
 
 > Continuous microphone listening without requiring a hotkey press.
