@@ -4439,6 +4439,11 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'স্থানীয় সঞ্চয়স্থান প্রত্যাখ্যান করুন',
   'pages.settings.account.security': 'নিরাপত্তা',
   'pages.settings.account.securityDesc': 'গোপনীয়তা সঞ্চয়স্থান মোড এবং কিচেন অবস্থা',
+  'notch.listening': 'শুনছি…',
+  'notch.thinking': 'ভাবছি…',
+  'notch.speaking': 'বলছি…',
+  'notch.transcribing': 'ট্রান্সক্রাইব করছি…',
+  'notch.executing': 'চালাচ্ছি…',
 };
 
 export default messages;

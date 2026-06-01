@@ -28,6 +28,8 @@ mod local_data_reset;
 mod loopback_oauth;
 #[cfg(target_os = "macos")]
 mod mascot_native_window;
+#[cfg(target_os = "macos")]
+mod notch_window;
 mod mcp_commands;
 mod meet_audio;
 mod meet_call;
@@ -913,6 +915,33 @@ fn mascot_native_window_is_open() -> bool {
 #[cfg(not(target_os = "macos"))]
 fn mascot_native_window_is_open() -> bool {
     false
+}
+
+/// Show the notch activity indicator. macOS only — transparent NSPanel + WKWebView
+/// anchored to the top-centre of the primary screen. Displays live voice and
+/// agent status (listening, thinking, executing) in a pill that emerges from
+/// the physical notch on supported MacBook Pros.
+#[tauri::command]
+fn notch_window_show(app: AppHandle<AppRuntime>) -> Result<(), String> {
+    log::info!("[notch-window] show requested");
+    #[cfg(target_os = "macos")]
+    {
+        return notch_window::show(&app);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Ok(()) // No-op on non-macOS
+    }
+}
+
+/// Hide the notch activity indicator.
+#[tauri::command]
+fn notch_window_hide(_app: AppHandle<AppRuntime>) -> Result<(), String> {
+    log::info!("[notch-window] hide requested");
+    #[cfg(target_os = "macos")]
+    notch_window::hide();
+    Ok(())
 }
 
 /// Hide or show the OS top-level main-window frame on Windows by enumerating
@@ -2761,6 +2790,14 @@ pub fn run() {
             //       let _ = window.show();
             //   }
 
+            // Notch activity indicator: transparent pill at the top-centre of
+            // the primary screen. Shows live voice / agent state. macOS only
+            // (physical notch or menu-bar HUD on older hardware).
+            #[cfg(target_os = "macos")]
+            if let Err(err) = notch_window::show(&app.handle()) {
+                log::warn!("[notch-window] auto-show on startup failed: {err}");
+            }
+
             // Tray icon setup moved to RunEvent::Ready (see below) — GTK is only
             // initialized after the event loop starts, so we must delay tray creation
             // until the Ready event fires. Creating the tray here would panic on
@@ -3108,6 +3145,8 @@ pub fn run() {
             native_notifications::show_native_notification,
             mascot_window_show,
             mascot_window_hide,
+            notch_window_show,
+            notch_window_hide,
             file_logging::reveal_logs_folder,
             file_logging::logs_folder_path,
             workspace_paths::open_workspace_path,

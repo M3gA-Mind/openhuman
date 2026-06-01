@@ -4362,6 +4362,11 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'رفض التخزين المحلي',
   'pages.settings.account.security': 'الأمان',
   'pages.settings.account.securityDesc': 'وضع تخزين الأسرار وحالة سلسلة المفاتيح',
+  'notch.listening': 'أستمع…',
+  'notch.thinking': 'أفكر…',
+  'notch.speaking': 'أتحدث…',
+  'notch.transcribing': 'أفسّر…',
+  'notch.executing': 'أنفّذ…',
 };
 
 export default messages;

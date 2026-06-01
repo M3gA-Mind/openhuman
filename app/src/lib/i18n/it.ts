@@ -4514,6 +4514,11 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'Rifiuta archiviazione locale',
   'pages.settings.account.security': 'Sicurezza',
   'pages.settings.account.securityDesc': 'Modalità archiviazione segreti e stato del portachiavi',
+  'notch.listening': 'Ascolto…',
+  'notch.thinking': 'Penso…',
+  'notch.speaking': 'Parlo…',
+  'notch.transcribing': 'Trascrizione…',
+  'notch.executing': 'Eseguendo…',
 };
 
 export default messages;
