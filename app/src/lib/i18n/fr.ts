@@ -4546,6 +4546,11 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'Refuser le stockage local',
   'pages.settings.account.security': 'Sécurité',
   'pages.settings.account.securityDesc': 'Mode de stockage des secrets et état du trousseau',
+  'notch.listening': "J'écoute…",
+  'notch.thinking': 'Je réfléchis…',
+  'notch.speaking': 'Je parle…',
+  'notch.transcribing': 'Transcription…',
+  'notch.executing': "J'exécute…",
 };
 
 export default messages;

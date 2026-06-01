@@ -4677,6 +4677,11 @@ const en: TranslationMap = {
   'keyring.settings.revokeConsent': 'Decline local storage',
   'pages.settings.account.security': 'Security',
   'pages.settings.account.securityDesc': 'Secret storage mode and keychain status',
+  'notch.listening': 'Listening…',
+  'notch.thinking': 'Thinking…',
+  'notch.speaking': 'Speaking…',
+  'notch.transcribing': 'Transcribing…',
+  'notch.executing': 'Executing…',
 };
 
 export default en;
