@@ -29,6 +29,14 @@ export const TOOL_CATALOG: ToolDefinition[] = [
     rustToolNames: ['shell'],
   },
   {
+    id: 'launch_app',
+    displayName: 'Launch Applications',
+    description: 'Open apps on your desktop by name (e.g. Music, Spotify, Safari).',
+    category: 'System',
+    defaultEnabled: true,
+    rustToolNames: ['launch_app'],
+  },
+  {
     id: 'git_operations',
     displayName: 'Git Operations',
     description: 'Run git commands in your workspace.',

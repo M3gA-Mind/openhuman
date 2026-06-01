@@ -28,6 +28,12 @@ const TOOL_FAMILIES: &[ToolFamily] = &[
         rust_names: &["shell"],
         default_enabled: true,
     },
+    // Dedicated app-launcher: always-allow, no shell exposure, no workspace_only concern.
+    ToolFamily {
+        id: "launch_app",
+        rust_names: &["launch_app"],
+        default_enabled: true,
+    },
     // detect_tools / install_tool are filterable but not surfaced in the
     // default-ON catalog, so they stay opt-in (default-OFF).
     ToolFamily {
