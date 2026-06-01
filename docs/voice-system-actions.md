@@ -142,6 +142,28 @@ visible=25, names=[..., launch_app, ...]
 
 ---
 
+---
+
+### Change 1.8 — Computer control (mouse + keyboard)
+
+**Status:** ✅ Done  
+**Commit:** `50ca434b7`
+
+**Problem:** Agent could open apps but couldn't interact with their UI — clicking buttons, typing in fields, using keyboard shortcuts.
+
+**Fix:**
+- `~/.openhuman/users/<id>/config.toml` — set `computer_control.enabled = true` (user config, not a code change)
+- `src/openhuman/agent_registry/agents/orchestrator/agent.toml` — added `"mouse"` and `"keyboard"` to the orchestrator's named tool list
+- `src/openhuman/tools/user_filter.rs` — added `"computer_control"` tool family (`mouse` + `keyboard`), `default_enabled = true`
+- `app/src/utils/toolDefinitions.ts` — added Computer Control entry to frontend Settings → Agent Access catalog
+- `src/openhuman/agent/prompts/SOUL.md` — documented `mouse` and `keyboard` capabilities
+
+**Security note:** Both tools are `PermissionLevel::Dangerous` — approval gate fires per-action in Supervised mode (expected). Switch to Full autonomy for silent operation.
+
+**Result:** Agent can now click buttons, type in fields, and send hotkeys in any on-screen app.
+
+---
+
 ## Phase 2 — Always-On Listening ⏳ Not Started
 
 > Continuous microphone listening without requiring a hotkey press.
@@ -201,4 +223,4 @@ visible=25, names=[..., launch_app, ...]
 | 3 | Local command router | ⏳ Not started |
 | 4 | Voice confirmation loop | ⏳ Not started |
 | 4 | Always-on UI indicator | ✅ Done (notch PR #3166) |
-| 4 | Computer control toggle | ⏳ Not started |
+| 4 | Computer control toggle | ✅ Done |
