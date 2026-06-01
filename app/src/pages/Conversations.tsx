@@ -197,7 +197,7 @@ const Conversations = ({
   const { threads, selectedThreadId, messages, isLoadingMessages, messagesError, activeThreadId } =
     useAppSelector(state => state.thread);
 
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);

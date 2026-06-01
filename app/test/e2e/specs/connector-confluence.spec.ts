@@ -129,7 +129,8 @@ describe('Confluence Composio connector flow', () => {
     await navigateToSkills();
     await waitForText(CONNECTOR_NAME, 10_000);
     const modal = await openConnectorModal(CONNECTOR_NAME, 15_000, 'Auth expired');
-    if (modal) await assertModalPhase('expired', CONNECTOR_NAME);
+    expect(modal).toBeTruthy();
+    await assertModalPhase('expired', CONNECTOR_NAME);
     await assertSessionNotNuked();
     console.log(`${LOG} PASS: expired auth does not log user out`);
   });

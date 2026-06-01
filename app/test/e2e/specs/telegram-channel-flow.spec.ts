@@ -317,9 +317,11 @@ describe('Telegram channel — connect / receive / send / disconnect', () => {
     expect(isError).toBe(true);
 
     // The important assertion is that the RPC rejected the empty token (checked
-    // above). A failed connect attempt does not clear an existing connection so
-    // we do not assert on channel status here.
-    console.log(`${LOG_PREFIX} C.4: pass — connect rejected empty bot_token`);
+    // above). A failed connect attempt does not clear the existing connection
+    // established by C.3 — assert it positively.
+    const status = await getTelegramChannelStatus();
+    expect(status?.connected).toBe(true);
+    console.log(`${LOG_PREFIX} C.4: pass — connect rejected empty bot_token, existing connection intact`);
   });
 
   // ──────────────────────────────────────────────────────────────────────────
