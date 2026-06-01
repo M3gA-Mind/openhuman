@@ -144,23 +144,65 @@ visible=25, names=[..., launch_app, ...]
 
 ---
 
-### Change 1.8 — Computer control (mouse + keyboard)
+### Change 1.8 — Computer control (mouse + keyboard) — ⚠️ REVERTED
+
+**Status:** ❌ Reverted (commits `50ca434b7` add, `bi0rd96sa` revert)
+
+**Problem:** Agent could open apps but couldn't interact with their UI.
+
+**What was tried:** Enabled the existing `mouse` + `keyboard` tools (enigo / `CGEventPost`), wired into the orchestrator, user filter, and frontend catalog.
+
+**Why reverted:** `CGEventPost` injects synthetic events to the **currently focused window**. When the focused window was OpenHuman's own CEF renderer (the chat UI), a Space keypress crashed the app — `EXC_BREAKPOINT / SIGTRAP` in `CFRelease → NSKeyValueWillChangeWithPerThreadPendingNotifications → -[NSApplication stop:]`. CEF can't handle arbitrary key injection. Confirmed via crash report `OpenHuman-2026-06-02-035139.ips`.
+
+**Replaced by:** Change 1.9 (`ax_interact`) — AXUIElement targets elements directly by label with no synthetic events and no CEF crash risk.
+
+---
+
+### Change 1.9 — AXUIElement app UI interaction (`ax_interact`)
 
 **Status:** ✅ Done  
-**Commit:** `50ca434b7`
+**Commits:** `4f9ca1cad` (feature), `2c32b59c9` (exact-match fix), `betuerj11`/test commits
 
-**Problem:** Agent could open apps but couldn't interact with their UI — clicking buttons, typing in fields, using keyboard shortcuts.
+**Problem:** Need to interact with desktop app UIs reliably, without the CEF crash from synthetic events.
+
+**Fix — uses the macOS Accessibility API (AXUIElement) instead of CGEventPost:**
+- `src/openhuman/accessibility/helper.rs` — extended the unified Swift helper with three commands:
+  - `ax_list` → walk the AX tree, return interactive elements (buttons, fields, cells)
+  - `ax_press` → `AXUIElementPerformAction(kAXPressAction)` by label, **exact match preferred over contains** (so "Play" beats "Playlist")
+  - `ax_set_value` → `AXUIElementSetAttributeValue(kAXValueAttribute)` by label
+- `src/openhuman/accessibility/ax_interact.rs` (new) — Rust wrappers `ax_list_elements`, `ax_press_element`, `ax_set_field_value`
+- `src/openhuman/tools/impl/computer/ax_interact.rs` (new) — `AxInteractTool` with actions `list` / `press` / `set_value`, `PermissionLevel::ReadOnly`
+- `src/openhuman/accessibility/ax_interact_tests.rs` (new) — integration tests (open Music → search AC/DC → find row → press)
+- Wired into `tools/ops.rs`, `tools/user_filter.rs`, `toolDefinitions.ts` (App UI Control), `orchestrator/agent.toml`, `SOUL.md`
+
+**Why it's better than mouse/keyboard:**
+
+| | mouse/keyboard (reverted) | ax_interact |
+|---|---|---|
+| Mechanism | `CGEventPost` synthetic events | `AXUIElementPerformAction` direct API |
+| CEF crash risk | Yes | None |
+| Coordinates | Required (needs screenshot) | None — finds by label |
+| Works when app unfocused | No | Yes |
+
+**Verified working:** Direct AX test against Music listed 256 elements including `Bollywood Hits`, `Play`, etc.; pressing `Bollywood Hits` then `Play` both returned `exact=true` and acted correctly.
+
+---
+
+### Change 1.10 — Multi-step UI workflow guidance
+
+**Status:** ✅ Done
+
+**Problem:** When asked to "play Highway to Hell by AC/DC", the agent ran: launch → list → press Library → press Songs → press "Show Filter Field" → set_value "Highway to Hell" → **press "Play"**. The final press hit the **global playback bar Play button** (plays last queue item), not the specific song row. Result: app navigated correctly but the wrong/no track played.
 
 **Fix:**
-- `~/.openhuman/users/<id>/config.toml` — set `computer_control.enabled = true` (user config, not a code change)
-- `src/openhuman/agent_registry/agents/orchestrator/agent.toml` — added `"mouse"` and `"keyboard"` to the orchestrator's named tool list
-- `src/openhuman/tools/user_filter.rs` — added `"computer_control"` tool family (`mouse` + `keyboard`), `default_enabled = true`
-- `app/src/utils/toolDefinitions.ts` — added Computer Control entry to frontend Settings → Agent Access catalog
-- `src/openhuman/agent/prompts/SOUL.md` — documented `mouse` and `keyboard` capabilities
+- `src/openhuman/agent/prompts/SOUL.md` — added explicit multi-step workflow:
+  1. `list` → discover elements
+  2. `set_value` → type in filter/search
+  3. `list` **again** → see filtered results
+  4. `press` the **specific item** (song row), not the generic Play button
+- Added Apple Music guidance: use `shell` to open `music://music.apple.com/search?term=...`, then `ax_interact list` to see song rows as AXCells, then press the specific row. More reliable than the Library filter field.
 
-**Security note:** Both tools are `PermissionLevel::Dangerous` — approval gate fires per-action in Supervised mode (expected). Switch to Full autonomy for silent operation.
-
-**Result:** Agent can now click buttons, type in fields, and send hotkeys in any on-screen app.
+**Result:** Agent is directed to select the specific item before pressing playback, instead of pressing the global Play button after filtering.
 
 ---
 
@@ -216,6 +258,9 @@ visible=25, names=[..., launch_app, ...]
 | 1 | Orchestrator tool scope | ✅ Done |
 | 1 | SOUL.md capability hint | ✅ Done |
 | 1 | Diagnostic logging | ✅ Done |
+| 1 | Computer control (mouse/keyboard) | ❌ Reverted (CEF crash) |
+| 1 | AXUIElement app UI interaction (`ax_interact`) | ✅ Done |
+| 1 | Multi-step UI workflow guidance | ✅ Done |
 | 2 | Always-on microphone loop | ⏳ Not started |
 | 2 | `always_on_enabled` config flag | ⏳ Not started |
 | 2 | Privacy hook (screen lock pause) | ⏳ Not started |
@@ -223,4 +268,3 @@ visible=25, names=[..., launch_app, ...]
 | 3 | Local command router | ⏳ Not started |
 | 4 | Voice confirmation loop | ⏳ Not started |
 | 4 | Always-on UI indicator | ✅ Done (notch PR #3166) |
-| 4 | Computer control toggle | ✅ Done |
