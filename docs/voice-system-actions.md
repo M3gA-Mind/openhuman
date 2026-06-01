@@ -206,6 +206,31 @@ visible=25, names=[..., launch_app, ...]
 
 ---
 
+### Change 1.11 — Apple Music two-step play (navigate then play)
+
+**Status:** ✅ Done
+
+**Problem:** When asked to "play Highway to Hell by AC/DC", the agent navigated to the right screen but **nothing played**. Pressing a search-result row in Apple Music only *selects/navigates* — it does not start playback. The agent then pressed the global transport Play button, but nothing was queued.
+
+**Investigation (empirical AX probing against live Music):**
+- Every "Highway to Hell" element (AXCell, AXGroup, AXButton) exposes only the `AXPress` action — which selects/navigates, never plays.
+- Double `AXPress`, a real CGEvent double-click on the Top-Results card, and AX-select + Return key **all left player state `stopped`**.
+- **Working sequence found:** AXPress the search-result card to **navigate into the song's detail page**, then AXPress the **Play button on that detail page** → `player state: playing` ✅
+
+**Fix:**
+- `src/openhuman/agent/prompts/SOUL.md` — replaced the Apple Music guidance with the exact 5-step sequence: URL-scheme search → list → press song row (navigates in) → list detail page → press detail-page Play. Explicitly warns that pressing a search result only navigates, and the second Play press is mandatory.
+- `src/openhuman/accessibility/ax_interact_tests.rs` — `test_full_flow_search_and_play_acdc` now asserts real playback via `osascript ... get player state` == "playing" (not just element presence). **Passes.**
+
+**Verified:**
+```
+[step 4] navigate into song: Ok("Pressed 'Highway to Hell' in 'Music'.")
+[step 5] press detail Play: Ok("Pressed 'Play' in 'Music'.")
+[step 6] player state: playing
+test ... ok
+```
+
+---
+
 ## Phase 2 — Always-On Listening ⏳ Not Started
 
 > Continuous microphone listening without requiring a hotkey press.
@@ -261,6 +286,7 @@ visible=25, names=[..., launch_app, ...]
 | 1 | Computer control (mouse/keyboard) | ❌ Reverted (CEF crash) |
 | 1 | AXUIElement app UI interaction (`ax_interact`) | ✅ Done |
 | 1 | Multi-step UI workflow guidance | ✅ Done |
+| 1 | Apple Music two-step play (navigate→play) | ✅ Done (playback verified) |
 | 2 | Always-on microphone loop | ⏳ Not started |
 | 2 | `always_on_enabled` config flag | ⏳ Not started |
 | 2 | Privacy hook (screen lock pause) | ⏳ Not started |

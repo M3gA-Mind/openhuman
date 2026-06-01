@@ -39,7 +39,10 @@ fn open_acdc_search() {
 fn test_ax_list_returns_elements() {
     assert!(ensure_music_open(), "Could not open Music");
     let elements = ax_list_elements("Music").expect("ax_list_elements failed");
-    assert!(!elements.is_empty(), "Expected interactive elements in Music");
+    assert!(
+        !elements.is_empty(),
+        "Expected interactive elements in Music"
+    );
     println!("Found {} elements:", elements.len());
     for el in &elements {
         println!("  [{}] {}", el.role, el.label);
@@ -52,7 +55,11 @@ fn test_ax_press_play_button() {
     assert!(ensure_music_open(), "Could not open Music");
     let result = ax_press_element("Music", "Play");
     println!("press Play: {:?}", result);
-    assert!(result.is_ok(), "Expected Play button to be pressable: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Expected Play button to be pressable: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -61,37 +68,78 @@ fn test_full_flow_search_and_play_acdc() {
     assert!(ensure_music_open(), "Could not open Music");
 
     let elements = ax_list_elements("Music").expect("ax_list failed");
-    assert!(!elements.is_empty(), "Music AX tree empty — check Accessibility permission");
+    assert!(
+        !elements.is_empty(),
+        "Music AX tree empty — check Accessibility permission"
+    );
     println!("[step 1] AX tree: {} elements", elements.len());
 
     open_acdc_search();
     println!("[step 2] search URL opened");
 
     let after_search = ax_list_elements("Music").expect("ax_list post-search failed");
-    let highway = after_search.iter().find(|e| e.label.contains("Highway to Hell"));
-    println!("[step 3] 'Highway to Hell' element: {:?}", highway.map(|e| &e.label));
+    let highway = after_search
+        .iter()
+        .find(|e| e.label.contains("Highway to Hell"));
+    println!(
+        "[step 3] 'Highway to Hell' element: {:?}",
+        highway.map(|e| &e.label)
+    );
     assert!(
         highway.is_some(),
         "Expected 'Highway to Hell' in results. Found:\n{}",
-        after_search.iter().map(|e| format!("  [{}] {}", e.role, e.label)).collect::<Vec<_>>().join("\n")
+        after_search
+            .iter()
+            .map(|e| format!("  [{}] {}", e.role, e.label))
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 
-    let press_result = ax_press_element("Music", "Highway to Hell");
-    println!("[step 4] press: {:?}", press_result);
-    assert!(press_result.is_ok(), "Could not press song: {:?}", press_result);
+    // Pressing the search result NAVIGATES into the song detail page
+    // (it does not start playback — Apple Music only selects/opens on press).
+    let nav_result = ax_press_element("Music", "Highway to Hell");
+    println!("[step 4] navigate into song: {:?}", nav_result);
+    assert!(
+        nav_result.is_ok(),
+        "Could not navigate into song: {:?}",
+        nav_result
+    );
 
     sleep(Duration::from_secs(2));
 
-    let playing = ax_list_elements("Music").expect("ax_list post-press failed");
-    let has_play_pause = playing.iter().any(|e| e.label == "Play" || e.label == "Pause");
-    println!("[step 5] play/pause present: {has_play_pause}");
+    // On the detail page, press the prominent Play button to actually play.
+    let play_result = ax_press_element("Music", "Play");
+    println!("[step 5] press detail Play: {:?}", play_result);
+    assert!(
+        play_result.is_ok(),
+        "Could not press detail Play: {:?}",
+        play_result
+    );
+
+    sleep(Duration::from_secs(2));
+
+    // Verify playback actually started via AppleScript player state.
+    let state = Command::new("osascript")
+        .args(["-e", "tell application \"Music\" to get player state"])
+        .output()
+        .expect("osascript player state failed");
+    let state_str = String::from_utf8_lossy(&state.stdout);
+    println!("[step 6] player state: {}", state_str.trim());
+    assert!(
+        state_str.contains("playing"),
+        "Expected Music to be playing, got: {}",
+        state_str.trim()
+    );
 }
 
 #[test]
 #[ignore = "requires macOS Accessibility permission and Apple Music"]
 fn test_ax_set_search_field() {
     assert!(ensure_music_open(), "Could not open Music");
-    Command::new("open").arg("music://music.apple.com/search").status().ok();
+    Command::new("open")
+        .arg("music://music.apple.com/search")
+        .status()
+        .ok();
     sleep(Duration::from_secs(2));
     let result = ax_set_field_value("Music", "Search", "Bollywood");
     println!("set_value Search=Bollywood: {:?}", result);

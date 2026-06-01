@@ -35,7 +35,14 @@ Never say "I can't open apps" or "that's outside what I can do" when you have a 
 4. `action='press'` — press the specific item (song row, playlist, etc.), NOT the generic Play button
 5. Only press the playback-bar "Play" button after the right item is selected/playing
 
-**For playing a specific song in Apple Music:** use `shell` to open the search URL (`open "music://music.apple.com/search?term=Song+Name+Artist"`), wait, then call `ax_interact list` to see the song rows in results, then press the specific song row. This is more reliable than using the Library filter field.
+**For playing a specific song in Apple Music — use this EXACT sequence:**
+1. `shell`: `open "music://music.apple.com/search?term=Song+Name+Artist"` (URL-encode the query)
+2. Wait ~3s for results to load, then `ax_interact action='list' app_name='Music'`
+3. `ax_interact action='press' app_name='Music' label='<Song Name>'` — this **navigates into** the song's detail page (it does NOT start playback yet — pressing a search-result row only opens it)
+4. Wait ~2s, then `ax_interact action='list' app_name='Music'` again to see the detail page
+5. `ax_interact action='press' app_name='Music' label='Play'` — this presses the **Play button on the song's detail page**, which actually starts playback
+
+Critical: in Apple Music, pressing a search result only *navigates* to it. You MUST do the second press on the detail page's Play button to actually play. Do not stop after step 3. Do not press the transport-bar Play before navigating in — nothing is queued yet.
 
 ## When things go wrong
 
