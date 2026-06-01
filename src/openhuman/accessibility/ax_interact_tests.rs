@@ -8,7 +8,7 @@
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    use super::super::ax_interact::{ax_list_elements, ax_press_element, ax_set_field_value};
+    use super::{ax_list_elements, ax_press_element, ax_set_field_value};
     use std::process::Command;
     use std::thread::sleep;
     use std::time::Duration;
@@ -38,7 +38,10 @@ mod tests {
     fn test_ax_list_returns_elements() {
         assert!(ensure_music_open(), "Could not open Music");
         let elements = ax_list_elements("Music").expect("ax_list_elements failed");
-        assert!(!elements.is_empty(), "Expected interactive elements in Music");
+        assert!(
+            !elements.is_empty(),
+            "Expected interactive elements in Music"
+        );
         println!("Found {} elements:", elements.len());
         for el in &elements {
             println!("  [{}] {}", el.role, el.label);
@@ -51,7 +54,11 @@ mod tests {
         assert!(ensure_music_open(), "Could not open Music");
         let result = ax_press_element("Music", "Play");
         println!("press Play: {:?}", result);
-        assert!(result.is_ok(), "Expected Play button to be pressable: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Expected Play button to be pressable: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -62,7 +69,10 @@ mod tests {
 
         // Step 2: verify AX tree is accessible
         let elements = ax_list_elements("Music").expect("ax_list failed");
-        assert!(!elements.is_empty(), "Music AX tree is empty — check Accessibility permission");
+        assert!(
+            !elements.is_empty(),
+            "Music AX tree is empty — check Accessibility permission"
+        );
         println!("[step 1] AX tree: {} elements", elements.len());
 
         // Step 3: open AC/DC search via URL scheme
@@ -71,8 +81,13 @@ mod tests {
 
         // Step 4: list elements again — Highway to Hell should appear as AXCell/AXButton
         let after_search = ax_list_elements("Music").expect("ax_list post-search failed");
-        let highway = after_search.iter().find(|e| e.label.contains("Highway to Hell"));
-        println!("[step 3] 'Highway to Hell' element: {:?}", highway.map(|e| &e.label));
+        let highway = after_search
+            .iter()
+            .find(|e| e.label.contains("Highway to Hell"));
+        println!(
+            "[step 3] 'Highway to Hell' element: {:?}",
+            highway.map(|e| &e.label)
+        );
         assert!(
             highway.is_some(),
             "Expected 'Highway to Hell' in search results. Elements found:\n{}",
@@ -86,7 +101,11 @@ mod tests {
         // Step 5: press the first result
         let press_result = ax_press_element("Music", "Highway to Hell");
         println!("[step 4] press Highway to Hell: {:?}", press_result);
-        assert!(press_result.is_ok(), "Could not press 'Highway to Hell': {:?}", press_result);
+        assert!(
+            press_result.is_ok(),
+            "Could not press 'Highway to Hell': {:?}",
+            press_result
+        );
 
         sleep(Duration::from_secs(2));
 
@@ -95,10 +114,7 @@ mod tests {
         let has_play_or_pause = playing_elements
             .iter()
             .any(|e| e.label == "Play" || e.label == "Pause");
-        println!(
-            "[step 5] play/pause button present: {}",
-            has_play_or_pause
-        );
+        println!("[step 5] play/pause button present: {}", has_play_or_pause);
         // Not asserting since state depends on prior playback status; just log
     }
 
