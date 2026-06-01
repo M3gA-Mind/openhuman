@@ -346,7 +346,7 @@ describe('Runtime picker → login → onboarding → home → logout', () => {
 
     // logoutViaSettings already asserts the logged-out marker; double-check
     // the Welcome OAuth row reappeared so we know the route reset cleanly.
-    expect(await waitForText("Hi. I'm OpenHuman.", 15_000)).toBeTruthy();
+    expect(await waitForText('Welcome to OpenHuman', 15_000)).toBeTruthy();
     expect(await textExists('Select a Runtime')).toBe(true);
   });
 });
