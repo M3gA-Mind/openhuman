@@ -511,6 +511,11 @@ const READ_ONLY_BASES: &[&str] = &[
     "lsblk",
     "lscpu",
     "cut",
+    // OS-native application launchers. These open apps or files in the
+    // default viewer — they don't modify the workspace, so they're Read-class
+    // and run without an approval prompt in Supervised mode.
+    "open",     // macOS: `open -a Music`, `open -b com.apple.Safari`
+    "xdg-open", // Linux: `xdg-open music://`, `xdg-open file.pdf`
     // Windows cmd / PowerShell read verbs + common aliases
     "dir",
     "type",

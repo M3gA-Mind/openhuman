@@ -304,6 +304,8 @@ const Conversations = ({
   // from `selectedThreadId` so switching threads mid-turn doesn't move the
   // timer's reference point.
   const sendingThreadIdRef = useRef<string | null>(null);
+  // Ref so the mount-time dictation event handler can call the latest send fn.
+  const handleSendMessageRef = useRef<((text?: string) => Promise<void>) | null>(null);
   // Previous inference status for the sending thread; lets the rearm effect
   // distinguish "status was just cleared (chat_done / chat_error)" from
   // "status was never set yet (in-flight turn pre-status)".
@@ -464,11 +466,19 @@ const Conversations = ({
 
   useEffect(() => {
     const onDictationInsert = (event: Event) => {
-      const customEvent = event as CustomEvent<{ text?: string }>;
+      const customEvent = event as CustomEvent<{ text?: string; autoSend?: boolean }>;
       const text = customEvent.detail?.text?.trim();
       if (!text) return;
 
       customEvent.preventDefault();
+
+      // When autoSend is set (hotkey dictation), dispatch the transcript directly
+      // to the agent without going through the text composer.
+      if (customEvent.detail?.autoSend) {
+        void handleSendMessageRef.current?.(text);
+        return;
+      }
+
       setInputMode('text');
       setInputValue(prev => {
         const base = prev.trim();
@@ -845,6 +855,8 @@ const Conversations = ({
       setPendingSendingThreadId(null);
     }
   };
+
+  handleSendMessageRef.current = handleSendMessage;
 
   const transcribeAndSendAudio = async (mimeType: string) => {
     setIsRecording(false);
