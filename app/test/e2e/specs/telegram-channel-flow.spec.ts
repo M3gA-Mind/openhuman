@@ -321,7 +321,9 @@ describe('Telegram channel — connect / receive / send / disconnect', () => {
     // established by C.3 — assert it positively.
     const status = await getTelegramChannelStatus();
     expect(status?.connected).toBe(true);
-    console.log(`${LOG_PREFIX} C.4: pass — connect rejected empty bot_token, existing connection intact`);
+    console.log(
+      `${LOG_PREFIX} C.4: pass — connect rejected empty bot_token, existing connection intact`
+    );
   });
 
   // ──────────────────────────────────────────────────────────────────────────
