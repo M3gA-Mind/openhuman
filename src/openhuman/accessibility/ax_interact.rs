@@ -8,6 +8,10 @@
 
 use serde::Deserialize;
 
+#[cfg(test)]
+#[path = "ax_interact_tests.rs"]
+mod tests;
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AXElement {
     pub role: String,
@@ -95,7 +99,9 @@ pub fn ax_set_field_value(app_name: &str, label: &str, value: &str) -> Result<St
             .and_then(|v| v.as_str())
             .unwrap_or(label)
             .to_string();
-        return Ok(format!("Set '{field}' in '{app_name}' to the provided value."));
+        return Ok(format!(
+            "Set '{field}' in '{app_name}' to the provided value."
+        ));
     }
     #[cfg(not(target_os = "macos"))]
     {
