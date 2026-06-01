@@ -231,6 +231,26 @@ test ... ok
 
 ---
 
+### Change 1.12 — One-shot `play_music` tool (root-cause fix)
+
+**Status:** ✅ Done
+
+**Problem:** Even after change 1.11, the agent still used the broken filter-field approach and didn't play. Transcript analysis (`~/.openhuman/users/<id>/workspace/session_raw/*.jsonl`) revealed two real root causes:
+
+1. **The orchestrator has no `shell` tool.** Change 1.11 put the play guidance in `SOUL.md` — but the orchestrator runs with `omit_identity = true` and **never sees SOUL.md**. Change 1.11b moved it to the `ax_interact` description, which told the agent to "use the shell tool to open `music://...`" — but the orchestrator can't run shell (it delegates). The agent wrapped the command in a `prompt` arg to a delegation tool; it never executed, and it fell back to the filter approach.
+2. **Cross-chat memory contamination.** The user message was prefixed with `[Cross-chat context — historical]` containing prior filter-approach "Progress Checkpoint" steps, biasing the agent back to the wrong method.
+
+**Fix — stop relying on the LLM to orchestrate a fragile multi-step flow with a tool it lacks. Encapsulate the whole proven sequence in native Rust:**
+- `src/openhuman/accessibility/ax_interact.rs` — `play_apple_music(query)`: open search URL → AX-find + press song cell (navigate) → press detail-page Play → verify `player state == playing`
+- `src/openhuman/tools/impl/computer/play_music.rs` (new) — `PlayMusicTool`, single call `play_music{query}`, `PermissionLevel::ReadOnly`, runs the blocking flow via `spawn_blocking`
+- Registered in `ops.rs`, `user_filter.rs`, `orchestrator/agent.toml`, `toolDefinitions.ts`
+
+**Result:** Agent calls `play_music{query:'Highway to Hell AC/DC'}` **once**; Rust does search→navigate→play→verify deterministically. No shell dependency, no multi-step LLM orchestration, no filter-field fallback. Unit tests pass; the underlying flow is verified by `test_full_flow_search_and_play_acdc`.
+
+**Key learning:** The orchestrator (chat agent) only reads **tool descriptions + agent.toml** — NOT SOUL.md (omit_identity=true). Behavior guidance for the chat agent must live in tool descriptions or be encapsulated in the tool itself.
+
+---
+
 ## Phase 2 — Always-On Listening ⏳ Not Started
 
 > Continuous microphone listening without requiring a hotkey press.
