@@ -37,6 +37,14 @@ export const TOOL_CATALOG: ToolDefinition[] = [
     rustToolNames: ['launch_app'],
   },
   {
+    id: 'computer_control',
+    displayName: 'Computer Control',
+    description: 'Control mouse and keyboard to interact with any app on screen — click buttons, type in fields, use shortcuts.',
+    category: 'System',
+    defaultEnabled: true,
+    rustToolNames: ['mouse', 'keyboard'],
+  },
+  {
     id: 'git_operations',
     displayName: 'Git Operations',
     description: 'Run git commands in your workspace.',

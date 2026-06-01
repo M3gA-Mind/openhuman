@@ -34,6 +34,14 @@ const TOOL_FAMILIES: &[ToolFamily] = &[
         rust_names: &["launch_app"],
         default_enabled: true,
     },
+    // Computer control — mouse and keyboard. Gated by computer_control.enabled
+    // in config (tools only register when that flag is true). PermissionLevel::Dangerous
+    // so the approval gate fires per-action; user opts in explicitly.
+    ToolFamily {
+        id: "computer_control",
+        rust_names: &["mouse", "keyboard"],
+        default_enabled: true,
+    },
     // detect_tools / install_tool are filterable but not surfaced in the
     // default-ON catalog, so they stay opt-in (default-OFF).
     ToolFamily {

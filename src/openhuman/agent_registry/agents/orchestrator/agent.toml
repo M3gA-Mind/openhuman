@@ -122,6 +122,12 @@ named = [
     # delegating or telling the user it can't. PermissionLevel::ReadOnly
     # so no approval gate fires regardless of autonomy tier.
     "launch_app",
+    # Computer control — mouse and keyboard tools for interacting with
+    # apps already on screen (click buttons, type in fields, use hotkeys).
+    # PermissionLevel::Dangerous so the approval gate fires per-action in
+    # Supervised mode. Requires computer_control.enabled = true in config.
+    "mouse",
+    "keyboard",
     # Time + scheduling — lets the orchestrator answer "what time is it",
     # "remind me in 10 minutes", "every morning at 8" directly rather than
     # delegating or telling the user it can't. `current_time` grounds
