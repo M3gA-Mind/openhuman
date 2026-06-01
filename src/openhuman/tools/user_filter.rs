@@ -41,12 +41,6 @@ const TOOL_FAMILIES: &[ToolFamily] = &[
         rust_names: &["ax_interact"],
         default_enabled: true,
     },
-    // One-shot Apple Music play (search → navigate → play → verify).
-    ToolFamily {
-        id: "play_music",
-        rust_names: &["play_music"],
-        default_enabled: true,
-    },
     // Computer control — mouse and keyboard. Gated by computer_control.enabled
     // in config (tools only register when that flag is true). PermissionLevel::Dangerous
     // so the approval gate fires per-action; user opts in explicitly.

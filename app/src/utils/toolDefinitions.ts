@@ -46,14 +46,6 @@ export const TOOL_CATALOG: ToolDefinition[] = [
     rustToolNames: ['ax_interact'],
   },
   {
-    id: 'play_music',
-    displayName: 'Play Music',
-    description: 'Search Apple Music for a song and play it in one step.',
-    category: 'System',
-    defaultEnabled: true,
-    rustToolNames: ['play_music'],
-  },
-  {
     id: 'git_operations',
     displayName: 'Git Operations',
     description: 'Run git commands in your workspace.',

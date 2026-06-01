@@ -170,7 +170,6 @@ pub fn all_tools_with_runtime(
         Box::new(CurrentTimeTool::new()),
         Box::new(LaunchAppTool::new()),
         Box::new(AxInteractTool::new()),
-        Box::new(PlayMusicTool::new()),
         Box::new(CodegraphIndexTool::new(
             config.clone(),
             action_dir.to_path_buf(),

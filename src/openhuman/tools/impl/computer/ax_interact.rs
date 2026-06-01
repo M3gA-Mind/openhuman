@@ -38,23 +38,26 @@ impl Tool for AxInteractTool {
     }
 
     fn description(&self) -> &str {
-        "Interact with a desktop application's UI using the macOS Accessibility API (AXUIElement). \
-         Finds buttons, text fields, and controls by their label — no screen coordinates needed. \
-         Actions: \
-         'list' → show all interactive elements in the app; \
-         'press' → click/activate a button or control by label (e.g. 'Play', 'Send', 'OK'); \
-         'set_value' → type text into a field by label. \
-         Always call 'list' first if you're not sure what elements exist. \
-         Requires macOS Accessibility permission for OpenHuman.\n\
+        "Interact with ANY desktop application's UI using the macOS Accessibility API \
+         (AXUIElement). Finds buttons, text fields, list rows, and controls by their label — \
+         no screen coordinates, no synthetic key/mouse events. Works for any app: Music, \
+         Safari, Mail, Notes, Slack, System Settings, etc.\n\
          \n\
-         PLAYING A SPECIFIC SONG IN APPLE MUSIC — follow this exact sequence: \
-         (1) use the shell tool to run `open \"music://music.apple.com/search?term=Song+Name+Artist\"` (URL-encode spaces as +); \
-         (2) wait ~3s, then `list` app_name='Music'; \
-         (3) `press` the song's name — this only NAVIGATES into the song's detail page, it does NOT start playback; \
-         (4) `list` again to see the detail page; \
-         (5) `press` label='Play' — the Play button ON THE DETAIL PAGE actually starts playback. \
-         The second Play press is mandatory: pressing a search result alone never plays. \
-         Do NOT use the Library 'Show Filter Field' approach — it selects but does not play."
+         Actions:\n\
+         • 'list' → show interactive elements. ALWAYS pass a `filter` substring to narrow \
+         results (apps expose hundreds of elements; an unfiltered list is huge and unreliable). \
+         e.g. filter='Play', filter='Send', filter='Highway'.\n\
+         • 'press' → activate a button/control/row by label (exact match preferred). \
+         e.g. label='Play', label='Send', label='OK'.\n\
+         • 'set_value' → type text into a field by label (omit label for the first text field).\n\
+         \n\
+         General pattern: (1) `list` with a `filter` to find the element, (2) `press` it. \
+         Note that in many apps, pressing a LIST ROW or SEARCH RESULT only selects/opens it — \
+         to trigger an action you then press the relevant action button (e.g. after opening a \
+         song's page, press its 'Play' button). If a press doesn't have the intended effect, \
+         `list` again to see the new screen and press the actual action control.\n\
+         \n\
+         Requires macOS Accessibility permission for OpenHuman."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -64,15 +67,19 @@ impl Tool for AxInteractTool {
                 "action": {
                     "type": "string",
                     "enum": ["list", "press", "set_value"],
-                    "description": "'list' = show interactive elements; 'press' = click a button/control; 'set_value' = type into a text field."
+                    "description": "'list' = show interactive elements (use with filter); 'press' = activate a control by label; 'set_value' = type into a text field."
                 },
                 "app_name": {
                     "type": "string",
                     "description": "Display name of the running application (e.g. 'Music', 'Safari', 'Telegram')."
                 },
+                "filter": {
+                    "type": "string",
+                    "description": "For 'list': only return elements whose label contains this substring (case-insensitive). Strongly recommended — keeps results small and accurate."
+                },
                 "label": {
                     "type": "string",
-                    "description": "Partial label of the element to target (case-insensitive). For 'set_value', omit to target the first available text field."
+                    "description": "For 'press'/'set_value': label of the element to target (case-insensitive, exact match preferred). For 'set_value', omit to target the first text field."
                 },
                 "value": {
                     "type": "string",
@@ -123,37 +130,72 @@ impl Tool for AxInteractTool {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
+        let filter = args
+            .get("filter")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
 
-        log::info!("[ax_interact] ▶ action={action:?} app={app_name:?} label={label:?}");
+        log::info!(
+            "[ax_interact] ▶ action={action:?} app={app_name:?} label={label:?} filter={filter:?}"
+        );
 
         if app_name.is_empty() {
             return Ok(ToolResult::error("app_name is required"));
         }
 
+        // Cap how many elements we render so a broad/empty filter can't overflow
+        // the tool-result budget and cause the model to reason over a truncated view.
+        const MAX_LISTED: usize = 60;
+
         let result = match action.as_str() {
-            "list" => match ax::ax_list_elements(&app_name) {
+            "list" => match ax::ax_list_elements_filtered(&app_name, &filter) {
                 Ok(elements) if elements.is_empty() => {
-                    log::info!("[ax_interact] list: no interactive elements found in '{app_name}'");
-                    ToolResult::success(format!(
-                        "No interactive elements found in '{app_name}'. \
+                    log::info!(
+                        "[ax_interact] list: no elements in '{app_name}' (filter={filter:?})"
+                    );
+                    let hint = if filter.is_empty() {
+                        format!(
+                            "No interactive elements found in '{app_name}'. \
                              The app may not expose its UI tree via Accessibility API, \
                              or OpenHuman may need Accessibility permission."
-                    ))
+                        )
+                    } else {
+                        format!(
+                            "No elements in '{app_name}' match filter '{filter}'. \
+                             The UI may still be loading — wait and try again, or call \
+                             'list' with a shorter/different filter."
+                        )
+                    };
+                    ToolResult::success(hint)
                 }
                 Ok(elements) => {
+                    let total = elements.len();
                     log::info!(
-                        "[ax_interact] list: found {} elements in '{app_name}'",
-                        elements.len()
+                        "[ax_interact] list: {total} elements in '{app_name}' (filter={filter:?})"
                     );
+                    let shown = total.min(MAX_LISTED);
                     let lines: Vec<String> = elements
                         .iter()
+                        .take(MAX_LISTED)
                         .map(|e| format!("  [{role}] {label}", role = e.role, label = e.label))
                         .collect();
-                    ToolResult::success(format!(
-                        "Interactive elements in '{app_name}' ({} found):\n{}",
-                        elements.len(),
-                        lines.join("\n")
-                    ))
+                    let mut out = if filter.is_empty() {
+                        format!("Elements in '{app_name}' (showing {shown} of {total}):\n")
+                    } else {
+                        format!(
+                            "Elements in '{app_name}' matching '{filter}' (showing {shown} of {total}):\n"
+                        )
+                    };
+                    out.push_str(&lines.join("\n"));
+                    if total > MAX_LISTED {
+                        out.push_str(&format!(
+                            "\n… {} more — narrow with a more specific `filter`.",
+                            total - MAX_LISTED
+                        ));
+                    }
+                    ToolResult::success(out)
                 }
                 Err(e) => {
                     log::warn!("[ax_interact] list failed: {e}");
