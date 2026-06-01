@@ -127,6 +127,9 @@ named = [
     # dependency, no CEF crash risk. Always call action='list' first to
     # discover what elements are available before pressing.
     "ax_interact",
+    # One-shot Apple Music play: search → navigate → play → verify, all in
+    # native Rust. Use for any "play <song>" request — no shell needed.
+    "play_music",
     # Time + scheduling — lets the orchestrator answer "what time is it",
     # "remind me in 10 minutes", "every morning at 8" directly rather than
     # delegating or telling the user it can't. `current_time` grounds

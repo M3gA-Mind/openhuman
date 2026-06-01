@@ -109,3 +109,120 @@ pub fn ax_set_field_value(app_name: &str, label: &str, value: &str) -> Result<St
         Err("ax_interact is macOS-only".into())
     }
 }
+
+/// High-level one-shot: search Apple Music for `query` and play the top result.
+///
+/// Encapsulates the full proven sequence in Rust so the agent doesn't have to
+/// orchestrate it (and doesn't need shell access):
+///   1. `open music://music.apple.com/search?term=<query>` to surface results
+///   2. wait for results, then AX-find the matching song cell and press it
+///      (this NAVIGATES into the song's detail page — it does not play yet)
+///   3. wait, then press the Play button on the detail page (actually plays)
+///   4. verify playback via AppleScript player state
+///
+/// `query` is the song + artist, e.g. "Highway to Hell AC/DC".
+pub fn play_apple_music(query: &str) -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        use std::thread::sleep;
+        use std::time::Duration;
+
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Err("query must not be empty".into());
+        }
+        log::info!("[play_apple_music] ▶ query={trimmed:?}");
+
+        // 1. Open Music + search via URL scheme.
+        let term = trimmed.replace(' ', "+");
+        let url = format!("music://music.apple.com/search?term={term}");
+        Command::new("open")
+            .arg(&url)
+            .status()
+            .map_err(|e| format!("failed to open Music search URL: {e}"))?;
+        log::info!("[play_apple_music] opened search url={url}");
+        sleep(Duration::from_secs(4));
+
+        // 2. Find the best-matching song cell and press to navigate in.
+        //    Match on the leading song-title token (before the artist words).
+        let elements = ax_list_elements("Music")?;
+        log::info!("[play_apple_music] {} elements after search", elements.len());
+
+        // Pick the first AXCell whose label looks like the requested song.
+        // Try progressively shorter prefixes of the query for a label match.
+        let lower_query = trimmed.to_lowercase();
+        let candidate = elements
+            .iter()
+            .find(|e| {
+                e.role == "AXCell" && {
+                    let l = e.label.to_lowercase();
+                    // song cell labels are just the title (e.g. "Highway to Hell")
+                    !e.label.is_empty() && lower_query.contains(&l)
+                }
+            })
+            .or_else(|| {
+                // fallback: any cell whose label is contained in the query
+                elements.iter().find(|e| {
+                    e.role == "AXCell"
+                        && !e.label.is_empty()
+                        && e.label.split_whitespace().count() >= 1
+                        && lower_query.contains(&e.label.to_lowercase())
+                })
+            });
+
+        let song_label = match candidate {
+            Some(c) => c.label.clone(),
+            None => {
+                let avail: Vec<String> = elements
+                    .iter()
+                    .filter(|e| e.role == "AXCell" && !e.label.is_empty())
+                    .map(|e| e.label.clone())
+                    .take(20)
+                    .collect();
+                return Err(format!(
+                    "No matching song found for '{trimmed}'. Top result cells: {}",
+                    avail.join(", ")
+                ));
+            }
+        };
+
+        log::info!("[play_apple_music] navigating into song cell: {song_label:?}");
+        ax_press_element("Music", &song_label)?;
+        sleep(Duration::from_secs(2));
+
+        // 3. Press the Play button on the detail page.
+        log::info!("[play_apple_music] pressing detail-page Play");
+        ax_press_element("Music", "Play")?;
+        sleep(Duration::from_secs(2));
+
+        // 4. Verify playback.
+        let state = Command::new("osascript")
+            .args(["-e", "tell application \"Music\" to get player state"])
+            .output()
+            .map_err(|e| format!("failed to query player state: {e}"))?;
+        let state_str = String::from_utf8_lossy(&state.stdout).trim().to_string();
+        log::info!("[play_apple_music] player state={state_str}");
+
+        if state_str.contains("playing") {
+            let track = Command::new("osascript")
+                .args(["-e", "tell application \"Music\" to get name of current track"])
+                .output()
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| song_label.clone());
+            Ok(format!("Now playing '{track}' in Apple Music."))
+        } else {
+            Err(format!(
+                "Pressed play for '{song_label}' but player state is '{state_str}'. \
+                 The song may require a subscription or be unavailable."
+            ))
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = query;
+        Err("play_apple_music is macOS-only".into())
+    }
+}
