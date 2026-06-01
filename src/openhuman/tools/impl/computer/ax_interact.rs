@@ -45,7 +45,16 @@ impl Tool for AxInteractTool {
          'press' → click/activate a button or control by label (e.g. 'Play', 'Send', 'OK'); \
          'set_value' → type text into a field by label. \
          Always call 'list' first if you're not sure what elements exist. \
-         Requires macOS Accessibility permission for OpenHuman."
+         Requires macOS Accessibility permission for OpenHuman.\n\
+         \n\
+         PLAYING A SPECIFIC SONG IN APPLE MUSIC — follow this exact sequence: \
+         (1) use the shell tool to run `open \"music://music.apple.com/search?term=Song+Name+Artist\"` (URL-encode spaces as +); \
+         (2) wait ~3s, then `list` app_name='Music'; \
+         (3) `press` the song's name — this only NAVIGATES into the song's detail page, it does NOT start playback; \
+         (4) `list` again to see the detail page; \
+         (5) `press` label='Play' — the Play button ON THE DETAIL PAGE actually starts playback. \
+         The second Play press is mandatory: pressing a search result alone never plays. \
+         Do NOT use the Library 'Show Filter Field' approach — it selects but does not play."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -115,46 +124,42 @@ impl Tool for AxInteractTool {
             .unwrap_or("")
             .to_string();
 
-        log::info!(
-            "[ax_interact] ▶ action={action:?} app={app_name:?} label={label:?}"
-        );
+        log::info!("[ax_interact] ▶ action={action:?} app={app_name:?} label={label:?}");
 
         if app_name.is_empty() {
             return Ok(ToolResult::error("app_name is required"));
         }
 
         let result = match action.as_str() {
-            "list" => {
-                match ax::ax_list_elements(&app_name) {
-                    Ok(elements) if elements.is_empty() => {
-                        log::info!("[ax_interact] list: no interactive elements found in '{app_name}'");
-                        ToolResult::success(format!(
-                            "No interactive elements found in '{app_name}'. \
+            "list" => match ax::ax_list_elements(&app_name) {
+                Ok(elements) if elements.is_empty() => {
+                    log::info!("[ax_interact] list: no interactive elements found in '{app_name}'");
+                    ToolResult::success(format!(
+                        "No interactive elements found in '{app_name}'. \
                              The app may not expose its UI tree via Accessibility API, \
                              or OpenHuman may need Accessibility permission."
-                        ))
-                    }
-                    Ok(elements) => {
-                        log::info!(
-                            "[ax_interact] list: found {} elements in '{app_name}'",
-                            elements.len()
-                        );
-                        let lines: Vec<String> = elements
-                            .iter()
-                            .map(|e| format!("  [{role}] {label}", role = e.role, label = e.label))
-                            .collect();
-                        ToolResult::success(format!(
-                            "Interactive elements in '{app_name}' ({} found):\n{}",
-                            elements.len(),
-                            lines.join("\n")
-                        ))
-                    }
-                    Err(e) => {
-                        log::warn!("[ax_interact] list failed: {e}");
-                        ToolResult::error(e)
-                    }
+                    ))
                 }
-            }
+                Ok(elements) => {
+                    log::info!(
+                        "[ax_interact] list: found {} elements in '{app_name}'",
+                        elements.len()
+                    );
+                    let lines: Vec<String> = elements
+                        .iter()
+                        .map(|e| format!("  [{role}] {label}", role = e.role, label = e.label))
+                        .collect();
+                    ToolResult::success(format!(
+                        "Interactive elements in '{app_name}' ({} found):\n{}",
+                        elements.len(),
+                        lines.join("\n")
+                    ))
+                }
+                Err(e) => {
+                    log::warn!("[ax_interact] list failed: {e}");
+                    ToolResult::error(e)
+                }
+            },
 
             "press" => {
                 if label.is_empty() {
@@ -178,7 +183,9 @@ impl Tool for AxInteractTool {
 
             "set_value" => {
                 if value.is_empty() {
-                    return Ok(ToolResult::error("'value' is required for action='set_value'"));
+                    return Ok(ToolResult::error(
+                        "'value' is required for action='set_value'",
+                    ));
                 }
                 match ax::ax_set_field_value(&app_name, &label, &value) {
                     Ok(msg) => {
