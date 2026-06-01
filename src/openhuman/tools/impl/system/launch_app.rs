@@ -106,22 +106,24 @@ impl Tool for LaunchAppTool {
             .trim()
             .to_string();
 
-        tracing::debug!(app_name = %app_name, "[launch_app] execute start");
+        log::info!("[launch_app] ▶ execute called app_name={app_name:?} raw_args={args}");
 
         if let Err(reason) = validate_app_name(&app_name) {
-            tracing::warn!(app_name = %app_name, reason = %reason, "[launch_app] validation failed");
+            log::warn!("[launch_app] ✗ validation failed app_name={app_name:?} reason={reason}");
             return Ok(ToolResult::error(reason));
         }
+
+        log::info!("[launch_app] ✓ validation passed — dispatching to platform launcher");
 
         let result = launch_platform(&app_name).await;
 
         match result {
             Ok(msg) => {
-                tracing::info!(app_name = %app_name, "[launch_app] launched successfully");
+                log::info!("[launch_app] ✓ launch succeeded app_name={app_name:?} msg={msg:?}");
                 Ok(ToolResult::success(msg))
             }
             Err(err) => {
-                tracing::warn!(app_name = %app_name, error = %err, "[launch_app] launch failed");
+                log::warn!("[launch_app] ✗ launch failed app_name={app_name:?} error={err}");
                 Ok(ToolResult::error(format!(
                     "Could not open '{app_name}': {err}"
                 )))
@@ -132,6 +134,11 @@ impl Tool for LaunchAppTool {
 
 /// Platform-specific launch dispatch. Returns a human-readable success message.
 async fn launch_platform(app_name: &str) -> Result<String, String> {
+    log::info!(
+        "[launch_app] platform={} dispatching launch for app_name={app_name:?}",
+        std::env::consts::OS
+    );
+
     #[cfg(target_os = "macos")]
     return launch_macos(app_name).await;
 
@@ -147,20 +154,30 @@ async fn launch_platform(app_name: &str) -> Result<String, String> {
 
 #[cfg(target_os = "macos")]
 async fn launch_macos(app_name: &str) -> Result<String, String> {
+    log::info!("[launch_app] macOS: running `open -a {app_name:?}`");
+
     // `open -a "App Name"` resolves by display name via LaunchServices.
-    let status = tokio::process::Command::new("open")
+    let output = tokio::process::Command::new("open")
         .arg("-a")
         .arg(app_name)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
-        .status()
+        .output()
         .await
         .map_err(|e| format!("failed to invoke `open`: {e}"))?;
 
-    if status.success() {
+    log::info!(
+        "[launch_app] macOS: `open -a` exit={} stderr={}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr).trim()
+    );
+
+    if output.status.success() {
         return Ok(format!("Opened '{app_name}'."));
     }
+
+    log::info!("[launch_app] macOS: primary failed — trying fallback `open {app_name:?}`");
 
     // Fallback: `open "<App Name>"` — works for bundle names and some URIs.
     let fallback = tokio::process::Command::new("open")
@@ -172,11 +189,14 @@ async fn launch_macos(app_name: &str) -> Result<String, String> {
         .await
         .map_err(|e| format!("failed to invoke `open` (fallback): {e}"))?;
 
+    log::info!("[launch_app] macOS: fallback exit={fallback}");
+
     if fallback.success() {
         Ok(format!("Opened '{app_name}'."))
     } else {
         Err(format!(
-            "`open -a \"{app_name}\"` failed — check the app name matches its title in /Applications"
+            "`open -a \"{app_name}\"` failed (exit {}) — check the app name matches its title in /Applications",
+            output.status
         ))
     }
 }
