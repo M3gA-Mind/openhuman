@@ -703,29 +703,50 @@ func axListElements(appName: String, id: String?) -> [String: Any] {
     return ["type": "ax_list", "id": id ?? "", "ok": true, "error": NSNull(), "elements": elements]
 }
 
-/// Press a UI element (button, checkbox, link) by partial label match.
+/// Collect all AX elements whose label contains `label` (case-insensitive).
+/// Returns matches sorted exact-first so "Play" beats "Playlist".
+struct AXCandidate {
+    var element: AXUIElement
+    var label: String
+    var exact: Bool
+}
+
+func axCollectMatches(_ root: AXUIElement, label: String, depth: Int = 0, maxDepth: Int = 12) -> [AXCandidate] {
+    if depth > maxDepth { return [] }
+    var roleRef: AnyObject?; AXUIElementCopyAttributeValue(root, kAXRoleAttribute as CFString, &roleRef)
+    var titleRef: AnyObject?; AXUIElementCopyAttributeValue(root, kAXTitleAttribute as CFString, &titleRef)
+    var elemLabel = (titleRef as? String) ?? ""
+    if elemLabel.isEmpty { var d: AnyObject?; AXUIElementCopyAttributeValue(root, kAXDescriptionAttribute as CFString, &d); elemLabel = (d as? String) ?? "" }
+    let lower = label.lowercased(); let elLower = elemLabel.lowercased()
+    var results: [AXCandidate] = []
+    if !elemLabel.isEmpty, elLower.contains(lower) {
+        results.append(AXCandidate(element: root, label: elemLabel, exact: elLower == lower))
+    }
+    var childrenRef: AnyObject?
+    guard AXUIElementCopyAttributeValue(root, kAXChildrenAttribute as CFString, &childrenRef) == .success,
+          let children = childrenRef as? [AXUIElement] else { return results }
+    for child in children { results += axCollectMatches(child, label: label, depth: depth+1, maxDepth: maxDepth) }
+    return results
+}
+
+/// Press a UI element by label — exact match preferred over contains match.
 func axPress(appName: String, label: String, id: String?) -> [String: Any] {
     guard let app = findRunningApp(named: appName) else {
         return ["type": "ax_press", "id": id ?? "", "ok": false,
                 "error": "App '\(appName)' not found or not running"]
     }
     let axApp = AXUIElementCreateApplication(app.processIdentifier)
-    let lower = label.lowercased()
-    var pressedLabel = ""
-    let found = axWalk(axApp) { element, _, elemLabel in
-        guard !elemLabel.isEmpty, elemLabel.lowercased().contains(lower) else { return false }
-        if AXUIElementPerformAction(element, kAXPressAction as CFString) == .success {
-            pressedLabel = elemLabel
-            return true
+    var matches = axCollectMatches(axApp, label: label)
+    // Exact matches first so "Play" beats "Playlist"
+    matches.sort { $0.exact && !$1.exact }
+    for match in matches {
+        if AXUIElementPerformAction(match.element, kAXPressAction as CFString) == .success {
+            return ["type": "ax_press", "id": id ?? "", "ok": true, "error": NSNull(),
+                    "pressed": match.label]
         }
-        return false
-    }
-    if found {
-        return ["type": "ax_press", "id": id ?? "", "ok": true, "error": NSNull(),
-                "pressed": pressedLabel]
     }
     return ["type": "ax_press", "id": id ?? "", "ok": false,
-            "error": "No pressable element matching '\(label)' found in '\(appName)'"]
+            "error": "No pressable element matching '\(label)' found in '\(appName)' (\(matches.count) label match(es) not actionable)"]
 }
 
 /// Set the value of a text field by partial label match (or first text field if label is empty).
