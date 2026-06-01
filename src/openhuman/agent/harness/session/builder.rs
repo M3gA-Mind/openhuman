@@ -454,7 +454,8 @@ impl AgentBuilder {
         let visible_tool_specs: Vec<ToolSpec> =
             dedup_visible_tool_specs(visible_tool_specs_unfiltered);
 
-        let visible_names_list: Vec<&str> = visible_tool_specs.iter().map(|s| s.name.as_str()).collect();
+        let visible_names_list: Vec<&str> =
+            visible_tool_specs.iter().map(|s| s.name.as_str()).collect();
         log::info!(
             "[agent] tool spec filter: total={} visible={} (filter_active={} policy_restricted={}) names=[{}]",
             tool_specs.len(),
