@@ -54,7 +54,9 @@ export async function injectTelegramUpdate(update) {
  */
 export async function getTelegramSentMessages() {
   const res = await telegramAdminFetch('/__admin/telegram/sent');
-  return res.json();
+  const data = await res.json();
+  // Server wraps the list: { ok: true, messages: [...] }
+  return Array.isArray(data) ? data : (data.messages ?? []);
 }
 
 /**

@@ -160,7 +160,7 @@ describe('Gmail (Composio) connector flow', () => {
     seedComposioConnection(TOOLKIT_SLUG, 'EXPIRED', 'c-gmail-expired');
     await navigateToSkills();
     await waitForText(CONNECTOR_NAME, 10_000);
-    const modal = await openConnectorModal(CONNECTOR_NAME);
+    const modal = await openConnectorModal(CONNECTOR_NAME, 15_000, 'Auth expired');
     if (modal) {
       await assertModalPhase('expired', CONNECTOR_NAME);
     }

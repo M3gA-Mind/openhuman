@@ -160,7 +160,7 @@ describe('Runtime picker → login → onboarding → home → logout', () => {
     await waitForWebView(15_000);
     await waitForAppReady(15_000);
 
-    // Welcome.tsx: "Welcome to OpenHuman" + at least one provider button.
+    // Welcome.tsx: "Welcome to OpenHuman" title + at least one provider button.
     expect(await waitForText('Welcome to OpenHuman', 15_000)).toBeTruthy();
     expect(await textExists('Select a Runtime')).toBe(true);
   });
@@ -346,7 +346,7 @@ describe('Runtime picker → login → onboarding → home → logout', () => {
 
     // logoutViaSettings already asserts the logged-out marker; double-check
     // the Welcome OAuth row reappeared so we know the route reset cleanly.
-    expect(await waitForText('Welcome to OpenHuman', 15_000)).toBeTruthy();
+    expect(await waitForText("Hi. I'm OpenHuman.", 15_000)).toBeTruthy();
     expect(await textExists('Select a Runtime')).toBe(true);
   });
 });
