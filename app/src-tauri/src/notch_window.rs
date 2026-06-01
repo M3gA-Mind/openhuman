@@ -24,8 +24,7 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::{msg_send, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSBackingStoreType, NSColor, NSPanel, NSScreen, NSWindowCollectionBehavior,
-    NSWindowStyleMask,
+    NSBackingStoreType, NSColor, NSPanel, NSScreen, NSWindowCollectionBehavior, NSWindowStyleMask,
 };
 use objc2_foundation::{NSNumber, NSPoint, NSRect, NSSize, NSString, NSTimer, NSURLRequest, NSURL};
 use objc2_web_kit::{WKWebView, WKWebViewConfiguration};
@@ -104,7 +103,11 @@ pub(crate) fn show(app: &AppHandle<AppRuntime>) -> Result<(), String> {
     let inject_timer = unsafe { spawn_inject_timer(webview.clone()) };
 
     NOTCH.with(|cell| {
-        *cell.borrow_mut() = Some(NotchPanel { panel, webview, inject_timer });
+        *cell.borrow_mut() = Some(NotchPanel {
+            panel,
+            webview,
+            inject_timer,
+        });
     });
     log::info!("[notch-window] panel shown at top-center");
     Ok(())
@@ -125,7 +128,9 @@ fn resolve_page_source(app: &AppHandle<AppRuntime>) -> Result<PageSource, String
             .map(|q| format!("{q}&window=notch"))
             .unwrap_or_else(|| "window=notch".into());
         url.set_query(Some(&query));
-        return Ok(PageSource::Dev { url: url.to_string() });
+        return Ok(PageSource::Dev {
+            url: url.to_string(),
+        });
     }
 
     let resource_dir = app
@@ -141,7 +146,10 @@ fn resolve_page_source(app: &AppHandle<AppRuntime>) -> Result<PageSource, String
                 .parent()
                 .map(|p| p.to_path_buf())
                 .unwrap_or_else(|| resource_dir.clone());
-            return Ok(PageSource::Bundled { index_html: candidate, root });
+            return Ok(PageSource::Bundled {
+                index_html: candidate,
+                root,
+            });
         }
     }
     Err(format!(
@@ -282,7 +290,10 @@ unsafe fn build_webview(
                 };
                 let ns_url_str = NSString::from_str(file_url.as_str());
                 let read_access_str = NSString::from_str(read_access_url.as_str());
-                match (NSURL::URLWithString(&ns_url_str), NSURL::URLWithString(&read_access_str)) {
+                match (
+                    NSURL::URLWithString(&ns_url_str),
+                    NSURL::URLWithString(&read_access_str),
+                ) {
                     (Some(ns_url), Some(read_access_ns)) => {
                         let _ =
                             webview.loadFileURL_allowingReadAccessToURL(&ns_url, &read_access_ns);
@@ -294,7 +305,8 @@ unsafe fn build_webview(
                     }
                     _ => log::warn!(
                         "[notch-window] could not parse bundled file URLs index={} root={}",
-                        file_url, read_access_url
+                        file_url,
+                        read_access_url
                     ),
                 }
             }

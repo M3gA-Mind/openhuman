@@ -28,14 +28,14 @@ mod local_data_reset;
 mod loopback_oauth;
 #[cfg(target_os = "macos")]
 mod mascot_native_window;
-#[cfg(target_os = "macos")]
-mod notch_window;
 mod mcp_commands;
 mod meet_audio;
 mod meet_call;
 mod meet_scanner;
 mod meet_video;
 mod native_notifications;
+#[cfg(target_os = "macos")]
+mod notch_window;
 mod notification_settings;
 mod process_kill;
 mod process_recovery;
