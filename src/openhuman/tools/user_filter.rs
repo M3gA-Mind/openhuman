@@ -34,6 +34,13 @@ const TOOL_FAMILIES: &[ToolFamily] = &[
         rust_names: &["launch_app"],
         default_enabled: true,
     },
+    // AXUIElement interaction: semantic UI control via macOS Accessibility API.
+    // No CGEventPost, no coordinate dependency, no CEF crash risk.
+    ToolFamily {
+        id: "ax_interact",
+        rust_names: &["ax_interact"],
+        default_enabled: true,
+    },
     // Computer control — mouse and keyboard. Gated by computer_control.enabled
     // in config (tools only register when that flag is true). PermissionLevel::Dangerous
     // so the approval gate fires per-action; user opts in explicitly.

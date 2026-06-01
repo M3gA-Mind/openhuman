@@ -37,12 +37,13 @@ export const TOOL_CATALOG: ToolDefinition[] = [
     rustToolNames: ['launch_app'],
   },
   {
-    id: 'computer_control',
-    displayName: 'Computer Control',
-    description: 'Control mouse and keyboard to interact with any app on screen — click buttons, type in fields, use shortcuts.',
+    id: 'ax_interact',
+    displayName: 'App UI Control',
+    description:
+      'Interact with desktop app UI by element label via the macOS Accessibility API — click buttons, type in fields, without needing screen coordinates.',
     category: 'System',
     defaultEnabled: true,
-    rustToolNames: ['mouse', 'keyboard'],
+    rustToolNames: ['ax_interact'],
   },
   {
     id: 'git_operations',

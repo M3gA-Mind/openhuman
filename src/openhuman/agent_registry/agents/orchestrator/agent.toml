@@ -122,6 +122,11 @@ named = [
     # delegating or telling the user it can't. PermissionLevel::ReadOnly
     # so no approval gate fires regardless of autonomy tier.
     "launch_app",
+    # AXUIElement interaction — click buttons and type in fields by semantic
+    # label via macOS Accessibility API. No CGEventPost, no coordinate
+    # dependency, no CEF crash risk. Always call action='list' first to
+    # discover what elements are available before pressing.
+    "ax_interact",
     # Time + scheduling — lets the orchestrator answer "what time is it",
     # "remind me in 10 minutes", "every morning at 8" directly rather than
     # delegating or telling the user it can't. `current_time` grounds

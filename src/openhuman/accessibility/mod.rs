@@ -6,6 +6,7 @@
 //! instead of owning platform-specific code directly.
 
 mod automation_state;
+pub mod ax_interact;
 mod capture;
 mod focus;
 mod globe;
