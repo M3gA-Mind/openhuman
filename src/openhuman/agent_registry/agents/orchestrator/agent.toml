@@ -122,15 +122,6 @@ named = [
     # delegating or telling the user it can't. PermissionLevel::ReadOnly
     # so no approval gate fires regardless of autonomy tier.
     "launch_app",
-    # Computer control — see the screen, then act on it.
-    # screenshot: capture the current screen so the agent can locate UI
-    #   elements before clicking them (ReadOnly, no approval needed).
-    # mouse / keyboard: click, type, and send hotkeys. PermissionLevel::Dangerous
-    #   so the approval gate fires per-action in Supervised mode.
-    #   Requires computer_control.enabled = true in config.
-    "screenshot",
-    "mouse",
-    "keyboard",
     # Time + scheduling — lets the orchestrator answer "what time is it",
     # "remind me in 10 minutes", "every morning at 8" directly rather than
     # delegating or telling the user it can't. `current_time` grounds
