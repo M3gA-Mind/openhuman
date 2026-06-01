@@ -117,6 +117,11 @@ named = [
     "spawn_worker_thread",
     "spawn_parallel_agents",
     "composio_list_connections",
+    # App launching — lets the orchestrator open desktop applications
+    # directly when asked ("open Music", "launch Spotify", etc.) without
+    # delegating or telling the user it can't. PermissionLevel::ReadOnly
+    # so no approval gate fires regardless of autonomy tier.
+    "launch_app",
     # Time + scheduling — lets the orchestrator answer "what time is it",
     # "remind me in 10 minutes", "every morning at 8" directly rather than
     # delegating or telling the user it can't. `current_time` grounds
