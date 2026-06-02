@@ -107,7 +107,7 @@ export async function openConnectorModal(
   // clicking so the modal opens with connection data already loaded.
   if (waitForTileStatus) {
     try {
-      const statusDeadline = Date.now() + 8_000;
+      const statusDeadline = Date.now() + timeout;
       while (Date.now() < statusDeadline) {
         if (await textExists(waitForTileStatus)) break;
         // @ts-expect-error -- browser global is injected by WDIO at runtime, not typed in this env
