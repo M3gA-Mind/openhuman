@@ -415,7 +415,7 @@ Shipped on the Windows machine (2026-06-02):
 
 **Follow-ups / not done here**
 - **macOS regression check** — the cfg-dispatch is additive (the `#[cfg(target_os="macos")]` arms are untouched; only the non-macOS catch-all message changed), but per the branch note, re-run `cargo check` + the macOS E2E suite on a Mac before merge to prove the Mac path didn't regress (can't be done from the Windows machine).
-- **Agent-in-the-loop run** (E2E item 8) — driving the running chat agent to pick `launch_app`/`ax_interact` by voice/chat still needs a manual run of the full Tauri app.
+- **Agent-in-the-loop run** (E2E item 8) — the full Tauri desktop app was built and run on Windows (`pnpm dev:app:win`) and the in-process core booted fine (verbose `[launch_app]`/`[ax_interact]`/`[uia_interact]` logging wired via `RUST_LOG`). The first chat attempt couldn't complete because the configured **local AI model was still downloading** (`kind="empty_provider_response"` — the agent returned an empty response, so it never reached a tool call). **Still pending:** a working model (finish the local download or select a configured cloud model), then ask the agent "open Calculator" / "press 5 in Calculator" and confirm it picks `launch_app`/`ax_interact` and the action lands.
 - Chromium/Electron UIA coverage, elevation/UIPI behavior, and a busy-app filtered-list check (E2E items 4/6/7) remain to be spot-checked manually.
 
 ---
