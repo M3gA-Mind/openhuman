@@ -122,4 +122,3 @@ pub fn ax_set_field_value(app_name: &str, label: &str, value: &str) -> Result<St
         Err("ax_interact is macOS-only".into())
     }
 }
-

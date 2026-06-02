@@ -272,6 +272,87 @@ test ... ok
 
 ---
 
+## Windows port — design notes for app interaction 🪟
+
+Everything in Phase 1 so far is **macOS-only** (it uses the macOS Accessibility API via a Swift helper). This section maps each piece to its Windows equivalent so the same "open app + interact with its UI" feature can be built on Windows. Nothing here is implemented yet — it's the plan for the Windows machine.
+
+### What already works cross-platform
+
+| Capability | macOS (done) | Windows status |
+|---|---|---|
+| Auto-send dictation transcript | TS (`useDictationHotkey`/`Conversations`) | ✅ Already cross-platform (frontend) |
+| Shell allowlist (`open`/`xdg-open`) | `policy_command.rs` | ⚠️ Add `start` / `explorer.exe` to `READ_ONLY_BASES` (see below) |
+| `launch_app` | `open -a` | ⚠️ Already has a Windows branch (`Start-Process`) — verify it resolves app display names |
+| `ax_interact` (list/press/set_value) | AXUIElement Swift helper | ❌ Needs a UI Automation (UIA) backend |
+
+### 1. Launching apps on Windows (`launch_app`)
+
+`launch_app.rs` already has a `#[cfg(target_os = "windows")]` branch using PowerShell `Start-Process "<app_name>"`. Caveats to verify on the Windows machine:
+- `Start-Process "Spotify"` works for apps on PATH or registered App Paths, but **Store/UWP apps** (e.g. the Windows "Media Player", "Spotify" from the Store) need their AUMID: `Start-Process "shell:AppsFolder\<AUMID>"`. Consider enumerating Store apps via `Get-StartApps` (returns Name + AppID) and matching by display name.
+- For URIs (e.g. `spotify:`, `mailto:`), `Start-Process "<uri>"` works the same as macOS `open`.
+
+### 2. App UI interaction (`ax_interact` → UI Automation)
+
+**The Windows analog of macOS AXUIElement is Microsoft UI Automation (UIA)** — the OS-level accessibility tree. It exposes the same concepts:
+
+| macOS AX concept | Windows UIA equivalent |
+|---|---|
+| `AXUIElement` | `IUIAutomationElement` |
+| `kAXRoleAttribute` (AXButton, AXCell…) | `ControlType` (Button, ListItem, Edit, Text…) |
+| `kAXTitleAttribute` / `kAXDescriptionAttribute` | `Name` property (+ `AutomationId`, `HelpText`) |
+| `AXUIElementPerformAction(kAXPressAction)` | `InvokePattern.Invoke()` (buttons) / `SelectionItemPattern.Select()` (list rows) |
+| `AXUIElementSetAttributeValue(kAXValueAttribute)` | `ValuePattern.SetValue()` (text fields) |
+| `AXUIElementCopyAttributeValue(kAXChildrenAttribute)` | `TreeWalker` / `FindAll(TreeScope.Descendants, …)` |
+| Walk tree from app PID | `IUIAutomation.ElementFromHandle(hwnd)` or root + `ProcessId` condition |
+
+**Recommended implementation path (Rust-native, no helper process needed):**
+- Use the [`uiautomation`](https://crates.io/crates/uiautomation) crate (safe Rust bindings over the UIA COM API). This is cleaner than macOS, where we had to shell out to a Swift helper — on Windows the COM API is callable directly from Rust.
+- Mirror the existing `accessibility::ax_interact` surface so the **tool stays identical**:
+  - `list(app, filter)` → `CreateTreeWalker` over the app's window, collect elements whose `Name` matches `filter`, return `[{control_type, name}]`.
+  - `press(app, label)` → find element by `Name` (exact-first), then call `InvokePattern` if supported, else `SelectionItemPattern.Select()`, else `LegacyIAccessiblePattern.DoDefaultAction()`.
+  - `set_value(app, label, value)` → find `Edit`/`ComboBox`, call `ValuePattern.SetValue()`.
+- **Key win over macOS:** UIA Invoke is generally a real "activate" (it triggers the control's default action), so the navigate-then-activate two-step that plagued Apple Music is less likely. A list-item Invoke on most Windows media apps plays directly. Still expect per-app quirks.
+
+**Suggested module layout (parallel to macOS):**
+```
+src/openhuman/accessibility/
+  ax_interact.rs          # macOS (existing)
+  uia_interact.rs         # NEW — Windows UIA backend, same fn signatures
+  mod.rs                  # cfg-dispatch: pub use the right backend per-OS
+```
+Then `tools/impl/computer/ax_interact.rs` calls a thin cfg-gated facade so the **agent-facing tool is one tool on both platforms** (same name `ax_interact`, same actions). Update its description to be OS-neutral ("uses the platform accessibility API").
+
+### 3. Permissions
+
+- macOS needs the Accessibility permission. **Windows UIA needs no special permission** for same-session, same-integrity-level apps — a big simplification. Caveat: a non-elevated process can't drive an **elevated** app's UI (UIPI). If the agent must control an elevated app, OpenHuman would need to run elevated too (avoid unless necessary).
+
+### 4. Diagnostics
+
+Keep the same `[ax_interact]`/`[uia_interact]` log prefixes and the verbose step logging (`▶ action`, found-count, press result) — they were essential for diagnosing the macOS flow and will be just as useful on Windows.
+
+### 5. Testing
+
+Port the integration tests using a built-in Windows app that's always present and UIA-friendly:
+- **Calculator** (`calc.exe`) — press digit/operator buttons by Name, read the result `Text` element. Deterministic, no network, ideal smoke test.
+- **Notepad** — `set_value` into the `Edit` control, verify via `ValuePattern.Value`.
+- Media: **Windows Media Player** or the Store **Media Player** for a play test, but expect the same nondeterminism caveat as Apple Music — assert tool-level success, log playback as best-effort.
+
+### 6. Known-different behaviors to watch for
+
+- **Element naming:** Windows apps often populate `AutomationId` (stable) where macOS only had a visible title. Prefer matching `Name`, fall back to `AutomationId`.
+- **Chromium/Electron apps** (Slack, Discord, VS Code, Spotify desktop): on Windows these expose a partial UIA tree by default; some require the app to have accessibility enabled. Same class of limitation as the macOS `chromiumAppPatterns` special-casing already in `helper.rs`.
+- **Focus/foreground:** UIA generally doesn't require foregrounding to read/invoke, like macOS AX. No CGEventPost-style CEF crash risk because UIA Invoke is not synthetic input injection.
+
+### Quick start for the Windows machine
+
+1. `launch_app` should already work — test `"open notepad"` / `"open calculator"` first.
+2. Add `"start"` to `READ_ONLY_BASES` in `policy_command.rs` (Windows shell launcher) alongside `open`/`xdg-open`.
+3. Build `uia_interact.rs` against the `uiautomation` crate, mirroring the three `ax_interact` fns.
+4. cfg-dispatch in `accessibility/mod.rs` so `ax_interact` the tool resolves to UIA on Windows.
+5. Smoke-test with Calculator (deterministic), then a media app (best-effort).
+
+---
+
 ## Phase 2 — Always-On Listening ⏳ Not Started
 
 > Continuous microphone listening without requiring a hotkey press.

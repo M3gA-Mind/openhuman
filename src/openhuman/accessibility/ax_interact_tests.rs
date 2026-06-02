@@ -129,7 +129,10 @@ fn test_full_flow_search_and_play_acdc() {
         .output()
         .expect("osascript player state failed");
     let state_str = String::from_utf8_lossy(&state.stdout);
-    println!("[step 6] player state (best-effort, not asserted): {}", state_str.trim());
+    println!(
+        "[step 6] player state (best-effort, not asserted): {}",
+        state_str.trim()
+    );
 }
 
 #[test]
