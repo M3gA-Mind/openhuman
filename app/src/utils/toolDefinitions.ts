@@ -40,7 +40,7 @@ export const TOOL_CATALOG: ToolDefinition[] = [
     id: 'ax_interact',
     displayName: 'App UI Control',
     description:
-      'Interact with desktop app UI by element label via the macOS Accessibility API — click buttons, type in fields, without needing screen coordinates.',
+      'Interact with desktop app UI by element label via the platform accessibility API — click buttons, type in fields, without needing screen coordinates.',
     category: 'System',
     defaultEnabled: true,
     rustToolNames: ['ax_interact'],

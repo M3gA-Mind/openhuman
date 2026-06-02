@@ -103,7 +103,7 @@ A transparent NSPanel pill at the top of the primary screen (the macOS notch are
 - `src/openhuman/agent_registry/agents/orchestrator/agent.toml` — added `"launch_app"` to the `[tools] named` list, alongside `"current_time"` (same pattern: direct answer without delegation)
 
 **Confirmed working via logs:**
-```
+```text
 visible=25, names=[..., launch_app, ...]
 [launch_app] ▶ execute called  app_name="Music"
 [launch_app] macOS: running `open -a "Music"`
@@ -219,10 +219,10 @@ visible=25, names=[..., launch_app, ...]
 
 **Fix:**
 - `src/openhuman/agent/prompts/SOUL.md` — replaced the Apple Music guidance with the exact 5-step sequence: URL-scheme search → list → press song row (navigates in) → list detail page → press detail-page Play. Explicitly warns that pressing a search result only navigates, and the second Play press is mandatory.
-- `src/openhuman/accessibility/ax_interact_tests.rs` — `test_full_flow_search_and_play_acdc` now asserts real playback via `osascript ... get player state` == "playing" (not just element presence). **Passes.**
+- `src/openhuman/accessibility/ax_interact_tests.rs` — `test_full_flow_search_and_play_acdc` exercises the full navigate-then-play flow and **logs** the `osascript ... get player state` outcome. Playback is **best-effort, not hard-asserted** (Apple Music's UI is nondeterministic — see change 1.13); the test hard-asserts only the tool-level press/list successes.
 
 **Verified:**
-```
+```text
 [step 4] navigate into song: Ok("Pressed 'Highway to Hell' in 'Music'.")
 [step 5] press detail Play: Ok("Pressed 'Play' in 'Music'.")
 [step 6] player state: playing
@@ -245,7 +245,7 @@ test ... ok
 - `src/openhuman/tools/impl/computer/play_music.rs` (new) — `PlayMusicTool`, single call `play_music{query}`, `PermissionLevel::ReadOnly`, runs the blocking flow via `spawn_blocking`
 - Registered in `ops.rs`, `user_filter.rs`, `orchestrator/agent.toml`, `toolDefinitions.ts`
 
-**Result:** Agent calls `play_music{query:'Highway to Hell AC/DC'}` **once**; Rust does search→navigate→play→verify deterministically. No shell dependency, no multi-step LLM orchestration, no filter-field fallback. Unit tests pass; the underlying flow is verified by `test_full_flow_search_and_play_acdc`.
+**Result:** Agent calls `play_music{query:'Highway to Hell AC/DC'}` **once**; Rust does search→navigate→play. No shell dependency, no multi-step LLM orchestration, no filter-field fallback. Unit tests pass; the underlying flow is exercised by `test_full_flow_search_and_play_acdc` (tool-level success hard-asserted, playback best-effort). **Note:** `play_music` was later removed in change 1.13 in favour of the generic `ax_interact` tool — this entry documents the investigation that led there.
 
 **Key learning:** The orchestrator (chat agent) only reads **tool descriptions + agent.toml** — NOT SOUL.md (omit_identity=true). Behavior guidance for the chat agent must live in tool descriptions or be encapsulated in the tool itself.
 
@@ -320,7 +320,7 @@ shipped and the test evidence.
 - **Key win over macOS:** UIA Invoke is generally a real "activate" (it triggers the control's default action), so the navigate-then-activate two-step that plagued Apple Music is less likely. A list-item Invoke on most Windows media apps plays directly. Still expect per-app quirks.
 
 **Suggested module layout (parallel to macOS):**
-```
+```text
 src/openhuman/accessibility/
   ax_interact.rs          # macOS (existing)
   uia_interact.rs         # NEW — Windows UIA backend, same fn signatures
@@ -475,7 +475,7 @@ Shipped on the Windows machine (2026-06-02):
 | 1 | Computer control (mouse/keyboard) | ❌ Reverted (CEF crash) |
 | 1 | AXUIElement app UI interaction (`ax_interact`) | ✅ Done |
 | 1 | Multi-step UI workflow guidance | ✅ Done |
-| 1 | Apple Music two-step play (navigate→play) | ✅ Done (playback verified) |
+| 1 | Apple Music two-step play (navigate→play) | ✅ Done (playback best-effort) |
 | 2 | Always-on microphone loop | ⏳ Not started |
 | 2 | `always_on_enabled` config flag | ⏳ Not started |
 | 2 | Privacy hook (screen lock pause) | ⏳ Not started |

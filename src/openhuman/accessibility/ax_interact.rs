@@ -71,7 +71,14 @@ pub fn ax_list_elements_filtered(app_name: &str, filter: &str) -> Result<Vec<AXE
 }
 
 /// Press the first UI element in `app_name` whose label contains `label` (case-insensitive).
+///
+/// Rejects a blank `label`: with an empty needle the helper's `contains`
+/// match degenerates to match-all and would press the first named control it
+/// finds. Guard here rather than trusting every caller to pre-validate.
 pub fn ax_press_element(app_name: &str, label: &str) -> Result<String, String> {
+    if label.trim().is_empty() {
+        return Err("label must not be empty for press".into());
+    }
     #[cfg(target_os = "macos")]
     {
         let req = serde_json::json!({

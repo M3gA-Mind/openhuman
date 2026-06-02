@@ -203,22 +203,34 @@ async fn launch_macos(app_name: &str) -> Result<String, String> {
 
 #[cfg(target_os = "linux")]
 async fn launch_linux(app_name: &str) -> Result<String, String> {
-    // Try gtk-launch first (uses .desktop file names, e.g. "spotify").
-    let gtk = tokio::process::Command::new("gtk-launch")
-        .arg(app_name)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .await;
+    // `gtk-launch` takes a .desktop file ID (e.g. "google-chrome"), NOT a
+    // human-readable display name ("Google Chrome"). Try the name as given
+    // first, then a best-effort desktop-id derived from the display name
+    // (lowercased, spaces → hyphens). `xdg-open` does NOT launch apps by
+    // name — it only opens URIs/paths in the default handler — so it's a
+    // last resort for app_name values that happen to be a URI.
+    let desktop_id = app_name.to_lowercase().replace(' ', "-");
+    let mut candidates = vec![app_name.to_string()];
+    if desktop_id != app_name {
+        candidates.push(desktop_id);
+    }
 
-    if let Ok(s) = gtk {
-        if s.success() {
-            return Ok(format!("Opened '{app_name}'."));
+    for candidate in &candidates {
+        let gtk = tokio::process::Command::new("gtk-launch")
+            .arg(candidate)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await;
+        if let Ok(s) = gtk {
+            if s.success() {
+                return Ok(format!("Opened '{app_name}'."));
+            }
         }
     }
 
-    // Fallback: xdg-open (handles URIs and some app names).
+    // Fallback for URI-shaped inputs only (xdg-open won't resolve app names).
     let xdg = tokio::process::Command::new("xdg-open")
         .arg(app_name)
         .stdin(Stdio::null())
@@ -232,7 +244,9 @@ async fn launch_linux(app_name: &str) -> Result<String, String> {
         Ok(format!("Opened '{app_name}'."))
     } else {
         Err(format!(
-            "Could not find app '{app_name}' via gtk-launch or xdg-open"
+            "Could not launch '{app_name}' on Linux. gtk-launch needs a .desktop \
+             ID (e.g. 'google-chrome'); xdg-open only opens URIs/paths, not app names. \
+             Try the .desktop ID, or supply a URI."
         ))
     }
 }

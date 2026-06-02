@@ -95,10 +95,31 @@ impl Tool for AxInteractTool {
     }
 
     fn permission_level(&self) -> PermissionLevel {
-        // AXUIElement actions are semantic and targeted — much safer than
-        // raw CGEventPost. ReadOnly permission means no approval gate fires,
-        // keeping the voice-command flow smooth.
+        // Minimum across actions: `list` is read-only. The per-call level
+        // (Dangerous for press/set_value) is enforced by
+        // `permission_level_with_args`. Returning the minimum here keeps the
+        // tool available on channels that can run the read-only `list`.
         PermissionLevel::ReadOnly
+    }
+
+    fn permission_level_with_args(&self, args: &serde_json::Value) -> PermissionLevel {
+        match args.get("action").and_then(|v| v.as_str()) {
+            // `list` only reads the AX tree — no state change.
+            Some("list") | None => PermissionLevel::ReadOnly,
+            // `press` / `set_value` actuate real controls (click buttons,
+            // type into fields) and change application state, so they must
+            // not ride on the read-only path.
+            _ => PermissionLevel::Dangerous,
+        }
+    }
+
+    fn external_effect_with_args(&self, args: &serde_json::Value) -> bool {
+        // Route mutating actions through the ApprovalGate before execute();
+        // `list` is a pure read and flows through unprompted.
+        !matches!(
+            args.get("action").and_then(|v| v.as_str()),
+            Some("list") | None
+        )
     }
 
     async fn execute(&self, args: serde_json::Value) -> anyhow::Result<ToolResult> {

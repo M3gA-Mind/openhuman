@@ -146,6 +146,11 @@ fn test_ax_set_search_field() {
     sleep(Duration::from_secs(2));
     let result = ax_set_field_value("Music", "Search", "Bollywood");
     println!("set_value Search=Bollywood: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Expected the Search field to accept text: {:?}",
+        result
+    );
 }
 
 #[test]

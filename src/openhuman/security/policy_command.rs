@@ -511,12 +511,13 @@ const READ_ONLY_BASES: &[&str] = &[
     "lsblk",
     "lscpu",
     "cut",
-    // OS-native application launchers. These open apps or files in the
-    // default viewer — they don't modify the workspace, so they're Read-class
-    // and run without an approval prompt in Supervised mode.
-    "open",     // macOS: `open -a Music`, `open -b com.apple.Safari`
-    "xdg-open", // Linux: `xdg-open music://`, `xdg-open file.pdf`
-    "start",    // Windows shell launcher: `start notepad`, `start spotify:`
+    // NOTE: OS-native launchers (`open`, `xdg-open`, `start`) are deliberately
+    // NOT in the read-only set. `classify_command` only sees the base command,
+    // not its args, and these launchers can open arbitrary `https://` URLs and
+    // custom URI handlers — i.e. trigger outbound network / system actions — so
+    // treating them as `Read` (no approval) is too broad. App launching now
+    // goes through the dedicated `launch_app` tool, which is scoped to named
+    // applications only and carries no shell-arg ambiguity.
     // Windows cmd / PowerShell read verbs + common aliases
     "dir",
     "type",
