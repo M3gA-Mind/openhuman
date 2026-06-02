@@ -6,6 +6,11 @@ compile_error!("src-tauri host supports desktop (Windows/macOS/Linux) only. Mobi
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod artifact_commands;
 mod cdp;
+// macOS/Linux only: depends on the `nix` crate (a `cfg(unix)` dependency) and
+// resolves a platform cache path that is only defined for those targets. On
+// Windows it must not be compiled — see issue: Windows release build failed
+// with E0433 (`nix` unresolved) + E0425 (`cache_path` undefined).
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod cef_preflight;
 mod cef_profile;
 mod companion_commands;
