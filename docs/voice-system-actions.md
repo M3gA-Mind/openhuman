@@ -351,6 +351,38 @@ Port the integration tests using a built-in Windows app that's always present an
 4. cfg-dispatch in `accessibility/mod.rs` so `ax_interact` the tool resolves to UIA on Windows.
 5. Smoke-test with Calculator (deterministic), then a media app (best-effort).
 
+### Cross-platform compatibility audit (current state)
+
+Every Phase 1 change was written to **compile on all platforms** — nothing here breaks the Windows build. macOS-specific native code is `#[cfg(target_os = "macos")]`-gated and the non-macOS branches return a clean `"…macOS-only"` error at runtime rather than failing to build.
+
+| Change | Cross-platform status | Notes for Windows |
+|---|---|---|
+| Auto-send dictation transcript (TS) | ✅ Fully portable | Pure frontend; no OS code. Works as-is. |
+| `launch_app` | ✅ Has `macos` / `linux` / `windows` branches | Windows branch uses `Start-Process`; **verify it resolves display names + Store apps** (see §1 above). |
+| `ax_interact` **tool** (`tools/impl/computer/ax_interact.rs`) | ✅ Compiles everywhere (no cfg gate) | Delegates to `accessibility::ax_interact` fns, which currently return `"ax_interact is macOS-only"` on Windows. Build the UIA backend (§2) to make it functional. |
+| `accessibility::ax_interact` helpers | ⚠️ macOS-gated | The `#[cfg(not(target_os="macos"))]` arms return errors today. Add `uia_interact.rs` + cfg-dispatch. |
+| Swift unified helper (`accessibility/helper.rs`) | ⚠️ macOS-only by design | Windows needs no helper process — UIA COM API is called directly from Rust. |
+| Shell allowlist (`open`/`xdg-open`) | ⚠️ Needs one line | **Add `"start"`** to `READ_ONLY_BASES` in `policy_command.rs` for the Windows shell launcher. |
+| Notch indicator (separate PR #3166) | ⚠️ macOS NSPanel | A Windows equivalent would be a borderless always-on-top WebView2 window or a tray flyout — out of scope for this branch. |
+
+**Before merging the Windows port, confirm the whole branch still builds and runs on macOS too** (`cargo check` on both `Cargo.toml` and `app/src-tauri/Cargo.toml`) so the cfg-dispatch doesn't regress the working macOS path.
+
+### ⚠️ Mandatory: extensive E2E testing on Windows
+
+The macOS path was hardened only through repeated real-app runs (each bug — CEF crash, select-vs-play, list truncation/hallucination — surfaced only by actually driving live apps, not by unit tests). **Do the same on Windows before considering it done.** Treat the following as the required E2E matrix:
+
+1. **App launch** — `launch_app` for: a Win32 app (Notepad), a Store/UWP app (Media Player / Spotify from Store), and a URI (`spotify:`). Confirm each actually opens.
+2. **Deterministic UI control** — Calculator: `list filter='5'` → `press '5'`, `press '+'`, `press '='`, then read the result element. Assert the computed value. This is the Windows analog of the AC/DC test and should be a **hard-asserted** automated test (Calculator is deterministic).
+3. **Text entry** — Notepad: `set_value` into the Edit control, verify via `ValuePattern.Value`.
+4. **Filtered list correctness** — confirm `list` with a `filter` returns a small, accurate set (the truncation→hallucination bug must not recur; verify the 60-element cap + filter behaves on a busy app like Settings or a browser).
+5. **Real-world app** — drive a media app end-to-end (open → search → play). Assert tool-level success; treat playback state as **best-effort** (same nondeterminism caveat as Apple Music).
+6. **Chromium/Electron app** — Slack/Discord/VS Code: confirm whether their UIA tree is exposed; document any app that needs accessibility explicitly enabled.
+7. **Permissions/elevation** — verify behavior against a normal app vs an elevated one (UIPI boundary); document what fails and why.
+8. **Agent-in-the-loop run** — the real test: ask the running agent (chat) to perform each action and confirm it picks `launch_app` / `ax_interact` and the action lands. Watch `[ax_interact]`/`[launch_app]` logs exactly as we did on macOS.
+9. **Regression** — re-run the macOS E2E suite after the Windows changes land to prove cfg-dispatch didn't break the Mac path.
+
+Add the deterministic ones (Calculator, Notepad, launch) as `#[cfg(target_os = "windows")]` `#[ignore]` integration tests mirroring `ax_interact_tests.rs`, runnable with `cargo test ... -- --include-ignored` on the Windows machine.
+
 ---
 
 ## Phase 2 — Always-On Listening ⏳ Not Started
