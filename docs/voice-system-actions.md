@@ -272,9 +272,15 @@ test ... ok
 
 ---
 
-## Windows port — design notes for app interaction 🪟
+## Windows port — app interaction 🪟 ✅ Implemented
 
-Everything in Phase 1 so far is **macOS-only** (it uses the macOS Accessibility API via a Swift helper). This section maps each piece to its Windows equivalent so the same "open app + interact with its UI" feature can be built on Windows. Nothing here is implemented yet — it's the plan for the Windows machine.
+Phase 1's app-interaction layer is now ported to Windows. The macOS path uses the
+Accessibility API via a Swift helper; the Windows path uses **Microsoft UI
+Automation (UIA)** called directly from Rust (no helper process). The
+agent-facing tool is a single `ax_interact` tool on both platforms — only the
+backend differs, via cfg-dispatch. The sections below were the design plan; see
+**"Windows port — implementation status"** at the end of this part for what
+shipped and the test evidence.
 
 ### What already works cross-platform
 
@@ -358,11 +364,12 @@ Every Phase 1 change was written to **compile on all platforms** — nothing her
 | Change | Cross-platform status | Notes for Windows |
 |---|---|---|
 | Auto-send dictation transcript (TS) | ✅ Fully portable | Pure frontend; no OS code. Works as-is. |
-| `launch_app` | ✅ Has `macos` / `linux` / `windows` branches | Windows branch uses `Start-Process`; **verify it resolves display names + Store apps** (see §1 above). |
-| `ax_interact` **tool** (`tools/impl/computer/ax_interact.rs`) | ✅ Compiles everywhere (no cfg gate) | Delegates to `accessibility::ax_interact` fns, which currently return `"ax_interact is macOS-only"` on Windows. Build the UIA backend (§2) to make it functional. |
-| `accessibility::ax_interact` helpers | ⚠️ macOS-gated | The `#[cfg(not(target_os="macos"))]` arms return errors today. Add `uia_interact.rs` + cfg-dispatch. |
+| `launch_app` | ✅ macOS / Linux / Windows branches | Windows branch now uses `Start-Process` with a **Store/UWP (`Get-StartApps` AUMID) fallback** and injection-safe env passing (§1). |
+| `ax_interact` **tool** (`tools/impl/computer/ax_interact.rs`) | ✅ Functional on Windows | Delegates to `accessibility::ax_interact` fns, which now cfg-dispatch to the UIA backend on Windows. Description made OS-neutral. |
+| `accessibility::ax_interact` helpers | ✅ cfg-dispatched | macOS → Swift helper; Windows → `uia_interact.rs`; other → clean runtime error. |
+| `accessibility::uia_interact` (NEW) | ✅ Windows backend | UIA `list`/`press`/`set_value` via the `uiautomation` crate; same fn signatures as the macOS path. |
 | Swift unified helper (`accessibility/helper.rs`) | ⚠️ macOS-only by design | Windows needs no helper process — UIA COM API is called directly from Rust. |
-| Shell allowlist (`open`/`xdg-open`) | ⚠️ Needs one line | **Add `"start"`** to `READ_ONLY_BASES` in `policy_command.rs` for the Windows shell launcher. |
+| Shell allowlist (`open`/`xdg-open`) | ✅ Done | `"start"` added to `READ_ONLY_BASES` in `policy_command.rs`. |
 | Notch indicator (separate PR #3166) | ⚠️ macOS NSPanel | A Windows equivalent would be a borderless always-on-top WebView2 window or a tray flyout — out of scope for this branch. |
 
 **Before merging the Windows port, confirm the whole branch still builds and runs on macOS too** (`cargo check` on both `Cargo.toml` and `app/src-tauri/Cargo.toml`) so the cfg-dispatch doesn't regress the working macOS path.
@@ -382,6 +389,34 @@ The macOS path was hardened only through repeated real-app runs (each bug — CE
 9. **Regression** — re-run the macOS E2E suite after the Windows changes land to prove cfg-dispatch didn't break the Mac path.
 
 Add the deterministic ones (Calculator, Notepad, launch) as `#[cfg(target_os = "windows")]` `#[ignore]` integration tests mirroring `ax_interact_tests.rs`, runnable with `cargo test ... -- --include-ignored` on the Windows machine.
+
+### Windows port — implementation status ✅
+
+Shipped on the Windows machine (2026-06-02):
+
+**Code**
+- `Cargo.toml` — `uiautomation = "0.25"` under `[target.'cfg(windows)'.dependencies]`; `Win32_System_Com` feature added to `windows-sys` for COM init.
+- `src/openhuman/accessibility/uia_interact.rs` (**new**) — UIA backend. `list` / `press` / `set_value` over the UIA COM tree via the `uiautomation` crate, mirroring the macOS `ax_interact` fn signatures. `press` activates via UIA patterns in order — `Invoke` → `SelectionItem.Select` → `LegacyIAccessible.DoDefaultAction` — never injecting synthetic input. `set_value` finds an editable field, preferring `Edit`, then `ComboBox`, then `Document` (so the Win11 RichEdit Notepad, whose editor is a `Document`, works). Exact-label match preferred over substring. Per-thread COM init via `CoInitializeEx(MTA)`.
+- `src/openhuman/accessibility/ax_interact.rs` — the three public helpers now cfg-dispatch: macOS → Swift helper, Windows → `uia_interact`, else → clean runtime error. Module + tool docs made OS-neutral.
+- `src/openhuman/accessibility/mod.rs` — declares `uia_interact` (cfg-gated to Windows).
+- `src/openhuman/tools/impl/computer/ax_interact.rs` — description rewritten to be platform-neutral ("platform accessibility API (macOS AXUIElement / Windows UI Automation)").
+- `src/openhuman/tools/impl/system/launch_app.rs` — Windows launcher hardened: app name passed via env var (no string interpolation → no injection), `Start-Process` first, then Store/UWP fallback by display name via `Get-StartApps` → AUMID (`shell:AppsFolder\<AppID>`); stderr surfaced on failure.
+- `src/openhuman/security/policy_command.rs` — `"start"` added to `READ_ONLY_BASES`.
+- `src/openhuman/accessibility/uia_interact_tests.rs` (**new**) — `#[cfg(all(test, target_os = "windows"))]` integration tests, wired into `ax_interact.rs`.
+
+**Test evidence (real apps on Windows 11)**
+- `test_uia_calculator_five_plus_five` ✅ — drove the live Calculator entirely by element label: `list` → 41 interactive elements; pressed `Five`/`Plus`/`Five`/`Equals`; **hard-asserted** the readout `[Text] "Display is 10"` (5 + 5 = 10). Deterministic — the Windows analogue of the macOS AC/DC test.
+- `test_uia_notepad_set_value` ✅ — `set_value` wrote into the live Win11 Notepad's `Document` "Text editor" (`Ok("Set 'Text editor' in 'Notepad' to the provided value.")`). The `Document` fallback is what makes the redesigned Notepad work.
+- `test_uia_list_nonexistent_app` ✅ (non-ignored) — exercises COM init + window walk + error path deterministically.
+- `launch_app` (×8) and `ax_interact` tool (×4) unit tests ✅.
+- Full `cargo test --lib --no-run` compiles clean on Windows (warnings only, all pre-existing).
+
+**Environment gotcha (this machine):** Norton real-time protection blocks `link.exe` from writing the freshly-linked ~150 MB test `.exe` (LNK1104, "Access denied" creating the file). Fix: exclude the repo's `target` dir under Norton's **Auto-Protect / SONAR / Download Intelligence** exclusion list (not the separate "Scans" list), and restore the file from Quarantine if already flagged.
+
+**Follow-ups / not done here**
+- **macOS regression check** — the cfg-dispatch is additive (the `#[cfg(target_os="macos")]` arms are untouched; only the non-macOS catch-all message changed), but per the branch note, re-run `cargo check` + the macOS E2E suite on a Mac before merge to prove the Mac path didn't regress (can't be done from the Windows machine).
+- **Agent-in-the-loop run** (E2E item 8) — driving the running chat agent to pick `launch_app`/`ax_interact` by voice/chat still needs a manual run of the full Tauri app.
+- Chromium/Electron UIA coverage, elevation/UIPI behavior, and a busy-app filtered-list check (E2E items 4/6/7) remain to be spot-checked manually.
 
 ---
 

@@ -1,16 +1,19 @@
-//! Tool: ax_interact — interact with desktop app UI via the macOS Accessibility API.
+//! Tool: ax_interact — interact with desktop app UI via the OS accessibility API.
 //!
-//! Uses AXUIElement (not CGEvent/enigo) so it:
-//!   - Never crashes CEF (no synthetic key/mouse events injected system-wide)
-//!   - Works regardless of which app is focused
-//!   - Finds elements by semantic label, not pixel coordinates
+//! Cross-platform: macOS uses AXUIElement (Swift helper), Windows uses UI
+//! Automation (UIA COM API). Both back-ends:
+//!   - Never crash CEF (no synthetic key/mouse events injected system-wide)
+//!   - Work regardless of which app is focused
+//!   - Find elements by semantic label, not pixel coordinates
 //!
 //! Three actions:
 //!   list       — enumerate interactive elements in a running app
 //!   press      — activate a button/control by label
 //!   set_value  — type text into a field by label
 //!
-//! Requires: macOS Accessibility permission granted to OpenHuman.
+//! Requires: macOS Accessibility permission granted to OpenHuman. On Windows no
+//! special permission is needed for same-integrity-level apps (UIPI blocks
+//! driving an elevated app from a non-elevated process).
 
 use crate::openhuman::accessibility::ax_interact as ax;
 use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
@@ -38,10 +41,10 @@ impl Tool for AxInteractTool {
     }
 
     fn description(&self) -> &str {
-        "Interact with ANY desktop application's UI using the macOS Accessibility API \
-         (AXUIElement). Finds buttons, text fields, list rows, and controls by their label — \
-         no screen coordinates, no synthetic key/mouse events. Works for any app: Music, \
-         Safari, Mail, Notes, Slack, System Settings, etc.\n\
+        "Interact with ANY desktop application's UI using the platform accessibility API \
+         (macOS AXUIElement / Windows UI Automation). Finds buttons, text fields, list rows, \
+         and controls by their label — no screen coordinates, no synthetic key/mouse events. \
+         Works for any app: a music player, browser, mail, notes, Slack, system settings, etc.\n\
          \n\
          Actions:\n\
          • 'list' → show interactive elements. ALWAYS pass a `filter` substring to narrow \
@@ -57,7 +60,8 @@ impl Tool for AxInteractTool {
          song's page, press its 'Play' button). If a press doesn't have the intended effect, \
          `list` again to see the new screen and press the actual action control.\n\
          \n\
-         Requires macOS Accessibility permission for OpenHuman."
+         On macOS this requires Accessibility permission for OpenHuman; on Windows no special \
+         permission is needed for normal (non-elevated) apps."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {

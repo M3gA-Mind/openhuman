@@ -1,16 +1,25 @@
-//! AXUIElement interaction helpers — list, press, and set-value for named apps.
+//! Accessibility interaction helpers — list, press, and set-value for named apps.
 //!
-//! Delegates to the unified Swift helper (`helper.rs`) which walks the AX tree
-//! without injecting synthetic events (unlike enigo/CGEventPost). Works even
-//! when OpenHuman is not the focused application, and never crashes CEF.
+//! Cross-platform facade over the OS accessibility tree. Each public fn
+//! cfg-dispatches to the right backend:
+//!   - macOS:   the unified Swift helper (`helper.rs`), which walks the AX tree
+//!              without injecting synthetic events (unlike enigo/CGEventPost).
+//!              Works even when OpenHuman is not focused, and never crashes CEF.
+//!   - Windows: the UI Automation backend (`uia_interact.rs`), which drives the
+//!              UIA COM tree directly — same "no synthetic input" guarantee.
 //!
-//! macOS only. Non-macOS builds return `Err("ax_interact is macOS-only")`.
+//! Other platforms return a clean runtime error. The agent-facing `ax_interact`
+//! tool is a single tool on every platform; only the backend differs.
 
 use serde::Deserialize;
 
 #[cfg(test)]
 #[path = "ax_interact_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "uia_interact_tests.rs"]
+mod uia_tests;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct AXElement {
@@ -50,10 +59,14 @@ pub fn ax_list_elements_filtered(app_name: &str, filter: &str) -> Result<Vec<AXE
         }
         return Ok(elements);
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        return super::uia_interact::list(app_name, filter);
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (app_name, filter);
-        Err("ax_interact is macOS-only".into())
+        Err("ax_interact is supported on macOS and Windows only".into())
     }
 }
 
@@ -81,10 +94,14 @@ pub fn ax_press_element(app_name: &str, label: &str) -> Result<String, String> {
             .to_string();
         return Ok(format!("Pressed '{pressed}' in '{app_name}'."));
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        return super::uia_interact::press(app_name, label);
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (app_name, label);
-        Err("ax_interact is macOS-only".into())
+        Err("ax_interact is supported on macOS and Windows only".into())
     }
 }
 
@@ -116,9 +133,13 @@ pub fn ax_set_field_value(app_name: &str, label: &str, value: &str) -> Result<St
             "Set '{field}' in '{app_name}' to the provided value."
         ));
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        return super::uia_interact::set_value(app_name, label, value);
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         let _ = (app_name, label, value);
-        Err("ax_interact is macOS-only".into())
+        Err("ax_interact is supported on macOS and Windows only".into())
     }
 }

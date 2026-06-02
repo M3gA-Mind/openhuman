@@ -516,6 +516,7 @@ const READ_ONLY_BASES: &[&str] = &[
     // and run without an approval prompt in Supervised mode.
     "open",     // macOS: `open -a Music`, `open -b com.apple.Safari`
     "xdg-open", // Linux: `xdg-open music://`, `xdg-open file.pdf`
+    "start",    // Windows shell launcher: `start notepad`, `start spotify:`
     // Windows cmd / PowerShell read verbs + common aliases
     "dir",
     "type",

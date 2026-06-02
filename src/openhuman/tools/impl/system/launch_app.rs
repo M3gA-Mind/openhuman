@@ -239,23 +239,56 @@ async fn launch_linux(app_name: &str) -> Result<String, String> {
 
 #[cfg(target_os = "windows")]
 async fn launch_windows(app_name: &str) -> Result<String, String> {
-    let status = tokio::process::Command::new("powershell")
-        .args([
-            "-NoProfile",
-            "-Command",
-            &format!("Start-Process '{app_name}'"),
-        ])
+    // The app name is passed through an env var (`OH_LAUNCH_APP`) and never
+    // string-interpolated into the script, so a name containing a quote cannot
+    // break out of the command. `validate_app_name` already blocks shell
+    // metacharacters; the static script + env passing is belt-and-suspenders.
+    //
+    // Resolution order:
+    //   1. `Start-Process -FilePath <name>` — resolves PATH executables,
+    //      registered App Paths (e.g. "Spotify" desktop), and URIs ("spotify:").
+    //   2. Fallback for Store/UWP apps that have no plain exe: match by display
+    //      name via `Get-StartApps` and launch by AUMID
+    //      (`shell:AppsFolder\<AppID>`), e.g. the Store "Media Player".
+    const PS_LAUNCH: &str = "\
+        $ErrorActionPreference='Stop'; \
+        $n=$env:OH_LAUNCH_APP; \
+        try { Start-Process -FilePath $n } \
+        catch { \
+          $app = Get-StartApps | Where-Object { $_.Name -like \"*$n*\" } | Select-Object -First 1; \
+          if ($app) { Start-Process -FilePath ('shell:AppsFolder\\' + $app.AppID) } \
+          else { throw } \
+        }";
+
+    log::info!(
+        "[launch_app] windows: launching app_name={app_name:?} (Start-Process, Store fallback)"
+    );
+
+    let output = tokio::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", PS_LAUNCH])
+        .env("OH_LAUNCH_APP", app_name)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
+        .stderr(Stdio::piped())
+        .output()
         .await
         .map_err(|e| format!("failed to invoke PowerShell: {e}"))?;
 
-    if status.success() {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    log::info!(
+        "[launch_app] windows: exit={} stderr={}",
+        output.status,
+        stderr.trim()
+    );
+
+    if output.status.success() {
         Ok(format!("Opened '{app_name}'."))
+    } else if stderr.trim().is_empty() {
+        Err(format!(
+            "could not open '{app_name}' (Start-Process and Store-app lookup both failed)"
+        ))
     } else {
-        Err(format!("Start-Process '{app_name}' failed"))
+        Err(format!("could not open '{app_name}': {}", stderr.trim()))
     }
 }
 
