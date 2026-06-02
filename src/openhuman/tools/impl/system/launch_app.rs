@@ -1,9 +1,15 @@
 //! Tool: launch_app — open a named application on the user's desktop.
 //!
 //! A dedicated, narrow-scope alternative to using the `shell` tool with
-//! `open -a <App>` / `xdg-open` / `Start-Process`. Because it only launches
-//! named applications it carries no shell injection risk, does not require
-//! `workspace_only = false`, and is always-allow regardless of autonomy tier.
+//! `open -a <App>` / `xdg-open` / `Start-Process`. It carries no shell
+//! injection risk and accepts **named applications only** (URI schemes like
+//! `spotify:` / `mailto:` are rejected — see `validate_app_name`).
+//!
+//! Being injection-safe does NOT make it side-effect-free: opening an app
+//! window (and, on Linux/Windows, potentially firing a registered URI handler)
+//! is an externally-observable action on the user's machine. So the tool is an
+//! external-effect tool (`external_effect() == true`) and routes through the
+//! `ApprovalGate` before executing, like `shell` — it is NOT always-allow.
 //!
 //! Platform dispatch:
 //!   macOS   — `open -a "<app_name>"` (falls back to `open "<app_name>"`)
@@ -52,7 +58,37 @@ fn validate_app_name(name: &str) -> Result<(), String> {
             return Err(format!("app_name contains disallowed character '{ch}'"));
         }
     }
+    // Reject URI schemes (e.g. `spotify:`, `mailto:`, `slack:`, `https:`). On
+    // Linux/Windows the launcher fallbacks (`xdg-open`/`Start-Process`) would
+    // fire an arbitrary registered URI handler — exactly the ungated
+    // network/system reach that `open`/`xdg-open`/`start` were kept out of
+    // READ_ONLY_BASES to avoid. This tool is "named applications only".
+    if is_uri_scheme(trimmed) {
+        return Err(format!(
+            "app_name '{trimmed}' looks like a URI scheme; this tool launches named \
+             applications only, not URIs/handlers"
+        ));
+    }
     Ok(())
+}
+
+/// True if `s` begins with a URI scheme per RFC 3986: `ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ) ":"`.
+fn is_uri_scheme(s: &str) -> bool {
+    let Some(colon) = s.find(':') else {
+        return false;
+    };
+    if colon == 0 {
+        return false;
+    }
+    let scheme = &s[..colon];
+    let mut chars = scheme.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() => {}
+        _ => return false,
+    }
+    scheme
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
 #[async_trait]
@@ -84,9 +120,16 @@ impl Tool for LaunchAppTool {
     }
 
     fn permission_level(&self) -> PermissionLevel {
-        // Launching an app is a user-initiated, non-destructive, non-persistent
-        // action — treat it as read-only so the approval gate never fires.
-        PermissionLevel::ReadOnly
+        // Launching an app executes a process / opens a window on the user's
+        // machine — an execution-class action, not a read.
+        PermissionLevel::Execute
+    }
+
+    fn external_effect(&self) -> bool {
+        // Opening an application is an externally-observable side effect, so the
+        // harness routes this through the ApprovalGate before execute() — same
+        // contract as `shell`. Not always-allow.
+        true
     }
 
     async fn execute(&self, args: serde_json::Value) -> anyhow::Result<ToolResult> {
@@ -314,7 +357,20 @@ mod tests {
     fn name_and_permission() {
         let tool = LaunchAppTool::new();
         assert_eq!(tool.name(), "launch_app");
-        assert_eq!(tool.permission_level(), PermissionLevel::ReadOnly);
+        // Execution-class + external effect so it routes through the ApprovalGate.
+        assert_eq!(tool.permission_level(), PermissionLevel::Execute);
+        assert!(tool.external_effect());
+    }
+
+    #[test]
+    fn validate_rejects_uri_schemes() {
+        // URI schemes would fire arbitrary registered handlers via the
+        // Linux/Windows launcher fallbacks — reject them (named apps only).
+        assert!(validate_app_name("spotify:track/123").is_err());
+        assert!(validate_app_name("mailto:a@b.com").is_err());
+        assert!(validate_app_name("slack:").is_err());
+        assert!(validate_app_name("https://evil.example").is_err());
+        assert!(validate_app_name("x-custom-scheme:payload").is_err());
     }
 
     #[test]

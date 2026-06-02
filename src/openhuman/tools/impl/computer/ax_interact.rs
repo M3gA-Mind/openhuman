@@ -20,17 +20,48 @@ use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, To
 use async_trait::async_trait;
 use serde_json::json;
 
-pub struct AxInteractTool;
+/// Apps whose UI must never be actuated by the agent. `press` / `set_value`
+/// are refused when `app_name` matches any of these (case-insensitive
+/// substring) — defense-in-depth that holds even on background/auto-approved
+/// turns where the ApprovalGate may not prompt. `list` is also refused so the
+/// agent can't enumerate, e.g., a password manager's fields. Matched by display
+/// name; broad substrings ("keychain", "1password") cover localized variants.
+const SENSITIVE_APPS: &[&str] = &[
+    "keychain",
+    "1password",
+    "bitwarden",
+    "lastpass",
+    "dashlane",
+    "system settings",
+    "system preferences",
+    "terminal",
+    "iterm",
+    "console", // macOS Console (logs)
+];
+
+fn is_sensitive_app(app_name: &str) -> bool {
+    let lower = app_name.to_lowercase();
+    SENSITIVE_APPS.iter().any(|s| lower.contains(s))
+}
+
+pub struct AxInteractTool {
+    /// When false, the mutating actions (`press` / `set_value`) are refused
+    /// with guidance to enable `computer_control.ax_interact_mutations`. The
+    /// read-only `list` action is always available. Mirrors the opt-in posture
+    /// of the mouse/keyboard tools (`computer_control.enabled`).
+    allow_mutations: bool,
+}
 
 impl AxInteractTool {
-    pub fn new() -> Self {
-        Self
+    pub fn new(allow_mutations: bool) -> Self {
+        Self { allow_mutations }
     }
 }
 
 impl Default for AxInteractTool {
     fn default() -> Self {
-        Self::new()
+        // Default to read-only (mutations opt-in) — safe baseline.
+        Self::new(false)
     }
 }
 
@@ -170,6 +201,32 @@ impl Tool for AxInteractTool {
             return Ok(ToolResult::error("app_name is required"));
         }
 
+        let mutating = matches!(action.as_str(), "press" | "set_value");
+
+        // Denylist: never actuate or enumerate sensitive apps (password
+        // managers, Keychain, System Settings, terminals). Defense-in-depth
+        // that holds even when the ApprovalGate doesn't prompt (background /
+        // auto-approved turns).
+        if is_sensitive_app(&app_name) {
+            log::warn!("[ax_interact] refused: sensitive app '{app_name}' (action={action})");
+            return Ok(ToolResult::error(format!(
+                "Refusing to interact with '{app_name}': it is on the sensitive-app denylist \
+                 (password managers, Keychain, System Settings, terminals). This is a hard \
+                 safety boundary."
+            )));
+        }
+
+        // Mutating actions are opt-in. Read-only `list` is always allowed.
+        if mutating && !self.allow_mutations {
+            log::warn!("[ax_interact] refused: mutations disabled (action={action})");
+            return Ok(ToolResult::error(
+                "ax_interact mutations (press/set_value) are disabled. They actuate arbitrary \
+                 app controls and type into arbitrary fields, so they require explicit opt-in: \
+                 set `computer_control.ax_interact_mutations = true`. The read-only 'list' \
+                 action remains available.",
+            ));
+        }
+
         // Cap how many elements we render so a broad/empty filter can't overflow
         // the tool-result budget and cause the model to reason over a truncated view.
         const MAX_LISTED: usize = 60;
@@ -283,22 +340,39 @@ mod tests {
 
     #[test]
     fn name_and_permission() {
-        let tool = AxInteractTool::new();
+        let tool = AxInteractTool::new(true);
         assert_eq!(tool.name(), "ax_interact");
         assert_eq!(tool.permission_level(), PermissionLevel::ReadOnly);
+        // Mutating actions gate per-call.
+        assert_eq!(
+            tool.permission_level_with_args(&json!({"action": "press"})),
+            PermissionLevel::Dangerous
+        );
+        assert!(tool.external_effect_with_args(&json!({"action": "press"})));
+        assert!(!tool.external_effect_with_args(&json!({"action": "list"})));
     }
 
     #[test]
     fn schema_requires_action_and_app_name() {
-        let schema = AxInteractTool::new().parameters_schema();
+        let schema = AxInteractTool::new(true).parameters_schema();
         let required = schema["required"].as_array().unwrap();
         assert!(required.iter().any(|v| v == "action"));
         assert!(required.iter().any(|v| v == "app_name"));
     }
 
+    #[test]
+    fn sensitive_apps_detected() {
+        assert!(is_sensitive_app("Keychain Access"));
+        assert!(is_sensitive_app("1Password 7"));
+        assert!(is_sensitive_app("System Settings"));
+        assert!(is_sensitive_app("Terminal"));
+        assert!(!is_sensitive_app("Music"));
+        assert!(!is_sensitive_app("Safari"));
+    }
+
     #[tokio::test]
     async fn rejects_missing_app_name() {
-        let result = AxInteractTool::new()
+        let result = AxInteractTool::new(true)
             .execute(json!({"action": "list", "app_name": ""}))
             .await
             .unwrap();
@@ -307,10 +381,40 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_press_without_label() {
-        let result = AxInteractTool::new()
+        let result = AxInteractTool::new(true)
             .execute(json!({"action": "press", "app_name": "Music"}))
             .await
             .unwrap();
         assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn refuses_mutations_when_disabled() {
+        // mutations off → press/set_value blocked, but list still allowed past this guard.
+        let tool = AxInteractTool::new(false);
+        let press = tool
+            .execute(json!({"action": "press", "app_name": "Music", "label": "Play"}))
+            .await
+            .unwrap();
+        assert!(press.is_error);
+        assert!(press.output().contains("ax_interact_mutations"));
+    }
+
+    #[tokio::test]
+    async fn refuses_sensitive_app_even_with_mutations() {
+        let tool = AxInteractTool::new(true);
+        for app in [
+            "Keychain Access",
+            "1Password",
+            "Terminal",
+            "System Settings",
+        ] {
+            let r = tool
+                .execute(json!({"action": "press", "app_name": app, "label": "OK"}))
+                .await
+                .unwrap();
+            assert!(r.is_error, "expected refusal for {app}");
+            assert!(r.output().to_lowercase().contains("denylist"));
+        }
     }
 }
