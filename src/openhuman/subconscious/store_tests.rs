@@ -93,7 +93,7 @@ fn apply_journal_mode_falls_back_without_panicking() {
     // drives the fallback branch of `apply_journal_mode`. It must not panic and
     // must leave the connection fully usable for the table DDL.
     let conn = Connection::open_in_memory().unwrap();
-    apply_journal_mode(&conn, Path::new(":memory:"));
+    apply_journal_mode(&conn);
     conn.execute_batch(SCHEMA_DDL).unwrap();
     assert_eq!(get_last_tick_at(&conn).unwrap(), 0.0);
 }

@@ -91,7 +91,7 @@ fn open_and_initialize(db_path: &Path) -> Result<Connection> {
     // (issue #3231 / TAURI-RUST-8WM). WAL is a performance optimization, not a
     // correctness requirement, so degrade to a rollback journal that needs no
     // shared memory rather than failing init.
-    apply_journal_mode(&conn, db_path);
+    apply_journal_mode(&conn);
 
     conn.execute_batch(SCHEMA_DDL)
         .context("failed to run subconscious schema DDL")?;
@@ -116,13 +116,17 @@ fn open_and_initialize(db_path: &Path) -> Result<Connection> {
 /// never propagated: a working rollback journal is strictly better than a
 /// failed schema init, and the caller's DDL/queries work identically either
 /// way.
-fn apply_journal_mode(conn: &Connection, db_path: &Path) {
+///
+/// Logs use a stable `db = "subconscious.db"` identifier rather than the
+/// absolute path — the workspace path embeds the user's home dir / username, so
+/// emitting it would leak PII into the breadcrumb stream.
+fn apply_journal_mode(conn: &Connection) {
     match query_journal_mode(conn, "WAL") {
         Ok(mode) if mode.eq_ignore_ascii_case("wal") => return,
         Ok(mode) => {
             tracing::warn!(
                 target: "openhuman::subconscious::store",
-                db_path = %db_path.display(),
+                db = "subconscious.db",
                 requested = "wal",
                 effective = %mode,
                 "[subconscious::store] WAL journal mode not honoured; falling back to TRUNCATE"
@@ -131,7 +135,7 @@ fn apply_journal_mode(conn: &Connection, db_path: &Path) {
         Err(e) => {
             tracing::warn!(
                 target: "openhuman::subconscious::store",
-                db_path = %db_path.display(),
+                db = "subconscious.db",
                 error = %format!("{e}"),
                 "[subconscious::store] WAL journal mode failed (filesystem can't back -shm); falling back to TRUNCATE"
             );
@@ -141,7 +145,7 @@ fn apply_journal_mode(conn: &Connection, db_path: &Path) {
     if let Err(e) = query_journal_mode(conn, "TRUNCATE") {
         tracing::warn!(
             target: "openhuman::subconscious::store",
-            db_path = %db_path.display(),
+            db = "subconscious.db",
             error = %format!("{e}"),
             "[subconscious::store] TRUNCATE journal fallback also failed; continuing with engine default"
         );

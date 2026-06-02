@@ -450,7 +450,6 @@ fn is_subconscious_schema_unavailable_message(lower: &str) -> bool {
         return false;
     }
     lower.contains("unable to open the database file")
-        || lower.contains("disk i/o error")
         || lower.contains("xshmmap")
         || lower.contains("error code 14")
         || lower.contains("error code 4618")
@@ -1559,12 +1558,15 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
             // Sentry has no remediation path. Demote at `warn!` so a sustained
             // spike still shows in operator dashboards without turning every
             // affected session into a Sentry error event. Drops TAURI-RUST-8WM.
+            // Do not include the raw `message`: it can embed the absolute
+            // subconscious DB path (home dir / username). Mirror the
+            // metadata-only demotions (`DiskFull`, `FilesystemUserPathInvalid`)
+            // and log only domain/operation/kind — no PII in the breadcrumb.
             tracing::warn!(
                 domain = domain,
                 operation = operation,
                 kind = "subconscious_schema_unavailable",
-                error = %message,
-                "[observability] {domain}.{operation} skipped expected subconscious schema DB-unavailable error: {message}"
+                "[observability] {domain}.{operation} skipped expected subconscious schema DB-unavailable error"
             );
         }
     }
