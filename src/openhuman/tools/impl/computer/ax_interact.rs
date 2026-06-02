@@ -34,9 +34,18 @@ const SENSITIVE_APPS: &[&str] = &[
     "dashlane",
     "system settings",
     "system preferences",
+    "console", // macOS Console (logs)
+    // Terminal emulators — mirror the set helper.rs treats as terminals
+    // (helper.rs ~:557) so "terminals are denied" actually holds.
     "terminal",
     "iterm",
-    "console", // macOS Console (logs)
+    "wezterm",
+    "warp",
+    "alacritty",
+    "kitty",
+    "ghostty",
+    "hyper",
+    "rio",
 ];
 
 fn is_sensitive_app(app_name: &str) -> bool {
@@ -366,6 +375,19 @@ mod tests {
         assert!(is_sensitive_app("1Password 7"));
         assert!(is_sensitive_app("System Settings"));
         assert!(is_sensitive_app("Terminal"));
+        // All terminal emulators helper.rs recognizes must also be denied.
+        for t in [
+            "iTerm",
+            "WezTerm",
+            "Warp",
+            "Alacritty",
+            "kitty",
+            "Ghostty",
+            "Hyper",
+            "Rio",
+        ] {
+            assert!(is_sensitive_app(t), "expected '{t}' to be denied");
+        }
         assert!(!is_sensitive_app("Music"));
         assert!(!is_sensitive_app("Safari"));
     }

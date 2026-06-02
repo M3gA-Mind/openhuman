@@ -41,17 +41,13 @@ A transparent NSPanel pill at the top of the primary screen (the macOS notch are
 
 ---
 
-### Change 1.2 — Shell allowlist for app-launching
+### Change 1.2 — Shell allowlist for app-launching — ⚠️ REVERTED / SUPERSEDED
 
-**Status:** ✅ Done  
-**Commit:** `7269f4373`
+**Status:** ❌ Reverted — superseded by Change 1.4 (`launch_app`) and the security review.
 
-**Problem:** `open -a Music` classified as `Write` → triggers approval prompt in Supervised mode.
+**What was tried (commit `7269f4373`):** added `"open"` / `"xdg-open"` to `READ_ONLY_BASES` so `open -a Music` would run without an approval prompt.
 
-**Fix:**
-- `src/openhuman/security/policy_command.rs` — added `"open"` (macOS) and `"xdg-open"` (Linux) to `READ_ONLY_BASES`. These are OS-native app launchers that don't modify the workspace, so `Read` classification is correct.
-
-**Result:** Agent can run `open -a Music` in Supervised mode without approval prompt.
+**Why reverted:** base-command classification can't see args, and `open`/`xdg-open`/`start` can open arbitrary `https://` URLs and custom URI handlers — too broad for the `Read` (no-approval) path (maintainer security review). They were **removed** from `READ_ONLY_BASES`; the current code (`policy_command.rs:514-520`) deliberately keeps them out, with a comment. App launching now goes through the dedicated, gated `launch_app` tool (Change 1.4), which is scoped to named applications only.
 
 ---
 
@@ -287,7 +283,7 @@ shipped and the test evidence.
 | Capability | macOS (done) | Windows status |
 |---|---|---|
 | Auto-send dictation transcript | TS (`useDictationHotkey`/`Conversations`) | ✅ Already cross-platform (frontend) |
-| Shell allowlist (`open`/`xdg-open`) | `policy_command.rs` | ⚠️ Add `start` / `explorer.exe` to `READ_ONLY_BASES` (see below) |
+| App launching | `launch_app` / `policy_command.rs` | ✅ Launchers (`open`/`xdg-open`/`start`) stay OUT of `READ_ONLY_BASES` (can open arbitrary URLs/handlers); app launching goes through the gated `launch_app` tool. |
 | `launch_app` | `open -a` | ⚠️ Already has a Windows branch (`Start-Process`) — verify it resolves app display names |
 | `ax_interact` (list/press/set_value) | AXUIElement Swift helper | ❌ Needs a UI Automation (UIA) backend |
 
@@ -352,7 +348,7 @@ Port the integration tests using a built-in Windows app that's always present an
 ### Quick start for the Windows machine
 
 1. `launch_app` should already work — test `"open notepad"` / `"open calculator"` first.
-2. Add `"start"` to `READ_ONLY_BASES` in `policy_command.rs` (Windows shell launcher) alongside `open`/`xdg-open`.
+2. Do NOT add launchers to `READ_ONLY_BASES` — `launch_app` (gated, URI-rejecting) is the Windows app-launch path. `Start-Process` lives inside that tool, not the shell allowlist.
 3. Build `uia_interact.rs` against the `uiautomation` crate, mirroring the three `ax_interact` fns.
 4. cfg-dispatch in `accessibility/mod.rs` so `ax_interact` the tool resolves to UIA on Windows.
 5. Smoke-test with Calculator (deterministic), then a media app (best-effort).
@@ -369,7 +365,7 @@ Every Phase 1 change was written to **compile on all platforms** — nothing her
 | `accessibility::ax_interact` helpers | ✅ cfg-dispatched | macOS → Swift helper; Windows → `uia_interact.rs`; other → clean runtime error. |
 | `accessibility::uia_interact` (NEW) | ✅ Windows backend | UIA `list`/`press`/`set_value` via the `uiautomation` crate; same fn signatures as the macOS path. |
 | Swift unified helper (`accessibility/helper.rs`) | ⚠️ macOS-only by design | Windows needs no helper process — UIA COM API is called directly from Rust. |
-| Shell allowlist (`open`/`xdg-open`) | ✅ Done | `"start"` added to `READ_ONLY_BASES` in `policy_command.rs`. |
+| App launching | ✅ Done | Launchers stay out of `READ_ONLY_BASES`; `launch_app` (gated) handles Windows `Start-Process`. |
 | Notch indicator (separate PR #3166) | ⚠️ macOS NSPanel | A Windows equivalent would be a borderless always-on-top WebView2 window or a tray flyout — out of scope for this branch. |
 
 **Before merging the Windows port, confirm the whole branch still builds and runs on macOS too** (`cargo check` on both `Cargo.toml` and `app/src-tauri/Cargo.toml`) so the cfg-dispatch doesn't regress the working macOS path.
@@ -401,7 +397,7 @@ Shipped on the Windows machine (2026-06-02):
 - `src/openhuman/accessibility/mod.rs` — declares `uia_interact` (cfg-gated to Windows).
 - `src/openhuman/tools/impl/computer/ax_interact.rs` — description rewritten to be platform-neutral ("platform accessibility API (macOS AXUIElement / Windows UI Automation)").
 - `src/openhuman/tools/impl/system/launch_app.rs` — Windows launcher hardened: app name passed via env var (no string interpolation → no injection), `Start-Process` first, then Store/UWP fallback by display name via `Get-StartApps` → AUMID (`shell:AppsFolder\<AppID>`); stderr surfaced on failure.
-- `src/openhuman/security/policy_command.rs` — `"start"` added to `READ_ONLY_BASES`.
+- `src/openhuman/security/policy_command.rs` — launchers (`open`/`xdg-open`/`start`) deliberately kept OUT of `READ_ONLY_BASES`; `launch_app` is the gated launch path.
 - `src/openhuman/accessibility/uia_interact_tests.rs` (**new**) — `#[cfg(all(test, target_os = "windows"))]` integration tests, wired into `ax_interact.rs`.
 
 **Test evidence (real apps on Windows 11)**
