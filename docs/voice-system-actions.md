@@ -574,6 +574,24 @@ Shipped on the Windows machine (2026-06-02):
 
 ---
 
+## Fine-tuning backlog ⏳ (deferred until all phases complete)
+
+From live agent-in-the-loop testing on 2026-06-03 (grounded in `~/.openhuman/logs/openhuman.2026-06-03.log`, `session_raw/*.jsonl`, and the dev run: **keyboard=69 / mouse=0 / screenshot=10** tool calls; **26 wake matches vs 93 misses**; emit=true utterances ranged 0.7s–28s). The feature works but needs tuning. **Do not implement until Phases 3–4 land.**
+
+### F1 — Listening window too short for long commands
+- **Observed:** `vad_hangover_ms = 800` closes an utterance on any pause > 0.8s, so multi-clause commands ("Hey Tiny, open Slack and message the team channel saying …") split across utterances — the tail lacks the wake word and is dropped. Compounded by the notch "Listening" pill TTL (2500ms) expiring mid-speech, so it *looks* like it stopped listening.
+- **Resolve:** (a) raise `vad_hangover_ms` to ~1500ms; (b) **two-stage capture** — once the wake word is detected, open a dedicated longer command window (until a longer silence / N-second cap) instead of relying on a single VAD utterance; (c) keep the "Listening" pill alive for the whole utterance (extend/re-emit on each voiced frame, clear on `SpeechEnd`) so the notch reflects real mic state.
+
+### F2 — Agent uses keyboard only, never the mouse
+- **Observed:** keyboard=69, mouse=0. Two causes: the orchestrator prompt is deliberately *keyboard-first*, **and** the downscaled screenshot's coordinates don't map to screen pixels — the capture is shrunk to ≤1568px while `mouse` expects absolute screen pixels (and Retina is 2× points), so any coordinate read from the image clicks the wrong spot. Vision-driven clicking is therefore currently unsafe and the agent (correctly) avoids it.
+- **Resolve:** (a) make `screenshot` emit a coordinate transform (shown WxH + real screen WxH + backing scale) **or** have `mouse` accept image-relative coordinates and convert internally; (b) once coordinates are trustworthy, soften the prompt so the agent uses screenshot→mouse to click specific elements, not just keyboard.
+
+### F3 — No periodic screenshot/verify + foreground re-check
+- **Observed:** the agent screenshots ad-hoc (0 in the last session); `automate` only foregrounds at the start.
+- **Resolve:** in the `automate` loop **and** the orchestrator prompt — screenshot + verify at **start, after every ~3 actions, and at the end**; before each action confirm the frontmost app is the target and re-`launch_app` (foreground) it if not, then proceed. Fold the actual-vs-expected check into the loop's `verify` step.
+
+---
+
 ## Summary
 
 | Phase | Item | Status |
