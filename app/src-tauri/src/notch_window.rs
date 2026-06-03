@@ -342,10 +342,23 @@ unsafe fn spawn_inject_timer(webview: Retained<WKWebView>) -> Retained<NSTimer> 
         // Strip `/rpc` path suffix; Socket.IO connects to the base host.
         let base_url = rpc_url.trim_end_matches("/rpc").to_string();
 
+        // The core Socket.IO handshake rejects unauthenticated clients, and this
+        // WKWebView has no Tauri IPC, so `getCoreRpcToken()` can't `invoke`. Hand
+        // the per-process bearer in via a global the same way as the URL (our own
+        // first-party webview — same trust as the renderer's `core_rpc_token`).
+        // The token is published *after* the URL env is set (post embedded spawn),
+        // so wait for it rather than injecting an empty token that gets rejected.
+        let token = match crate::core_process::current_rpc_token() {
+            Some(t) if !t.is_empty() => t,
+            _ => return, // bearer not published yet — retry next tick
+        };
+        log::info!("[notch-window] injecting core url + bearer (token_len={})", token.len());
+
         // Set a global AND dispatch a custom event so React can pick up the URL
         // regardless of whether the component mounted before or after this fires.
         let js = format!(
-            "window.__OPENHUMAN_NOTCH_CORE_URL__='{base_url}';\
+            "window.__OPENHUMAN_NOTCH_CORE_TOKEN__='{token}';\
+             window.__OPENHUMAN_NOTCH_CORE_URL__='{base_url}';\
              window.dispatchEvent(new CustomEvent('notch:core-url',{{detail:{{url:'{base_url}'}}}}));"
         );
         let js_str = NSString::from_str(&js);
