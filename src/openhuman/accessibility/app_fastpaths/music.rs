@@ -235,6 +235,12 @@ pub async fn run(goal: &str, backend: &dyn AutomateBackend) -> AutomateOutcome {
         }
     };
     log::info!("[automate::music] ▶ play query={query:?}");
+    use super::super::automate::progress;
+    use crate::openhuman::overlay::OverlayAttentionTone;
+    progress(
+        format!("Searching Music for {query}…"),
+        OverlayAttentionTone::Accent,
+    );
 
     // 1. Launch Music.
     match backend.act_launch(APP).await {
@@ -335,6 +341,7 @@ pub async fn run(goal: &str, backend: &dyn AutomateBackend) -> AutomateOutcome {
         }
         Some(true) => {
             steps.push("verify: playing ✓".to_string());
+            progress(format!("Playing {query}"), OverlayAttentionTone::Success);
             AutomateOutcome {
                 success: true,
                 summary: format!("Playing '{query}' in Music."),

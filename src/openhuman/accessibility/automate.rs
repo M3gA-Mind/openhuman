@@ -20,10 +20,23 @@
 //! drive a scripted backend with no mic, no AX tree, and no LLM.
 
 use super::ax_interact as ax;
+use crate::openhuman::overlay::{publish_attention, OverlayAttentionEvent, OverlayAttentionTone};
 use async_trait::async_trait;
 use serde::Deserialize;
 
 const LOG_PREFIX: &str = "[automate]";
+
+/// Push a one-line progress message to the notch / overlay so the user sees the
+/// automation happening live (M4). Fire-and-forget: a no-op when nothing is
+/// subscribed (e.g. unit tests, or the notch window isn't running).
+pub(crate) fn progress(message: impl Into<String>, tone: OverlayAttentionTone) {
+    let _ = publish_attention(
+        OverlayAttentionEvent::new(message)
+            .with_source("automate")
+            .with_tone(tone)
+            .with_ttl_ms(5000),
+    );
+}
 
 /// Default ceiling on loop iterations. Each iteration is one fast-model call
 /// plus one action, so this bounds latency and cost even if the model never
@@ -325,6 +338,7 @@ pub async fn run(
                     action.summary.clone()
                 };
                 log::info!("{LOG_PREFIX} ✓ done: {summary}");
+                progress(&summary, OverlayAttentionTone::Success);
                 return AutomateOutcome {
                     success: true,
                     summary,
@@ -338,6 +352,7 @@ pub async fn run(
                     action.summary.clone()
                 };
                 log::info!("{LOG_PREFIX} ✗ model gave up: {summary}");
+                progress(&summary, OverlayAttentionTone::Neutral);
                 return AutomateOutcome::fail(summary, steps);
             }
             "list" => {
@@ -345,6 +360,7 @@ pub async fn run(
                 steps.push(format!("list filter={:?}", last_filter));
             }
             "launch" => {
+                progress(format!("Opening {target_app}…"), OverlayAttentionTone::Accent);
                 match backend.act_launch(target_app).await {
                     Ok(msg) => steps.push(format!("launch: {msg}")),
                     Err(e) => steps.push(format!("launch FAILED: {e}")),
@@ -356,6 +372,10 @@ pub async fn run(
                     steps.push("press skipped: empty label".to_string());
                     continue;
                 }
+                progress(
+                    format!("Pressing {}…", action.label),
+                    OverlayAttentionTone::Accent,
+                );
                 match backend.act_press(target_app, &action.label).await {
                     Ok(msg) => steps.push(format!("press: {msg}")),
                     Err(e) => steps.push(format!("press FAILED: {e}")),
@@ -367,6 +387,7 @@ pub async fn run(
                     steps.push("set_value skipped: empty value".to_string());
                     continue;
                 }
+                progress("Typing…", OverlayAttentionTone::Accent);
                 match backend
                     .act_set_value(target_app, &action.label, &action.value)
                     .await
