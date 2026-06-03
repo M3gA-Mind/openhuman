@@ -225,7 +225,6 @@ pub async fn start_if_enabled(app_config: &Config) {
     }
 
     let vad = VadConfig::from_server_config(&app_config.voice_server);
-    let skip_cleanup = app_config.voice_server.skip_cleanup;
     let config = app_config.clone();
     log::info!(
         "{LOG_PREFIX} enabled — onset={:.4} hangover={}ms min_speech={}ms max_utt={}ms",
@@ -283,7 +282,7 @@ pub async fn start_if_enabled(app_config: &Config) {
                         if emit {
                             let cfg = config.clone();
                             tokio::spawn(async move {
-                                transcribe_and_deliver(&cfg, captured, skip_cleanup).await;
+                                transcribe_and_deliver(&cfg, captured).await;
                             });
                         }
                     }
@@ -303,7 +302,8 @@ pub async fn start_if_enabled(app_config: &Config) {
 /// Transcribe a finished utterance and hand the text to the dictation bus,
 /// which delivers it to the agent (auto-send) and the notch — the same path the
 /// hotkey dictation uses.
-async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>, skip_cleanup: bool) {
+async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
+    use base64::Engine as _;
     let wav = match encode_wav_16k(&samples_16k) {
         Ok(w) => w,
         Err(e) => {
@@ -311,14 +311,29 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>, skip_cle
             return;
         }
     };
-    match crate::openhuman::voice::voice_transcribe_bytes(
-        config,
-        &wav,
-        Some("wav".to_string()),
-        None,
-        skip_cleanup,
-    )
-    .await
+    // Route through the *configured* STT provider (cloud / whisper / slug) — the
+    // same factory dispatch the `voice.stt_dispatch` RPC uses — so always-on
+    // honors the user's choice instead of forcing local whisper.
+    let provider_name = crate::openhuman::voice::effective_stt_provider(config);
+    let model = crate::openhuman::voice::DEFAULT_WHISPER_MODEL.to_string();
+    let provider =
+        match crate::openhuman::voice::create_stt_provider(&provider_name, &model, config) {
+            Ok(p) => p,
+            Err(e) => {
+                log::warn!("{LOG_PREFIX} STT provider '{provider_name}' unavailable: {e}");
+                return;
+            }
+        };
+    let audio_b64 = base64::engine::general_purpose::STANDARD.encode(&wav);
+    match provider
+        .transcribe(
+            config,
+            &audio_b64,
+            Some("audio/wav"),
+            Some("utterance.wav"),
+            None,
+        )
+        .await
     {
         Ok(outcome) => {
             let text = outcome.value.text.trim().to_string();
@@ -327,12 +342,12 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>, skip_cle
                 return;
             }
             log::info!(
-                "{LOG_PREFIX} transcript ({} chars) → dictation bus",
+                "{LOG_PREFIX} transcript ({} chars, provider={provider_name}) → dictation bus",
                 text.len()
             );
             crate::openhuman::voice::dictation_listener::publish_transcription(text);
         }
-        Err(e) => log::warn!("{LOG_PREFIX} transcription failed: {e}"),
+        Err(e) => log::warn!("{LOG_PREFIX} transcription failed ({provider_name}): {e}"),
     }
 }
 
