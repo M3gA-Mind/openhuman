@@ -551,9 +551,11 @@ Shipped on the Windows machine (2026-06-02):
 
 ## Phase 3 — Wake-Word + Fast Routing 🔨 In progress
 
-**Fast routing — started:** `src/openhuman/voice/command_router.rs` (new) — pure `route(transcript) -> VoiceIntent` classifier (Play/Pause/Resume/Next/Previous/OpenApp/SetVolume/VolumeUp·Down/Mute/Unmute, else `Unknown`). High-confidence intents can execute directly (launch_app / Music fast-path / osascript volume) without a full chat-LLM turn — the ≤500 ms path; `Unknown` defers to the agent so routing only ever shortcuts. Filler-tolerant ("please open up slack"). 5 unit tests.
+**Fast routing — DONE & WIRED:** `src/openhuman/voice/command_router.rs` (new) — pure `route(transcript) -> VoiceIntent` classifier (Play/Pause/Resume/Next/Previous/OpenApp/SetVolume/VolumeUp·Down/Mute/Unmute, else `Unknown`). High-confidence intents execute directly (launch_app / Music fast-path / osascript volume) without a full chat-LLM turn — the ≤500 ms path; `Unknown` defers to the agent so routing only ever shortcuts. Filler-tolerant ("please open up slack"). 5 unit tests.
 
-**Remaining Phase 3:** (1) wire `command_router` into `always_on` delivery (route first; execute local intents; fall back to the agent on `Unknown`); (2) on-device audio wake-word model (Porcupine / ONNX) in `inference/voice/wake_word.rs` to gate STT before transcription (the text-based "Hey Tiny" from Phase 2 is the interim).
+**Router wired into delivery:** `always_on::deliver_command` now routes the extracted command through `command_router::route` first. Recognized intents run locally via `execute_intent` (Play → `automate` Music fast-path; OpenApp → `launch_platform`; Pause/Resume/Next/Previous/volume/mute → `osa` osascript); `VoiceIntent::Unknown` (and any local-exec failure) falls back to the full agent turn. Verified live: clean transport/open/volume commands execute on the fast path; complex/garbled `play` queries (e.g. mangled STT like "bts s latest song wind blowing") fall through to the agent as designed. Committed on `feat/voice-phase3-fast-routing`.
+
+**Remaining Phase 3:** on-device audio wake-word model (Porcupine / ONNX) in `inference/voice/wake_word.rs` to gate STT *before* transcription — the text-based "Hey Tiny" wake match from Phase 2 (fuzzy anchor on the "tiny" token, Levenshtein ≤1) is the interim. This is the only open Phase 3 item; not yet started.
 
 ---
 
