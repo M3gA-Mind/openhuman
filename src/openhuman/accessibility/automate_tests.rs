@@ -88,8 +88,8 @@ fn opts(budget: u32) -> AutomateOptions {
 #[tokio::test]
 async fn happy_path_launch_list_press_done() {
     // Use a non-fast-path app/goal so the GENERAL loop is what runs.
+    // run() foregrounds (launch) the app first, so the model needn't.
     let backend = ScriptedBackend::new(&[
-        r#"{"action":"launch"}"#,
         r#"{"action":"list","filter":"Play"}"#,
         r#"{"action":"press","label":"Play"}"#,
         r#"{"action":"done","summary":"Playing."}"#,
@@ -98,6 +98,7 @@ async fn happy_path_launch_list_press_done() {
     assert!(out.success, "expected success, got {out:?}");
     assert_eq!(out.summary, "Playing.");
     let acts = backend.acts();
+    // Leading launch is the foreground-first guarantee.
     assert_eq!(acts, vec!["launch:Notes", "press:Notes:Play"]);
 }
 
@@ -114,7 +115,11 @@ async fn navigate_then_activate_sequence() {
     assert!(out.success);
     assert_eq!(
         backend.acts(),
-        vec!["press:Photos:Highway to Hell", "press:Photos:Play"]
+        vec![
+            "launch:Photos", // foreground-first
+            "press:Photos:Highway to Hell",
+            "press:Photos:Play"
+        ]
     );
 }
 
@@ -126,7 +131,10 @@ async fn set_value_routes_app_override() {
     ]);
     let out = run("Slack", "message Steven hi", &backend, opts(5)).await;
     assert!(out.success);
-    assert_eq!(backend.acts(), vec!["set_value:Slack:message=hi"]);
+    assert_eq!(
+        backend.acts(),
+        vec!["launch:Slack", "set_value:Slack:message=hi"] // foreground-first
+    );
 }
 
 #[tokio::test]
@@ -154,10 +162,14 @@ async fn no_progress_guard_aborts_repeated_action() {
         "got: {}",
         out.summary
     );
-    // Acted twice, then the 3rd identical action aborts before acting.
+    // foreground launch, then acted twice; the 3rd identical action aborts.
     assert_eq!(
         backend.acts(),
-        vec!["press:Photos:Search", "press:Photos:Search"]
+        vec![
+            "launch:Photos",
+            "press:Photos:Search",
+            "press:Photos:Search"
+        ]
     );
 }
 

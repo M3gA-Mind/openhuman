@@ -143,7 +143,11 @@ impl ScreenshotTool {
 
         let bytes = match tokio::fs::read(output_path).await {
             Ok(b) => b,
-            Err(e) => return Ok(ToolResult::error(format!("Failed to read screenshot: {e}"))),
+            Err(e) => {
+                return Ok(ToolResult::error(format!(
+                    "Failed to read screenshot file: {e}"
+                )))
+            }
         };
         let ext = output_path
             .extension()
@@ -261,6 +265,36 @@ impl Tool for ScreenshotTool {
 mod tests {
     use super::*;
     use crate::openhuman::security::{AutonomyLevel, SecurityPolicy};
+
+    #[test]
+    fn downscale_to_jpeg_shrinks_oversized_capture() {
+        // A 1600x1200 PNG of noise is well over a tight budget; downscaling must
+        // produce a smaller JPEG that still decodes, so the model can see it.
+        let mut img = image::RgbImage::new(1600, 1200);
+        for (i, px) in img.pixels_mut().enumerate() {
+            *px = image::Rgb([(i % 251) as u8, (i % 253) as u8, (i % 247) as u8]);
+        }
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .expect("encode png");
+        let png = png.into_inner();
+
+        let max = 400_000usize;
+        let (jpeg, w, h) = downscale_to_jpeg(&png, max).expect("downscale");
+        assert!(jpeg.len() <= max, "jpeg {} should be <= {max}", jpeg.len());
+        assert!(
+            w <= 1568 && h <= 1568,
+            "dims {w}x{h} should be capped to 1568"
+        );
+        assert!(
+            jpeg.len() < png.len(),
+            "jpeg should be smaller than source png"
+        );
+        // Result must be a valid, decodable image at the reported dims.
+        let decoded = image::load_from_memory(&jpeg).expect("jpeg decodes");
+        assert_eq!((decoded.width(), decoded.height()), (w, h));
+    }
 
     fn test_security() -> Arc<SecurityPolicy> {
         Arc::new(SecurityPolicy {
@@ -473,24 +507,38 @@ mod tests {
     // ── read_and_encode: large file returns saved-path-only message ───────────
 
     #[tokio::test]
-    async fn read_and_encode_large_file_skips_base64() {
-        use tokio::io::AsyncWriteExt;
+    async fn read_and_encode_large_file_downscales_to_viewable_jpeg() {
+        // A large *real* PNG (over MAX_RAW_BYTES) must be downscaled to an inline
+        // JPEG data-URL the model can see — not dropped (the old behavior left
+        // vision-driven control blind).
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("big.png");
-        let mut f = tokio::fs::File::create(&path).await.unwrap();
-        // Write ~1.6 MB to exceed the MAX_RAW_BYTES threshold (1.5 MB)
-        let chunk = vec![0u8; 1024];
-        for _ in 0..1600 {
-            f.write_all(&chunk).await.unwrap();
+        let mut img = image::RgbImage::new(2200, 1500);
+        for (i, px) in img.pixels_mut().enumerate() {
+            *px = image::Rgb([(i % 251) as u8, (i % 253) as u8, (i % 247) as u8]);
         }
-        drop(f);
+        image::DynamicImage::ImageRgb8(img)
+            .save_with_format(&path, image::ImageFormat::Png)
+            .unwrap();
+        assert!(
+            tokio::fs::metadata(&path).await.unwrap().len() > 1_572_864,
+            "test PNG should exceed the inline budget"
+        );
 
         let result = ScreenshotTool::read_and_encode(&path).await.unwrap();
-        assert!(!result.is_error, "large file should not be an error result");
         assert!(
-            result.output().contains("too large to base64-encode"),
-            "large file should skip base64, got: {}",
+            !result.is_error,
+            "should not error, got: {}",
             result.output()
+        );
+        let out = result.output();
+        assert!(
+            out.contains("data:image/jpeg;base64,"),
+            "should inline a jpeg: {out}"
+        );
+        assert!(
+            out.contains("Downscaled to"),
+            "should report downscale: {out}"
         );
     }
 }

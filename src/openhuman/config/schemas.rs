@@ -192,6 +192,7 @@ struct VoiceServerSettingsUpdate {
     silence_threshold: Option<f32>,
     custom_dictionary: Option<Vec<String>>,
     always_on_enabled: Option<bool>,
+    wake_word: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1014,6 +1015,10 @@ pub fn schemas(function: &str) -> ControllerSchema {
                     "always_on_enabled",
                     "Continuous always-on listening (no hotkey). Opt-in.",
                 ),
+                optional_string(
+                    "wake_word",
+                    "Always-on wake word; utterances must contain it (default 'Hey Tiny').",
+                ),
             ],
             outputs: vec![json_output("snapshot", "Updated config snapshot.")],
         },
@@ -1552,6 +1557,7 @@ fn handle_update_voice_server_settings(params: Map<String, Value>) -> Controller
             silence_threshold: update.silence_threshold,
             custom_dictionary: update.custom_dictionary,
             always_on_enabled: update.always_on_enabled,
+            wake_word: update.wake_word,
         };
         let result = config_rpc::load_and_apply_voice_server_settings(patch).await?;
         // Apply the always-on toggle live (start/idle the capture loop) so the
