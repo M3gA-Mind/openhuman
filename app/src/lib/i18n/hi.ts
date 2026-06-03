@@ -1405,6 +1405,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'साइलेंस थ्रेशोल्ड (आरएमएस)',
   'voice.debug.silenceThresholdDesc':
     'इससे कम ऊर्जा वाली रिकॉर्डिंग को साइलेंस माना जाता है और छोड़ दिया जाता है। कम = अधिक संवेदनशील।',
+  'voice.debug.alwaysOn': 'हमेशा-चालू सुनना',
+  'voice.debug.alwaysOnDesc':
+    'माइक्रोफ़ोन खुला रखें और आप जो कहते हैं वह बिना हॉटकी के स्वचालित रूप से एजेंट को भेजें। स्क्रीन लॉक होने पर रुक जाता है।',
   'voice.providers.saved': 'ध्वनि प्रदाता सहेजे गए.',
   'voice.providers.failedToSave': 'ध्वनि प्रदाताओं को सहेजने में विफल',
   'voice.providers.ellipsis': '…',

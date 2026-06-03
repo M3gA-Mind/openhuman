@@ -111,6 +111,7 @@ describe('VoicePanel', () => {
         min_duration_secs: 0.3,
         silence_threshold: 0.002,
         custom_dictionary: [],
+        always_on_enabled: false,
       },
       voiceStatus: {
         stt_available: true,

@@ -1426,6 +1426,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'Próg ciszy (RMS)',
   'voice.debug.silenceThresholdDesc':
     'Nagrania z energią poniżej tego progu są traktowane jako cisza i pomijane. Niżej = bardziej czułe.',
+  'voice.debug.alwaysOn': 'Ciągłe nasłuchiwanie',
+  'voice.debug.alwaysOnDesc':
+    'Utrzymuje mikrofon włączony i automatycznie wysyła to, co mówisz, do agenta, bez skrótu. Wstrzymuje się, gdy ekran jest zablokowany.',
   'voice.providers.saved': 'Zapisano dostawców głosu.',
   'voice.providers.failedToSave': 'Nie udało się zapisać dostawców głosu',
   'voice.providers.ellipsis': '…',

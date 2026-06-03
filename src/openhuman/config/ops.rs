@@ -1699,6 +1699,7 @@ pub struct VoiceServerSettingsPatch {
     pub min_duration_secs: Option<f32>,
     pub silence_threshold: Option<f32>,
     pub custom_dictionary: Option<Vec<String>>,
+    pub always_on_enabled: Option<bool>,
 }
 
 /// Returns the current voice server settings as a JSON object.
@@ -1712,6 +1713,7 @@ pub async fn get_voice_server_settings() -> Result<RpcOutcome<serde_json::Value>
         "min_duration_secs": config.voice_server.min_duration_secs,
         "silence_threshold": config.voice_server.silence_threshold,
         "custom_dictionary": config.voice_server.custom_dictionary,
+        "always_on_enabled": config.voice_server.always_on_enabled,
     });
     Ok(RpcOutcome::new(
         result,
@@ -1758,6 +1760,9 @@ pub async fn load_and_apply_voice_server_settings(
     }
     if let Some(custom_dictionary) = update.custom_dictionary {
         config.voice_server.custom_dictionary = custom_dictionary;
+    }
+    if let Some(always_on_enabled) = update.always_on_enabled {
+        config.voice_server.always_on_enabled = always_on_enabled;
     }
     config.save().await.map_err(|e| e.to_string())?;
     let snapshot = snapshot_config_json(&config)?;

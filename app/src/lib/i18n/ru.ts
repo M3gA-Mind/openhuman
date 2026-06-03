@@ -1418,6 +1418,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'Порог тишины (RMS)',
   'voice.debug.silenceThresholdDesc':
     'Записи с энергией ниже этого значения считаются тишиной и пропускаются. Меньше = чувствительнее.',
+  'voice.debug.alwaysOn': 'Постоянное прослушивание',
+  'voice.debug.alwaysOnDesc':
+    'Держит микрофон включённым и автоматически отправляет сказанное агенту без горячей клавиши. Приостанавливается при блокировке экрана.',
   'voice.providers.saved': 'Поставщики голосовой связи сохранены.',
   'voice.providers.failedToSave': 'Не удалось сохранить поставщиков голосовой связи.',
   'voice.providers.ellipsis': '…',

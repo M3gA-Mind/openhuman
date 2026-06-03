@@ -1412,6 +1412,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'Ambang Batas Senyap (RMS)',
   'voice.debug.silenceThresholdDesc':
     'Rekaman dengan energi di bawah nilai ini dianggap sebagai keheningan dan dilewati. Lebih rendah = lebih sensitif.',
+  'voice.debug.alwaysOn': 'Mendengarkan terus-menerus',
+  'voice.debug.alwaysOnDesc':
+    'Biarkan mikrofon tetap aktif dan kirim ucapan Anda ke agen secara otomatis, tanpa pintasan. Berhenti sementara saat layar terkunci.',
   'voice.providers.saved': 'Penyedia suara disimpan.',
   'voice.providers.failedToSave': 'Gagal menyimpan penyedia suara',
   'voice.providers.ellipsis': '…',

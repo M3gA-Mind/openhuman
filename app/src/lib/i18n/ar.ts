@@ -1378,6 +1378,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'عتبة الصمت (RMS)',
   'voice.debug.silenceThresholdDesc':
     'تُعامَل التسجيلات ذات الطاقة الأدنى من هذا الحد كصمت ويُتخطى فيها. كلما كانت القيمة أصغر، كان النظام أكثر حساسية.',
+  'voice.debug.alwaysOn': 'الاستماع الدائم',
+  'voice.debug.alwaysOnDesc':
+    'أبقِ الميكروفون مفتوحًا وأرسل ما تقوله إلى الوكيل تلقائيًا دون مفتاح اختصار. يتوقف مؤقتًا عند قفل الشاشة.',
   'voice.providers.saved': 'تم حفظ موفري الصوت.',
   'voice.providers.failedToSave': 'فشل في حفظ موفري الصوت',
   'voice.providers.ellipsis': '…',

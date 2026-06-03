@@ -1391,6 +1391,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': '무음 임계값(RMS)',
   'voice.debug.silenceThresholdDesc':
     '이 값보다 에너지가 낮은 녹음은 무음으로 처리되어 건너뜁니다. 낮을수록 더 민감합니다.',
+  'voice.debug.alwaysOn': '상시 청취',
+  'voice.debug.alwaysOnDesc':
+    '단축키 없이 마이크를 계속 열어 두고 말한 내용을 자동으로 에이전트에 보냅니다. 화면이 잠기면 일시 중지됩니다.',
   'voice.providers.saved': '음성 제공업체가 저장되었습니다.',
   'voice.providers.failedToSave': '음성 제공자를 저장하지 못했습니다.',
   'voice.providers.ellipsis': '…',

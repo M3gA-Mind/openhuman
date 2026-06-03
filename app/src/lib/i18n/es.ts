@@ -1440,6 +1440,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'Umbral de silencio (RMS)',
   'voice.debug.silenceThresholdDesc':
     'Las grabaciones con energía por debajo de este valor se tratan como silencio y se omiten. Menor = más sensible.',
+  'voice.debug.alwaysOn': 'Escucha continua',
+  'voice.debug.alwaysOnDesc':
+    'Mantén el micrófono abierto y envía lo que dices al agente automáticamente, sin atajo. Se pausa cuando la pantalla está bloqueada.',
   'voice.providers.saved': 'Proveedores de voz guardados.',
   'voice.providers.failedToSave': 'No se pudieron guardar los proveedores de voz',
   'voice.providers.ellipsis': '…',

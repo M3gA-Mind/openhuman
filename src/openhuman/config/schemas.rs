@@ -191,6 +191,7 @@ struct VoiceServerSettingsUpdate {
     min_duration_secs: Option<f32>,
     silence_threshold: Option<f32>,
     custom_dictionary: Option<Vec<String>>,
+    always_on_enabled: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1546,6 +1547,7 @@ fn handle_update_voice_server_settings(params: Map<String, Value>) -> Controller
             min_duration_secs: update.min_duration_secs,
             silence_threshold: update.silence_threshold,
             custom_dictionary: update.custom_dictionary,
+            always_on_enabled: update.always_on_enabled,
         };
         to_json(config_rpc::load_and_apply_voice_server_settings(patch).await?)
     })

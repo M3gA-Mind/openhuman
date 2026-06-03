@@ -1329,6 +1329,9 @@ const messages: TranslationMap = {
   'voice.debug.minimumRecordingSeconds': '最短录音秒数',
   'voice.debug.silenceThreshold': '静音阈值 (RMS)',
   'voice.debug.silenceThresholdDesc': '能量低于此值的录音将被视为静音并跳过。值越低，灵敏度越高。',
+  'voice.debug.alwaysOn': '常驻聆听',
+  'voice.debug.alwaysOnDesc':
+    '保持麦克风开启，无需快捷键即可自动将你说的话发送给智能体。屏幕锁定时暂停。',
   'voice.providers.saved': '语音提供商已保存。',
   'voice.providers.failedToSave': '无法保存语音提供商',
   'voice.providers.ellipsis': '…',

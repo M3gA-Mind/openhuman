@@ -360,7 +360,10 @@ pub async fn run(
                 steps.push(format!("list filter={:?}", last_filter));
             }
             "launch" => {
-                progress(format!("Opening {target_app}…"), OverlayAttentionTone::Accent);
+                progress(
+                    format!("Opening {target_app}…"),
+                    OverlayAttentionTone::Accent,
+                );
                 match backend.act_launch(target_app).await {
                     Ok(msg) => steps.push(format!("launch: {msg}")),
                     Err(e) => steps.push(format!("launch FAILED: {e}")),

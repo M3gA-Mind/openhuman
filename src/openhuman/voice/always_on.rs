@@ -4,18 +4,21 @@
 //! open continuously and uses **voice-activity detection (VAD)** to carve the
 //! audio stream into utterances: an utterance opens when energy rises above an
 //! onset threshold and closes after a configurable run of silence (the
-//! "hangover"). Each completed utterance is fed to the same STT → delivery
-//! pipeline the hotkey path already uses (`server::process_recording_bg`).
+//! "hangover"). Each completed utterance is transcribed and pushed onto the
+//! dictation bus, so it reaches the agent and the notch exactly like a hotkey
+//! dictation.
 //!
-//! This module owns the **algorithmic core** — a pure [`VadSegmenter`] state
-//! machine over a stream of per-frame RMS energies. It is deliberately free of
-//! any audio-backend dependency so it can be unit-tested deterministically
-//! (mic hardware is never reliable in CI). The continuous capture loop that
-//! feeds real frames into the segmenter is wired in [`start_if_enabled`];
-//! see the TODO there for the remaining cpal streaming work.
+//! Layers:
+//!   - [`VadSegmenter`] — a pure state machine over per-frame RMS energies,
+//!     unit-tested deterministically (no audio backend).
+//!   - [`start_if_enabled`] — opens a continuous cpal mic stream on a dedicated
+//!     thread, slices 16 kHz mono frames, drives the segmenter, and routes each
+//!     utterance through `voice_transcribe_bytes` → `publish_transcription`.
+//!   - [`spawn_lock_watcher`] — privacy hook: pauses capture while the screen is
+//!     locked (macOS via the Quartz session dictionary).
 //!
 //! Privacy: always-on is **opt-in** (`config.voice_server.always_on_enabled`,
-//! default false) and pauses when the screen is locked (Phase 2 privacy hook).
+//! default false) and pauses when the screen is locked.
 
 use crate::openhuman::config::VoiceServerConfig as CfgVoiceServer;
 
@@ -181,6 +184,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// One always-on capture is live per process.
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// When true, the processor drops audio and resets the segmenter (privacy hook:
+/// screen locked). Driven by [`spawn_lock_watcher`] on macOS.
+static PAUSED: AtomicBool = AtomicBool::new(false);
+
 /// VAD frame size. 20 ms at 16 kHz = 320 samples — small enough for responsive
 /// onset/hangover detection, large enough for a stable RMS estimate.
 const FRAME_MS: u32 = 20;
@@ -231,12 +238,25 @@ pub async fn start_if_enabled(app_config: &Config) {
         return;
     }
 
+    // Privacy hook: pause capture while the screen is locked.
+    spawn_lock_watcher();
+
     tokio::spawn(async move {
         let mut seg = VadSegmenter::new(vad);
         let mut pending: Vec<f32> = Vec::new();
         let mut utterance: Vec<f32> = Vec::new();
 
         while let Some(chunk) = rx.recv().await {
+            // Drop audio and abandon any in-flight utterance while paused
+            // (screen locked) — nothing spoken at the lock screen is captured.
+            if PAUSED.load(Ordering::Relaxed) {
+                if seg.is_speaking() {
+                    seg.reset();
+                }
+                pending.clear();
+                utterance.clear();
+                continue;
+            }
             pending.extend_from_slice(&chunk);
             while pending.len() >= FRAME_SAMPLES {
                 let frame: Vec<f32> = pending.drain(..FRAME_SAMPLES).collect();
@@ -405,6 +425,107 @@ fn capture_on_thread(
     // Keep the stream (and thus this thread) alive for the process lifetime.
     loop {
         std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
+}
+
+/// Poll the screen-lock state and drive [`PAUSED`] so always-on never captures
+/// what is spoken at the lock screen. macOS-only for now (uses the Quartz
+/// session dictionary); other platforms never pause (no lock signal yet).
+fn spawn_lock_watcher() {
+    #[cfg(target_os = "macos")]
+    tokio::spawn(async move {
+        let mut last = false;
+        loop {
+            let locked = macos_lock::is_screen_locked();
+            if locked != last {
+                log::info!(
+                    "{LOG_PREFIX} screen {} → {}",
+                    if locked { "locked" } else { "unlocked" },
+                    if locked { "pausing" } else { "resuming" }
+                );
+                PAUSED.store(locked, Ordering::Relaxed);
+                last = locked;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    });
+    #[cfg(not(target_os = "macos"))]
+    {
+        log::debug!("{LOG_PREFIX} screen-lock watcher unavailable on this platform");
+    }
+}
+
+/// macOS screen-lock detection via the Quartz session dictionary.
+///
+/// `CGSessionCopyCurrentDictionary` exposes `CGSSessionScreenIsLocked`; we read
+/// it defensively (null dict ⇒ no session, treated as locked; missing/odd value
+/// ⇒ unlocked) and never assume the CF value's concrete type without checking.
+#[cfg(target_os = "macos")]
+mod macos_lock {
+    use std::ffi::{c_void, CString};
+
+    type CFTypeRef = *const c_void;
+
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGSessionCopyCurrentDictionary() -> CFTypeRef;
+    }
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFDictionaryGetValue(dict: CFTypeRef, key: CFTypeRef) -> CFTypeRef;
+        fn CFStringCreateWithCString(alloc: CFTypeRef, c: *const i8, enc: u32) -> CFTypeRef;
+        fn CFGetTypeID(v: CFTypeRef) -> usize;
+        fn CFBooleanGetTypeID() -> usize;
+        fn CFBooleanGetValue(b: CFTypeRef) -> u8;
+        fn CFNumberGetTypeID() -> usize;
+        fn CFNumberGetValue(n: CFTypeRef, the_type: i64, out: *mut c_void) -> u8;
+        fn CFRelease(v: CFTypeRef);
+    }
+    const KCF_STRING_ENCODING_UTF8: u32 = 0x0800_0100;
+    const KCF_NUMBER_SINT32: i64 = 3;
+
+    /// True when the screen is locked (or there is no active GUI session).
+    pub fn is_screen_locked() -> bool {
+        // SAFETY: standard Quartz/CoreFoundation calls. Ownership: the session
+        // dict and the key string are +1 (Create/Copy) and released here; the
+        // dictionary value is borrowed and must not be released.
+        unsafe {
+            let dict = CGSessionCopyCurrentDictionary();
+            if dict.is_null() {
+                return true; // no session (loginwindow) — treat as locked
+            }
+            let Ok(key_c) = CString::new("CGSSessionScreenIsLocked") else {
+                CFRelease(dict);
+                return false;
+            };
+            let key = CFStringCreateWithCString(
+                std::ptr::null(),
+                key_c.as_ptr(),
+                KCF_STRING_ENCODING_UTF8,
+            );
+            if key.is_null() {
+                CFRelease(dict);
+                return false;
+            }
+            let value = CFDictionaryGetValue(dict, key); // borrowed
+            let locked = if value.is_null() {
+                false
+            } else {
+                let tid = CFGetTypeID(value);
+                if tid == CFBooleanGetTypeID() {
+                    CFBooleanGetValue(value) != 0
+                } else if tid == CFNumberGetTypeID() {
+                    let mut n: i32 = 0;
+                    CFNumberGetValue(value, KCF_NUMBER_SINT32, &mut n as *mut i32 as *mut c_void);
+                    n != 0
+                } else {
+                    false
+                }
+            };
+            CFRelease(key);
+            CFRelease(dict);
+            locked
+        }
     }
 }
 
