@@ -130,6 +130,12 @@ named = [
     # `computer_control.ax_interact_mutations`, and refuse a sensitive-app
     # denylist (password managers, Keychain, System Settings, terminals).
     "ax_interact",
+    # Multi-step UI automation in one call (e.g. "play <song> in Music",
+    # "message <person> in Slack"). Prefer over many individual ax_interact
+    # calls when the task needs several UI steps — a Rust perceive→act→verify
+    # loop runs the flow with a fast model. Same opt-in + sensitive-app denylist
+    # as ax_interact; `Dangerous`, gates through the ApprovalGate.
+    "automate",
     # Time + scheduling — lets the orchestrator answer "what time is it",
     # "remind me in 10 minutes", "every morning at 8" directly rather than
     # delegating or telling the user it can't. `current_time` grounds
