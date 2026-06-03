@@ -181,8 +181,14 @@ use crate::openhuman::voice::audio_capture::{
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 
-/// One always-on capture is live per process.
+/// The capture thread + processor have been spawned (once per process).
 static RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// Runtime on/off, mirrors `config.voice_server.always_on_enabled`. Toggling it
+/// at runtime takes effect immediately: when false the processor drops all audio
+/// (nothing is transcribed or sent). Lets the Settings toggle work without a
+/// restart. (The mic stream itself stays open until the next launch.)
+static ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// When true, the processor drops audio and resets the segmenter (privacy hook:
 /// screen locked). Driven by [`spawn_lock_watcher`] on macOS.
@@ -197,24 +203,24 @@ const FRAME_SAMPLES: usize = (TARGET_SAMPLE_RATE as usize / 1000) * FRAME_MS as 
 /// `max_utterance_ms` should flush first; this bounds memory if it doesn't).
 const MAX_UTTERANCE_SAMPLES: usize = TARGET_SAMPLE_RATE as usize * 60;
 
-/// Start the always-on capture loop if `always_on_enabled` is set in config.
+/// Apply the always-on config: set the runtime ENABLED gate and, when enabled,
+/// open the continuous microphone stream (once per process). Safe to call at
+/// boot **and** at runtime (the Settings toggle calls it via the config RPC):
+/// toggling off flips `ENABLED` so the processor immediately stops transcribing/
+/// delivering; toggling on starts capture live without a restart.
 ///
-/// No-op when disabled (the common, privacy-preserving default) or already
-/// running. Opens a continuous microphone stream, segments it with the
-/// [`VadSegmenter`], and routes each finished utterance through STT and the
-/// dictation delivery bus (so it reaches the agent exactly like a hotkey
-/// dictation, and lights up the notch).
-///
-/// TODO(phase-2): pause when the screen locks (no cross-platform lock signal
-/// exists yet) and expose a Settings toggle. The capture below runs for the
-/// process lifetime once enabled.
+/// Opens a continuous mic stream, segments it with the [`VadSegmenter`], and
+/// routes each finished utterance through STT and the dictation delivery bus (so
+/// it reaches the agent exactly like a hotkey dictation, and lights up the notch).
 pub async fn start_if_enabled(app_config: &Config) {
-    if !app_config.voice_server.always_on_enabled {
-        log::info!("{LOG_PREFIX} disabled in config; not opening continuous mic");
+    let on = app_config.voice_server.always_on_enabled;
+    ENABLED.store(on, Ordering::SeqCst);
+    if !on {
+        log::info!("{LOG_PREFIX} disabled — capture idle (toggle off)");
         return;
     }
     if RUNNING.swap(true, Ordering::SeqCst) {
-        log::info!("{LOG_PREFIX} already running; ignoring duplicate start");
+        log::info!("{LOG_PREFIX} re-enabled; capture already running");
         return;
     }
 
@@ -248,8 +254,8 @@ pub async fn start_if_enabled(app_config: &Config) {
 
         while let Some(chunk) = rx.recv().await {
             // Drop audio and abandon any in-flight utterance while paused
-            // (screen locked) — nothing spoken at the lock screen is captured.
-            if PAUSED.load(Ordering::Relaxed) {
+            // (screen locked) or toggled off — nothing is captured or sent.
+            if PAUSED.load(Ordering::Relaxed) || !ENABLED.load(Ordering::Relaxed) {
                 if seg.is_speaking() {
                     seg.reset();
                 }

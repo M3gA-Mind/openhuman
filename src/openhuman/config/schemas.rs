@@ -1010,6 +1010,10 @@ pub fn schemas(function: &str) -> ControllerSchema {
                     comment: "Custom vocabulary words to bias whisper toward.",
                     required: false,
                 },
+                optional_bool(
+                    "always_on_enabled",
+                    "Continuous always-on listening (no hotkey). Opt-in.",
+                ),
             ],
             outputs: vec![json_output("snapshot", "Updated config snapshot.")],
         },
@@ -1549,7 +1553,13 @@ fn handle_update_voice_server_settings(params: Map<String, Value>) -> Controller
             custom_dictionary: update.custom_dictionary,
             always_on_enabled: update.always_on_enabled,
         };
-        to_json(config_rpc::load_and_apply_voice_server_settings(patch).await?)
+        let result = config_rpc::load_and_apply_voice_server_settings(patch).await?;
+        // Apply the always-on toggle live (start/idle the capture loop) so the
+        // Settings switch takes effect without a restart.
+        if let Ok(config) = config_rpc::load_config_with_timeout().await {
+            crate::openhuman::voice::always_on::start_if_enabled(&config).await;
+        }
+        to_json(result)
     })
 }
 
