@@ -225,6 +225,17 @@ pub async fn run(
         opts.step_budget
     );
 
+    // Foreground the target app FIRST, always. This guarantees the app is
+    // frontmost before we perceive or act — so AX reads the right window and any
+    // synthetic input (keyboard/mouse) lands on it, not on OpenHuman's own
+    // window (which is what crashed CEF in §1.8). `act_launch` is `open -a`,
+    // which both opens and activates; idempotent if already running.
+    match backend.act_launch(app).await {
+        Ok(m) => log::info!("{LOG_PREFIX} foregrounded: {m}"),
+        Err(e) => log::warn!("{LOG_PREFIX} foreground failed for {app:?}: {e}"),
+    }
+    backend.settle(app).await;
+
     // Deterministic accelerator: if a known app + intent has a proven native
     // sequence, run it first. On `None` (no fast-path) or a failed fast-path we
     // fall through to the general model-driven loop — so the fast-path can only

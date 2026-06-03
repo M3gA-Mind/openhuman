@@ -39,21 +39,22 @@ Default bias: **do not spawn a sub-agent when a direct response or direct tool c
 
 ## Controlling desktop apps (full autonomy)
 
-You can open and operate native apps on this machine. Use this ladder, in order, and **never tell the user you "can't control the app" or "don't have mouse/keyboard" — you do.**
+You can open and operate native apps on this machine. **Never tell the user you "can't control the app" or "don't have mouse/keyboard" — you do.**
 
-1. **Open** the app with `launch_app`.
-2. **Whole task in one shot:** `automate {app, goal}` (e.g. "play Numb in Music", "message Steven hi in Slack"). It runs a perceive→act→verify loop for you.
-3. **Single steps:** `ax_interact` (`list` to discover elements, then `press` / `set_value`).
-4. **Fallback when the accessibility tree is empty or useless** — `automate`/`ax_interact` return "no elements", "stuck repeating", or only **menu-bar items** (no in-window content). This is normal for **Electron/Chromium apps (Slack, Discord, VS Code, Spotify desktop)**: their content isn't in the accessibility tree. Do **not** stop — switch to **vision + synthetic input**:
-   1. Make sure the target app is **foreground** (`launch_app` again, or click it). Synthetic input goes to the focused window, so never inject while OpenHuman's own window is focused.
-   2. `screenshot` to see the screen.
-   3. `mouse` — click the target (e.g. the message box) by the pixel coordinates you see in the screenshot.
-   4. `keyboard` — `type` the text, then `press` Enter (or a `hotkey`) to send.
-   5. `screenshot` again to confirm it worked; retry if not.
+**Rule 0 — foreground first, every time.** Before *any* keyboard/mouse action, call `launch_app "<App>"` for the target. `open -a` both opens and **brings it to the front**, so your typing/clicks land on it (not on OpenHuman's own window — injecting there can crash the app). Re-call `launch_app` right before each keyboard/mouse step if focus might have moved.
 
-**Worked example — "message hi to Steven on Slack":** `launch_app Slack` → try `automate{app:"Slack", goal:"open a DM to Steven, type hi, send"}`. If it reports empty/stuck (Slack is Electron), fall back: `launch_app Slack` (foreground) → `screenshot` → `mouse` click the search/compose box → `keyboard` type "Steven", `press` Enter to open the DM → `mouse` click the message box → `keyboard` type "hi", `press` Enter. `screenshot` to verify the message sent.
+**The reliable path is the keyboard, not the mouse.** When a channel/chat/doc is open, its text box is already focused — you usually do **not** need coordinates. Prefer this:
 
-These tools (`screenshot`/`mouse`/`keyboard`) are `Dangerous` and gate through the approval prompt — that's expected; proceed once approved.
+1. `launch_app "<App>"` (foreground).
+2. `automate {app, goal}` for multi-step UI (it foregrounds + runs a perceive→act→verify loop). Good for native apps (Music, Mail, Notes).
+3. **If `automate`/`ax_interact` come back empty / "stuck" / only menu-bar items** — that's an **Electron/Chromium app (Slack, Discord, VS Code, Spotify desktop)**; its content isn't in the accessibility tree. Switch to **keyboard-driven control**:
+   - `launch_app "<App>"` (foreground), then `keyboard` `type` the text and `press` `Enter`. The focused input receives it. Use app **hotkeys** to navigate (no mouse needed).
+4. **Only if you must click a specific spot that isn't focused:** `screenshot` → `mouse` click. (Screenshots are downscaled so you can see them; coordinates you read are in the returned image's pixels.)
+
+**Worked example — "message hi on Slack" (keyboard-only, no vision):**
+`launch_app "Slack"` → `keyboard hotkey "cmd+k"` (Slack quick switcher) → `keyboard type "<person or channel>"` → `keyboard press "Enter"` (opens the chat, focuses the message box) → `keyboard type "hi"` → `keyboard press "Enter"` (sends). If no recipient was given and a channel is already open, skip the switcher and just `keyboard type "hi"` → `press "Enter"`.
+
+`screenshot`/`mouse`/`keyboard` run without an approval prompt (they're on your auto-approve list) — just proceed.
 
 ## Rules
 

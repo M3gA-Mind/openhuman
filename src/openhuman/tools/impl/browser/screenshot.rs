@@ -9,8 +9,6 @@ use std::time::Duration;
 
 /// Maximum time to wait for a screenshot command to complete.
 const SCREENSHOT_TIMEOUT_SECS: u64 = 15;
-/// Maximum base64 payload size to return (2 MB of base64 ≈ 1.5 MB image).
-const MAX_BASE64_BYTES: usize = 2_097_152;
 
 /// Tool for capturing screenshots using platform-native commands.
 ///
@@ -132,59 +130,95 @@ impl ScreenshotTool {
         }
     }
 
-    /// Read the screenshot file and return base64-encoded result.
+    /// Read the screenshot file and return a base64 data-URL the model can see.
+    ///
+    /// Full-screen Retina captures are multi-MB PNGs that blow the inline
+    /// budget. Rather than dropping the image (which leaves vision-driven
+    /// control blind), downscale oversized captures to a JPEG that fits — the
+    /// model can then actually see the screen. Reports the *shown* dimensions so
+    /// callers know the coordinate space they're reading.
     async fn read_and_encode(output_path: &std::path::Path) -> anyhow::Result<ToolResult> {
-        // Check file size before reading to prevent OOM on large screenshots
-        const MAX_RAW_BYTES: u64 = 1_572_864; // ~1.5 MB (base64 expands ~33%)
-        if let Ok(meta) = tokio::fs::metadata(output_path).await {
-            if meta.len() > MAX_RAW_BYTES {
-                return Ok(ToolResult::success(format!(
-                    "Screenshot saved to: {}\nSize: {} bytes (too large to base64-encode inline)",
-                    output_path.display(),
-                    meta.len(),
-                )));
-            }
+        // ~1.5 MB raw → ~2 MB base64, a safe inline payload size.
+        const MAX_RAW_BYTES: usize = 1_572_864;
+
+        let bytes = match tokio::fs::read(output_path).await {
+            Ok(b) => b,
+            Err(e) => return Ok(ToolResult::error(format!("Failed to read screenshot: {e}"))),
+        };
+        let ext = output_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("png")
+            .to_lowercase();
+
+        // Fits as-is → return verbatim.
+        if bytes.len() <= MAX_RAW_BYTES {
+            let mime = match ext.as_str() {
+                "jpg" | "jpeg" => "image/jpeg",
+                "bmp" => "image/bmp",
+                "gif" => "image/gif",
+                "webp" => "image/webp",
+                _ => "image/png",
+            };
+            return Ok(Self::data_url_result(output_path, &bytes, mime, None));
         }
 
-        match tokio::fs::read(output_path).await {
-            Ok(bytes) => {
-                use base64::Engine;
-                let size = bytes.len();
-                let mut encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                let truncated = if encoded.len() > MAX_BASE64_BYTES {
-                    encoded.truncate(crate::openhuman::util::floor_char_boundary(
-                        &encoded,
-                        MAX_BASE64_BYTES,
-                    ));
-                    true
-                } else {
-                    false
-                };
-
-                let mut output_msg = format!(
-                    "Screenshot saved to: {}\nSize: {size} bytes\nBase64 length: {}",
-                    output_path.display(),
-                    encoded.len(),
-                );
-                if truncated {
-                    output_msg.push_str(" (truncated)");
-                }
-                let mime = match output_path.extension().and_then(|e| e.to_str()) {
-                    Some("jpg" | "jpeg") => "image/jpeg",
-                    Some("bmp") => "image/bmp",
-                    Some("gif") => "image/gif",
-                    Some("webp") => "image/webp",
-                    _ => "image/png",
-                };
-                let _ = write!(output_msg, "\ndata:{mime};base64,{encoded}");
-
-                Ok(ToolResult::success(output_msg))
-            }
-            Err(e) => Ok(ToolResult::error(format!(
-                "Failed to read screenshot file: {e}"
+        // Too large → downscale to a JPEG that fits (CPU work off the runtime).
+        match tokio::task::spawn_blocking(move || downscale_to_jpeg(&bytes, MAX_RAW_BYTES)).await {
+            Ok(Ok((jpeg, w, h))) => Ok(Self::data_url_result(
+                output_path,
+                &jpeg,
+                "image/jpeg",
+                Some((w, h)),
+            )),
+            Ok(Err(e)) => Ok(ToolResult::success(format!(
+                "Screenshot saved to: {} (could not downscale for inline view: {e})",
+                output_path.display()
             ))),
+            Err(e) => Ok(ToolResult::error(format!("downscale task failed: {e}"))),
         }
     }
+
+    /// Build a success result carrying a base64 data-URL of `data`.
+    fn data_url_result(
+        output_path: &std::path::Path,
+        data: &[u8],
+        mime: &str,
+        shown_dims: Option<(u32, u32)>,
+    ) -> ToolResult {
+        use base64::Engine;
+        let encoded = base64::engine::general_purpose::STANDARD.encode(data);
+        let mut msg = format!("Screenshot saved to: {}\n", output_path.display());
+        if let Some((w, h)) = shown_dims {
+            let _ = write!(
+                msg,
+                "Downscaled to {w}x{h}px for inline view (coordinates you read are in this {w}x{h} space).\n"
+            );
+        }
+        let _ = write!(msg, "data:{mime};base64,{encoded}");
+        ToolResult::success(msg)
+    }
+}
+
+/// Decode image bytes, downscale (preserving aspect ratio), and JPEG-encode so
+/// the result is ≤ `max_bytes`. Returns `(jpeg_bytes, width, height)`.
+fn downscale_to_jpeg(bytes: &[u8], max_bytes: usize) -> Result<(Vec<u8>, u32, u32), String> {
+    let img = image::load_from_memory(bytes).map_err(|e| format!("decode: {e}"))?;
+    let mut last: Option<(Vec<u8>, u32, u32)> = None;
+    for max_dim in [1568u32, 1280, 1024, 768, 600] {
+        let thumb = img.thumbnail(max_dim, max_dim); // fits within max_dim², keeps aspect
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 72)
+            .encode_image(&thumb)
+            .map_err(|e| format!("jpeg encode: {e}"))?;
+        let out = buf.into_inner();
+        let (w, h) = (thumb.width(), thumb.height());
+        if out.len() <= max_bytes {
+            return Ok((out, w, h));
+        }
+        last = Some((out, w, h));
+    }
+    last.ok_or_else(|| "could not produce a fitting JPEG".to_string())
 }
 
 #[async_trait]
