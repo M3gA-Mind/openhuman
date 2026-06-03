@@ -83,6 +83,13 @@ pub struct VoiceServerConfig {
     /// so a continuous noise source can't grow an unbounded recording.
     #[serde(default = "default_vad_max_utterance_secs")]
     pub vad_max_utterance_secs: f32,
+
+    /// Wake word for always-on mode. An utterance is only delivered to the agent
+    /// when its transcript contains this phrase; the phrase is stripped and the
+    /// remainder is sent as the command. Empty = no wake word (deliver every
+    /// utterance). Default "Hey Tiny".
+    #[serde(default = "default_wake_word")]
+    pub wake_word: String,
 }
 
 fn default_hotkey() -> String {
@@ -113,6 +120,10 @@ fn default_vad_max_utterance_secs() -> f32 {
     30.0
 }
 
+fn default_wake_word() -> String {
+    "Hey Tiny".to_string()
+}
+
 impl Default for VoiceServerConfig {
     fn default() -> Self {
         Self {
@@ -128,6 +139,7 @@ impl Default for VoiceServerConfig {
             vad_hangover_ms: default_vad_hangover_ms(),
             vad_min_speech_ms: default_vad_min_speech_ms(),
             vad_max_utterance_secs: default_vad_max_utterance_secs(),
+            wake_word: default_wake_word(),
         }
     }
 }

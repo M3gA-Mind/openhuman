@@ -12,8 +12,10 @@
 //!   - [`VadSegmenter`] — a pure state machine over per-frame RMS energies,
 //!     unit-tested deterministically (no audio backend).
 //!   - [`start_if_enabled`] — opens a continuous cpal mic stream on a dedicated
-//!     thread, slices 16 kHz mono frames, drives the segmenter, and routes each
-//!     utterance through `voice_transcribe_bytes` → `publish_transcription`.
+//!     thread, slices 16 kHz mono frames, drives the segmenter, transcribes each
+//!     utterance via the configured STT provider, then applies the wake-word
+//!     gate ([`extract_command`], default "Hey Tiny") before delivering the
+//!     command to the agent via `publish_transcription`.
 //!   - [`spawn_lock_watcher`] — privacy hook: pauses capture while the screen is
 //!     locked (macOS via the Quartz session dictionary).
 //!
@@ -341,13 +343,69 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
                 log::debug!("{LOG_PREFIX} empty transcript dropped");
                 return;
             }
-            log::info!(
-                "{LOG_PREFIX} transcript ({} chars, provider={provider_name}) → dictation bus",
-                text.len()
-            );
-            crate::openhuman::voice::dictation_listener::publish_transcription(text);
+            // Wake-word gate: only act on utterances addressed to the agent
+            // ("Hey Tiny, …"). Strip the wake phrase and deliver the command.
+            match extract_command(&text, &config.voice_server.wake_word) {
+                Some(cmd) => {
+                    log::info!(
+                        "{LOG_PREFIX} wake word matched → command ({} chars) → dictation bus",
+                        cmd.len()
+                    );
+                    crate::openhuman::voice::dictation_listener::publish_transcription(cmd);
+                }
+                None => {
+                    log::debug!(
+                        "{LOG_PREFIX} no wake word in transcript ({} chars); ignored",
+                        text.len()
+                    );
+                }
+            }
         }
         Err(e) => log::warn!("{LOG_PREFIX} transcription failed ({provider_name}): {e}"),
+    }
+}
+
+/// Apply the wake-word gate to a transcript.
+///
+/// Returns the command to send to the agent (the text after the wake phrase),
+/// or `None` when the wake word isn't present (the utterance wasn't addressed to
+/// the agent). An empty `wake_word` disables the gate (every utterance passes).
+/// Matching is tolerant: case-insensitive, punctuation-insensitive, and the
+/// phrase may appear after leading filler ("um, hey tiny, play music").
+pub(crate) fn extract_command(transcript: &str, wake_word: &str) -> Option<String> {
+    let normalize = |s: &str| -> String {
+        s.to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let wake = normalize(wake_word);
+    let cmd = transcript.trim();
+    if wake.is_empty() {
+        return if cmd.is_empty() {
+            None
+        } else {
+            Some(cmd.to_string())
+        };
+    }
+    let norm = normalize(transcript);
+    // Find the wake phrase as a token sequence; take everything after it.
+    let needle = format!("{wake} ");
+    let after = if let Some(pos) = norm.find(&needle) {
+        norm[pos + needle.len()..].to_string()
+    } else if norm == wake {
+        String::new() // wake word alone, no command
+    } else {
+        return None;
+    };
+    let after = after.trim();
+    if after.is_empty() {
+        None
+    } else {
+        Some(after.to_string())
     }
 }
 
@@ -679,5 +737,40 @@ mod tests {
         assert_eq!(v.max_utterance_ms, 2500);
         assert_eq!(v.hangover_ms, 750);
         assert_eq!(v.onset_threshold, c.vad_onset_threshold);
+    }
+
+    #[test]
+    fn wake_word_extracts_command() {
+        // Case/punctuation tolerant; strips the phrase, keeps the command.
+        assert_eq!(
+            extract_command("Hey Tiny, play Numb by Linkin Park", "Hey Tiny").as_deref(),
+            Some("play numb by linkin park")
+        );
+        assert_eq!(
+            extract_command("hey tiny open slack", "Hey Tiny").as_deref(),
+            Some("open slack")
+        );
+        // Leading filler before the wake phrase is tolerated.
+        assert_eq!(
+            extract_command("um, hey tiny what time is it", "Hey Tiny").as_deref(),
+            Some("what time is it")
+        );
+    }
+
+    #[test]
+    fn wake_word_absent_is_ignored() {
+        assert_eq!(extract_command("play some music", "Hey Tiny"), None);
+        // Wake word alone with no command → nothing to do.
+        assert_eq!(extract_command("Hey Tiny", "Hey Tiny"), None);
+        assert_eq!(extract_command("hey tiny!", "Hey Tiny"), None);
+    }
+
+    #[test]
+    fn empty_wake_word_passes_everything() {
+        assert_eq!(
+            extract_command("just say this", "").as_deref(),
+            Some("just say this")
+        );
+        assert_eq!(extract_command("   ", ""), None);
     }
 }
