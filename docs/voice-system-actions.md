@@ -549,7 +549,15 @@ Shipped on the Windows machine (2026-06-02):
 
 ---
 
-## Phase 3 — Wake-Word + Fast Routing ⏳ Not Started
+## Phase 3 — Wake-Word + Fast Routing 🔨 In progress
+
+**Fast routing — started:** `src/openhuman/voice/command_router.rs` (new) — pure `route(transcript) -> VoiceIntent` classifier (Play/Pause/Resume/Next/Previous/OpenApp/SetVolume/VolumeUp·Down/Mute/Unmute, else `Unknown`). High-confidence intents can execute directly (launch_app / Music fast-path / osascript volume) without a full chat-LLM turn — the ≤500 ms path; `Unknown` defers to the agent so routing only ever shortcuts. Filler-tolerant ("please open up slack"). 5 unit tests.
+
+**Remaining Phase 3:** (1) wire `command_router` into `always_on` delivery (route first; execute local intents; fall back to the agent on `Unknown`); (2) on-device audio wake-word model (Porcupine / ONNX) in `inference/voice/wake_word.rs` to gate STT before transcription (the text-based "Hey Tiny" from Phase 2 is the interim).
+
+---
+
+## Phase 3 — Wake-Word + Fast Routing (original plan) ⏳
 
 > Activate only on a trigger phrase; route simple commands locally without a full LLM turn.
 
