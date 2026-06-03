@@ -28,7 +28,15 @@ import { connectCoreSocket } from '../services/coreSocket';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type NotchMode = 'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking' | 'attention';
+// 'ready' is the always-visible idle baseline (shows "Ready"); the pill never
+// fully disappears so the user always knows the listener's status.
+type NotchMode =
+  | 'ready'
+  | 'listening'
+  | 'transcribing'
+  | 'thinking'
+  | 'speaking'
+  | 'attention';
 
 interface NotchState {
   mode: NotchMode;
@@ -97,6 +105,8 @@ function SpinnerDots() {
 // ── Icon glyph ────────────────────────────────────────────────────────────────
 
 function ModeIcon({ mode }: { mode: NotchMode }) {
+  // Steady green dot when idle/ready — calm "I'm listening for the wake word".
+  if (mode === 'ready') return <span className="h-2 w-2 rounded-full bg-emerald-400/90" />;
   if (mode === 'listening') return <WaveformBars />;
   if (mode === 'transcribing' || mode === 'thinking') return <SpinnerDots />;
   if (mode === 'speaking') {
@@ -132,7 +142,7 @@ function ModeIcon({ mode }: { mode: NotchMode }) {
 
 export default function NotchApp() {
   const { t } = useT();
-  const [state, setState] = useState<NotchState>({ mode: 'idle', text: '' });
+  const [state, setState] = useState<NotchState>({ mode: 'ready', text: '' });
   const dismissRef = useRef<number | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
@@ -147,7 +157,8 @@ export default function NotchApp() {
     (ms: number) => {
       clearDismiss();
       dismissRef.current = window.setTimeout(() => {
-        setState({ mode: 'idle', text: '' });
+        // Fall back to the always-visible "Ready" baseline, never invisible.
+        setState({ mode: 'ready', text: '' });
         dismissRef.current = null;
       }, ms);
     },
@@ -213,7 +224,7 @@ export default function NotchApp() {
             };
             const textMap: Partial<Record<string, string>> = {
               listening: t('notch.listening', 'Listening…'),
-              thinking: t('notch.thinking', 'Thinking…'),
+              thinking: t('notch.processing', 'Processing…'),
               speaking: t('notch.speaking', 'Speaking…'),
             };
 
@@ -228,8 +239,15 @@ export default function NotchApp() {
             if (!message) return;
             console.debug(`[notch] overlay:attention chars=${message.length}`);
             clearDismiss();
+            // The voice listener uses two reserved status words to drive the
+            // pill: "Listening" (capturing speech) and "Processing" (running a
+            // command). Map them to the matching icon; everything else is a
+            // generic attention message.
+            const lower = message.toLowerCase();
+            const mode: NotchMode =
+              lower === 'listening' ? 'listening' : lower === 'processing' ? 'thinking' : 'attention';
             setState({
-              mode: 'attention',
+              mode,
               text: message.length > 60 ? `${message.slice(0, 57)}…` : message,
             });
             scheduleDismiss(payload?.ttl_ms ?? DEFAULT_TTL_MS);
@@ -279,16 +297,15 @@ export default function NotchApp() {
 
   const { mode, text } = state;
 
-  if (mode === 'idle') {
-    // Fully transparent when idle — the panel passes all mouse events through.
-    return <div className="h-screen w-screen bg-transparent" />;
-  }
+  // The pill is ALWAYS visible so the user can always see the listener status:
+  // Ready (idle) · Listening (capturing speech) · Processing (running a command).
+  const label = text || (mode === 'ready' ? t('notch.ready', 'Ready') : '');
 
   const pillBg =
-    mode === 'listening'
-      ? 'bg-[rgba(10,10,10,0.92)]'
-      : mode === 'speaking'
-        ? 'bg-[rgba(10,40,10,0.92)]'
+    mode === 'speaking'
+      ? 'bg-[rgba(10,40,10,0.92)]'
+      : mode === 'ready'
+        ? 'bg-[rgba(10,10,10,0.72)]' // dimmer when idle
         : 'bg-[rgba(10,10,10,0.92)]';
 
   return (
@@ -301,9 +318,9 @@ export default function NotchApp() {
           WebkitBackdropFilter: 'blur(12px)',
         }}>
         <ModeIcon mode={mode} />
-        {text && (
+        {label && (
           <span className="max-w-[260px] truncate text-[13px] font-medium leading-none tracking-[-0.01em] text-white/95">
-            {text}
+            {label}
           </span>
         )}
       </div>

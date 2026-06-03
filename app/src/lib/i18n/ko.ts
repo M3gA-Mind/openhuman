@@ -4416,6 +4416,8 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': '로컬 저장소 거부',
   'pages.settings.account.security': '보안',
   'pages.settings.account.securityDesc': '비밀 저장 모드 및 키체인 상태',
+  'notch.ready': '준비됨',
+  'notch.processing': '처리 중…',
   'notch.listening': '듣는 중…',
   'notch.thinking': '생각 중…',
   'notch.speaking': '말하는 중…',

@@ -4237,6 +4237,8 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': '拒绝本地存储',
   'pages.settings.account.security': '安全',
   'pages.settings.account.securityDesc': '密钥存储模式和密钥链状态',
+  'notch.ready': '就绪',
+  'notch.processing': '处理中…',
   'notch.listening': '聆听中…',
   'notch.thinking': '思考中…',
   'notch.speaking': '说话中…',

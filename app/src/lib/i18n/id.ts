@@ -4468,6 +4468,8 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'Tolak penyimpanan lokal',
   'pages.settings.account.security': 'Keamanan',
   'pages.settings.account.securityDesc': 'Mode penyimpanan rahasia dan status keychain',
+  'notch.ready': 'Siap',
+  'notch.processing': 'Memproses…',
   'notch.listening': 'Mendengar…',
   'notch.thinking': 'Berpikir…',
   'notch.speaking': 'Berbicara…',

@@ -4494,6 +4494,8 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'Отклонить локальное хранилище',
   'pages.settings.account.security': 'Безопасность',
   'pages.settings.account.securityDesc': 'Режим хранения секретов и статус связки ключей',
+  'notch.ready': 'Готово',
+  'notch.processing': 'Обработка…',
   'notch.listening': 'Слушаю…',
   'notch.thinking': 'Думаю…',
   'notch.speaking': 'Говорю…',

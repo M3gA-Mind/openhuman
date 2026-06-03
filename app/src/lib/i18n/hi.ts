@@ -4458,6 +4458,8 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'स्थानीय भंडारण अस्वीकार करें',
   'pages.settings.account.security': 'सुरक्षा',
   'pages.settings.account.securityDesc': 'रहस्य भंडारण मोड और कीचेन स्थिति',
+  'notch.ready': 'तैयार',
+  'notch.processing': 'प्रोसेस हो रहा है…',
   'notch.listening': 'सुन रहा हूं…',
   'notch.thinking': 'सोच रहा हूं…',
   'notch.speaking': 'बोल रहा हूं…',

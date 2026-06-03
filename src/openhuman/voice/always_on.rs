@@ -272,6 +272,7 @@ pub async fn start_if_enabled(app_config: &Config) {
                     Some(VadEvent::SpeechStart) => {
                         utterance.clear();
                         utterance.extend_from_slice(&frame);
+                        notch_status("Listening", 2500); // pill: capturing speech
                     }
                     Some(VadEvent::SpeechEnd {
                         emit, voiced_ms, ..
@@ -299,6 +300,17 @@ pub async fn start_if_enabled(app_config: &Config) {
         log::info!("{LOG_PREFIX} capture channel closed; processor exiting");
         RUNNING.store(false, Ordering::SeqCst);
     });
+}
+
+/// Push a listener status to the always-visible notch pill via the
+/// `overlay:attention` channel. The notch maps "Listening" / "Processing" to the
+/// right icon; when the message expires it falls back to "Ready". Fire-and-forget.
+fn notch_status(status: &str, ttl_ms: u32) {
+    let _ = crate::openhuman::overlay::publish_attention(
+        crate::openhuman::overlay::OverlayAttentionEvent::new(status)
+            .with_source("voice")
+            .with_ttl_ms(ttl_ms),
+    );
 }
 
 /// Transcribe a finished utterance and hand the text to the dictation bus,
@@ -347,16 +359,16 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
             // ("Hey Tiny, …"). Strip the wake phrase and deliver the command.
             match extract_command(&text, &config.voice_server.wake_word) {
                 Some(cmd) => {
-                    log::info!(
-                        "{LOG_PREFIX} wake word matched → command ({} chars) → dictation bus",
-                        cmd.len()
-                    );
+                    log::info!("{LOG_PREFIX} wake word matched → command={cmd:?} → dictation bus");
+                    notch_status("Processing", 12000); // pill: running the command
                     crate::openhuman::voice::dictation_listener::publish_transcription(cmd);
                 }
                 None => {
-                    log::debug!(
-                        "{LOG_PREFIX} no wake word in transcript ({} chars); ignored",
-                        text.len()
+                    // Visible at info so the user can see WHAT was heard when the
+                    // wake word didn't match (diagnoses "Hey Tiny not responding").
+                    log::info!(
+                        "{LOG_PREFIX} no wake word ({:?}) in transcript={text:?}; ignored",
+                        config.voice_server.wake_word
                     );
                 }
             }

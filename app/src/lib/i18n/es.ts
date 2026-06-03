@@ -4534,6 +4534,8 @@ const messages: TranslationMap = {
   'keyring.settings.revokeConsent': 'Rechazar almacenamiento local',
   'pages.settings.account.security': 'Seguridad',
   'pages.settings.account.securityDesc': 'Modo de almacenamiento de secretos y estado del llavero',
+  'notch.ready': 'Listo',
+  'notch.processing': 'Procesando…',
   'notch.listening': 'Escuchando…',
   'notch.thinking': 'Pensando…',
   'notch.speaking': 'Hablando…',
