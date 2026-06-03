@@ -497,19 +497,23 @@ Shipped on the Windows machine (2026-06-02):
 
 ---
 
-## Phase 2 — Always-On Listening ⏳ Not Started
+## Phase 2 — Always-On Listening ✅ Implemented
 
 > Continuous microphone listening without requiring a hotkey press.
 
-**Planned files:**
-- `src/openhuman/voice/always_on.rs` (new) — dedicated tokio task holding the mic open, running VAD, emitting utterances to the STT pipeline
-- `src/openhuman/config/schema/voice_server.rs` — add `always_on_enabled: bool` config flag
-- Privacy hook: pause always-on when screen is locked
+**Shipped:**
+- `src/openhuman/voice/always_on.rs` — pure `VadSegmenter` (onset / silence-hangover / min-speech / max-utterance, 7 unit tests) **plus** the continuous capture loop: a dedicated cpal thread streams 16 kHz mono frames → segmenter → each utterance is encoded (`encode_wav_16k`) → `voice_transcribe_bytes` → `publish_transcription` (so it reaches the agent's auto-send and the notch, exactly like hotkey dictation). Started at boot in `credentials::ops`.
+- `src/openhuman/config/schema/voice_server.rs` — `always_on_enabled` flag + VAD tuning (`vad_onset_threshold`, `vad_hangover_ms`, `vad_min_speech_ms`, `vad_max_utterance_secs`), opt-in/off by default.
+- **Settings toggle** — "Always-on listening" in the Voice debug panel, wired through `get/update_voice_server_settings` (RPC patch → apply → snapshot); i18n in en + all 13 locales.
+- **Privacy hook** — `spawn_lock_watcher` pauses capture + resets the segmenter while the screen is locked (macOS via `CGSessionCopyCurrentDictionary`, null/type-safe FFI; other platforms never pause yet).
+- Reused `audio_capture` helpers (`to_mono`/`resample`/`chunk_rms` made `pub(crate)` + new `encode_wav_16k`).
 
 **Acceptance criteria:**
-- [ ] User can speak without pressing any hotkey
-- [ ] VAD detects end of utterance and sends to agent
-- [ ] Toggle in Settings → Voice
+- [x] User can speak without pressing any hotkey
+- [x] VAD detects end of utterance and sends to agent
+- [x] Toggle in Settings → Voice
+
+**Pending live validation (mic-dependent, can't be CI-tested):** speak with always-on enabled and confirm the transcript reaches the agent; tune `vad_onset_threshold`/`vad_hangover_ms` to the user's mic + room (the "fine-tune at the end" pass). Windows/Linux screen-lock pause is a follow-up (no signal wired).
 
 ---
 
@@ -562,9 +566,9 @@ Shipped on the Windows machine (2026-06-02):
 | 1.5 | M5: richer element model (`enabled`) | ✅ Plumbed; AXEnabled found unreliable → informational only |
 | 1.5 | Native fast-paths (Music/Spotify/Slack) | ⏳ Not started |
 | 1.5 | Vision fallback for Electron apps | ⏳ Not started |
-| 2 | Always-on microphone loop | ⏳ Not started |
-| 2 | `always_on_enabled` config flag | ⏳ Not started |
-| 2 | Privacy hook (screen lock pause) | ⏳ Not started |
+| 2 | Always-on microphone loop | ✅ Done (cpal → VAD → STT → agent) |
+| 2 | `always_on_enabled` config flag + Settings toggle | ✅ Done (RPC + UI + i18n) |
+| 2 | Privacy hook (screen lock pause) | ✅ Done (macOS; other OSes follow-up) |
 | 3 | Wake-word detection | ⏳ Not started |
 | 3 | Local command router | ⏳ Not started |
 | 4 | Voice confirmation loop | ⏳ Not started |
