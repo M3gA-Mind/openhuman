@@ -513,7 +513,14 @@ Shipped on the Windows machine (2026-06-02):
 - [x] VAD detects end of utterance and sends to agent
 - [x] Toggle in Settings → Voice
 
-**Pending live validation (mic-dependent, can't be CI-tested):** speak with always-on enabled and confirm the transcript reaches the agent; tune `vad_onset_threshold`/`vad_hangover_ms` to the user's mic + room (the "fine-tune at the end" pass). Windows/Linux screen-lock pause is a follow-up (no signal wired).
+**Wake word "Hey Tiny" (live-fix, 2026-06-03):** always-on now only delivers an utterance to the agent when its transcript contains the wake word (`config.voice_server.wake_word`, default "Hey Tiny"); the phrase is stripped and the remainder is sent. Tolerant match (case/punctuation/leading-filler), empty wake word = deliver everything. This is a **text-based** wake word (transcribe-then-gate) — a first cut of Phase 3's trigger phrase; it fixes the "sends every utterance" spam but still runs STT on all speech (an on-device audio wake-word model for efficiency is the Phase 3 follow-up).
+
+**Live-fixes found by running it:**
+- **Toggle did nothing** — `always_on_enabled` wasn't in the `update_voice_server_settings` RPC *param schema*, so validation rejected it before the handler. Added it; the config RPC now also calls `always_on::start_if_enabled` so the toggle starts/idles capture **live** (runtime `ENABLED` gate, no restart).
+- **`transcription failed: local ai is disabled`** — always-on used `voice_transcribe_bytes` (local whisper only). Now routes through `effective_stt_provider` + `create_stt_provider` (same factory dispatch as `voice.stt_dispatch`), honoring cloud STT.
+- Toggle surfaced in the reachable **VoicePanel** (Settings → Advanced → AI → Voice), not the hidden debug panel.
+
+**Pending live validation (mic-dependent, can't be CI-tested):** say "Hey Tiny, <command>" and confirm the command reaches the agent; tune `vad_onset_threshold`/`vad_hangover_ms` to the user's mic + room. Windows/Linux screen-lock pause is a follow-up (no signal wired).
 
 ---
 
