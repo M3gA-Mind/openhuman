@@ -280,6 +280,8 @@ test ... ok
 
 **M5 finding — AXEnabled is unreliable:** plumbed an `enabled` field end-to-end (Swift `axEnabled` → `AXElement.enabled` → Windows stub), but Apple Music reports its **pressable** search-result rows as `enabled=Some(false)`. Gating `pick_row` on it broke playback. So `enabled` is kept **informational only** (documented on the struct); matchers never skip on it. The better future actionability signal is AXPress-action support, not AXEnabled.
 
+**M4 — live progress in the notch (2026-06-03):** the notch indicator (originally PR #3166) was cherry-picked onto this branch (`feat(notch)` + fmt commits → `notch_window.rs` NSPanel + `notch/NotchApp.tsx`, auto-shown on startup, transparent when idle). The `automate` loop and Music fast-path now call `overlay::publish_attention(...)` at each step (`Opening …`, `Searching Music for …`, `Pressing …`, `Typing …`, `Playing …`, plus done/fail), which the existing Socket.IO bridge emits as `overlay:attention` and the notch renders as a pill — so the user sees the automation happening live. Verified: app boots with `[notch-window] panel shown at top-center`; Tauri shell + frontend compile; 31 automate unit tests green.
+
 **M3 live proof (2026-06-03):** `music_fastpath_live` drives real Apple Music end-to-end and **hard-asserts `player state == playing`** — confirmed: pre-state `paused` → post-state `playing`. Three bugs the live runs surfaced, all fixed + tested:
 1. **Perceive filter was the whole multi-word query** — a substring filter can't match a full title → now filters by the first strong token and `pick_row` does the token match.
 2. **Search results render late (§1.13 race)** — retry perceive across up to 4 settles; `AC/DC` now percent-encodes correctly.
@@ -556,7 +558,7 @@ Shipped on the Windows machine (2026-06-02):
 | 1.5 | M2: poll-until-stable settle | ✅ Done |
 | 1.5 | M3: Music fast-path | ✅ Done (proven live on macOS) |
 | 1.5 | Robustness: quoted-query parse + no-progress guard | ✅ Done (from live agent failures) |
-| 1.5 | M4: progress streaming to notch | ⛔ Blocked — notch surface (PR #3166) not in this branch |
+| 1.5 | M4: progress streaming to notch | ✅ Done — notch cherry-picked in; automate streams live steps |
 | 1.5 | M5: richer element model (`enabled`) | ✅ Plumbed; AXEnabled found unreliable → informational only |
 | 1.5 | Native fast-paths (Music/Spotify/Slack) | ⏳ Not started |
 | 1.5 | Vision fallback for Electron apps | ⏳ Not started |
