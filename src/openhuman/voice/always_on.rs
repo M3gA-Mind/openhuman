@@ -170,31 +170,242 @@ impl VadSegmenter {
     }
 }
 
+// ── Continuous capture loop ─────────────────────────────────────────────────
+
+use crate::openhuman::config::Config;
+use crate::openhuman::voice::audio_capture::{
+    chunk_rms, encode_wav_16k, resample, to_mono, TARGET_SAMPLE_RATE,
+};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// One always-on capture is live per process.
+static RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// VAD frame size. 20 ms at 16 kHz = 320 samples — small enough for responsive
+/// onset/hangover detection, large enough for a stable RMS estimate.
+const FRAME_MS: u32 = 20;
+const FRAME_SAMPLES: usize = (TARGET_SAMPLE_RATE as usize / 1000) * FRAME_MS as usize;
+
+/// Hard cap on a buffered utterance (defensive — the segmenter's
+/// `max_utterance_ms` should flush first; this bounds memory if it doesn't).
+const MAX_UTTERANCE_SAMPLES: usize = TARGET_SAMPLE_RATE as usize * 60;
+
 /// Start the always-on capture loop if `always_on_enabled` is set in config.
 ///
-/// No-op when disabled (the common, privacy-preserving default).
+/// No-op when disabled (the common, privacy-preserving default) or already
+/// running. Opens a continuous microphone stream, segments it with the
+/// [`VadSegmenter`], and routes each finished utterance through STT and the
+/// dictation delivery bus (so it reaches the agent exactly like a hotkey
+/// dictation, and lights up the notch).
 ///
-/// TODO(phase-2): open a continuous cpal input stream, downmix to 16 kHz mono,
-/// slice into fixed frames (e.g. 20 ms), feed each frame's RMS to a
-/// [`VadSegmenter`], buffer samples between `SpeechStart` and an emitted
-/// `SpeechEnd`, then hand the buffered WAV to the existing
-/// `server::process_recording_bg` STT→delivery pipeline. Pause the segmenter
-/// (`reset`) when the screen locks. The segmenter below is already complete and
-/// unit-tested; this is the remaining audio-plumbing layer.
-pub async fn start_if_enabled(app_config: &crate::openhuman::config::Config) {
+/// TODO(phase-2): pause when the screen locks (no cross-platform lock signal
+/// exists yet) and expose a Settings toggle. The capture below runs for the
+/// process lifetime once enabled.
+pub async fn start_if_enabled(app_config: &Config) {
     if !app_config.voice_server.always_on_enabled {
         log::info!("{LOG_PREFIX} disabled in config; not opening continuous mic");
         return;
     }
-    let cfg = VadConfig::from_server_config(&app_config.voice_server);
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        log::info!("{LOG_PREFIX} already running; ignoring duplicate start");
+        return;
+    }
+
+    let vad = VadConfig::from_server_config(&app_config.voice_server);
+    let skip_cleanup = app_config.voice_server.skip_cleanup;
+    let config = app_config.clone();
     log::info!(
-        "{LOG_PREFIX} enabled — onset={:.4} hangover={}ms min_speech={}ms max_utt={}ms \
-         (continuous capture loop not yet wired; see TODO)",
-        cfg.onset_threshold,
-        cfg.hangover_ms,
-        cfg.min_speech_ms,
-        cfg.max_utterance_ms
+        "{LOG_PREFIX} enabled — onset={:.4} hangover={}ms min_speech={}ms max_utt={}ms",
+        vad.onset_threshold,
+        vad.hangover_ms,
+        vad.min_speech_ms,
+        vad.max_utterance_ms
     );
+
+    // The cpal stream is `!Send`, so it lives on a dedicated thread that pushes
+    // 16 kHz mono frames over a channel to the async processor below.
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<f32>>();
+    if let Err(e) = spawn_capture_thread(tx) {
+        log::error!("{LOG_PREFIX} could not start microphone capture: {e}");
+        RUNNING.store(false, Ordering::SeqCst);
+        return;
+    }
+
+    tokio::spawn(async move {
+        let mut seg = VadSegmenter::new(vad);
+        let mut pending: Vec<f32> = Vec::new();
+        let mut utterance: Vec<f32> = Vec::new();
+
+        while let Some(chunk) = rx.recv().await {
+            pending.extend_from_slice(&chunk);
+            while pending.len() >= FRAME_SAMPLES {
+                let frame: Vec<f32> = pending.drain(..FRAME_SAMPLES).collect();
+                let rms = chunk_rms(&frame);
+                match seg.push_frame(rms, FRAME_MS) {
+                    Some(VadEvent::SpeechStart) => {
+                        utterance.clear();
+                        utterance.extend_from_slice(&frame);
+                    }
+                    Some(VadEvent::SpeechEnd {
+                        emit, voiced_ms, ..
+                    }) => {
+                        let captured = std::mem::take(&mut utterance);
+                        log::info!(
+                            "{LOG_PREFIX} utterance end voiced_ms={voiced_ms} emit={emit} samples={}",
+                            captured.len()
+                        );
+                        if emit {
+                            let cfg = config.clone();
+                            tokio::spawn(async move {
+                                transcribe_and_deliver(&cfg, captured, skip_cleanup).await;
+                            });
+                        }
+                    }
+                    None => {
+                        if seg.is_speaking() && utterance.len() < MAX_UTTERANCE_SAMPLES {
+                            utterance.extend_from_slice(&frame);
+                        }
+                    }
+                }
+            }
+        }
+        log::info!("{LOG_PREFIX} capture channel closed; processor exiting");
+        RUNNING.store(false, Ordering::SeqCst);
+    });
+}
+
+/// Transcribe a finished utterance and hand the text to the dictation bus,
+/// which delivers it to the agent (auto-send) and the notch — the same path the
+/// hotkey dictation uses.
+async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>, skip_cleanup: bool) {
+    let wav = match encode_wav_16k(&samples_16k) {
+        Ok(w) => w,
+        Err(e) => {
+            log::warn!("{LOG_PREFIX} wav encode failed: {e}");
+            return;
+        }
+    };
+    match crate::openhuman::voice::voice_transcribe_bytes(
+        config,
+        &wav,
+        Some("wav".to_string()),
+        None,
+        skip_cleanup,
+    )
+    .await
+    {
+        Ok(outcome) => {
+            let text = outcome.value.text.trim().to_string();
+            if text.is_empty() {
+                log::debug!("{LOG_PREFIX} empty transcript dropped");
+                return;
+            }
+            log::info!(
+                "{LOG_PREFIX} transcript ({} chars) → dictation bus",
+                text.len()
+            );
+            crate::openhuman::voice::dictation_listener::publish_transcription(text);
+        }
+        Err(e) => log::warn!("{LOG_PREFIX} transcription failed: {e}"),
+    }
+}
+
+/// Spawn the dedicated cpal capture thread. Blocks until the stream is set up
+/// (or fails), mirroring `audio_capture::start_recording`'s readiness handshake.
+fn spawn_capture_thread(tx: tokio::sync::mpsc::UnboundedSender<Vec<f32>>) -> Result<(), String> {
+    let (setup_tx, setup_rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
+    std::thread::Builder::new()
+        .name("voice-always-on".into())
+        .spawn(move || {
+            if let Err(e) = capture_on_thread(tx, &setup_tx) {
+                log::error!("{LOG_PREFIX} capture thread error: {e}");
+                let _ = setup_tx.send(Err(e));
+            }
+        })
+        .map_err(|e| format!("failed to spawn always-on capture thread: {e}"))?;
+    match setup_rx.recv() {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err("always-on capture thread exited before signalling readiness".to_string()),
+    }
+}
+
+/// Owns the cpal stream for the process lifetime. Each callback downmixes to
+/// mono, resamples to 16 kHz, and forwards samples to the async processor.
+fn capture_on_thread(
+    tx: tokio::sync::mpsc::UnboundedSender<Vec<f32>>,
+    setup_tx: &std::sync::mpsc::SyncSender<Result<(), String>>,
+) -> Result<(), String> {
+    use crate::openhuman::accessibility::{detect_microphone_permission, PermissionState};
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+    use cpal::{SampleFormat, StreamConfig};
+
+    if matches!(detect_microphone_permission(), PermissionState::Denied) {
+        return Err("microphone permission denied".to_string());
+    }
+
+    let host = cpal::default_host();
+    let device = host
+        .default_input_device()
+        .ok_or_else(|| "no default audio input device".to_string())?;
+    let supported = device
+        .default_input_config()
+        .map_err(|e| format!("no default input config: {e}"))?;
+    let source_rate = supported.sample_rate().0;
+    let channels = supported.channels() as usize;
+    let sample_format = supported.sample_format();
+    let stream_config: StreamConfig = supported.into();
+    log::info!(
+        "{LOG_PREFIX} capture device ready rate={source_rate} channels={channels} format={sample_format:?}"
+    );
+
+    // Forward one resampled-to-16k mono chunk per callback.
+    let forward = move |mono_src: Vec<f32>| {
+        let mono16k = resample(&mono_src, source_rate);
+        // Ignore send errors — they mean the processor task is gone (shutdown).
+        let _ = tx.send(mono16k);
+    };
+
+    let err_fn = |e| log::warn!("{LOG_PREFIX} cpal stream error: {e}");
+    let stream = match sample_format {
+        SampleFormat::F32 => device.build_input_stream(
+            &stream_config,
+            move |data: &[f32], _| forward(to_mono(data, channels)),
+            err_fn,
+            None,
+        ),
+        SampleFormat::I16 => device.build_input_stream(
+            &stream_config,
+            move |data: &[i16], _| {
+                let floats: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0).collect();
+                forward(to_mono(&floats, channels));
+            },
+            err_fn,
+            None,
+        ),
+        SampleFormat::U16 => device.build_input_stream(
+            &stream_config,
+            move |data: &[u16], _| {
+                let floats: Vec<f32> = data.iter().map(|&s| s as f32 / 32768.0 - 1.0).collect();
+                forward(to_mono(&floats, channels));
+            },
+            err_fn,
+            None,
+        ),
+        other => return Err(format!("unsupported sample format: {other:?}")),
+    }
+    .map_err(|e| format!("failed to build input stream: {e}"))?;
+
+    stream
+        .play()
+        .map_err(|e| format!("failed to start stream: {e}"))?;
+    let _ = setup_tx.send(Ok(()));
+    log::info!("{LOG_PREFIX} microphone stream live");
+
+    // Keep the stream (and thus this thread) alive for the process lifetime.
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(3600));
+    }
 }
 
 #[cfg(test)]
