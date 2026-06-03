@@ -349,6 +349,29 @@ test ... ok
 
 ---
 
+### Change 1.15 — Full computer control (mouse/keyboard/screenshot) ⚠️ BLOCKED by CEF crash
+
+**Status:** ⚠️ Mouse/keyboard **crash the app** off the main thread — re-disabled pending a main-thread fix. Screenshot works.
+
+**Goal:** make the agent fully autonomous — when the accessibility tree is empty (Electron apps: Slack/Discord/VS Code), fall back to vision + synthetic input. Enabled `computer_control.enabled`, added `mouse`/`keyboard`/`screenshot` to the orchestrator `named` list + `autonomy.auto_approve`, and taught `prompt.md` a keyboard-first ladder (foreground via `launch_app` → `keyboard type` + Enter; Slack `Cmd+K` recipe).
+
+**Foreground-first:** `automate::run` now `open -a`s the target app at the very start, always, so AX/input hit the right window.
+
+**Screenshot fix:** oversized Retina captures were returned as "too large to base64-encode inline" (the model was blind). Now downscaled to a viewable JPEG (`downscale_to_jpeg`) with reported dimensions.
+
+**THE BLOCKER — `OpenHuman-2026-06-03-170058.ips`:** `EXC_BREAKPOINT/SIGTRAP` on a **`tokio-rt-worker`** thread:
+```
+enigo::macos::get_layoutdependent_keycode → TSMGetInputSourceProperty
+→ dispatch_assert_queue → _dispatch_assert_queue_fail → SIGTRAP
+```
+enigo's keyboard-layout lookup (`TSMGetInputSourceProperty`) **must run on the app's main thread**; the keyboard tool runs on a tokio worker → macOS traps. **Not** a focus issue (same §1.8 root cause). A frontmost-app guard would NOT fix it.
+
+**Fix required (not yet done):** run enigo on the Tauri **main thread** (`AppHandle::run_on_main_thread`, bridged to the core via a native-registry handler), OR replace enigo's macOS keyboard path with TSM-free primitives (`CGEventKeyboardSetUnicodeString` for text + raw virtual keycodes for keys/hotkeys). Until then, keyboard/mouse must stay disabled to avoid crashing the app.
+
+**Tests:** voice-actions + autonomy suite is exhaustive — 220 feature unit tests + a JSON-RPC E2E (`json_rpc_voice_server_settings_roundtrip_always_on_and_wake_word`). The E2E caught + fixed real gaps (`wake_word` missing from the get output and the update RPC path). Screenshot downscale unit-tested.
+
+---
+
 ## Windows port — app interaction 🪟 ✅ Implemented
 
 Phase 1's app-interaction layer is now ported to Windows. The macOS path uses the
