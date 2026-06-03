@@ -349,9 +349,11 @@ test ... ok
 
 ---
 
-### Change 1.15 — Full computer control (mouse/keyboard/screenshot) ⚠️ BLOCKED by CEF crash
+### Change 1.15 — Full computer control (mouse/keyboard/screenshot) ✅ Crash fixed (main-thread dispatch)
 
-**Status:** ⚠️ Mouse/keyboard **crash the app** off the main thread — re-disabled pending a main-thread fix. Screenshot works.
+**Status:** ✅ Keyboard/mouse now run on the app main thread → no CEF crash. Screenshot downscales for inline view. Live: `[computer] registered main-thread synthetic-input executor` on boot.
+
+**The fix:** the crash was enigo's `TSMGetInputSourceProperty` running on a tokio worker (`_dispatch_assert_queue_fail`/SIGTRAP). macOS TSM must run on the main thread. New `tools/impl/computer/main_thread.rs` (`MainThreadInputOp` + `run_input_on_main`) dispatches each enigo op over the native registry to a handler the Tauri shell registers at startup, which runs it via `AppHandle::run_on_main_thread`. Keyboard + mouse tools no longer `spawn_blocking` enigo on a worker. Headless/CLI (no executor) returns a clear error instead of crashing. 66 keyboard/mouse tests green.
 
 **Goal:** make the agent fully autonomous — when the accessibility tree is empty (Electron apps: Slack/Discord/VS Code), fall back to vision + synthetic input. Enabled `computer_control.enabled`, added `mouse`/`keyboard`/`screenshot` to the orchestrator `named` list + `autonomy.auto_approve`, and taught `prompt.md` a keyboard-first ladder (foreground via `launch_app` → `keyboard type` + Enter; Slack `Cmd+K` recipe).
 
