@@ -30,13 +30,7 @@ import { connectCoreSocket } from '../services/coreSocket';
 
 // 'ready' is the always-visible idle baseline (shows "Ready"); the pill never
 // fully disappears so the user always knows the listener's status.
-type NotchMode =
-  | 'ready'
-  | 'listening'
-  | 'transcribing'
-  | 'thinking'
-  | 'speaking'
-  | 'attention';
+type NotchMode = 'ready' | 'listening' | 'transcribing' | 'thinking' | 'speaking' | 'attention';
 
 interface NotchState {
   mode: NotchMode;
@@ -245,11 +239,12 @@ export default function NotchApp() {
             // generic attention message.
             const lower = message.toLowerCase();
             const mode: NotchMode =
-              lower === 'listening' ? 'listening' : lower === 'processing' ? 'thinking' : 'attention';
-            setState({
-              mode,
-              text: message.length > 60 ? `${message.slice(0, 57)}…` : message,
-            });
+              lower === 'listening'
+                ? 'listening'
+                : lower === 'processing'
+                  ? 'thinking'
+                  : 'attention';
+            setState({ mode, text: message.length > 60 ? `${message.slice(0, 57)}…` : message });
             scheduleDismiss(payload?.ttl_ms ?? DEFAULT_TTL_MS);
           });
 

@@ -352,7 +352,10 @@ unsafe fn spawn_inject_timer(webview: Retained<WKWebView>) -> Retained<NSTimer> 
             Some(t) if !t.is_empty() => t,
             _ => return, // bearer not published yet — retry next tick
         };
-        log::info!("[notch-window] injecting core url + bearer (token_len={})", token.len());
+        log::info!(
+            "[notch-window] injecting core url + bearer (token_len={})",
+            token.len()
+        );
 
         // Set a global AND dispatch a custom event so React can pick up the URL
         // regardless of whether the component mounted before or after this fires.
