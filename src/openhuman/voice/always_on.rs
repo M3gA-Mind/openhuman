@@ -339,13 +339,16 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
             }
         };
     let audio_b64 = base64::engine::general_purpose::STANDARD.encode(&wav);
+    // Force English transcription. Auto-detect was rendering the English wake
+    // word "Hey Tiny" in Hindi/Bengali/etc. script ("हे टाइनी"), which could never
+    // match the Latin wake word. The wake word + commands here are English.
     match provider
         .transcribe(
             config,
             &audio_b64,
             Some("audio/wav"),
             Some("utterance.wav"),
-            None,
+            Some("en"),
         )
         .await
     {
@@ -385,40 +388,61 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
 /// Matching is tolerant: case-insensitive, punctuation-insensitive, and the
 /// phrase may appear after leading filler ("um, hey tiny, play music").
 pub(crate) fn extract_command(transcript: &str, wake_word: &str) -> Option<String> {
-    let normalize = |s: &str| -> String {
+    let tokens = |s: &str| -> Vec<String> {
         s.to_lowercase()
             .chars()
             .map(|c| if c.is_alphanumeric() { c } else { ' ' })
             .collect::<String>()
             .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
+            .map(String::from)
+            .collect()
     };
-    let wake = normalize(wake_word);
-    let cmd = transcript.trim();
+    let wake = tokens(wake_word);
+    let t = tokens(transcript);
     if wake.is_empty() {
-        return if cmd.is_empty() {
+        // No wake word configured → deliver everything (non-empty).
+        return if t.is_empty() {
             None
         } else {
-            Some(cmd.to_string())
+            Some(t.join(" "))
         };
     }
-    let norm = normalize(transcript);
-    // Find the wake phrase as a token sequence; take everything after it.
-    let needle = format!("{wake} ");
-    let after = if let Some(pos) = norm.find(&needle) {
-        norm[pos + needle.len()..].to_string()
-    } else if norm == wake {
-        String::new() // wake word alone, no command
-    } else {
-        return None;
-    };
-    let after = after.trim();
-    if after.is_empty() {
-        None
-    } else {
-        Some(after.to_string())
+
+    // Anchor on the most distinctive (longest) wake token, e.g. "tiny" — STT
+    // mangles the greeting ("hey"→"a"/"ok") and the exact spelling
+    // ("tiny"→"tony"/"tinny"), so fuzzy-match the anchor near the start and take
+    // everything after it as the command. Bounded to the first 3 tokens to avoid
+    // mid-sentence false triggers.
+    let anchor = wake.iter().max_by_key(|w| w.len()).cloned().unwrap();
+    let max_dist = if anchor.chars().count() <= 4 { 1 } else { 2 };
+    for i in 0..t.len().min(3) {
+        if levenshtein(&t[i], &anchor) <= max_dist {
+            let cmd = t[i + 1..].join(" ");
+            return if cmd.trim().is_empty() {
+                None // wake word alone, no command
+            } else {
+                Some(cmd)
+            };
+        }
     }
+    None
+}
+
+/// Classic Levenshtein edit distance (small inputs — wake-word tokens).
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0usize; b.len() + 1];
+    for (i, ca) in a.iter().enumerate() {
+        cur[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cost = if ca == cb { 0 } else { 1 };
+            cur[j + 1] = (prev[j + 1] + 1).min(cur[j] + 1).min(prev[j] + cost);
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[b.len()]
 }
 
 /// Spawn the dedicated cpal capture thread. Blocks until the stream is set up
@@ -766,6 +790,26 @@ mod tests {
         assert_eq!(
             extract_command("um, hey tiny what time is it", "Hey Tiny").as_deref(),
             Some("what time is it")
+        );
+    }
+
+    #[test]
+    fn wake_word_tolerates_stt_homophones() {
+        // STT often mangles "Hey Tiny" — accept close variants of the anchor.
+        assert_eq!(
+            extract_command("Hey Tony, play music", "Hey Tiny").as_deref(),
+            Some("play music")
+        );
+        assert_eq!(
+            extract_command("a tinny open slack", "Hey Tiny").as_deref(),
+            Some("open slack")
+        );
+        // Anchor too far in / absent → not a command.
+        assert_eq!(
+            extract_command("the tiny details matter here a lot", "Hey Tiny").as_deref(),
+            // "tiny" at index 1 → command is the rest; documents the known
+            // trade-off that an early "tiny" can trigger.
+            Some("details matter here a lot")
         );
     }
 
