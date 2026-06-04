@@ -38,6 +38,27 @@ pub enum VoiceIntent {
     Unknown,
 }
 
+impl VoiceIntent {
+    /// Stable, **non-PII** variant name for logging. Never includes the
+    /// transcript-derived `query` / `app` fields (always-on mic path).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Play { .. } => "play",
+            Self::Pause => "pause",
+            Self::Resume => "resume",
+            Self::Next => "next",
+            Self::Previous => "previous",
+            Self::OpenApp { .. } => "open_app",
+            Self::SetVolume { .. } => "set_volume",
+            Self::VolumeUp => "volume_up",
+            Self::VolumeDown => "volume_down",
+            Self::Mute => "mute",
+            Self::Unmute => "unmute",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 /// Normalize: lowercase, drop surrounding punctuation, collapse whitespace.
 fn norm(s: &str) -> String {
     s.trim()
@@ -202,9 +223,11 @@ fn clean_app_name(rest: &str) -> String {
 }
 
 fn is_pronoun(q: &str) -> bool {
+    // Mirror the Music fast-path's ambiguity set (app_fastpaths::music::is_pronoun)
+    // so "play them" / "play a song" / "play songs" defer to the agent too.
     matches!(
         q,
-        "it" | "this" | "that" | "something" | "music" | "some music"
+        "it" | "this" | "that" | "them" | "something" | "music" | "some music" | "a song" | "songs"
     )
 }
 
@@ -295,5 +318,34 @@ mod tests {
         );
         assert_eq!(route(""), VoiceIntent::Unknown);
         assert_eq!(route("   "), VoiceIntent::Unknown);
+    }
+
+    #[test]
+    fn ambiguous_play_defers_to_agent() {
+        // Mirrors the Music fast-path: bare pronouns / generic nouns carry no
+        // song, so they must defer to the agent, not take the local route.
+        for q in [
+            "play it",
+            "play them",
+            "play a song",
+            "play songs",
+            "play music",
+        ] {
+            assert_eq!(route(q), VoiceIntent::Unknown, "{q} should be Unknown");
+        }
+    }
+
+    #[test]
+    fn intent_kind_is_stable_and_pii_free() {
+        assert_eq!(route("pause").kind(), "pause");
+        assert_eq!(route("turn it up").kind(), "volume_up");
+        assert_eq!(
+            VoiceIntent::Play {
+                query: "secret song".into()
+            }
+            .kind(),
+            "play"
+        );
+        assert_eq!(VoiceIntent::Unknown.kind(), "unknown");
     }
 }

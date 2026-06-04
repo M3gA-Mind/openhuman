@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/react';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Provider } from 'react-redux';
 import { HashRouter as Router, useLocation, useNavigate } from 'react-router-dom';
 import { PersistGate } from 'redux-persist/integration/react';
@@ -22,6 +22,7 @@ import SecurityBanner from './components/SecurityBanner';
 import GlobalUpsellBanner from './components/upsell/GlobalUpsellBanner';
 import AppWalkthrough from './components/walkthrough/AppWalkthrough';
 import { MascotFrameProducer } from './features/meet/MascotFrameProducer';
+import { useNotchBootSync } from './hooks/useNotchBootSync';
 import { I18nProvider } from './lib/i18n/I18nContext';
 import {
   startNativeNotificationsService,
@@ -50,7 +51,6 @@ import { persistor, store } from './store';
 import { useAppSelector } from './store/hooks';
 import { isAccountsFullscreen } from './utils/accountsFullscreen';
 import { DEV_FORCE_ONBOARDING } from './utils/config';
-import { openhumanGetVoiceServerSettings, syncNotchVisibility } from './utils/tauriCommands';
 
 // Attach the `webview:event` listener at app boot so background recipe
 // events (Google Meet captions → transcript flush, WhatsApp ingest, …)
@@ -195,22 +195,8 @@ function AppShellDesktop() {
   }, [location.pathname]);
 
   // Sync the notch indicator to the persisted always-on listening state once
-  // the core is ready. The notch is the always-on listening HUD, so it stays
-  // hidden unless always-on listening is enabled (it is no longer auto-shown
-  // unconditionally by the Tauri shell). Runs once per boot.
-  const notchSyncedRef = useRef(false);
-  useEffect(() => {
-    if (isBootstrapping || notchSyncedRef.current) return;
-    notchSyncedRef.current = true;
-    void (async () => {
-      try {
-        const res = await openhumanGetVoiceServerSettings();
-        await syncNotchVisibility(res.result.always_on_enabled);
-      } catch (err) {
-        console.debug('[notch] boot visibility sync failed', err);
-      }
-    })();
-  }, [isBootstrapping]);
+  // the core is ready (once per boot). Extracted to a hook so it's testable.
+  useNotchBootSync(isBootstrapping);
 
   return (
     <div className="relative h-screen flex flex-col overflow-hidden">
