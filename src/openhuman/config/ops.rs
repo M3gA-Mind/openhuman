@@ -1974,6 +1974,8 @@ pub struct VoiceServerSettingsPatch {
     pub min_duration_secs: Option<f32>,
     pub silence_threshold: Option<f32>,
     pub custom_dictionary: Option<Vec<String>>,
+    pub always_on_enabled: Option<bool>,
+    pub wake_word: Option<String>,
 }
 
 /// Returns the current voice server settings as a JSON object.
@@ -1987,6 +1989,8 @@ pub async fn get_voice_server_settings() -> Result<RpcOutcome<serde_json::Value>
         "min_duration_secs": config.voice_server.min_duration_secs,
         "silence_threshold": config.voice_server.silence_threshold,
         "custom_dictionary": config.voice_server.custom_dictionary,
+        "always_on_enabled": config.voice_server.always_on_enabled,
+        "wake_word": config.voice_server.wake_word,
     });
     Ok(RpcOutcome::new(
         result,
@@ -2033,6 +2037,14 @@ pub async fn load_and_apply_voice_server_settings(
     }
     if let Some(custom_dictionary) = update.custom_dictionary {
         config.voice_server.custom_dictionary = custom_dictionary;
+    }
+    if let Some(always_on_enabled) = update.always_on_enabled {
+        config.voice_server.always_on_enabled = always_on_enabled;
+    }
+    if let Some(wake_word) = update.wake_word {
+        // Trim so a whitespace-only value collapses to the documented
+        // "empty = no wake word" case rather than a non-empty no-match token.
+        config.voice_server.wake_word = wake_word.trim().to_string();
     }
     config.save().await.map_err(|e| e.to_string())?;
     let snapshot = snapshot_config_json(&config)?;
@@ -2155,8 +2167,6 @@ pub struct SandboxSettingsPatch {
     pub env_passthrough: Option<Vec<String>>,
 }
 
-/// Returns the current sandbox and Docker runtime settings merged into a
-/// single JSON object, plus a live status probe for Docker availability.
 pub async fn get_sandbox_settings() -> Result<RpcOutcome<serde_json::Value>, String> {
     let config = load_config_with_timeout().await?;
     let sandbox = &config.sandbox;
@@ -2189,7 +2199,6 @@ pub async fn get_sandbox_settings() -> Result<RpcOutcome<serde_json::Value>, Str
     Ok(RpcOutcome::single_log(value, "sandbox settings read"))
 }
 
-/// Updates sandbox and Docker runtime settings, persists to disk.
 pub async fn apply_sandbox_settings(
     config: &mut Config,
     update: SandboxSettingsPatch,
@@ -2259,7 +2268,6 @@ pub async fn load_and_apply_sandbox_settings(
     apply_sandbox_settings(&mut config, update).await
 }
 
-/// Probe Docker daemon availability via `docker info` with a 5s timeout.
 async fn is_docker_available() -> bool {
     let fut = tokio::process::Command::new("docker")
         .arg("info")
@@ -2272,7 +2280,6 @@ async fn is_docker_available() -> bool {
     }
 }
 
-/// Detect which OS-native sandbox backend is available.
 fn detect_os_sandbox_backend() -> &'static str {
     #[cfg(target_os = "linux")]
     {

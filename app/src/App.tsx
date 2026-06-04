@@ -23,6 +23,7 @@ import GlobalUpsellBanner from './components/upsell/GlobalUpsellBanner';
 import AppWalkthrough from './components/walkthrough/AppWalkthrough';
 import { useVoiceSpeak } from './features/human/voice/useVoiceSpeak';
 import { MascotFrameProducer } from './features/meet/MascotFrameProducer';
+import { useNotchBootSync } from './hooks/useNotchBootSync';
 import { I18nProvider } from './lib/i18n/I18nContext';
 import {
   startNativeNotificationsService,
@@ -196,6 +197,10 @@ function AppShellDesktop() {
   useEffect(() => {
     trackPageView(location.pathname);
   }, [location.pathname]);
+
+  // Sync the notch indicator to the persisted always-on listening state once
+  // the core is ready (once per boot). Extracted to a hook so it's testable.
+  useNotchBootSync(isBootstrapping);
 
   return (
     <div className="relative h-screen flex flex-col overflow-hidden">

@@ -178,6 +178,7 @@ const en: TranslationMap = {
   'clearData.failedPersist': 'Failed to clear persisted app state. Please try again.',
 
   // Welcome page
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Welcome to OpenHuman',
   'welcome.subtitle':
     'Your personal AI super intelligence. Private, simple and extremely powerful.',
@@ -314,6 +315,33 @@ const en: TranslationMap = {
   'memory.tab.cohesion': 'Cohesion',
   'memory.tab.settings': 'Settings',
   'memory.tab.council': 'Council',
+  'intelligence.agents.title': 'Agents Library',
+  'intelligence.agents.subtitle':
+    'Inspect runnable specialists and send one task to a named agent.',
+  'intelligence.agents.refresh': 'Refresh',
+  'intelligence.agents.loading': 'Loading agents...',
+  'intelligence.agents.failedToLoad': 'Could not load agents',
+  'intelligence.agents.empty': 'No runnable agents are available.',
+  'intelligence.agents.readOnly': 'Read-only',
+  'intelligence.agents.writeCapable': 'Write-capable',
+  'intelligence.agents.allTools': 'All tools',
+  'intelligence.agents.toolCountOne': '{count} tool',
+  'intelligence.agents.toolCountOther': '{count} tools',
+  'intelligence.agents.subagentCountOne': '{count} subagent',
+  'intelligence.agents.subagentCountOther': '{count} subagents',
+  'intelligence.agents.startChat': 'Start chat',
+  'intelligence.agents.startChatPrompt':
+    'Start a chat with this agent. Introduce your specialty, ask what you need to know, and wait for my task.',
+  'intelligence.agents.copyId': 'Copy ID',
+  'intelligence.agents.copied': 'Copied',
+  'intelligence.agents.taskPlaceholder': 'Task for this agent',
+  'intelligence.agents.runTask': 'Run task',
+  'intelligence.agents.running': 'Running...',
+  'intelligence.agents.runFailed': 'Could not start the selected agent',
+  'intelligence.agents.model.inherit': 'Inherit',
+  'intelligence.agents.tier.chat': 'Chat',
+  'intelligence.agents.tier.reasoning': 'Reasoning',
+  'intelligence.agents.tier.worker': 'Worker',
   'modelCouncil.title': 'Model Council',
   'modelCouncil.intro':
     'Ask one question, get independent answers from several models in parallel, then a chair model synthesizes where they agree, where they disagree, and what each uniquely adds.',
@@ -1635,6 +1663,9 @@ const en: TranslationMap = {
   'voice.debug.silenceThreshold': 'Silence Threshold (RMS)',
   'voice.debug.silenceThresholdDesc':
     'Recordings with energy below this are treated as silence and skipped. Lower = more sensitive.',
+  'voice.debug.alwaysOn': 'Always-on listening',
+  'voice.debug.alwaysOnDesc':
+    'Keep the microphone open and send what you say to the agent automatically, no hotkey. Pauses when the screen is locked.',
   'voice.providers.saved': 'Voice providers saved.',
   'voice.providers.failedToSave': 'Failed to save voice providers',
   'voice.providers.ellipsis': '…',
@@ -2297,6 +2328,7 @@ const en: TranslationMap = {
   'memorySources.loadingConnections': 'Loading connections…',
   'memorySources.noConnections':
     'No active Composio connections found. Connect an integration first.',
+  'memorySources.connectionAccount': 'Account',
   'memorySources.pickConnection': 'Pick a connection',
   'memorySources.selectConnection': '— Select a connection —',
   'memorySources.composioListFailed': 'Failed to load Composio connections.',
@@ -2349,6 +2381,32 @@ const en: TranslationMap = {
   'memorySources.build.successTitle': 'Tree built',
   'memorySources.build.failedTitle': 'Build failed',
   'memorySources.build.sealsMessage': 'seal(s) completed',
+  'memorySources.allIn.button': 'All In',
+  'memorySources.allIn.title': 'Go All In?',
+  'memorySources.allIn.message':
+    'This enables every memory source and removes all sync limits. It builds the richest memory graph, but may use more credits.',
+  'memorySources.allIn.confirm': 'Yes',
+  'memorySources.allIn.cancel': 'No',
+  'memorySources.allIn.success': 'All sources enabled with no limits. Syncing started.',
+  'memorySources.allIn.failed': 'Could not apply All In. Please try again.',
+  'memorySources.settings.button': 'Settings',
+  'memorySources.settings.title': 'Sync settings',
+  'memorySources.settings.maxPrs': 'Max pull requests',
+  'memorySources.settings.maxIssues': 'Max issues',
+  'memorySources.settings.maxCommits': 'Max commits',
+  'memorySources.settings.maxItems': 'Max items',
+  'memorySources.settings.sinceDays': 'Lookback (days)',
+  'memorySources.settings.syncDepthDays': 'Sync depth (days)',
+  'memorySources.settings.maxTokens': 'Max tokens per sync',
+  'memorySources.settings.maxCost': 'Max cost per sync (USD)',
+  'memorySources.settings.unlimited': 'Unlimited',
+  'memorySources.settings.unlimitedTooltip':
+    "You've opted in to sync the maximum for {toolkit}. You can change the caps here.",
+  'memorySources.settings.maxed': 'Maxed',
+  'memorySources.settings.save': 'Save',
+  'memorySources.settings.saving': 'Saving…',
+  'memorySources.settings.saved': 'Settings saved',
+  'memorySources.settings.saveFailed': 'Could not save settings',
 
   // Backend
   'backend.aiBackend': 'AI Backend',
@@ -4116,6 +4174,16 @@ const en: TranslationMap = {
   'settings.agentAccess.agentBlocked': 'agent-blocked',
   'settings.agentAccess.internalStateDesc':
     'Memory databases, sessions, tokens, and other core persistence. Not accessible to agent tools.',
+  'settings.agentAccess.actionDirInputLabel': 'Action sandbox path',
+  'settings.agentAccess.actionDirSave': 'Save',
+  'settings.agentAccess.actionDirSaving': 'Saving…',
+  'settings.agentAccess.actionDirSaved': 'Action sandbox updated.',
+  'settings.agentAccess.actionDirEmptyError': 'Path cannot be empty.',
+  'settings.agentAccess.actionDirSaveError': 'Could not update the action sandbox.',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    'OPENHUMAN_ACTION_DIR is set — unset the env var to edit this from Settings.',
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    'Overridden by OPENHUMAN_ACTION_DIR — unset the env var to manage from Settings.',
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
@@ -5018,6 +5086,13 @@ const en: TranslationMap = {
   'runQueue.collectHint': 'Add as extra context',
   'runQueue.status': '{total} queued',
   'runQueue.cleared': 'Queue cleared',
+  'notch.ready': 'Ready',
+  'notch.processing': 'Processing…',
+  'notch.listening': 'Listening…',
+  'notch.thinking': 'Thinking…',
+  'notch.speaking': 'Speaking…',
+  'notch.transcribing': 'Transcribing…',
+  'notch.executing': 'Executing…',
 };
 
 export default en;

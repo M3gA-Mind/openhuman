@@ -168,6 +168,7 @@ const messages: TranslationMap = {
   'clearData.failedLogout': 'Falha ao sair. Por favor, tente novamente.',
   'clearData.failedPersist':
     'Falha ao limpar o estado persistido do app. Por favor, tente novamente.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Bem-vindo ao OpenHuman',
   'welcome.subtitle':
     'Sua super inteligência artificial pessoal. Privada, simples e extremamente poderosa.',
@@ -1452,6 +1453,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'Limite de Silêncio (RMS)',
   'voice.debug.silenceThresholdDesc':
     'Gravações com energia abaixo deste valor são tratadas como silêncio e ignoradas. Menor = mais sensível.',
+  'voice.debug.alwaysOn': 'Escuta contínua',
+  'voice.debug.alwaysOnDesc':
+    'Mantém o microfone aberto e envia o que você diz ao agente automaticamente, sem atalho. Pausa quando a tela está bloqueada.',
   'voice.providers.saved': 'Provedores de voz salvos.',
   'voice.providers.failedToSave': 'Falha ao salvar provedores de voz',
   'voice.providers.ellipsis': '…',
@@ -2008,6 +2012,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Carregando conexões…',
   'memorySources.noConnections':
     'Nenhuma conexão Composio ativa encontrada. Conecte uma integração primeiro.',
+  'memorySources.connectionAccount': 'Conta',
   'memorySources.pickConnection': 'Escolha uma conexão',
   'memorySources.selectConnection': '— Selecionar uma conexão —',
   'memorySources.composioListFailed': 'Falha ao carregar as conexões Composio.',
@@ -2060,6 +2065,32 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': 'Árvore construída',
   'memorySources.build.failedTitle': 'Falha na construção',
   'memorySources.build.sealsMessage': 'selagem concluída',
+  'memorySources.allIn.button': 'Ativar tudo',
+  'memorySources.allIn.title': 'Ativar tudo?',
+  'memorySources.allIn.message':
+    'Isso ativará todas as fontes de memória e removerá todos os limites de sincronização. Cria o grafo de memória mais rico, mas pode usar mais créditos.',
+  'memorySources.allIn.confirm': 'Sim',
+  'memorySources.allIn.cancel': 'Não',
+  'memorySources.allIn.success': 'Todas as fontes ativadas sem limites. Sincronização iniciada.',
+  'memorySources.allIn.failed': 'Não foi possível ativar tudo. Por favor, tente novamente.',
+  'memorySources.settings.button': 'Configurações',
+  'memorySources.settings.title': 'Configurações de sincronização',
+  'memorySources.settings.maxPrs': 'Máximo de pull requests',
+  'memorySources.settings.maxIssues': 'Máximo de issues',
+  'memorySources.settings.maxCommits': 'Máximo de commits',
+  'memorySources.settings.maxItems': 'Máximo de itens',
+  'memorySources.settings.sinceDays': 'Período de busca (dias)',
+  'memorySources.settings.syncDepthDays': 'Profundidade de sincronização (dias)',
+  'memorySources.settings.maxTokens': 'Máximo de tokens por sincronização',
+  'memorySources.settings.maxCost': 'Custo máximo por sincronização (USD)',
+  'memorySources.settings.unlimited': 'Ilimitado',
+  'memorySources.settings.unlimitedTooltip':
+    'Você optou por sincronizar o máximo para {toolkit}. Você pode alterar os limites aqui.',
+  'memorySources.settings.maxed': 'Cheio',
+  'memorySources.settings.save': 'Salvar',
+  'memorySources.settings.saving': 'Salvando…',
+  'memorySources.settings.saved': 'Configurações salvas',
+  'memorySources.settings.saveFailed': 'Não foi possível salvar as configurações',
   'backend.aiBackend': 'Backend de IA',
   'backend.cloud': 'Nuvem',
   'backend.recommended': 'Recomendado',
@@ -3793,6 +3824,16 @@ const messages: TranslationMap = {
   'settings.agentAccess.agentBlocked': 'bloqueado para o agente',
   'settings.agentAccess.internalStateDesc':
     'Bancos de dados de memória, sessões, tokens e outros dados essenciais. Não acessível pelas ferramentas do agente.',
+  'settings.agentAccess.actionDirInputLabel': 'Caminho da sandbox de ações',
+  'settings.agentAccess.actionDirSave': 'Salvar',
+  'settings.agentAccess.actionDirSaving': 'Salvando…',
+  'settings.agentAccess.actionDirSaved': 'Sandbox de ações atualizada.',
+  'settings.agentAccess.actionDirEmptyError': 'O caminho não pode estar vazio.',
+  'settings.agentAccess.actionDirSaveError': 'Não foi possível atualizar a sandbox de ações.',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    'OPENHUMAN_ACTION_DIR está definido — remova a variável de ambiente para editar isto em Configurações.',
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    'Substituído por OPENHUMAN_ACTION_DIR — remova a variável de ambiente para gerenciar em Configurações.',
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
@@ -4601,6 +4642,33 @@ const messages: TranslationMap = {
   'autocomplete.maxChars': 'Máximo de caracteres de contexto',
   'autocomplete.overlayTtlMs': 'Tempo limite da sobreposição (ms)',
   'memory.tab.council': 'Council',
+  'intelligence.agents.title': 'Biblioteca de agentes',
+  'intelligence.agents.subtitle':
+    'Inspecione especialistas executáveis e envie uma tarefa para um agente nomeado.',
+  'intelligence.agents.refresh': 'Atualizar',
+  'intelligence.agents.loading': 'Carregando agentes…',
+  'intelligence.agents.failedToLoad': 'Não foi possível carregar os agentes',
+  'intelligence.agents.empty': 'Nenhum agente executável disponível.',
+  'intelligence.agents.readOnly': 'Somente leitura',
+  'intelligence.agents.writeCapable': 'Pode escrever',
+  'intelligence.agents.allTools': 'Todas as ferramentas',
+  'intelligence.agents.toolCountOne': '{count} ferramenta',
+  'intelligence.agents.toolCountOther': '{count} ferramentas',
+  'intelligence.agents.subagentCountOne': '{count} subagente',
+  'intelligence.agents.subagentCountOther': '{count} subagentes',
+  'intelligence.agents.startChat': 'Iniciar chat',
+  'intelligence.agents.startChatPrompt':
+    'Inicie um chat com este agente. Apresente sua especialidade, pergunte o que precisa saber e aguarde minha tarefa.',
+  'intelligence.agents.copyId': 'Copiar ID',
+  'intelligence.agents.copied': 'Copiado',
+  'intelligence.agents.taskPlaceholder': 'Tarefa para este agente',
+  'intelligence.agents.runTask': 'Executar tarefa',
+  'intelligence.agents.running': 'Executando…',
+  'intelligence.agents.runFailed': 'Não foi possível iniciar o agente selecionado',
+  'intelligence.agents.model.inherit': 'Herdar',
+  'intelligence.agents.tier.chat': 'Chat',
+  'intelligence.agents.tier.reasoning': 'Raciocínio',
+  'intelligence.agents.tier.worker': 'Trabalhador',
   'modelCouncil.title': 'Model Council',
   'modelCouncil.intro':
     'Ask one question, get independent answers from several models in parallel, then a chair model synthesizes where they agree, where they disagree, and what each uniquely adds.',
@@ -4859,6 +4927,13 @@ const messages: TranslationMap = {
   'runQueue.collectHint': 'Adicionar como contexto extra',
   'runQueue.status': '{total} na fila',
   'runQueue.cleared': 'Fila limpa',
+  'notch.ready': 'Pronto',
+  'notch.processing': 'Processando…',
+  'notch.listening': 'Ouvindo…',
+  'notch.thinking': 'Pensando…',
+  'notch.speaking': 'Falando…',
+  'notch.transcribing': 'Transcrevendo…',
+  'notch.executing': 'Executando…',
 };
 
 export default messages;

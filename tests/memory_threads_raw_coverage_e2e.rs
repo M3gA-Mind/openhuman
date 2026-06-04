@@ -1951,6 +1951,8 @@ fn memory_retrieval_embedding_and_rpc_model_helpers_round_trip() {
         sealed_at: now,
         deleted: false,
         embedding: None,
+        doc_id: None,
+        version_ms: None,
     };
     let tree = Tree {
         id: "tree-1".into(),
@@ -3047,6 +3049,8 @@ async fn memory_sync_provider_trait_defaults_and_connection_hook_are_determinist
         toolkit: "raw_coverage".into(),
         connection_id: Some("conn-1".into()),
         usage: Default::default(),
+        max_items: None,
+        sync_depth_days: None,
     };
     let provider = RawCoverageProvider { fail_profile: true };
     assert_eq!(provider.sync_interval_secs(), Some(15 * 60));

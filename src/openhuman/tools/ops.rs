@@ -149,6 +149,7 @@ pub fn all_tools_with_runtime(
         // returns a single text result. See
         // `agent::harness::subagent_runner` for the dispatch path.
         Box::new(SpawnSubagentTool::new()),
+        Box::new(SpawnAsyncSubagentTool::new()),
         Box::new(ContinueSubagentTool::new()),
         Box::new(SpawnParallelAgentsTool::new()),
         Box::new(DelegateToPersonalityTool::new()),
@@ -175,6 +176,12 @@ pub fn all_tools_with_runtime(
         Box::new(CurrentTimeTool::new()),
         Box::new(LaunchAppTool::new()),
         Box::new(AxInteractTool::new(
+            root_config.computer_control.ax_interact_mutations,
+        )),
+        // Multi-step UI automation in one call. Shares the ax_interact opt-in
+        // (mutations) and sensitive-app denylist; runs a Rust perceive→act→verify
+        // loop with a fast model so the chat model stays out of the click loop.
+        Box::new(AutomateTool::new(
             root_config.computer_control.ax_interact_mutations,
         )),
         Box::new(CodegraphIndexTool::new(
@@ -223,6 +230,14 @@ pub fn all_tools_with_runtime(
         // per-query recall). Written verbatim to user_pref_{general,situational};
         // bypasses the inference/stability pipeline. Always registered.
         Box::new(SavePreferenceTool::new(memory.clone(), security.clone())),
+        Box::new(MonitorTool::new(
+            security.clone(),
+            Arc::clone(&runtime),
+            Arc::clone(&audit),
+        )),
+        Box::new(MonitorListTool),
+        Box::new(MonitorStopTool),
+        Box::new(MonitorReadTool),
         // WhatsApp data store — read-only agent surface (issue #1341).
         // The matching `whatsapp_data_ingest` write-path stays internal-only
         // (registered in `src/core/all.rs::build_internal_only_controllers`)
