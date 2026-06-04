@@ -17,11 +17,7 @@ slow and fragile).
 
 ## 2. Architecture
 
-<<<<<<< HEAD
-```
-=======
 ```text
->>>>>>> upstream/main
  orchestrator (chat LLM)
         │  one call: automate{ app, goal }
         ▼
@@ -153,7 +149,3 @@ event bus; a subscriber bridges to the existing notch/voice status surface
 - **Safety** — `automate` is a mutating tool: same opt-in + `SENSITIVE_APPS`
   denylist + ApprovalGate routing as `ax_interact`; the inner loop may not target a
   denylisted app even if the model asks.
-<<<<<<< HEAD
-```
-=======
->>>>>>> upstream/main

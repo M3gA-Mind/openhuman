@@ -62,12 +62,6 @@ pub fn extract_play_query(goal: &str) -> Option<String> {
             .next_back()
             .map(|c| c.is_alphabetic())
             .unwrap_or(false);
-<<<<<<< HEAD
-    if !before_ok {
-        return None;
-    }
-    let after = &goal[idx + "play".len()..];
-=======
     let after_idx = idx + "play".len();
     // Right boundary too, so "playback …" isn't parsed as a play intent.
     let after_ok = lower[after_idx..]
@@ -79,7 +73,6 @@ pub fn extract_play_query(goal: &str) -> Option<String> {
         return None;
     }
     let after = &goal[after_idx..];
->>>>>>> upstream/main
     let mut q = after.trim().to_string();
     for filler in ["the song ", "the track ", "song ", "track ", "me "] {
         if q.to_lowercase().starts_with(filler) {
@@ -162,20 +155,6 @@ fn trailing_by_artist(rest: &str) -> Option<String> {
 
 /// Case-insensitive replace of `needle` with `repl` in `haystack`.
 fn replace_ci(haystack: &str, needle: &str, repl: &str) -> String {
-<<<<<<< HEAD
-    let hl = haystack.to_lowercase();
-    let nl = needle.to_lowercase();
-    let mut out = String::with_capacity(haystack.len());
-    let mut i = 0;
-    while i < haystack.len() {
-        if hl[i..].starts_with(&nl) {
-            out.push_str(repl);
-            i += needle.len();
-        } else {
-            let ch = haystack[i..].chars().next().unwrap();
-            out.push(ch);
-            i += ch.len_utf8();
-=======
     if needle.is_empty() {
         return haystack.to_string();
     }
@@ -196,7 +175,6 @@ fn replace_ci(haystack: &str, needle: &str, repl: &str) -> String {
             let ch = rest.chars().next().unwrap();
             out.push(ch);
             rest = &rest[ch.len_utf8()..];
->>>>>>> upstream/main
         }
     }
     out

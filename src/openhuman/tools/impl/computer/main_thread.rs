@@ -47,8 +47,6 @@ where
         )),
     }
 }
-<<<<<<< HEAD
-=======
 
 #[cfg(test)]
 mod tests {
@@ -74,4 +72,3 @@ mod tests {
         assert_eq!(err, Err("enigo failed".to_string()));
     }
 }
->>>>>>> upstream/main

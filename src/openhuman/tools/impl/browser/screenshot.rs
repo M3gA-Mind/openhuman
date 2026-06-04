@@ -210,24 +210,16 @@ fn downscale_to_jpeg(bytes: &[u8], max_bytes: usize) -> Result<(Vec<u8>, u32, u3
     let img = image::load_from_memory(bytes).map_err(|e| format!("decode: {e}"))?;
     let mut last: Option<(Vec<u8>, u32, u32)> = None;
     for max_dim in [1568u32, 1280, 1024, 768, 600] {
-<<<<<<< HEAD
-        let thumb = img.thumbnail(max_dim, max_dim); // fits within max_dim², keeps aspect
-=======
         // Drop alpha before JPEG-encoding: JPEG has no alpha channel, so an
         // RGBA capture (PNG screenshots often carry one) would otherwise fail
         // to encode and leave vision-driven control blind.
         let thumb = img.thumbnail(max_dim, max_dim).to_rgb8(); // fits within max_dim², keeps aspect
         let (w, h) = (thumb.width(), thumb.height());
->>>>>>> upstream/main
         let mut buf = std::io::Cursor::new(Vec::new());
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 72)
             .encode_image(&thumb)
             .map_err(|e| format!("jpeg encode: {e}"))?;
         let out = buf.into_inner();
-<<<<<<< HEAD
-        let (w, h) = (thumb.width(), thumb.height());
-=======
->>>>>>> upstream/main
         if out.len() <= max_bytes {
             return Ok((out, w, h));
         }
@@ -307,8 +299,6 @@ mod tests {
         assert_eq!((decoded.width(), decoded.height()), (w, h));
     }
 
-<<<<<<< HEAD
-=======
     #[test]
     fn downscale_to_jpeg_handles_rgba_input() {
         // PNG screenshots frequently carry an alpha channel. JPEG has none, so
@@ -329,7 +319,6 @@ mod tests {
         assert_eq!((decoded.width(), decoded.height()), (w, h));
     }
 
->>>>>>> upstream/main
     fn test_security() -> Arc<SecurityPolicy> {
         Arc::new(SecurityPolicy {
             autonomy: AutonomyLevel::Full,
