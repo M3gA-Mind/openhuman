@@ -929,6 +929,24 @@ fn mascot_native_window_is_open() -> bool {
     false
 }
 
+/// Dispatch a notch-panel mutation onto the app main thread.
+///
+/// The notch is a native NSPanel + WKWebView; AppKit requires it to be built
+/// and torn down on the main thread (and its `thread_local` storage lives
+/// there). Tauri runs these IPC command handlers on a worker thread, so we hop
+/// to the main thread via `run_on_main_thread`. Fire-and-forget: notch
+/// visibility is cosmetic (the frontend swallows errors), so we log the result
+/// on the main thread rather than blocking the command to propagate it back.
+#[cfg(target_os = "macos")]
+fn dispatch_notch_on_main(
+    app: AppHandle<AppRuntime>,
+    op: impl FnOnce(&AppHandle<AppRuntime>) + Send + 'static,
+) -> Result<(), String> {
+    app.clone()
+        .run_on_main_thread(move || op(&app))
+        .map_err(|e| format!("run_on_main_thread dispatch failed: {e}"))
+}
+
 /// Show the notch activity indicator. macOS only — transparent NSPanel + WKWebView
 /// anchored to the top-centre of the primary screen. Displays live voice and
 /// agent status (listening, thinking, executing) in a pill that emerges from
@@ -938,7 +956,11 @@ fn notch_window_show(app: AppHandle<AppRuntime>) -> Result<(), String> {
     log::info!("[notch-window] show requested");
     #[cfg(target_os = "macos")]
     {
-        return notch_window::show(&app);
+        return dispatch_notch_on_main(app, |app| {
+            if let Err(e) = notch_window::show(app) {
+                log::warn!("[notch-window] show failed: {e}");
+            }
+        });
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -949,11 +971,17 @@ fn notch_window_show(app: AppHandle<AppRuntime>) -> Result<(), String> {
 
 /// Hide the notch activity indicator.
 #[tauri::command]
-fn notch_window_hide(_app: AppHandle<AppRuntime>) -> Result<(), String> {
+fn notch_window_hide(app: AppHandle<AppRuntime>) -> Result<(), String> {
     log::info!("[notch-window] hide requested");
     #[cfg(target_os = "macos")]
-    notch_window::hide();
-    Ok(())
+    {
+        return dispatch_notch_on_main(app, |_app| notch_window::hide());
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Ok(())
+    }
 }
 
 /// Hide or show the OS top-level main-window frame on Windows by enumerating
@@ -2832,10 +2860,14 @@ pub fn run() {
             // Notch activity indicator: transparent pill at the top-centre of
             // the primary screen. Shows live voice / agent state. macOS only
             // (physical notch or menu-bar HUD on older hardware).
-            #[cfg(target_os = "macos")]
-            if let Err(err) = notch_window::show(&app.handle()) {
-                log::warn!("[notch-window] auto-show on startup failed: {err}");
-            }
+            //
+            // It is NOT auto-shown here: the notch is the always-on listening
+            // HUD, so its visibility is owned by the frontend, which calls
+            // `notch_window_show` / `notch_window_hide` (via `syncNotchVisibility`)
+            // to mirror `voice_server.always_on_enabled` — once on boot and
+            // whenever the Settings toggle flips. Showing it unconditionally
+            // here would flash the pill on every launch even with always-on
+            // listening disabled (the default).
 
             // Synthetic-input main-thread executor. enigo's macOS keyboard-layout
             // lookup (TSMGetInputSourceProperty) MUST run on the app main thread
