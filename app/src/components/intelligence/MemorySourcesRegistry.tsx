@@ -8,10 +8,11 @@
  * row dispatches `openhuman.memory_sources_sync` which runs in the
  * background and emits MemorySyncStageChanged events.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useT } from '../../lib/i18n/I18nContext';
 import {
+  applyAllIn,
   type FreshnessLabel,
   listMemorySources,
   type MemorySourceEntry,
@@ -23,9 +24,14 @@ import {
   syncMemorySource,
   updateMemorySource,
 } from '../../services/memorySourcesService';
-import type { ToastNotification } from '../../types/intelligence';
+import type {
+  ConfirmationModal as ConfirmationModalType,
+  ToastNotification,
+} from '../../types/intelligence';
 import { memoryTreeFlushSource } from '../../utils/tauriCommands/memoryTree';
 import { AddMemorySourceDialog } from './AddMemorySourceDialog';
+import { ConfirmationModal } from './ConfirmationModal';
+import { SourceSettingsPanel } from './SourceSettingsPanel';
 
 interface MemorySourcesRegistryProps {
   onToast?: (toast: Omit<ToastNotification, 'id'>) => void;
@@ -59,6 +65,10 @@ export function MemorySourcesRegistry({
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [buildingId, setBuildingId] = useState<string | null>(null);
   const [syncProgress, setSyncProgress] = useState<Map<string, SyncProgress>>(new Map());
+  const [allInModalOpen, setAllInModalOpen] = useState(false);
+  const [applyingAllIn, setApplyingAllIn] = useState(false);
+  const allInInFlightRef = useRef(false);
+  const [expandedSettingsId, setExpandedSettingsId] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -223,23 +233,84 @@ export function MemorySourcesRegistry({
     [onToast, refresh, t]
   );
 
+  const handleConfirmAllIn = useCallback(async () => {
+    if (allInInFlightRef.current) return;
+    allInInFlightRef.current = true;
+    setApplyingAllIn(true);
+    try {
+      const result = await applyAllIn();
+      setSources(result.sources);
+      onToast?.({ type: 'success', title: t('memorySources.allIn.success') });
+    } catch (err) {
+      onToast?.({
+        type: 'error',
+        title: t('memorySources.allIn.failed'),
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      allInInFlightRef.current = false;
+      setApplyingAllIn(false);
+      setAllInModalOpen(false);
+    }
+  }, [onToast, t]);
+
+  const handleSettingsSaved = useCallback((updated: MemorySourceEntry) => {
+    setSources(prev => prev.map(s => (s.id === updated.id ? updated : s)));
+  }, []);
+
+  const handleToggleSettings = useCallback((sourceId: string) => {
+    setExpandedSettingsId(prev => (prev === sourceId ? null : sourceId));
+  }, []);
+
+  const allInModal: ConfirmationModalType = {
+    isOpen: allInModalOpen,
+    title: t('memorySources.allIn.title'),
+    message: t('memorySources.allIn.message'),
+    confirmText: t('memorySources.allIn.confirm'),
+    cancelText: t('memorySources.allIn.cancel'),
+    destructive: false,
+    onConfirm: () => {
+      void handleConfirmAllIn();
+    },
+    onCancel: () => {
+      setAllInModalOpen(false);
+    },
+  };
+
   return (
     <section
       className="rounded-lg border border-stone-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
       data-testid="memory-sources">
-      <header className="mb-3 flex items-center justify-between">
+      <header className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-stone-700 dark:text-neutral-200">
           {t('memorySources.title')}
         </h3>
-        <button
-          type="button"
-          onClick={() => setDialogOpen(true)}
-          className="inline-flex items-center gap-1 rounded-md bg-primary-500 px-3 py-1.5
-                     text-xs font-semibold text-white shadow-sm transition-colors
-                     hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-200">
-          <PlusIcon />
-          {t('memorySources.addSource')}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAllInModalOpen(true)}
+            disabled={applyingAllIn}
+            data-testid="all-in-button"
+            className="inline-flex items-center gap-1 rounded-md border border-primary-300
+                       bg-white px-3 py-1.5 text-xs font-semibold text-primary-600
+                       shadow-sm transition-colors hover:bg-primary-50
+                       disabled:cursor-not-allowed disabled:opacity-50
+                       dark:border-primary-500/30 dark:bg-neutral-900 dark:text-primary-400
+                       dark:hover:bg-primary-500/10
+                       focus:outline-none focus:ring-2 focus:ring-primary-200">
+            <AllInIcon />
+            {t('memorySources.allIn.button')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDialogOpen(true)}
+            className="inline-flex items-center gap-1 rounded-md bg-primary-500 px-3 py-1.5
+                       text-xs font-semibold text-white shadow-sm transition-colors
+                       hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-200">
+            <PlusIcon />
+            {t('memorySources.addSource')}
+          </button>
+        </div>
       </header>
 
       {loading ? (
@@ -256,10 +327,14 @@ export function MemorySourcesRegistry({
               isSyncing={syncingId === source.id}
               isBuilding={buildingId === source.id}
               progress={syncProgress.get(source.id) ?? null}
+              settingsExpanded={expandedSettingsId === source.id}
               onToggle={handleToggle}
               onRemove={handleRemove}
               onSync={handleSync}
               onBuild={handleBuild}
+              onToggleSettings={handleToggleSettings}
+              onSettingsSaved={handleSettingsSaved}
+              onToast={onToast}
             />
           ))}
         </ul>
@@ -270,6 +345,10 @@ export function MemorySourcesRegistry({
         onClose={() => setDialogOpen(false)}
         onAdded={handleAdded}
       />
+
+      {allInModalOpen && (
+        <ConfirmationModal modal={allInModal} onClose={() => setAllInModalOpen(false)} />
+      )}
     </section>
   );
 }
@@ -280,10 +359,14 @@ interface SourceRowProps {
   isSyncing: boolean;
   isBuilding: boolean;
   progress: SyncProgress | null;
+  settingsExpanded: boolean;
   onToggle: (source: MemorySourceEntry) => void;
   onRemove: (source: MemorySourceEntry) => void;
   onSync: (source: MemorySourceEntry) => void;
   onBuild: (source: MemorySourceEntry) => void;
+  onToggleSettings: (sourceId: string) => void;
+  onSettingsSaved: (updated: MemorySourceEntry) => void;
+  onToast?: (toast: Omit<ToastNotification, 'id'>) => void;
 }
 
 function SourceRow({
@@ -292,10 +375,14 @@ function SourceRow({
   isSyncing,
   isBuilding,
   progress,
+  settingsExpanded,
   onToggle,
   onRemove,
   onSync,
   onBuild,
+  onToggleSettings,
+  onSettingsSaved,
+  onToast,
 }: SourceRowProps) {
   const { t } = useT();
   const icon = SOURCE_KIND_ICONS[source.kind] ?? '📄';
@@ -304,125 +391,146 @@ function SourceRow({
   const lastSync = status ? relativeTimestamp(status.last_chunk_at_ms, t) : null;
 
   return (
-    <li
-      className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between"
-      data-testid={`memory-source-row-${source.kind}`}>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-base">{icon}</span>
-          <span
-            className={`truncate text-sm font-medium ${
-              source.enabled
-                ? 'text-stone-900 dark:text-neutral-100'
-                : 'text-stone-400 line-through dark:text-neutral-500'
-            }`}>
-            {source.label}
-          </span>
-          <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-stone-500 dark:bg-neutral-800 dark:text-neutral-400">
-            {kindLabel}
-          </span>
-          {status && status.chunks_synced > 0 && <FreshnessPill freshness={status.freshness} />}
-        </div>
-        {detail && (
-          <p className="mt-0.5 truncate pl-7 text-xs text-stone-400 dark:text-neutral-500">
-            {detail}
-          </p>
-        )}
-        {progress && (
-          <div className="mt-2 pl-7">
-            <div className="flex items-center gap-2 text-xs text-stone-500 dark:text-neutral-400">
-              <span className="capitalize">{progress.stage}</span>
-              {progress.percent !== null && (
-                <span className="font-medium text-primary-600 dark:text-primary-400">
-                  {progress.percent}%
-                </span>
-              )}
-              {progress.detail && (
-                <span className="truncate text-stone-400 dark:text-neutral-500">
-                  {progress.detail}
-                </span>
-              )}
-            </div>
-            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-stone-200 dark:bg-neutral-700">
-              <div
-                className="h-full rounded-full bg-primary-500 transition-all duration-300"
-                style={{
-                  width: `${progress.percent ?? (progress.stage === 'fetching' ? 10 : 5)}%`,
-                }}
-              />
-            </div>
-          </div>
-        )}
-        {!progress && status && (status.chunks_synced > 0 || status.chunks_pending > 0) && (
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 pl-7 text-xs text-stone-500 dark:text-neutral-400">
-            <span>
-              {status.chunks_synced.toLocaleString()} {t('sync.chunks')}
+    <li className="flex flex-col gap-2 py-3" data-testid={`memory-source-row-${source.kind}`}>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-base">{icon}</span>
+            <span
+              className={`truncate text-sm font-medium ${
+                source.enabled
+                  ? 'text-stone-900 dark:text-neutral-100'
+                  : 'text-stone-400 line-through dark:text-neutral-500'
+              }`}>
+              {source.label}
             </span>
-            {lastSync && (
-              <span>
-                {t('sync.lastChunk')} {lastSync}
-              </span>
-            )}
-            {status.chunks_pending > 0 && (
-              <span>
-                {status.chunks_pending.toLocaleString()} {t('sync.pending')}
-              </span>
-            )}
+            <span className="rounded-md bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium text-stone-500 dark:bg-neutral-800 dark:text-neutral-400">
+              {kindLabel}
+            </span>
+            {status && status.chunks_synced > 0 && <FreshnessPill freshness={status.freshness} />}
           </div>
-        )}
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onSync(source)}
-          disabled={!source.enabled || isSyncing}
-          title={t('sync.sync')}
-          data-testid={`memory-source-sync-${source.toolkit ?? source.kind}`}
-          className="inline-flex items-center gap-1 rounded-md bg-primary-500 px-3 py-1.5
+          {detail && (
+            <p className="mt-0.5 truncate pl-7 text-xs text-stone-400 dark:text-neutral-500">
+              {detail}
+            </p>
+          )}
+          {progress && (
+            <div className="mt-2 pl-7">
+              <div className="flex items-center gap-2 text-xs text-stone-500 dark:text-neutral-400">
+                <span className="capitalize">{progress.stage}</span>
+                {progress.percent !== null && (
+                  <span className="font-medium text-primary-600 dark:text-primary-400">
+                    {progress.percent}%
+                  </span>
+                )}
+                {progress.detail && (
+                  <span className="truncate text-stone-400 dark:text-neutral-500">
+                    {progress.detail}
+                  </span>
+                )}
+              </div>
+              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-stone-200 dark:bg-neutral-700">
+                <div
+                  className="h-full rounded-full bg-primary-500 transition-all duration-300"
+                  style={{
+                    width: `${progress.percent ?? (progress.stage === 'fetching' ? 10 : 5)}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+          {!progress && status && (status.chunks_synced > 0 || status.chunks_pending > 0) && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 pl-7 text-xs text-stone-500 dark:text-neutral-400">
+              <span>
+                {status.chunks_synced.toLocaleString()} {t('sync.chunks')}
+              </span>
+              {lastSync && (
+                <span>
+                  {t('sync.lastChunk')} {lastSync}
+                </span>
+              )}
+              {status.chunks_pending > 0 && (
+                <span>
+                  {status.chunks_pending.toLocaleString()} {t('sync.pending')}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onToggleSettings(source.id)}
+            title={t('memorySources.settings.button')}
+            data-testid={`memory-source-settings-${source.id}`}
+            aria-expanded={settingsExpanded}
+            className={`rounded p-1 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-200 ${
+              settingsExpanded
+                ? 'bg-primary-100 text-primary-600 dark:bg-primary-500/20 dark:text-primary-400'
+                : 'text-stone-400 hover:bg-stone-100 hover:text-stone-600 dark:text-neutral-500 dark:hover:bg-neutral-800 dark:hover:text-neutral-300'
+            }`}>
+            <GearIcon />
+          </button>
+          <button
+            type="button"
+            onClick={() => onSync(source)}
+            disabled={!source.enabled || isSyncing}
+            title={t('sync.sync')}
+            data-testid={`memory-source-sync-${source.toolkit ?? source.kind}`}
+            className="inline-flex items-center gap-1 rounded-md bg-primary-500 px-3 py-1.5
                      text-xs font-semibold text-white shadow-sm transition-colors
                      hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50
                      focus:outline-none focus:ring-2 focus:ring-primary-200">
-          {isSyncing ? <Spinner /> : <SyncIcon />}
-          {isSyncing ? t('sync.syncing') : t('sync.sync')}
-        </button>
-        <button
-          type="button"
-          onClick={() => onBuild(source)}
-          disabled={!source.enabled || isBuilding || isSyncing}
-          title={t('memorySources.build.title')}
-          className="inline-flex items-center gap-1 rounded-md border border-primary-300
+            {isSyncing ? <Spinner /> : <SyncIcon />}
+            {isSyncing ? t('sync.syncing') : t('sync.sync')}
+          </button>
+          <button
+            type="button"
+            onClick={() => onBuild(source)}
+            disabled={!source.enabled || isBuilding || isSyncing}
+            title={t('memorySources.build.title')}
+            className="inline-flex items-center gap-1 rounded-md border border-primary-300
                      bg-white px-3 py-1.5 text-xs font-semibold text-primary-600
                      shadow-sm transition-colors hover:bg-primary-50
                      disabled:cursor-not-allowed disabled:opacity-50
                      dark:border-primary-500/30 dark:bg-neutral-900 dark:text-primary-400
                      dark:hover:bg-primary-500/10
                      focus:outline-none focus:ring-2 focus:ring-primary-200">
-          {isBuilding ? <Spinner /> : <BuildIcon />}
-          {isBuilding ? t('memorySources.build.building') : t('memorySources.build.title')}
-        </button>
-        <button
-          type="button"
-          onClick={() => onToggle(source)}
-          title={source.enabled ? t('memorySources.disable') : t('memorySources.enable')}
-          className={`relative h-5 w-9 rounded-full transition-colors ${
-            source.enabled ? 'bg-primary-500' : 'bg-stone-300 dark:bg-neutral-600'
-          }`}>
-          <span
-            className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
-              source.enabled ? 'left-[18px]' : 'left-0.5'
-            }`}
-          />
-        </button>
-        <button
-          type="button"
-          onClick={() => onRemove(source)}
-          title={t('memorySources.remove')}
-          className="rounded p-1 text-stone-400 transition-colors hover:bg-coral-50
+            {isBuilding ? <Spinner /> : <BuildIcon />}
+            {isBuilding ? t('memorySources.build.building') : t('memorySources.build.title')}
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggle(source)}
+            title={source.enabled ? t('memorySources.disable') : t('memorySources.enable')}
+            className={`relative h-5 w-9 rounded-full transition-colors ${
+              source.enabled ? 'bg-primary-500' : 'bg-stone-300 dark:bg-neutral-600'
+            }`}>
+            <span
+              className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                source.enabled ? 'left-[18px]' : 'left-0.5'
+              }`}
+            />
+          </button>
+          <button
+            type="button"
+            onClick={() => onRemove(source)}
+            title={t('memorySources.remove')}
+            className="rounded p-1 text-stone-400 transition-colors hover:bg-coral-50
                      hover:text-coral-600 dark:text-neutral-500 dark:hover:bg-coral-500/10
                      dark:hover:text-coral-400">
-          <TrashIcon />
-        </button>
+            <TrashIcon />
+          </button>
+        </div>
       </div>
+      {settingsExpanded && (
+        <SourceSettingsPanel
+          source={source}
+          syncedCount={status?.chunks_synced}
+          onSaved={onSettingsSaved}
+          onToast={onToast}
+        />
+      )}
     </li>
   );
 }
@@ -570,6 +678,41 @@ function Spinner() {
       aria-hidden="true">
       <circle cx="12" cy="12" r="9" opacity="0.25" />
       <path d="M21 12a9 9 0 00-9-9" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" />
+    </svg>
+  );
+}
+
+function AllInIcon() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true">
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
     </svg>
   );
 }

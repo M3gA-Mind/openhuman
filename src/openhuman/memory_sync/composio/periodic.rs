@@ -313,6 +313,29 @@ pub(crate) async fn run_one_tick() -> Result<(), String> {
             continue;
         }
 
+        // Look up per-source caps from the memory_sources registry.
+        // Non-fatal: if the lookup fails we proceed without caps.
+        let (src_max_items, src_sync_depth_days) = {
+            let registry_sources = crate::openhuman::memory_sources::list_enabled_by_kind(
+                crate::openhuman::memory_sources::SourceKind::Composio,
+            )
+            .await
+            .unwrap_or_default();
+            registry_sources
+                .iter()
+                .find(|s| s.connection_id.as_deref() == Some(conn.id.as_str()))
+                .map(|s| (s.max_items, s.sync_depth_days))
+                .unwrap_or((None, None))
+        };
+
+        tracing::debug!(
+            toolkit = %toolkit,
+            connection_id = %conn.id,
+            max_items = ?src_max_items,
+            sync_depth_days = ?src_sync_depth_days,
+            "[composio:periodic] caps from registry"
+        );
+
         // Build a context tied to this specific connection and dispatch.
         // `ProviderContext` no longer caches a pre-baked
         // `ComposioClient` — provider methods resolve a fresh handle per
@@ -323,6 +346,8 @@ pub(crate) async fn run_one_tick() -> Result<(), String> {
             toolkit: toolkit.clone(),
             connection_id: Some(conn.id.clone()),
             usage: Default::default(),
+            max_items: src_max_items,
+            sync_depth_days: src_sync_depth_days,
         };
 
         tracing::debug!(

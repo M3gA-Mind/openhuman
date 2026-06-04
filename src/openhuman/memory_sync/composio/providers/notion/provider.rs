@@ -186,6 +186,33 @@ impl ComposioProvider for NotionProvider {
             _ => PAGE_SIZE,
         };
 
+        // ctx.max_items: route through ItemCap — page ceiling, mid-page
+        // per-item break, and post-page hard stop all share one source of truth.
+        let mut cap = super::super::helpers::ItemCap::new(ctx.max_items);
+        let effective_max_pages = cap.max_pages(page_size, MAX_PAGES_PER_SYNC);
+        if ctx.max_items.is_some() && effective_max_pages < MAX_PAGES_PER_SYNC {
+            tracing::debug!(
+                connection_id = %connection_id,
+                max_items = ?ctx.max_items,
+                effective_max_pages,
+                "[composio:notion] [memory_sync] applying max_items page cap"
+            );
+        }
+
+        // ctx.sync_depth_days: compute the oldest allowed edited_time string
+        // for client-side skipping of stale results.
+        let oldest_allowed_time: Option<String> = ctx.sync_depth_days.map(|days| {
+            let floor = chrono::Utc::now() - chrono::Duration::days(days as i64);
+            let s = floor.to_rfc3339();
+            tracing::debug!(
+                connection_id = %connection_id,
+                sync_depth_days = days,
+                oldest_allowed = %s,
+                "[composio:notion] [memory_sync] applying sync_depth_days floor"
+            );
+            s
+        });
+
         let mut total_fetched: usize = 0;
         let mut total_persisted: usize = 0;
         let mut newest_edited_time: Option<String> = None;
@@ -198,8 +225,9 @@ impl ComposioProvider for NotionProvider {
         // its next edit. Already-synced items are skipped cheaply via
         // `is_synced` on the re-fetch, so the cost of holding is minimal.
         let mut had_ingest_failures = false;
+        let mut hit_cap_boundary = false;
 
-        for page_num in 0..MAX_PAGES_PER_SYNC {
+        for page_num in 0..effective_max_pages {
             if state.budget_exhausted() {
                 tracing::info!(
                     page = page_num,
@@ -249,8 +277,26 @@ impl ComposioProvider for NotionProvider {
             }
 
             // ── Step 4a: dedupe + decide which pages to ingest ──────
-            let (pending, hit_cursor_boundary) =
+            let (mut pending, mut hit_cursor_boundary) =
                 select_pending(&results, &state, &mut newest_edited_time);
+
+            // ctx.sync_depth_days: drop items edited before the depth floor. `pending` is
+            // in descending timestamp order, so truncate at the first item below the floor
+            // and signal cursor-boundary so pagination stops.
+            if let Some(ref floor) = oldest_allowed_time {
+                if let Some(cut) = pending.iter().position(|p| {
+                    p.edited_time
+                        .as_deref()
+                        .map(|t| t < floor.as_str())
+                        .unwrap_or(false)
+                }) {
+                    pending.truncate(cut);
+                    hit_cursor_boundary = true;
+                }
+            }
+
+            // ctx.max_items: clamp the dedup'd batch to the remaining budget before ingest.
+            cap.clamp_batch(&mut pending);
 
             // ── Step 4b: ingest queued pages (bounded concurrency) ──
             let ingestor = MemoryTreeIngestor {
@@ -262,8 +308,15 @@ impl ComposioProvider for NotionProvider {
                 state.mark_synced(key);
             }
             total_persisted += outcome.persisted;
+            cap.record(outcome.persisted);
             if outcome.had_failures {
                 had_ingest_failures = true;
+            }
+
+            // ctx.max_items precise cap: once the per-source cap is hit, stop paginating.
+            if cap.is_reached() {
+                hit_cap_boundary = true;
+                break;
             }
 
             if hit_cursor_boundary {
@@ -271,6 +324,17 @@ impl ComposioProvider for NotionProvider {
                     page = page_num,
                     "[composio:notion] reached cursor boundary, stopping"
                 );
+                break;
+            }
+
+            // ctx.max_items hard stop.
+            if cap.is_reached() {
+                tracing::debug!(
+                    page = page_num,
+                    total_persisted,
+                    "[composio:notion] [memory_sync] max_items reached, stopping pagination"
+                );
+                hit_cap_boundary = true;
                 break;
             }
 
@@ -287,15 +351,18 @@ impl ComposioProvider for NotionProvider {
         // Hold the cursor when any item failed to ingest this pass. See the
         // `had_ingest_failures` declaration above for why this matters under
         // the delete-first memory-tree pipeline (#2885).
-        if !had_ingest_failures {
+        // Hold the cursor on a cap-truncated pass so the next sync re-scans the unseen tail.
+        if !had_ingest_failures && !hit_cap_boundary {
             if let Some(new_cursor) = newest_edited_time {
                 state.advance_cursor(&new_cursor);
             }
         } else {
             tracing::warn!(
                 connection_id = %connection_id,
-                "[composio:notion] holding cursor — ingest failures this pass; next sync will \
-                 re-fetch the failed range"
+                had_ingest_failures,
+                hit_cap_boundary,
+                "[composio:notion] holding cursor — ingest failures or cap-truncated pass; next \
+                 sync will re-fetch the failed range"
             );
         }
         state.save(&memory).await?;

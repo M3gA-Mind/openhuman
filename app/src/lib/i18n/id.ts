@@ -163,6 +163,7 @@ const messages: TranslationMap = {
   'clearData.failed': 'Gagal membersihkan data dan keluar. Silakan coba lagi.',
   'clearData.failedLogout': 'Gagal keluar. Silakan coba lagi.',
   'clearData.failedPersist': 'Gagal membersihkan status aplikasi tersimpan. Silakan coba lagi.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Selamat datang di OpenHuman',
   'welcome.subtitle': 'Asisten AI Anda untuk komunitas',
   'welcome.connectPrompt': 'Konfigurasikan RPC URL (Lanjutan)',
@@ -1974,6 +1975,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Memuat koneksi...',
   'memorySources.noConnections':
     'Tak ditemukan koneksi Composio yang aktif. Hubungkan integrasi dulu.',
+  'memorySources.connectionAccount': 'Akun',
   'memorySources.pickConnection': 'Pilih koneksi',
   'memorySources.selectConnection': '- Pilih koneksi -',
   'memorySources.composioListFailed': 'Gagal memuat koneksi Composio.',
@@ -2026,6 +2028,32 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': 'Pohon dibangun',
   'memorySources.build.failedTitle': 'Pembangunan gagal',
   'memorySources.build.sealsMessage': 'penyegelan selesai',
+  'memorySources.allIn.button': 'Aktifkan Semua',
+  'memorySources.allIn.title': 'Aktifkan Semua?',
+  'memorySources.allIn.message':
+    'Ini akan mengaktifkan semua sumber memori dan menghapus semua batas sinkronisasi. Membangun grafik memori terkaya, tetapi mungkin menggunakan lebih banyak kredit.',
+  'memorySources.allIn.confirm': 'Ya',
+  'memorySources.allIn.cancel': 'Tidak',
+  'memorySources.allIn.success': 'Semua sumber diaktifkan tanpa batas. Sinkronisasi dimulai.',
+  'memorySources.allIn.failed': 'Gagal mengaktifkan semua. Silakan coba lagi.',
+  'memorySources.settings.button': 'Pengaturan',
+  'memorySources.settings.title': 'Pengaturan sinkronisasi',
+  'memorySources.settings.maxPrs': 'Maksimal pull request',
+  'memorySources.settings.maxIssues': 'Maksimal isu',
+  'memorySources.settings.maxCommits': 'Maksimal commit',
+  'memorySources.settings.maxItems': 'Maksimal item',
+  'memorySources.settings.sinceDays': 'Periode ke belakang (hari)',
+  'memorySources.settings.syncDepthDays': 'Kedalaman sinkronisasi (hari)',
+  'memorySources.settings.maxTokens': 'Maksimal token per sinkronisasi',
+  'memorySources.settings.maxCost': 'Biaya maksimal per sinkronisasi (USD)',
+  'memorySources.settings.unlimited': 'Tanpa batas',
+  'memorySources.settings.unlimitedTooltip':
+    'Anda memilih menyinkronkan maksimum untuk {toolkit}. Anda dapat mengubah batas di sini.',
+  'memorySources.settings.maxed': 'Penuh',
+  'memorySources.settings.save': 'Simpan',
+  'memorySources.settings.saving': 'Menyimpan…',
+  'memorySources.settings.saved': 'Pengaturan tersimpan',
+  'memorySources.settings.saveFailed': 'Gagal menyimpan pengaturan',
   'backend.aiBackend': 'Backend AI',
   'backend.cloud': 'Awan',
   'backend.recommended': 'Direkomendasikan',
@@ -3746,6 +3774,16 @@ const messages: TranslationMap = {
   'settings.agentAccess.agentBlocked': 'diblokir untuk agen',
   'settings.agentAccess.internalStateDesc':
     'Database memori, sesi, token, dan data inti lainnya. Tidak dapat diakses oleh alat agen.',
+  'settings.agentAccess.actionDirInputLabel': 'Jalur sandbox tindakan',
+  'settings.agentAccess.actionDirSave': 'Simpan',
+  'settings.agentAccess.actionDirSaving': 'Menyimpan…',
+  'settings.agentAccess.actionDirSaved': 'Sandbox tindakan diperbarui.',
+  'settings.agentAccess.actionDirEmptyError': 'Jalur tidak boleh kosong.',
+  'settings.agentAccess.actionDirSaveError': 'Tidak dapat memperbarui sandbox tindakan.',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    'OPENHUMAN_ACTION_DIR sudah diatur — hapus variabel env untuk mengedit ini dari Pengaturan.',
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    'Ditimpa oleh OPENHUMAN_ACTION_DIR — hapus variabel env untuk mengelola dari Pengaturan.',
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
@@ -4774,6 +4812,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'Jendela memori',
   'memoryData.windowUpdated': 'Jendela memori diperbarui',
   'memoryData.windowUpdatedMsg': 'Diatur ke {window}.',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'Gerbang persetujuan dinonaktifkan',
+  'security.approvalGateDisabled.body':
+    'OPENHUMAN_APPROVAL_GATE=0 disetel di lingkungan Anda. Alat dengan efek eksternal akan berjalan tanpa meminta konfirmasi.',
+  'security.approvalGateOverrideIgnored.title': 'Override diblokir',
+  'security.approvalGateOverrideIgnored.body':
+    'Override OPENHUMAN_APPROVAL_GATE=0 terdeteksi tetapi diabaikan: aplikasi desktop selalu menjaga gerbang persetujuan tetap aktif.',
 
   // Run queue
   'runQueue.mode.interrupt': 'Interupsi',

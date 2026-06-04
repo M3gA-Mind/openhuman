@@ -62,10 +62,17 @@ pub fn extract_play_query(goal: &str) -> Option<String> {
             .next_back()
             .map(|c| c.is_alphabetic())
             .unwrap_or(false);
-    if !before_ok {
+    let after_idx = idx + "play".len();
+    // Right boundary too, so "playback …" isn't parsed as a play intent.
+    let after_ok = lower[after_idx..]
+        .chars()
+        .next()
+        .map(|c| !c.is_alphabetic())
+        .unwrap_or(true);
+    if !(before_ok && after_ok) {
         return None;
     }
-    let after = &goal[idx + "play".len()..];
+    let after = &goal[after_idx..];
     let mut q = after.trim().to_string();
     for filler in ["the song ", "the track ", "song ", "track ", "me "] {
         if q.to_lowercase().starts_with(filler) {
@@ -148,18 +155,26 @@ fn trailing_by_artist(rest: &str) -> Option<String> {
 
 /// Case-insensitive replace of `needle` with `repl` in `haystack`.
 fn replace_ci(haystack: &str, needle: &str, repl: &str) -> String {
-    let hl = haystack.to_lowercase();
+    if needle.is_empty() {
+        return haystack.to_string();
+    }
     let nl = needle.to_lowercase();
     let mut out = String::with_capacity(haystack.len());
-    let mut i = 0;
-    while i < haystack.len() {
-        if hl[i..].starts_with(&nl) {
+    let mut rest = haystack;
+    while !rest.is_empty() {
+        // Compare on `rest` itself (never index the lowercased copy with
+        // original byte offsets — `to_lowercase` can change byte lengths for
+        // Unicode, which would slice mid-codepoint and panic).
+        if rest.len() >= needle.len()
+            && rest.is_char_boundary(needle.len())
+            && rest[..needle.len()].to_lowercase() == nl
+        {
             out.push_str(repl);
-            i += needle.len();
+            rest = &rest[needle.len()..];
         } else {
-            let ch = haystack[i..].chars().next().unwrap();
+            let ch = rest.chars().next().unwrap();
             out.push(ch);
-            i += ch.len_utf8();
+            rest = &rest[ch.len_utf8()..];
         }
     }
     out
