@@ -1402,6 +1402,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': '무음 임계값(RMS)',
   'voice.debug.silenceThresholdDesc':
     '이 값보다 에너지가 낮은 녹음은 무음으로 처리되어 건너뜁니다. 낮을수록 더 민감합니다.',
+  'voice.debug.alwaysOn': '상시 청취',
+  'voice.debug.alwaysOnDesc':
+    '단축키 없이 마이크를 계속 열어 두고 말한 내용을 자동으로 에이전트에 보냅니다. 화면이 잠기면 일시 중지됩니다.',
   'voice.providers.saved': '음성 제공업체가 저장되었습니다.',
   'voice.providers.failedToSave': '음성 제공자를 저장하지 못했습니다.',
   'voice.providers.ellipsis': '…',
@@ -4719,6 +4722,13 @@ const messages: TranslationMap = {
   'runQueue.collectHint': '추가 컨텍스트로 추가',
   'runQueue.status': '{total}개 대기 중',
   'runQueue.cleared': '대기열이 비워졌습니다',
+  'notch.ready': '준비됨',
+  'notch.processing': '처리 중…',
+  'notch.listening': '듣는 중…',
+  'notch.thinking': '생각 중…',
+  'notch.speaking': '말하는 중…',
+  'notch.transcribing': '변환 중…',
+  'notch.executing': '실행 중…',
 };
 
 export default messages;

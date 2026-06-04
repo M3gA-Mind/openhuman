@@ -1430,6 +1430,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'Порог тишины (RMS)',
   'voice.debug.silenceThresholdDesc':
     'Записи с энергией ниже этого значения считаются тишиной и пропускаются. Меньше = чувствительнее.',
+  'voice.debug.alwaysOn': 'Постоянное прослушивание',
+  'voice.debug.alwaysOnDesc':
+    'Держит микрофон включённым и автоматически отправляет сказанное агенту без горячей клавиши. Приостанавливается при блокировке экрана.',
   'voice.providers.saved': 'Поставщики голосовой связи сохранены.',
   'voice.providers.failedToSave': 'Не удалось сохранить поставщиков голосовой связи.',
   'voice.providers.ellipsis': '…',
@@ -4812,6 +4815,13 @@ const messages: TranslationMap = {
   'runQueue.collectHint': 'Добавить как дополнительный контекст',
   'runQueue.status': '{total} в очереди',
   'runQueue.cleared': 'Очередь очищена',
+  'notch.ready': 'Готово',
+  'notch.processing': 'Обработка…',
+  'notch.listening': 'Слушаю…',
+  'notch.thinking': 'Думаю…',
+  'notch.speaking': 'Говорю…',
+  'notch.transcribing': 'Транскрибирую…',
+  'notch.executing': 'Выполняю…',
 };
 
 export default messages;

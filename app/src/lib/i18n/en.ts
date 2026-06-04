@@ -1635,6 +1635,9 @@ const en: TranslationMap = {
   'voice.debug.silenceThreshold': 'Silence Threshold (RMS)',
   'voice.debug.silenceThresholdDesc':
     'Recordings with energy below this are treated as silence and skipped. Lower = more sensitive.',
+  'voice.debug.alwaysOn': 'Always-on listening',
+  'voice.debug.alwaysOnDesc':
+    'Keep the microphone open and send what you say to the agent automatically, no hotkey. Pauses when the screen is locked.',
   'voice.providers.saved': 'Voice providers saved.',
   'voice.providers.failedToSave': 'Failed to save voice providers',
   'voice.providers.ellipsis': '…',
@@ -5010,6 +5013,13 @@ const en: TranslationMap = {
   'runQueue.collectHint': 'Add as extra context',
   'runQueue.status': '{total} queued',
   'runQueue.cleared': 'Queue cleared',
+  'notch.ready': 'Ready',
+  'notch.processing': 'Processing…',
+  'notch.listening': 'Listening…',
+  'notch.thinking': 'Thinking…',
+  'notch.speaking': 'Speaking…',
+  'notch.transcribing': 'Transcribing…',
+  'notch.executing': 'Executing…',
 };
 
 export default en;

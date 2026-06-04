@@ -1417,6 +1417,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'সাইলেন্স থ্রেশহোল্ড (RMS)',
   'voice.debug.silenceThresholdDesc':
     'এই মানের নিচে শক্তির রেকর্ডিংগুলি নীরবতা হিসেবে গণ্য হয় এবং এড়িয়ে যাওয়া হয়। কম মান = আরও সংবেদনশীল।',
+  'voice.debug.alwaysOn': 'সবসময় শোনা',
+  'voice.debug.alwaysOnDesc':
+    'মাইক্রোফোন খোলা রাখুন এবং আপনি যা বলেন তা হটকি ছাড়াই স্বয়ংক্রিয়ভাবে এজেন্টের কাছে পাঠান। স্ক্রিন লক হলে থেমে যায়।',
   'voice.providers.saved': 'ভয়েস প্রদানকারী সংরক্ষিত।',
   'voice.providers.failedToSave': 'ভয়েস প্রদানকারী সংরক্ষণ করতে ব্যর্থ',
   'voice.providers.ellipsis': '…',
@@ -4764,6 +4767,13 @@ const messages: TranslationMap = {
   'runQueue.collectHint': 'অতিরিক্ত প্রসঙ্গ হিসেবে যোগ করুন',
   'runQueue.status': '{total}টি সারিবদ্ধ',
   'runQueue.cleared': 'সারি পরিষ্কার করা হয়েছে',
+  'notch.ready': 'প্রস্তুত',
+  'notch.processing': 'প্রক্রিয়াকরণ চলছে…',
+  'notch.listening': 'শুনছি…',
+  'notch.thinking': 'ভাবছি…',
+  'notch.speaking': 'বলছি…',
+  'notch.transcribing': 'ট্রান্সক্রাইব করছি…',
+  'notch.executing': 'চালাচ্ছি…',
 };
 
 export default messages;

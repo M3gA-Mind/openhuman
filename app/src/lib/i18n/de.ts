@@ -1458,6 +1458,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'Ruheschwelle (RMS)',
   'voice.debug.silenceThresholdDesc':
     'Aufnahmen mit Energie unterhalb dieses Wertes werden als Stille behandelt und übersprungen. Niedriger = empfindlicher.',
+  'voice.debug.alwaysOn': 'Dauerhaftes Zuhören',
+  'voice.debug.alwaysOnDesc':
+    'Hält das Mikrofon offen und sendet das Gesagte automatisch an den Agenten, ohne Tastenkürzel. Pausiert, wenn der Bildschirm gesperrt ist.',
   'voice.providers.saved': 'Sprachanbieter gespeichert.',
   'voice.providers.failedToSave': 'Sprachanbieter konnten nicht gespeichert werden.',
   'voice.providers.ellipsis': '…',
@@ -4899,6 +4902,13 @@ const messages: TranslationMap = {
   'runQueue.collectHint': 'Als zusätzlichen Kontext hinzufügen',
   'runQueue.status': '{total} in der Warteschlange',
   'runQueue.cleared': 'Warteschlange geleert',
+  'notch.ready': 'Bereit',
+  'notch.processing': 'Wird verarbeitet…',
+  'notch.listening': 'Höre zu…',
+  'notch.thinking': 'Denke nach…',
+  'notch.speaking': 'Spreche…',
+  'notch.transcribing': 'Transkribiere…',
+  'notch.executing': 'Führe aus…',
 };
 
 export default messages;
