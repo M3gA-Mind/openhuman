@@ -474,6 +474,7 @@ pub(super) async fn set_test_forced_run_chat_task_error(message: Option<&str>) {
     *slot = message.map(str::to_string);
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_chat(
     client_id: &str,
     thread_id: &str,
@@ -483,6 +484,7 @@ pub async fn start_chat(
     profile_id: Option<String>,
     locale: Option<String>,
     queue_mode: Option<String>,
+    voice: bool,
 ) -> Result<String, String> {
     let client_id = client_id.trim().to_string();
     let thread_id = thread_id.trim().to_string();
@@ -708,6 +710,7 @@ pub async fn start_chat(
         let approval_ctx = crate::openhuman::approval::ApprovalChatContext {
             thread_id: thread_id_task.clone(),
             client_id: client_id_task.clone(),
+            voice,
         };
         // Scope the matching `AgentTurnOrigin::WebChat` alongside the chat
         // context so the approval gate's origin-aware decision tree sees a
@@ -901,6 +904,8 @@ fn dispatch_followups(followups: Vec<crate::openhuman::agent::harness::run_queue
                 fup.profile_id,
                 fup.locale,
                 Some("followup".to_string()),
+                // Follow-ups inherit no voice flag; they never re-prompt approval.
+                false,
             )
             .await
             {
@@ -1981,6 +1986,12 @@ struct WebChatParams {
     /// Queue mode for concurrent messages: `interrupt` (default), `steer`,
     /// `followup`, or `collect`.
     queue_mode: Option<String>,
+    /// `true` when the turn was voice-initiated (dictation / always-on
+    /// listening). Drives the voice-native approval surface — sensitive actions
+    /// get their confirmation prompt spoken aloud (Phase 4 of #3148). Defaults
+    /// `false` so typed turns stay visual-only.
+    #[serde(default)]
+    voice: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1994,6 +2005,7 @@ struct WebCancelParams {
     thread_id: String,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn channel_web_chat(
     client_id: &str,
     thread_id: &str,
@@ -2003,6 +2015,7 @@ pub async fn channel_web_chat(
     profile_id: Option<String>,
     locale: Option<String>,
     queue_mode: Option<String>,
+    voice: bool,
 ) -> Result<RpcOutcome<Value>, String> {
     let result = start_chat(
         client_id,
@@ -2013,6 +2026,7 @@ pub async fn channel_web_chat(
         profile_id,
         locale,
         queue_mode,
+        voice,
     )
     .await?;
 
@@ -2163,6 +2177,10 @@ pub fn schemas(function: &str) -> ControllerSchema {
                     "queue_mode",
                     "Queue mode: 'interrupt' (default), 'steer', 'followup', or 'collect'.",
                 ),
+                optional_bool(
+                    "voice",
+                    "True when the turn was voice-initiated (dictation / always-on). Speaks the approval prompt aloud for sensitive actions.",
+                ),
             ],
             outputs: vec![json_output("ack", "Acceptance payload.")],
         },
@@ -2218,6 +2236,7 @@ fn handle_chat(params: Map<String, Value>) -> ControllerFuture {
                 p.profile_id,
                 p.locale,
                 p.queue_mode,
+                p.voice,
             )
             .await?,
         )
@@ -2320,6 +2339,15 @@ fn optional_f64(name: &'static str, comment: &'static str) -> FieldSchema {
     FieldSchema {
         name,
         ty: TypeSchema::Option(Box::new(TypeSchema::F64)),
+        comment,
+        required: false,
+    }
+}
+
+fn optional_bool(name: &'static str, comment: &'static str) -> FieldSchema {
+    FieldSchema {
+        name,
+        ty: TypeSchema::Option(Box::new(TypeSchema::Bool)),
         comment,
         required: false,
     }

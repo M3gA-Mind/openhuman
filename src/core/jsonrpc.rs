@@ -2155,6 +2155,8 @@ pub async fn bootstrap_core_runtime(host_kind: crate::core::types::HostKind) {
         // frontend → every prompt dies at the TTL. Idempotent (Once-guarded).
         crate::openhuman::channels::providers::web::register_approval_surface_subscriber();
         crate::openhuman::channels::providers::web::register_artifact_surface_subscriber();
+        // Speak approval prompts for voice-initiated turns (Phase 4 of #3148).
+        crate::openhuman::voice::approval_surface::register_voice_approval_surface();
     } else {
         log::error!(
             "[runtime] approval gate DISABLED (OPENHUMAN_APPROVAL_GATE=0 honored on host={}) — \

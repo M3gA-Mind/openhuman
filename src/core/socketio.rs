@@ -287,6 +287,10 @@ struct ChatStartPayload {
     locale: Option<String>,
     #[serde(default)]
     queue_mode: Option<String>,
+    /// `true` when the turn was voice-initiated (dictation / always-on). Speaks
+    /// the approval prompt aloud for sensitive actions (Phase 4 of #3148).
+    #[serde(default)]
+    voice: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -438,6 +442,7 @@ pub fn attach_socketio() -> (socketioxide::layer::SocketIoLayer, SocketIo) {
                         payload.profile_id,
                         payload.locale,
                         payload.queue_mode,
+                        payload.voice.unwrap_or(false),
                     )
                     .await
                     {
@@ -549,6 +554,7 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
     });
 
     let io_overlay = io.clone();
+    let io_speak = io.clone();
     let io_notify = io.clone();
     let io_transcription = io.clone();
     let io_auth = io.clone();
@@ -609,6 +615,36 @@ pub fn spawn_web_channel_bridge(io: SocketIo) {
             }
         }
         log::debug!("[socketio] overlay attention bridge stopped");
+    });
+
+    // 3b. Proactive speech requests → broadcast so the UI speaks them via the
+    //     mascot TTS pipeline (Phase 4 of #3148; mirrors the attention bridge).
+    tokio::spawn(async move {
+        let mut rx = crate::openhuman::voice::speak_bus::subscribe_speak_events();
+        loop {
+            let request = match rx.recv().await {
+                Ok(req) => req,
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    log::warn!(
+                        "[socketio] dropped {} voice speak requests due to lag",
+                        skipped
+                    );
+                    continue;
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            };
+
+            if let Ok(payload) = serde_json::to_value(&request) {
+                log::debug!(
+                    "[socketio] broadcast voice:speak source={:?} chars={}",
+                    request.source,
+                    request.text.len()
+                );
+                let _ = io_speak.emit("voice:speak", &payload);
+                let _ = io_speak.emit("voice_speak", &payload);
+            }
+        }
+        log::debug!("[socketio] voice speak bridge stopped");
     });
 
     // 4. Core notification events → broadcast to all connected clients so

@@ -368,6 +368,12 @@ pub enum DomainEvent {
         /// Socket.IO client id (room) to surface the approval question to,
         /// when known. `None` for non-chat callers.
         client_id: Option<String>,
+        /// Whether the gated turn was **voice-initiated** (dictation / always-on
+        /// listening). When `true`, the voice approval surface
+        /// (`crate::openhuman::voice::approval_surface`) speaks the prompt aloud
+        /// so a hands-free user can answer by voice. `false` for typed turns —
+        /// they stay visual-only (the in-app approval card). Phase 4 of #3148.
+        is_voice: bool,
     },
     /// User decided a pending approval. Published by `approval_decide`
     /// RPC handler after the gate's parked future resolves.

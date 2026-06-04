@@ -1101,6 +1101,8 @@ pub(crate) async fn process_channel_message(
             let approval_ctx = crate::openhuman::approval::ApprovalChatContext {
                 thread_id: history_key.clone(),
                 client_id: msg.channel.clone(),
+                // Channel turns (Telegram/Discord/…) are not voice-initiated.
+                voice: false,
             };
             crate::openhuman::approval::APPROVAL_CHAT_CONTEXT
                 .scope(approval_ctx, agent_call)

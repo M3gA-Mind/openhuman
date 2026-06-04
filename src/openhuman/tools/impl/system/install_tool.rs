@@ -266,6 +266,7 @@ mod tests {
         ApprovalChatContext {
             thread_id: "t-test".into(),
             client_id: "c-test".into(),
+            voice: false,
         }
     }
 

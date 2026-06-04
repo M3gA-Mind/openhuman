@@ -597,6 +597,7 @@ async fn approval_gate_rpc_decision_resumes_parked_tool_and_records_execution() 
                 ApprovalChatContext {
                     thread_id: "worker-b-thread".to_string(),
                     client_id: "worker-b-client".to_string(),
+                    voice: false,
                 },
                 async move {
                     gate_for_task

@@ -479,6 +479,7 @@ fn chat_ctx_from(owner: &QuoteOwner) -> crate::openhuman::approval::ApprovalChat
     crate::openhuman::approval::ApprovalChatContext {
         thread_id: owner.thread_id.clone(),
         client_id: owner.client_id.clone(),
+        voice: false,
     }
 }
 

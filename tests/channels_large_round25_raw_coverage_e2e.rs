@@ -114,7 +114,7 @@ async fn web_channel_validation_cancellation_and_error_events_are_observable() {
     );
 
     assert!(
-        web::start_chat(" ", "thread", "hello", None, None, None, None, None)
+        web::start_chat(" ", "thread", "hello", None, None, None, None, None, false)
             .await
             .unwrap_err()
             .contains("client_id is required")
@@ -138,6 +138,7 @@ async fn web_channel_validation_cancellation_and_error_events_are_observable() {
         None,
         Some("en-US".to_string()),
         None,
+        false,
     )
     .await
     .expect("start forced-error chat");

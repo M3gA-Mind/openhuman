@@ -525,6 +525,7 @@ fn approval_requested_does_not_surface_session_id() {
         args_redacted: serde_json::json!({ "tool_slug": "SLACK_SEND" }),
         thread_id: Some("t-1".to_string()),
         client_id: Some("c-1".to_string()),
+        is_voice: false,
     };
     let dbg = format!("{event:?}");
     assert!(

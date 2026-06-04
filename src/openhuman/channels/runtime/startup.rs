@@ -92,6 +92,9 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
     // Surface parked ApprovalGate requests as chat messages so the user can
     // answer yes/no in the thread (chat-native approval, issue #1339).
     crate::openhuman::channels::providers::web::register_approval_surface_subscriber();
+    // Speak the approval prompt aloud for voice-initiated turns (Phase 4 of
+    // #3148) so a hands-free user can answer yes/no by voice.
+    crate::openhuman::voice::approval_surface::register_voice_approval_surface();
     // Surface generated-artifact lifecycle events (ArtifactReady /
     // ArtifactFailed) as `artifact_ready` / `artifact_failed` web-channel
     // events so the frontend ArtifactCard can render in chat (#2779).

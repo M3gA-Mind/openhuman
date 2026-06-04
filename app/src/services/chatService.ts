@@ -963,6 +963,13 @@ export interface ChatSendParams {
    * (default) aborts the running turn.
    */
   queueMode?: QueueMode | null;
+  /**
+   * `true` when this turn was voice-initiated (dictation / always-on
+   * listening). The core speaks the approval prompt aloud for sensitive
+   * actions on voice turns so a hands-free user can answer by voice
+   * (Phase 4 of #3148). Omitted/`false` keeps typed turns visual-only.
+   */
+  voice?: boolean | null;
 }
 
 /**
@@ -989,6 +996,7 @@ export async function chatSend(params: ChatSendParams): Promise<void> {
       profile_id: params.profileId ?? undefined,
       locale: params.locale ?? undefined,
       queue_mode: params.queueMode ?? undefined,
+      voice: params.voice ?? undefined,
     },
   });
 }

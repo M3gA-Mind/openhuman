@@ -24,19 +24,21 @@ static FORCED_ERROR_TEST_LOCK: Lazy<TokioMutex<()>> = Lazy::new(|| TokioMutex::n
 
 #[tokio::test]
 async fn start_chat_validates_required_fields() {
-    let err = start_chat("", "thread", "hello", None, None, None, None, None)
+    let err = start_chat("", "thread", "hello", None, None, None, None, None, false)
         .await
         .expect_err("client id should be required");
     assert!(err.contains("client_id is required"));
 
-    let err = start_chat("client", "", "hello", None, None, None, None, None)
+    let err = start_chat("client", "", "hello", None, None, None, None, None, false)
         .await
         .expect_err("thread id should be required");
     assert!(err.contains("thread_id is required"));
 
-    let err = start_chat("client", "thread", "   ", None, None, None, None, None)
-        .await
-        .expect_err("message should be required");
+    let err = start_chat(
+        "client", "thread", "   ", None, None, None, None, None, false,
+    )
+    .await
+    .expect_err("message should be required");
     assert!(err.contains("message is required"));
 }
 
@@ -51,6 +53,7 @@ async fn start_chat_rejects_prompt_injection_payload() {
         None,
         None,
         None,
+        false,
     )
     .await
     .expect_err("prompt-injection payload should be rejected");
@@ -94,6 +97,7 @@ async fn start_chat_emits_sanitized_chat_error_on_inference_failure() {
         None,
         None,
         None,
+        false,
     )
     .await
     .expect("start_chat should accept valid request");
@@ -505,6 +509,7 @@ async fn start_chat_chat_error_event_serializes_structured_fields_to_json_wire()
         None,
         None,
         None,
+        false,
     )
     .await
     .expect("start_chat should accept valid request");
@@ -599,6 +604,7 @@ async fn start_chat_emits_structured_rate_limit_metadata_on_chat_error_event() {
         None,
         None,
         None,
+        false,
     )
     .await
     .expect("start_chat should accept valid request");

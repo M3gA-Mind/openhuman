@@ -61,6 +61,10 @@ const DEFAULT_APPROVAL_TTL: Duration = Duration::from_secs(60 * 10);
 pub struct ApprovalChatContext {
     pub thread_id: String,
     pub client_id: String,
+    /// `true` when the turn was voice-initiated (dictation / always-on). The
+    /// voice approval surface speaks the prompt aloud only for these turns;
+    /// typed turns stay visual-only. Phase 4 of #3148. Defaults `false`.
+    pub voice: bool,
 }
 
 tokio::task_local! {
@@ -267,6 +271,8 @@ impl ApprovalGate {
         let chat_ctx = APPROVAL_CHAT_CONTEXT.try_with(|c| c.clone()).ok();
         let chat_thread_id = chat_ctx.as_ref().map(|c| c.thread_id.clone());
         let chat_client_id = chat_ctx.as_ref().map(|c| c.client_id.clone());
+        // Voice-initiated turns get the prompt spoken aloud (Phase 4).
+        let chat_is_voice = chat_ctx.as_ref().map(|c| c.voice).unwrap_or(false);
 
         // Branch by origin. Web chat parks for an in-app approval; external
         // channel persists an audit row and TTL-denies (no routable approval
@@ -432,6 +438,7 @@ impl ApprovalGate {
             args_redacted,
             thread_id: chat_thread_id.clone(),
             client_id: chat_client_id.clone(),
+            is_voice: chat_is_voice,
         });
 
         tracing::info!(
@@ -674,6 +681,7 @@ mod tests {
         ApprovalChatContext {
             thread_id: "t-test".into(),
             client_id: "c-test".into(),
+            voice: false,
         }
     }
 
@@ -838,6 +846,7 @@ mod tests {
         let ctx = ApprovalChatContext {
             thread_id: "thread-42".into(),
             client_id: "client-1".into(),
+            voice: false,
         };
         let origin = AgentTurnOrigin::WebChat {
             thread_id: "thread-42".into(),

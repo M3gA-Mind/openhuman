@@ -60,6 +60,7 @@ fn approval_event(thread_id: Option<&str>, client_id: Option<&str>) -> DomainEve
         args_redacted: serde_json::json!({"path": "notes/today.md"}),
         thread_id: thread_id.map(str::to_string),
         client_id: client_id.map(str::to_string),
+        is_voice: false,
     }
 }
 

@@ -446,14 +446,31 @@ Shipped on the Windows machine (2026-06-02):
 
 ---
 
-## Phase 4 — Polish ⏳ Not Started
+## Phase 4 — Polish 🔨 In progress
 
 > Voice confirmation loop, UI indicator, computer control onboarding.
 
 **Planned:**
-- TTS confirmation before executing sensitive actions ("Opening Music — confirm?")
-- Always-on status indicator (notch pill from PR #3166 will handle this automatically)
-- Computer control (`mouse`/`keyboard` tools) toggle in Settings onboarding
+- [x] **TTS confirmation before executing sensitive actions** — ✅ Done (voice-native approval; see below)
+- [x] Always-on status indicator (notch pill from PR #3166 handles this automatically)
+- [ ] Computer control (`mouse`/`keyboard` tools) toggle in Settings onboarding
+
+### Change 4.1 — Voice-native approval (spoken TTS confirmation) ✅ Done
+
+**Status:** ✅ Shipped. The existing `ApprovalGate` already classifies sensitive agent tool calls and parks them for a yes/no decision, but the prompt was **visual-only** (the in-app approval card). A hands-free / always-on user looking away from the screen never heard it. This makes the gate **voice-native**: when a sensitive action is parked during a **voice-initiated** turn, the assistant **speaks** the prompt aloud and the user answers by voice.
+
+**Decisions (agreed up front):** make the *existing* approval gate voice-native (not a parallel voice-fast-path gate), and speak **only for voice-initiated turns** (typed approvals stay visual-only).
+
+**Fix — reuses the approval gate, the turn-origin label, and the overlay socket-bridge pattern:**
+- **Origin flag** — a `voice: bool` on `ApprovalChatContext` (set from a new optional `voice` param on the `channel_web_chat` RPC / `chat:start` socket event), stamped onto `DomainEvent::ApprovalRequested { is_voice }` at publish time in `approval/gate.rs`. The frontend tags **dictation / always-on auto-sends** (`Conversations.tsx` → `chatSend({ voice: true })`); typed turns omit it.
+- **Voice approval surface** — `src/openhuman/voice/approval_surface.rs` (new), an `EventHandler` mirroring `telegram/approval_surface.rs`: on `ApprovalRequested { is_voice: true }` it builds a short spoken line (`spoken_prompt`: `"<summary>. Say yes to confirm, or no to cancel."`) and publishes it. Registered at startup alongside the web/telegram surfaces.
+- **Speak primitive** — `src/openhuman/voice/speak_bus.rs` (new), a `publish_speak` / `subscribe_speak_events` broadcast mirroring `overlay/bus.rs`; `core/socketio.rs` bridges it to a `voice:speak` Socket.IO event (next to the `overlay:attention` bridge).
+- **Frontend playback** — `useVoiceSpeak` (new, mounted app-wide in `AppShellDesktop`) subscribes to `voice:speak` and plays it through the existing TTS pipeline (`synthesizeSpeech` → `playBase64Audio`), so the prompt is heard even when the mascot view isn't open.
+- **Spoken answer — no new code:** a voice "yes"/"no" rides the existing transcription → auto-send → `web.rs` ingress yes/no router → `approval_decide`.
+
+**Tests:** Rust — `spoken_prompt` formatter, the `is_voice` gate (speaks on `true`, **silent on `false`** and on non-approval events, no-speak on empty summary), `speak_bus` round-trip. Frontend (Vitest) — `useVoiceSpeak` synthesizes + plays on `voice:speak`, ignores empty/malformed payloads, unsubscribes on unmount.
+
+**Known follow-up:** the spoken suffix ("Say yes to confirm") is built server-side in English for v1; localizing it through the i18n system (the spoken text isn't a frontend string) is deferred.
 
 ---
 
@@ -477,5 +494,5 @@ Shipped on the Windows machine (2026-06-02):
 | 2 | Privacy hook (screen lock pause) | ⏳ Not started |
 | 3 | Wake-word detection | ⏳ Not started |
 | 3 | Local command router | ⏳ Not started |
-| 4 | Voice confirmation loop | ⏳ Not started |
+| 4 | Voice confirmation loop (spoken TTS approval, Change 4.1) | ✅ Done (voice-native approval gate: speaks the prompt for voice-initiated turns; spoken yes/no) |
 | 4 | Always-on UI indicator | ✅ Done (notch PR #3166) |

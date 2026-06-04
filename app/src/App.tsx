@@ -21,6 +21,7 @@ import PersistRehydrationScreen from './components/PersistRehydrationScreen';
 import SecurityBanner from './components/SecurityBanner';
 import GlobalUpsellBanner from './components/upsell/GlobalUpsellBanner';
 import AppWalkthrough from './components/walkthrough/AppWalkthrough';
+import { useVoiceSpeak } from './features/human/voice/useVoiceSpeak';
 import { MascotFrameProducer } from './features/meet/MascotFrameProducer';
 import { I18nProvider } from './lib/i18n/I18nContext';
 import {
@@ -154,6 +155,9 @@ function AppShellDesktop() {
   const location = useLocation();
   const navigate = useNavigate();
   const { snapshot, isBootstrapping } = useCoreState();
+  // Play proactive assistant speech (e.g. spoken approval prompts for
+  // voice-initiated turns — Phase 4 of #3148) app-wide.
+  useVoiceSpeak();
   const activeAccountId = useAppSelector(state => state.accounts.activeAccountId);
   // On /accounts, only the agent view keeps the tab bar + its reserved
   // bottom padding. Any other selected "app" (e.g. WhatsApp) takes the

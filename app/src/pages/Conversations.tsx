@@ -293,7 +293,9 @@ const Conversations = ({
   // timer's reference point.
   const sendingThreadIdRef = useRef<string | null>(null);
   // Ref so the mount-time dictation event handler can call the latest send fn.
-  const handleSendMessageRef = useRef<((text?: string) => Promise<void>) | null>(null);
+  const handleSendMessageRef = useRef<
+    ((text?: string, opts?: { voice?: boolean }) => Promise<void>) | null
+  >(null);
   // Previous inference status for the sending thread; lets the rearm effect
   // distinguish "status was just cleared (chat_done / chat_error)" from
   // "status was never set yet (in-flight turn pre-status)".
@@ -438,10 +440,12 @@ const Conversations = ({
 
       customEvent.preventDefault();
 
-      // When autoSend is set (hotkey dictation), dispatch the transcript directly
-      // to the agent without going through the text composer.
+      // When autoSend is set (hotkey dictation / always-on), dispatch the
+      // transcript directly to the agent without going through the text
+      // composer. Tag it voice-initiated so the core speaks any approval prompt
+      // aloud for sensitive actions (Phase 4 of #3148).
       if (customEvent.detail?.autoSend) {
-        void handleSendMessageRef.current?.(text);
+        void handleSendMessageRef.current?.(text, { voice: true });
         return;
       }
 
@@ -672,7 +676,7 @@ const Conversations = ({
     }
   };
 
-  const handleSendMessage = async (text?: string) => {
+  const handleSendMessage = async (text?: string, opts?: { voice?: boolean }) => {
     if (pendingSendRef.current) return;
 
     const normalized = text ?? inputValue;
@@ -786,6 +790,7 @@ const Conversations = ({
         model: CHAT_MODEL_ID,
         profileId: selectedAgentProfileId,
         locale: uiLocale,
+        voice: opts?.voice ?? false,
       });
       trackEvent('chat_message_sent');
       // Backend accepted the send; lifecycle ('started' → 'streaming') now

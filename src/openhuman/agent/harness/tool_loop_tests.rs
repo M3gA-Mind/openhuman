@@ -1319,6 +1319,7 @@ async fn auto_approved_external_effect_tool_runs_through_loop_without_parking() 
             crate::openhuman::approval::ApprovalChatContext {
                 thread_id: "t-e2e".into(),
                 client_id: "c-e2e".into(),
+                voice: false,
             },
             run_tool_call_loop(
                 &provider,

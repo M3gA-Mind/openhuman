@@ -254,6 +254,7 @@ async fn web_channel_approval_bridge_forced_errors_and_newer_request_cancellatio
         args_redacted: json!({ "path": "target/channels-web-telegram-round18-artifact" }),
         thread_id: Some("round18-thread".to_string()),
         client_id: Some("round18-client".to_string()),
+        is_voice: false,
     });
 
     let approval = timeout(Duration::from_secs(5), async {
@@ -285,6 +286,7 @@ async fn web_channel_approval_bridge_forced_errors_and_newer_request_cancellatio
         args_redacted: json!({}),
         thread_id: None,
         client_id: Some("round18-client".to_string()),
+        is_voice: false,
     });
 
     web_test_support::set_forced_run_chat_task_error_for_test(Some(
@@ -300,6 +302,7 @@ async fn web_channel_approval_bridge_forced_errors_and_newer_request_cancellatio
         Some("missing-profile".to_string()),
         Some("en-US".to_string()),
         None,
+        false,
     )
     .await
     .expect("forced chat accepted");
@@ -325,6 +328,7 @@ async fn web_channel_approval_bridge_forced_errors_and_newer_request_cancellatio
         None,
         None,
         None,
+        false,
     )
     .await
     .expect("first chat accepted");
@@ -337,6 +341,7 @@ async fn web_channel_approval_bridge_forced_errors_and_newer_request_cancellatio
         None,
         None,
         None,
+        false,
     )
     .await
     .expect("second chat accepted");

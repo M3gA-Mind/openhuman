@@ -1189,6 +1189,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
                 ApprovalChatContext {
                     thread_id: "approval-raw-thread".to_string(),
                     client_id: "approval-raw-client".to_string(),
+                    voice: false,
                 },
                 async move {
                     gate_for_task
@@ -1403,6 +1404,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
             ApprovalChatContext {
                 thread_id: "approval-live-policy-thread".to_string(),
                 client_id: "approval-live-policy-client".to_string(),
+                voice: false,
             },
             gate.intercept_audited(
                 "tools.live_policy_allowed",
@@ -1428,6 +1430,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
                 ApprovalChatContext {
                     thread_id: "approval-deny-thread".to_string(),
                     client_id: "approval-deny-client".to_string(),
+                    voice: false,
                 },
                 async move {
                     gate_for_deny_task
@@ -1546,6 +1549,7 @@ async fn approval_rpc_decision_paths_persist_always_allow_and_recent_audit() {
             ApprovalChatContext {
                 thread_id: "approval-persist-failure-thread".to_string(),
                 client_id: "approval-persist-failure-client".to_string(),
+                voice: false,
             },
             gate.intercept_audited(
                 "tools.persistence_failure",
