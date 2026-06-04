@@ -362,14 +362,14 @@ test ... ok
 
 **Screenshot fix:** oversized Retina captures were returned as "too large to base64-encode inline" (the model was blind). Now downscaled to a viewable JPEG (`downscale_to_jpeg`) with reported dimensions.
 
-**THE BLOCKER — `OpenHuman-2026-06-03-170058.ips`:** `EXC_BREAKPOINT/SIGTRAP` on a **`tokio-rt-worker`** thread:
-```
+**Root cause (now fixed) — `OpenHuman-2026-06-03-170058.ips`:** `EXC_BREAKPOINT/SIGTRAP` on a **`tokio-rt-worker`** thread:
+```text
 enigo::macos::get_layoutdependent_keycode → TSMGetInputSourceProperty
 → dispatch_assert_queue → _dispatch_assert_queue_fail → SIGTRAP
 ```
-enigo's keyboard-layout lookup (`TSMGetInputSourceProperty`) **must run on the app's main thread**; the keyboard tool runs on a tokio worker → macOS traps. **Not** a focus issue (same §1.8 root cause). A frontmost-app guard would NOT fix it.
+enigo's keyboard-layout lookup (`TSMGetInputSourceProperty`) **must run on the app's main thread**; the keyboard tool ran on a tokio worker → macOS trapped. **Not** a focus issue (same §1.8 root cause); a frontmost-app guard would not have fixed it.
 
-**Fix required (not yet done):** run enigo on the Tauri **main thread** (`AppHandle::run_on_main_thread`, bridged to the core via a native-registry handler), OR replace enigo's macOS keyboard path with TSM-free primitives (`CGEventKeyboardSetUnicodeString` for text + raw virtual keycodes for keys/hotkeys). Until then, keyboard/mouse must stay disabled to avoid crashing the app.
+**Fix applied:** all enigo operations now run on the Tauri **main thread** via `run_input_on_main` (new `main_thread.rs` module + a native-registry handler the shell registers, dispatched through `AppHandle::run_on_main_thread`) and wrapped in `catch_unwind`. Keyboard/mouse tools **and** `vision_click` now execute without TSM traps.
 
 **Tests:** voice-actions + autonomy suite is exhaustive — 220 feature unit tests + a JSON-RPC E2E (`json_rpc_voice_server_settings_roundtrip_always_on_and_wake_word`). The E2E caught + fixed real gaps (`wake_word` missing from the get output and the update RPC path). Screenshot downscale unit-tested.
 
