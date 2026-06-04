@@ -1,7 +1,7 @@
 # Voice → System Action Feature Tracker
 
 **GitHub Issue:** [#3148](https://github.com/tinyhumansai/openhuman/issues/3148)  
-**Branch:** `feat/voice-always-on-all` (cumulative) — Phase 1 landed via [#3168](https://github.com/tinyhumansai/openhuman/pull/3168); the full feature was split from the mega-PR [#3307](https://github.com/tinyhumansai/openhuman/pull/3307) into a 7-PR stack [#3340–#3346](https://github.com/tinyhumansai/openhuman/pull/3340)  
+**Branch:** `feat/voice-always-on-all` (cumulative) — Phase 1 landed via [#3168](https://github.com/tinyhumansai/openhuman/pull/3168); the full feature was split from the mega-PR [#3307](https://github.com/tinyhumansai/openhuman/pull/3307) into an 8-PR stack [#3340–#3346](https://github.com/tinyhumansai/openhuman/pull/3340) + [#3362](https://github.com/tinyhumansai/openhuman/pull/3362) (Phase 1.5 vision fallback)  
 **Started:** 2026-06-02  
 **Last updated:** 2026-06-04  
 
