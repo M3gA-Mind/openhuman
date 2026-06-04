@@ -73,12 +73,38 @@ describe('CustomInferencePage', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('clears the session and navigates back to the welcome page from the first step', async () => {
+  it('waits for clearSession to finish before navigating back to the welcome page', async () => {
+    let resolveClearSession!: () => void;
+    clearSessionMock.mockReturnValueOnce(
+      new Promise<void>(resolve => {
+        resolveClearSession = resolve;
+      })
+    );
+
     renderPage();
 
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
 
-    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/'));
+    // Navigation must not race ahead of the session being cleared — otherwise
+    // PublicRoute bounces "/" back to /home with the session still live.
     expect(clearSessionMock).toHaveBeenCalledTimes(1);
+    expect(navigateMock).not.toHaveBeenCalled();
+
+    resolveClearSession();
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/'));
+  });
+
+  it('stays on the step and does not navigate when clearSession fails', async () => {
+    clearSessionMock.mockRejectedValueOnce(new Error('clear failed'));
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    await waitFor(() => expect(clearSessionMock).toHaveBeenCalledTimes(1));
+    // Give the rejected promise a chance to settle, then confirm we did not
+    // navigate to "/" with a still-active session.
+    await Promise.resolve();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });
