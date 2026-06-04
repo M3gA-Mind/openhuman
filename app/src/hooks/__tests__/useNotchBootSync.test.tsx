@@ -47,10 +47,10 @@ describe('useNotchBootSync', () => {
 
   it('swallows failures (cosmetic) so boot is never blocked', async () => {
     vi.mocked(openhumanGetVoiceServerSettings).mockRejectedValue(new Error('core offline'));
-    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(() => {});
     renderHook(() => useNotchBootSync(false));
-    await waitFor(() => expect(debugSpy).toHaveBeenCalled());
+    // The settings fetch is attempted, the rejection is caught (no throw), and
+    // notch visibility is never toggled.
+    await waitFor(() => expect(openhumanGetVoiceServerSettings).toHaveBeenCalled());
     expect(syncNotchVisibility).not.toHaveBeenCalled();
-    debugSpy.mockRestore();
   });
 });

@@ -1,6 +1,9 @@
+import debug from 'debug';
 import { useEffect, useRef } from 'react';
 
 import { openhumanGetVoiceServerSettings, syncNotchVisibility } from '../utils/tauriCommands';
+
+const log = debug('notch:boot');
 
 /**
  * Sync the notch indicator to the persisted always-on listening state once the
@@ -21,7 +24,7 @@ export function useNotchBootSync(isBootstrapping: boolean): void {
         const res = await openhumanGetVoiceServerSettings();
         await syncNotchVisibility(res.result.always_on_enabled);
       } catch (err) {
-        console.debug('[notch] boot visibility sync failed', err);
+        log('boot visibility sync failed: %o', err);
       }
     })();
   }, [isBootstrapping]);
