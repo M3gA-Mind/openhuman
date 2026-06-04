@@ -53,6 +53,22 @@ fn extract_query_rejects_non_play() {
     assert_eq!(music::extract_play_query("pause the music"), None);
     assert_eq!(music::extract_play_query("display settings"), None); // "play" inside "display"
     assert_eq!(music::extract_play_query("play"), None); // nothing after
+<<<<<<< HEAD
+=======
+                                                         // Right boundary: "play" must be a whole word, not a prefix of "playback".
+    assert_eq!(music::extract_play_query("open playback settings"), None);
+    assert!(!music::matches("Music", "show playback options"));
+}
+
+#[test]
+fn extract_query_handles_unicode_without_panicking() {
+    // `to_lowercase()` can change byte lengths for non-ASCII text; the parser
+    // (and replace_ci's " by " rewrite) must never slice mid-codepoint.
+    assert_eq!(
+        music::extract_play_query("play Café del Mar by Renée").as_deref(),
+        Some("Café del Mar Renée")
+    );
+>>>>>>> upstream/main
 }
 
 #[test]
