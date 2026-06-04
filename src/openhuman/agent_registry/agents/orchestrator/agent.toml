@@ -130,6 +130,23 @@ named = [
     # `computer_control.ax_interact_mutations`, and refuse a sensitive-app
     # denylist (password managers, Keychain, System Settings, terminals).
     "ax_interact",
+    # Multi-step UI automation in one call (e.g. "play <song> in Music",
+    # "message <person> in Slack"). Prefer over many individual ax_interact
+    # calls when the task needs several UI steps — a Rust perceive→act→verify
+    # loop runs the flow with a fast model. Same opt-in + sensitive-app denylist
+    # as ax_interact; `Dangerous`, gates through the ApprovalGate.
+    "automate",
+    # Full computer control (autonomy). Fallback for apps the accessibility API
+    # can't drive — notably Electron apps (Slack, Discord, VS Code) whose AX/UIA
+    # tree is empty. `screenshot` to see the screen, then `mouse` (move/click/
+    # drag/scroll) + `keyboard` (type/press/hotkey) to act by pixel coordinates.
+    # All `Dangerous` and gate through the ApprovalGate. mouse/keyboard require
+    # `computer_control.enabled = true`. Prefer `automate`/`ax_interact` first;
+    # use these when the AX tree comes back empty. NB: foreground the target app
+    # before typing/clicking (synthetic input goes to the focused window).
+    "screenshot",
+    "mouse",
+    "keyboard",
     # Time + scheduling — lets the orchestrator answer "what time is it",
     # "remind me in 10 minutes", "every morning at 8" directly rather than
     # delegating or telling the user it can't. `current_time` grounds
