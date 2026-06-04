@@ -163,6 +163,7 @@ const messages: TranslationMap = {
   'clearData.failed': 'Gagal membersihkan data dan keluar. Silakan coba lagi.',
   'clearData.failedLogout': 'Gagal keluar. Silakan coba lagi.',
   'clearData.failedPersist': 'Gagal membersihkan status aplikasi tersimpan. Silakan coba lagi.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Selamat datang di OpenHuman',
   'welcome.subtitle': 'Asisten AI Anda untuk komunitas',
   'welcome.connectPrompt': 'Konfigurasikan RPC URL (Lanjutan)',

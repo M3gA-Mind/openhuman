@@ -158,6 +158,7 @@ const messages: TranslationMap = {
   'clearData.failed': '清除数据失败，请重试。',
   'clearData.failedLogout': '退出登录失败，请重试。',
   'clearData.failedPersist': '清除持久化应用状态失败，请重试。',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': '欢迎使用 OpenHuman',
   'welcome.subtitle': '你的私人 AI 超级智能。私密、简单、强大。',
   'welcome.connectPrompt': '输入 Core RPC 地址以开始使用',

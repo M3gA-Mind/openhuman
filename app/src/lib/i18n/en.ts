@@ -178,6 +178,7 @@ const en: TranslationMap = {
   'clearData.failedPersist': 'Failed to clear persisted app state. Please try again.',
 
   // Welcome page
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Welcome to OpenHuman',
   'welcome.subtitle':
     'Your personal AI super intelligence. Private, simple and extremely powerful.',

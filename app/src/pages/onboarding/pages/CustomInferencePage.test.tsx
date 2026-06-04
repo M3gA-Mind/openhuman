@@ -1,5 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +11,7 @@ import CustomInferencePage from './CustomInferencePage';
 
 const navigateMock = vi.fn();
 const setDraftMock = vi.fn();
+const clearSessionMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('react-router-dom', async importOriginal => {
   const actual = await importOriginal<typeof import('react-router-dom')>();
@@ -22,7 +23,10 @@ vi.mock('../../../components/settings/panels/AIPanel', () => ({
 }));
 
 vi.mock('../../../providers/CoreStateProvider', () => ({
-  useCoreState: () => ({ snapshot: { sessionToken: 'header.payload.local' } }),
+  useCoreState: () => ({
+    snapshot: { sessionToken: 'header.payload.local' },
+    clearSession: clearSessionMock,
+  }),
 }));
 
 vi.mock('../OnboardingContext', () => ({
@@ -54,6 +58,7 @@ describe('CustomInferencePage', () => {
   beforeEach(() => {
     navigateMock.mockReset();
     setDraftMock.mockReset();
+    clearSessionMock.mockClear();
   });
 
   it('forces configure mode and hides the default/configure chooser for local sessions', () => {
@@ -66,5 +71,14 @@ describe('CustomInferencePage', () => {
     expect(
       screen.queryByTestId('onboarding-custom-inference-step-configure')
     ).not.toBeInTheDocument();
+  });
+
+  it('clears the session and navigates back to the welcome page from the first step', async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/'));
+    expect(clearSessionMock).toHaveBeenCalledTimes(1);
   });
 });

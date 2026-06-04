@@ -161,6 +161,7 @@ const messages: TranslationMap = {
   'clearData.failed': 'فشل مسح البيانات وتسجيل الخروج. يرجى المحاولة مرة أخرى.',
   'clearData.failedLogout': 'فشل تسجيل الخروج. يرجى المحاولة مرة أخرى.',
   'clearData.failedPersist': 'فشل مسح حالة التطبيق المحفوظة. يرجى المحاولة مرة أخرى.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'مرحبًا بك في OpenHuman',
   'welcome.subtitle': 'مساعدك الذكي الشخصي. خاص وبسيط وبالغ القوة.',
   'welcome.connectPrompt': 'ضبط عنوان URL للـ RPC (متقدم)',

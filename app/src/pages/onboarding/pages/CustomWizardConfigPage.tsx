@@ -29,7 +29,7 @@ export default function CustomWizardConfigPage({
 }: CustomWizardConfigPageProps) {
   const { t } = useT();
   const navigate = useNavigate();
-  const { snapshot } = useCoreState();
+  const { snapshot, clearSession } = useCoreState();
   const { draft, setDraft, completeAndExit } = useOnboardingContext();
   const isLocalSession = isLocalSessionToken(snapshot.sessionToken);
   const stepIndex = CUSTOM_WIZARD_STEPS.indexOf(stepKey);
@@ -52,7 +52,22 @@ export default function CustomWizardConfigPage({
   };
 
   const isLast = stepIndex === CUSTOM_WIZARD_STEPS.length - 1;
+  const isFirst = stepIndex === 0;
   const namespace = `onboarding.custom.${stepKey}`;
+
+  const handleBack = async () => {
+    // Going back from the first step returns to the welcome/login screen.
+    // A session is always present here (OAuth or "Continue Locally"), so we
+    // must clear it first — otherwise PublicRoute bounces "/" to /home.
+    if (isFirst) {
+      try {
+        await clearSession();
+      } catch (err) {
+        console.error(`[onboarding:custom-${stepKey}] clearSession on back failed`, err);
+      }
+    }
+    navigate(backRoute ?? CUSTOM_WIZARD_ROUTES[CUSTOM_WIZARD_STEPS[stepIndex - 1]]);
+  };
 
   return (
     <CustomWizardStep
@@ -69,7 +84,7 @@ export default function CustomWizardConfigPage({
       hideChoiceCards={isLocalSession}
       choice={choice}
       onChoiceChange={persistChoice}
-      onBack={() => navigate(backRoute ?? CUSTOM_WIZARD_ROUTES[CUSTOM_WIZARD_STEPS[stepIndex - 1]])}
+      onBack={() => void handleBack()}
       onContinue={async () => {
         trackEvent('onboarding_step_complete', {
           step_name: `custom_${stepKey}`,
