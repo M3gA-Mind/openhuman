@@ -168,6 +168,7 @@ const messages: TranslationMap = {
   'clearData.failedLogout': 'Falha ao sair. Por favor, tente novamente.',
   'clearData.failedPersist':
     'Falha ao limpar o estado persistido do app. Por favor, tente novamente.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Bem-vindo ao OpenHuman',
   'welcome.subtitle':
     'Sua super inteligência artificial pessoal. Privada, simples e extremamente poderosa.',
@@ -2008,6 +2009,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Carregando conexões…',
   'memorySources.noConnections':
     'Nenhuma conexão Composio ativa encontrada. Conecte uma integração primeiro.',
+  'memorySources.connectionAccount': 'Conta',
   'memorySources.pickConnection': 'Escolha uma conexão',
   'memorySources.selectConnection': '— Selecionar uma conexão —',
   'memorySources.composioListFailed': 'Falha ao carregar as conexões Composio.',
@@ -4840,6 +4842,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'Janela de memória',
   'memoryData.windowUpdated': 'Janela de memória atualizada',
   'memoryData.windowUpdatedMsg': 'Definida para {window}.',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'Portão de aprovação desativado',
+  'security.approvalGateDisabled.body':
+    'OPENHUMAN_APPROVAL_GATE=0 está definido no seu ambiente. Ferramentas com efeito externo serão executadas sem pedir confirmação.',
+  'security.approvalGateOverrideIgnored.title': 'Substituição bloqueada',
+  'security.approvalGateOverrideIgnored.body':
+    'Uma substituição OPENHUMAN_APPROVAL_GATE=0 foi detetada mas ignorada: o aplicativo de desktop mantém sempre o portão de aprovação ativado.',
 
   // Run queue
   'runQueue.mode.interrupt': 'Interromper',

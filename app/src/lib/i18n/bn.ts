@@ -161,6 +161,7 @@ const messages: TranslationMap = {
   'clearData.failed': 'ডেটা মুছতে ও লগ আউট করতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।',
   'clearData.failedLogout': 'লগ আউট করতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।',
   'clearData.failedPersist': 'অ্যাপ স্টেট মুছতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'OpenHuman-এ স্বাগতম',
   'welcome.subtitle':
     'আপনার ব্যক্তিগত AI সুপার ইন্টেলিজেন্স। ব্যক্তিগত, সহজ এবং অত্যন্ত শক্তিশালী।',
@@ -1967,6 +1968,7 @@ const messages: TranslationMap = {
     'কোনো স্বনির্ধারিত উৎস পাওয়া যায়নি। একটি ফোল্ডার যোগ করুন, xqx1x rex, xqxqx pxkx ফিড, অথবা ওয়েব পেজ আরম্ভ করুন।',
   'memorySources.loadingConnections': 'সংযোগ লোড করা হচ্ছে...',
   'memorySources.noConnections': 'কোনো সক্রিয় xqxqx সংযোগ পাওয়া যায়নি। একটা সম্পর্ক প্রথমে।',
+  'memorySources.connectionAccount': 'অ্যাকাউন্ট',
   'memorySources.pickConnection': 'একটি সংযোগ নির্বাচন করুন',
   'memorySources.selectConnection': '- একটি সংযোগ নির্বাচন করুন -',
   'memorySources.composioListFailed': 'Xqxqx সংযোগ লোড করতে ব্যর্থ।',
@@ -4752,6 +4754,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'মেমোরি উইন্ডো',
   'memoryData.windowUpdated': 'মেমোরি উইন্ডো আপডেট হয়েছে',
   'memoryData.windowUpdatedMsg': '{window}-এ সেট করা হয়েছে।',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'অনুমোদন গেট নিষ্ক্রিয়',
+  'security.approvalGateDisabled.body':
+    'আপনার পরিবেশে OPENHUMAN_APPROVAL_GATE=0 সেট করা আছে। বাহ্যিক প্রভাব সম্পন্ন টুলগুলি নিশ্চিতকরণ ছাড়াই চলবে।',
+  'security.approvalGateOverrideIgnored.title': 'ওভাররাইড অবরুদ্ধ',
+  'security.approvalGateOverrideIgnored.body':
+    'একটি OPENHUMAN_APPROVAL_GATE=0 ওভাররাইড সনাক্ত করা হয়েছিল কিন্তু উপেক্ষা করা হয়েছে: ডেস্কটপ অ্যাপ সর্বদা অনুমোদন গেট চালু রাখে।',
 
   // Run queue
   'runQueue.mode.interrupt': 'বাধা দিন',

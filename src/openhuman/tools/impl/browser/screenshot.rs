@@ -210,13 +210,16 @@ fn downscale_to_jpeg(bytes: &[u8], max_bytes: usize) -> Result<(Vec<u8>, u32, u3
     let img = image::load_from_memory(bytes).map_err(|e| format!("decode: {e}"))?;
     let mut last: Option<(Vec<u8>, u32, u32)> = None;
     for max_dim in [1568u32, 1280, 1024, 768, 600] {
-        let thumb = img.thumbnail(max_dim, max_dim); // fits within max_dim², keeps aspect
+        // Drop alpha before JPEG-encoding: JPEG has no alpha channel, so an
+        // RGBA capture (PNG screenshots often carry one) would otherwise fail
+        // to encode and leave vision-driven control blind.
+        let thumb = img.thumbnail(max_dim, max_dim).to_rgb8(); // fits within max_dim², keeps aspect
+        let (w, h) = (thumb.width(), thumb.height());
         let mut buf = std::io::Cursor::new(Vec::new());
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 72)
             .encode_image(&thumb)
             .map_err(|e| format!("jpeg encode: {e}"))?;
         let out = buf.into_inner();
-        let (w, h) = (thumb.width(), thumb.height());
         if out.len() <= max_bytes {
             return Ok((out, w, h));
         }
@@ -292,6 +295,26 @@ mod tests {
             "jpeg should be smaller than source png"
         );
         // Result must be a valid, decodable image at the reported dims.
+        let decoded = image::load_from_memory(&jpeg).expect("jpeg decodes");
+        assert_eq!((decoded.width(), decoded.height()), (w, h));
+    }
+
+    #[test]
+    fn downscale_to_jpeg_handles_rgba_input() {
+        // PNG screenshots frequently carry an alpha channel. JPEG has none, so
+        // the encoder must run on RGB — otherwise an RGBA capture fails to
+        // encode and leaves vision-driven control blind.
+        let mut img = image::RgbaImage::new(1600, 1200);
+        for (i, px) in img.pixels_mut().enumerate() {
+            *px = image::Rgba([(i % 251) as u8, (i % 253) as u8, (i % 247) as u8, 128]);
+        }
+        let mut png = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut png, image::ImageFormat::Png)
+            .expect("encode png");
+        let png = png.into_inner();
+
+        let (jpeg, w, h) = downscale_to_jpeg(&png, 400_000).expect("rgba downscales");
         let decoded = image::load_from_memory(&jpeg).expect("jpeg decodes");
         assert_eq!((decoded.width(), decoded.height()), (w, h));
     }

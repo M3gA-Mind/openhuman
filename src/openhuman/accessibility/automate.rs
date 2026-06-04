@@ -298,7 +298,7 @@ pub async fn run(
                 if repair_left > 0 {
                     repair_left -= 1;
                     log::warn!("{LOG_PREFIX} step={step} unparseable action, retrying: {e}");
-                    steps.push(format!("(model produced unparseable output; retried)"));
+                    steps.push("(model produced unparseable output; retried)".to_string());
                     continue;
                 }
                 return AutomateOutcome::fail(format!("model output unparseable: {e}"), steps);

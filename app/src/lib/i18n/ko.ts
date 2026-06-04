@@ -161,6 +161,7 @@ const messages: TranslationMap = {
   'clearData.failed': '데이터 삭제 및 로그아웃에 실패했습니다. 다시 시도해 주세요.',
   'clearData.failedLogout': '로그아웃에 실패했습니다. 다시 시도해 주세요.',
   'clearData.failedPersist': '저장된 앱 상태를 삭제하지 못했습니다. 다시 시도해 주세요.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'OpenHuman에 오신 것을 환영합니다',
   'welcome.subtitle': '개인용 AI 슈퍼 인텔리전스입니다. 비공개이며, 간단하고, 매우 강력합니다.',
   'welcome.connectPrompt': 'RPC URL 구성(고급)',
@@ -1945,6 +1946,7 @@ const messages: TranslationMap = {
     '아직 사용자 지정 소스가 없습니다. 폴더, GitHub 리포지토리, RSS 피드 또는 웹 페이지를 추가해 시작하세요.',
   'memorySources.loadingConnections': '연결을 불러오는 중…',
   'memorySources.noConnections': '활성 Composio 연결을 찾을 수 없습니다. 먼저 통합을 연결하세요.',
+  'memorySources.connectionAccount': '계정',
   'memorySources.pickConnection': '연결 선택',
   'memorySources.selectConnection': '— 연결 선택 —',
   'memorySources.composioListFailed': 'Composio 연결을 불러오지 못했습니다.',
@@ -4707,6 +4709,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': '메모리 창',
   'memoryData.windowUpdated': '메모리 창 업데이트됨',
   'memoryData.windowUpdatedMsg': '{window}(으)로 설정되었습니다.',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': '승인 게이트 비활성화됨',
+  'security.approvalGateDisabled.body':
+    '환경에 OPENHUMAN_APPROVAL_GATE=0이 설정되어 있습니다. 외부 영향이 있는 도구가 확인을 요청하지 않고 실행됩니다.',
+  'security.approvalGateOverrideIgnored.title': '재정의 차단됨',
+  'security.approvalGateOverrideIgnored.body':
+    'OPENHUMAN_APPROVAL_GATE=0 재정의가 감지되었지만 무시되었습니다: 데스크톱 앱은 승인 게이트를 항상 켜둡니다.',
 
   // Run queue
   'runQueue.mode.interrupt': '중단',

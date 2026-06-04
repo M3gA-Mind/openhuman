@@ -158,6 +158,7 @@ const messages: TranslationMap = {
   'clearData.failed': '清除数据失败，请重试。',
   'clearData.failedLogout': '退出登录失败，请重试。',
   'clearData.failedPersist': '清除持久化应用状态失败，请重试。',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': '欢迎使用 OpenHuman',
   'welcome.subtitle': '你的私人 AI 超级智能。私密、简单、强大。',
   'welcome.connectPrompt': '输入 Core RPC 地址以开始使用',
@@ -1867,6 +1868,7 @@ const messages: TranslationMap = {
     '暂无自定义来源。添加文件夹、GitHub 仓库、RSS 订阅或网页即可开始。',
   'memorySources.loadingConnections': '正在加载连接…',
   'memorySources.noConnections': '未找到活跃的 Composio 连接。请先连接一个集成。',
+  'memorySources.connectionAccount': '账户',
   'memorySources.pickConnection': '选择连接',
   'memorySources.selectConnection': '— 选择连接 —',
   'memorySources.composioListFailed': '加载 Composio 连接失败。',
@@ -4521,6 +4523,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': '记忆时间窗口',
   'memoryData.windowUpdated': '记忆时间窗口已更新',
   'memoryData.windowUpdatedMsg': '已设置为 {window}。',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': '审批门已禁用',
+  'security.approvalGateDisabled.body':
+    '您的环境中设置了 OPENHUMAN_APPROVAL_GATE=0。具有外部影响的工具将在不请求确认的情况下运行。',
+  'security.approvalGateOverrideIgnored.title': '覆盖已阻止',
+  'security.approvalGateOverrideIgnored.body':
+    '检测到 OPENHUMAN_APPROVAL_GATE=0 覆盖，但已忽略：桌面应用始终保持审批门开启。',
 
   // Run queue
   'runQueue.mode.interrupt': '中断',

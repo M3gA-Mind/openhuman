@@ -169,6 +169,7 @@ const messages: TranslationMap = {
   'clearData.failedLogout': 'Abmelden fehlgeschlagen. Bitte versuche es erneut.',
   'clearData.failedPersist':
     'Der persistente App-Status konnte nicht gelöscht werden. Bitte versuche es erneut.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Willkommen bei OpenHuman',
   'welcome.subtitle':
     'Deine persönliche KI-Superintelligenz. Privat, einfach und äußerst leistungsstark.',
@@ -2018,6 +2019,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Verbindungen werden geladen...',
   'memorySources.noConnections':
     'Keine aktiven Composio-Verbindungen gefunden. Verbinden Sie zuerst eine Integration.',
+  'memorySources.connectionAccount': 'Konto',
   'memorySources.pickConnection': 'Wählen Sie eine Verbindung',
   'memorySources.selectConnection': 'Wählen Sie eine Verbindung aus.',
   'memorySources.composioListFailed': 'Fehler beim Laden der Composio-Verbindungen.',
@@ -4887,6 +4889,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'Speicherfenster',
   'memoryData.windowUpdated': 'Speicherfenster aktualisiert',
   'memoryData.windowUpdatedMsg': 'Auf {window} gesetzt.',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'Genehmigungstor deaktiviert',
+  'security.approvalGateDisabled.body':
+    'OPENHUMAN_APPROVAL_GATE=0 ist in deiner Umgebung gesetzt. Tools mit externer Wirkung werden ohne Bestätigungsabfrage ausgeführt.',
+  'security.approvalGateOverrideIgnored.title': 'Override blockiert',
+  'security.approvalGateOverrideIgnored.body':
+    'Ein OPENHUMAN_APPROVAL_GATE=0-Override wurde erkannt, aber ignoriert: Die Desktop-App lässt das Genehmigungstor immer eingeschaltet.',
 
   // Run queue
   'runQueue.mode.interrupt': 'Unterbrechen',

@@ -162,6 +162,7 @@ const messages: TranslationMap = {
   'clearData.failed': 'डेटा क्लियर करने और लॉगआउट में दिक्कत आई। दोबारा कोशिश करें।',
   'clearData.failedLogout': 'लॉग आउट नहीं हो पाया। दोबारा कोशिश करें।',
   'clearData.failedPersist': 'सेव्ड ऐप स्टेट क्लियर नहीं हो पाई। दोबारा कोशिश करें।',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'OpenHuman में आपका स्वागत है',
   'welcome.subtitle': 'आपकी पर्सनल AI सुपर इंटेलिजेंस। प्राइवेट, सिंपल और बेहद पावरफुल।',
   'welcome.connectPrompt': 'RPC URL कॉन्फिगर करें (एडवांस्ड)',
@@ -1968,6 +1969,7 @@ const messages: TranslationMap = {
     'अभी तक कोई कस्टम स्रोत नहीं है। एक फ़ोल्डर जोड़ें, GitHub रेपो, RSS फीड, या वेब पेज शुरू करने के लिए।',
   'memorySources.loadingConnections': 'कनेक्शन लोड हो रहा है...',
   'memorySources.noConnections': 'कोई सक्रिय Composio कनेक्शन नहीं मिला। पहले एकीकरण कनेक्ट करें।',
+  'memorySources.connectionAccount': 'खाता',
   'memorySources.pickConnection': 'कनेक्शन चुनें',
   'memorySources.selectConnection': '- एक कनेक्शन चुनें -',
   'memorySources.composioListFailed': 'Composio कनेक्शन लोड करने में विफल रहा।',
@@ -4759,6 +4761,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'मेमोरी विंडो',
   'memoryData.windowUpdated': 'मेमोरी विंडो अपडेट हुई',
   'memoryData.windowUpdatedMsg': '{window} पर सेट किया गया।',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'अनुमोदन गेट अक्षम',
+  'security.approvalGateDisabled.body':
+    'आपके परिवेश में OPENHUMAN_APPROVAL_GATE=0 सेट है। बाहरी प्रभाव वाले टूल पुष्टि माँगे बिना चलेंगे।',
+  'security.approvalGateOverrideIgnored.title': 'ओवरराइड अवरुद्ध',
+  'security.approvalGateOverrideIgnored.body':
+    'एक OPENHUMAN_APPROVAL_GATE=0 ओवरराइड का पता चला लेकिन अनदेखा कर दिया गया: डेस्कटॉप ऐप अनुमोदन गेट को हमेशा चालू रखता है।',
 
   // Run queue
   'runQueue.mode.interrupt': 'बाधित करें',

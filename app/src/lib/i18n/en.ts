@@ -178,6 +178,7 @@ const en: TranslationMap = {
   'clearData.failedPersist': 'Failed to clear persisted app state. Please try again.',
 
   // Welcome page
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Welcome to OpenHuman',
   'welcome.subtitle':
     'Your personal AI super intelligence. Private, simple and extremely powerful.',
@@ -2297,6 +2298,7 @@ const en: TranslationMap = {
   'memorySources.loadingConnections': 'Loading connections…',
   'memorySources.noConnections':
     'No active Composio connections found. Connect an integration first.',
+  'memorySources.connectionAccount': 'Account',
   'memorySources.pickConnection': 'Pick a connection',
   'memorySources.selectConnection': '— Select a connection —',
   'memorySources.composioListFailed': 'Failed to load Composio connections.',
@@ -4998,6 +5000,14 @@ const en: TranslationMap = {
   // Monthly cost badge
   'monthlyCost.badge': '${amount} this month',
   'monthlyCost.noData': 'No syncs this month',
+
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'Approval gate disabled',
+  'security.approvalGateDisabled.body':
+    'OPENHUMAN_APPROVAL_GATE=0 is set in your environment. External-effect tools will run without asking for confirmation.',
+  'security.approvalGateOverrideIgnored.title': 'Override blocked',
+  'security.approvalGateOverrideIgnored.body':
+    'An OPENHUMAN_APPROVAL_GATE=0 override was detected but ignored: the desktop app always keeps the approval gate on.',
 
   // Run queue
   'runQueue.mode.interrupt': 'Interrupt',
