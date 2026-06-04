@@ -192,6 +192,8 @@ struct VoiceServerSettingsUpdate {
     min_duration_secs: Option<f32>,
     silence_threshold: Option<f32>,
     custom_dictionary: Option<Vec<String>>,
+    always_on_enabled: Option<bool>,
+    wake_word: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1130,6 +1132,14 @@ pub fn schemas(function: &str) -> ControllerSchema {
                     comment: "Custom vocabulary words to bias whisper toward.",
                     required: false,
                 },
+                optional_bool(
+                    "always_on_enabled",
+                    "Continuous always-on listening (no hotkey). Opt-in.",
+                ),
+                optional_string(
+                    "wake_word",
+                    "Always-on wake word; utterances must contain it (default 'Hey Tiny').",
+                ),
             ],
             outputs: vec![json_output("snapshot", "Updated config snapshot.")],
         },
@@ -1715,8 +1725,16 @@ fn handle_update_voice_server_settings(params: Map<String, Value>) -> Controller
             min_duration_secs: update.min_duration_secs,
             silence_threshold: update.silence_threshold,
             custom_dictionary: update.custom_dictionary,
+            always_on_enabled: update.always_on_enabled,
+            wake_word: update.wake_word,
         };
-        to_json(config_rpc::load_and_apply_voice_server_settings(patch).await?)
+        let result = config_rpc::load_and_apply_voice_server_settings(patch).await?;
+        // Apply the always-on toggle live (start/idle the capture loop) so the
+        // Settings switch takes effect without a restart.
+        if let Ok(config) = config_rpc::load_config_with_timeout().await {
+            crate::openhuman::voice::always_on::start_if_enabled(&config).await;
+        }
+        to_json(result)
     })
 }
 

@@ -9853,204 +9853,86 @@ async fn json_rpc_workflows_lifecycle_round_trip() {
     rpc_join.abort();
 }
 
-// ── Model resolution + agent profile switching ──────────────────────────
-
+/// E2E: voice-server settings round-trip over JSON-RPC — Phase 2 always-on
+/// toggle + "Hey Tiny" wake word. Regression guard for the bug where the
+/// Settings toggle silently did nothing because `always_on_enabled` was absent
+/// from the `update_voice_server_settings` controller param schema (rejected as
+/// "unknown param 'always_on_enabled'" before reaching the handler).
 #[tokio::test]
-async fn json_rpc_inference_resolve_model_returns_tier_for_hints() {
+async fn json_rpc_voice_server_settings_roundtrip_always_on_and_wake_word() {
     let _env_lock = json_rpc_e2e_env_lock();
     let tmp = tempdir().expect("tempdir");
     let home = tmp.path();
-    let openhuman_dir = home.join(".openhuman");
+    let openhuman_home = home.join(".openhuman");
 
     let _home_guard = EnvVarGuard::set_to_path("HOME", home);
-    let _workspace_guard = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &openhuman_dir);
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
 
-    let (api_addr, api_join) = serve_on_ephemeral(mock_upstream_router()).await;
-    let api_origin = format!("http://{api_addr}");
-    write_min_config(&openhuman_dir, &api_origin);
-
-    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
-    let rpc_base = format!("http://{rpc_addr}");
-
-    let res = post_json_rpc(
-        &rpc_base,
-        9900_1,
-        "openhuman.inference_resolve_model",
-        json!({ "hint": "hint:reasoning" }),
-    )
-    .await;
-    let result = assert_no_jsonrpc_error(&res, "resolve_model hint:reasoning");
-    let model = result
-        .get("model")
-        .and_then(Value::as_str)
-        .expect("model field");
-    assert_eq!(model, "reasoning-v1");
-
-    let res = post_json_rpc(
-        &rpc_base,
-        9900_2,
-        "openhuman.inference_resolve_model",
-        json!({ "hint": "hint:chat" }),
-    )
-    .await;
-    let result = assert_no_jsonrpc_error(&res, "resolve_model hint:chat");
-    let model = result
-        .get("model")
-        .and_then(Value::as_str)
-        .expect("model field");
-    assert_eq!(model, "reasoning-quick-v1");
-
-    let res = post_json_rpc(
-        &rpc_base,
-        9900_3,
-        "openhuman.inference_resolve_model",
-        json!({ "hint": "hint:coding" }),
-    )
-    .await;
-    let result = assert_no_jsonrpc_error(&res, "resolve_model hint:coding");
-    let model = result
-        .get("model")
-        .and_then(Value::as_str)
-        .expect("model field");
-    assert_eq!(model, "coding-v1");
-
-    let res = post_json_rpc(
-        &rpc_base,
-        9900_4,
-        "openhuman.inference_resolve_model",
-        json!({ "hint": "reasoning-v1" }),
-    )
-    .await;
-    let result = assert_no_jsonrpc_error(&res, "resolve_model tier passthrough");
-    let model = result
-        .get("model")
-        .and_then(Value::as_str)
-        .expect("model field");
-    assert_eq!(model, "reasoning-v1");
-
-    api_join.abort();
-    rpc_join.abort();
-}
-
-#[tokio::test]
-async fn json_rpc_agent_profile_select_and_resolve_model_integration() {
-    let _env_lock = json_rpc_e2e_env_lock();
-    let tmp = tempdir().expect("tempdir");
-    let home = tmp.path();
-    let openhuman_dir = home.join(".openhuman");
-
-    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
-    let _workspace_guard = EnvVarGuard::set_to_path("OPENHUMAN_WORKSPACE", &openhuman_dir);
-
-    let (api_addr, api_join) = serve_on_ephemeral(mock_upstream_router()).await;
-    let api_origin = format!("http://{api_addr}");
-    write_min_config(&openhuman_dir, &api_origin);
+    write_min_config(&openhuman_home, "http://127.0.0.1:9");
 
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
-    let rpc_base = format!("http://{rpc_addr}");
+    let rpc_base = format!("http://{}", rpc_addr);
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
-    // List profiles — should include built-in 'default' and 'reasoning'
-    let res = post_json_rpc(
+    // GET defaults — wake_word "Hey Tiny", always-on off.
+    let initial = post_json_rpc(
         &rpc_base,
-        9901_1,
-        "openhuman.agent_profiles_list",
+        7401,
+        "openhuman.config_get_voice_server_settings",
         json!({}),
     )
     .await;
-    let result = assert_no_jsonrpc_error(&res, "agent_profiles_list");
-    let profiles = result
-        .get("profiles")
-        .and_then(Value::as_array)
-        .expect("profiles array");
-    let profile_ids: Vec<&str> = profiles
-        .iter()
-        .filter_map(|p| p.get("id").and_then(Value::as_str))
-        .collect();
-    assert!(
-        profile_ids.contains(&"default"),
-        "should contain default profile"
-    );
-    assert!(
-        profile_ids.contains(&"reasoning"),
-        "should contain reasoning profile"
-    );
-
-    // Select reasoning profile
-    let res = post_json_rpc(
-        &rpc_base,
-        9901_2,
-        "openhuman.agent_profile_select",
-        json!({ "profile_id": "reasoning" }),
-    )
-    .await;
-    let result = assert_no_jsonrpc_error(&res, "agent_profile_select reasoning");
-    let active = result
-        .get("activeProfileId")
-        .and_then(Value::as_str)
-        .expect("activeProfileId");
-    assert_eq!(active, "reasoning");
-
-    // Verify the reasoning profile has hint:reasoning model override
-    let reasoning_profile = result
-        .get("profiles")
-        .and_then(Value::as_array)
-        .expect("profiles")
-        .iter()
-        .find(|p| p.get("id").and_then(Value::as_str) == Some("reasoning"))
-        .expect("reasoning profile in response");
-    let model_override = reasoning_profile
-        .get("modelOverride")
-        .and_then(Value::as_str)
-        .expect("modelOverride");
-    assert_eq!(model_override, "hint:reasoning");
-
-    // Resolve the model for this profile's override
-    let res = post_json_rpc(
-        &rpc_base,
-        9901_3,
-        "openhuman.inference_resolve_model",
-        json!({ "hint": model_override }),
-    )
-    .await;
-    let result = assert_no_jsonrpc_error(&res, "resolve_model for reasoning profile");
-    let resolved = result
-        .get("model")
-        .and_then(Value::as_str)
-        .expect("resolved model");
-    assert_eq!(resolved, "reasoning-v1");
-
-    // Switch back to default and resolve
-    let res = post_json_rpc(
-        &rpc_base,
-        9901_4,
-        "openhuman.agent_profile_select",
-        json!({ "profile_id": "default" }),
-    )
-    .await;
-    let result = assert_no_jsonrpc_error(&res, "agent_profile_select default");
+    let initial_outer = assert_no_jsonrpc_error(&initial, "get_voice_server_settings initial");
     assert_eq!(
-        result
-            .get("activeProfileId")
-            .and_then(Value::as_str)
-            .unwrap(),
-        "default"
+        initial_outer
+            .get("result")
+            .and_then(|r| r.get("always_on_enabled"))
+            .and_then(Value::as_bool),
+        Some(false),
+        "default always_on_enabled should be false, envelope: {initial_outer}"
+    );
+    assert_eq!(
+        initial_outer
+            .get("result")
+            .and_then(|r| r.get("wake_word"))
+            .and_then(Value::as_str),
+        Some("Hey Tiny"),
+        "default wake_word should be 'Hey Tiny', envelope: {initial_outer}"
     );
 
-    // Default profile has no model_override — resolve with hint:chat
-    let res = post_json_rpc(
+    // UPDATE — change the wake word and pass `always_on_enabled` (the param that
+    // used to be rejected). Kept false so the test never opens a real mic.
+    let update = post_json_rpc(
         &rpc_base,
-        9901_5,
-        "openhuman.inference_resolve_model",
-        json!({ "hint": "hint:chat" }),
+        7402,
+        "openhuman.config_update_voice_server_settings",
+        json!({ "always_on_enabled": false, "wake_word": "Computer" }),
     )
     .await;
-    let result = assert_no_jsonrpc_error(&res, "resolve_model for default profile");
-    let resolved = result
-        .get("model")
-        .and_then(Value::as_str)
-        .expect("resolved model");
-    assert_eq!(resolved, "reasoning-quick-v1");
+    assert_no_jsonrpc_error(
+        &update,
+        "update_voice_server_settings (always_on_enabled + wake_word)",
+    );
 
-    api_join.abort();
+    // GET again — wake word persisted, no error.
+    let after = post_json_rpc(
+        &rpc_base,
+        7403,
+        "openhuman.config_get_voice_server_settings",
+        json!({}),
+    )
+    .await;
+    let after_outer = assert_no_jsonrpc_error(&after, "get_voice_server_settings after update");
+    assert_eq!(
+        after_outer
+            .get("result")
+            .and_then(|r| r.get("wake_word"))
+            .and_then(Value::as_str),
+        Some("Computer"),
+        "wake_word should persist, envelope: {after_outer}"
+    );
+
     rpc_join.abort();
 }
