@@ -1730,9 +1730,20 @@ fn handle_update_voice_server_settings(params: Map<String, Value>) -> Controller
         };
         let result = config_rpc::load_and_apply_voice_server_settings(patch).await?;
         // Apply the always-on toggle live (start/idle the capture loop) so the
-        // Settings switch takes effect without a restart.
-        if let Ok(config) = config_rpc::load_config_with_timeout().await {
-            crate::openhuman::voice::always_on::start_if_enabled(&config).await;
+        // Settings switch takes effect without a restart. Don't fail the RPC if
+        // the reload hiccups, but DO surface it — otherwise the saved setting
+        // silently wouldn't apply until the next launch.
+        match config_rpc::load_config_with_timeout().await {
+            Ok(config) => {
+                log::debug!("[config][rpc] voice settings saved; applying live always-on state");
+                crate::openhuman::voice::always_on::start_if_enabled(&config).await;
+            }
+            Err(error) => {
+                log::warn!(
+                    "[config][rpc] voice settings saved, but live always-on apply was skipped \
+                     (config reload failed): {error}"
+                );
+            }
         }
         to_json(result)
     })

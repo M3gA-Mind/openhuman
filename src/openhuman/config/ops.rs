@@ -2042,7 +2042,9 @@ pub async fn load_and_apply_voice_server_settings(
         config.voice_server.always_on_enabled = always_on_enabled;
     }
     if let Some(wake_word) = update.wake_word {
-        config.voice_server.wake_word = wake_word;
+        // Trim so a whitespace-only value collapses to the documented
+        // "empty = no wake word" case rather than a non-empty no-match token.
+        config.voice_server.wake_word = wake_word.trim().to_string();
     }
     config.save().await.map_err(|e| e.to_string())?;
     let snapshot = snapshot_config_json(&config)?;
