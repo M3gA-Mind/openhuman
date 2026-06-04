@@ -41,6 +41,13 @@ const TOOL_FAMILIES: &[ToolFamily] = &[
         rust_names: &["ax_interact"],
         default_enabled: true,
     },
+    // Multi-step UI automation (one call → whole flow). Same opt-in as
+    // ax_interact; surfaced as its own catalog toggle.
+    ToolFamily {
+        id: "automate",
+        rust_names: &["automate"],
+        default_enabled: true,
+    },
     // Computer control — mouse and keyboard. Gated by computer_control.enabled
     // in config (tools only register when that flag is true). PermissionLevel::Dangerous
     // so the approval gate fires per-action; user opts in explicitly.
