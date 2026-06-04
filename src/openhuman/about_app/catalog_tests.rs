@@ -106,6 +106,7 @@ fn catalog_includes_additional_user_facing_surfaces() {
         "intelligence.embedding_provider_config",
         "intelligence.embedding_provider_test",
         "intelligence.github_repo_memory_source",
+        "intelligence.memory_source_sync_controls",
         "conversation.subagent_mascots",
     ] {
         assert!(

@@ -19,15 +19,18 @@ import {
 import { renderWithProviders } from '../../../../test/test-utils';
 import {
   openhumanGetVoiceServerSettings,
+  openhumanUpdateVoiceServerSettings,
   openhumanVoiceSetProviders,
   openhumanVoiceStatus,
   type VoiceServerSettings,
   type VoiceStatus,
 } from '../../../../utils/tauriCommands';
+import type { ConfigSnapshot } from '../../../../utils/tauriCommands/config';
 import VoicePanel from '../VoicePanel';
 
 vi.mock('../../../../utils/tauriCommands', () => ({
   openhumanGetVoiceServerSettings: vi.fn(),
+  openhumanUpdateVoiceServerSettings: vi.fn(),
   openhumanVoiceSetProviders: vi.fn(),
   openhumanVoiceStatus: vi.fn(),
 }));
@@ -134,6 +137,12 @@ describe('VoicePanel', () => {
 
     vi.mocked(openhumanGetVoiceServerSettings).mockImplementation(async () => ({
       result: { ...runtime.settings },
+      logs: [],
+    }));
+    // The panel ignores the snapshot it returns; a minimal cast keeps the
+    // mock typed without constructing a full ConfigSnapshot.
+    vi.mocked(openhumanUpdateVoiceServerSettings).mockImplementation(async () => ({
+      result: {} as unknown as ConfigSnapshot,
       logs: [],
     }));
     vi.mocked(openhumanVoiceStatus).mockImplementation(async () => ({ ...runtime.voiceStatus }));
@@ -496,5 +505,37 @@ describe('VoicePanel', () => {
     renderWithProviders(<VoicePanel />, { initialEntries: ['/settings/voice'] });
 
     await waitFor(() => expect(screen.getByText('core offline')).toBeInTheDocument());
+  });
+
+  // ─── Always-on listening toggle (Phase 2) ───────────────────────────────
+
+  it('persists the always-on toggle and flips aria-checked on click', async () => {
+    renderWithProviders(<VoicePanel />, { initialEntries: ['/settings/voice'] });
+
+    const toggle = await screen.findByTestId('voice-always-on-toggle');
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+    fireEvent.click(toggle);
+
+    await waitFor(() =>
+      expect(vi.mocked(openhumanUpdateVoiceServerSettings)).toHaveBeenCalledWith(
+        expect.objectContaining({ always_on_enabled: true })
+      )
+    );
+    // Optimistic update reflects immediately.
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('reverts the toggle when the update RPC rejects', async () => {
+    vi.mocked(openhumanUpdateVoiceServerSettings).mockRejectedValueOnce(new Error('rpc down'));
+
+    renderWithProviders(<VoicePanel />, { initialEntries: ['/settings/voice'] });
+
+    const toggle = await screen.findByTestId('voice-always-on-toggle');
+    fireEvent.click(toggle);
+
+    // Optimistic on → then reverted back to off after the failure.
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'false'));
+    expect(vi.mocked(openhumanUpdateVoiceServerSettings)).toHaveBeenCalledTimes(1);
   });
 });

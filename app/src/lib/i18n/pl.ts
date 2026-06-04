@@ -165,6 +165,7 @@ const messages: TranslationMap = {
   'clearData.failedLogout': 'Nie udało się wylogować. Spróbuj ponownie.',
   'clearData.failedPersist':
     'Nie udało się wyczyścić utrwalonego stanu aplikacji. Spróbuj ponownie.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Witaj w OpenHuman',
   'welcome.subtitle': 'Twoja osobista superinteligencja AI. Prywatna, prosta i niezwykle potężna.',
   'welcome.connectPrompt': 'Skonfiguruj URL RPC (zaawansowane)',
@@ -1992,6 +1993,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Wczytywanie połączeń…',
   'memorySources.noConnections':
     'Nie znaleziono aktywnych połączeń Composio. Najpierw połącz integrację.',
+  'memorySources.connectionAccount': 'Konto',
   'memorySources.pickConnection': 'Wybierz połączenie',
   'memorySources.selectConnection': '— Wybierz połączenie —',
   'memorySources.composioListFailed': 'Nie udało się wczytać połączeń Composio.',
@@ -2044,6 +2046,33 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': 'Drzewo zbudowane',
   'memorySources.build.failedTitle': 'Budowanie nie powiodło się',
   'memorySources.build.sealsMessage': 'pieczętowanie zakończone',
+  'memorySources.allIn.button': 'Włącz wszystko',
+  'memorySources.allIn.title': 'Włączyć wszystko?',
+  'memorySources.allIn.message':
+    'Spowoduje to włączenie wszystkich źródeł pamięci i usunięcie wszystkich limitów synchronizacji. Buduje najbogatszy wykres pamięci, ale może zużywać więcej kredytów.',
+  'memorySources.allIn.confirm': 'Tak',
+  'memorySources.allIn.cancel': 'Nie',
+  'memorySources.allIn.success':
+    'Wszystkie źródła włączone bez limitów. Synchronizacja uruchomiona.',
+  'memorySources.allIn.failed': 'Nie udało się włączyć wszystkiego. Spróbuj ponownie.',
+  'memorySources.settings.button': 'Ustawienia',
+  'memorySources.settings.title': 'Ustawienia synchronizacji',
+  'memorySources.settings.maxPrs': 'Maksymalna liczba pull requestów',
+  'memorySources.settings.maxIssues': 'Maksymalna liczba zgłoszeń',
+  'memorySources.settings.maxCommits': 'Maksymalna liczba commitów',
+  'memorySources.settings.maxItems': 'Maksymalna liczba elementów',
+  'memorySources.settings.sinceDays': 'Okres wsteczny (dni)',
+  'memorySources.settings.syncDepthDays': 'Głębokość synchronizacji (dni)',
+  'memorySources.settings.maxTokens': 'Maksymalna liczba tokenów na synchronizację',
+  'memorySources.settings.maxCost': 'Maksymalny koszt na synchronizację (USD)',
+  'memorySources.settings.unlimited': 'Bez limitu',
+  'memorySources.settings.unlimitedTooltip':
+    'Wybrano synchronizację maksimum dla {toolkit}. Limity możesz zmienić tutaj.',
+  'memorySources.settings.maxed': 'Pełny',
+  'memorySources.settings.save': 'Zapisz',
+  'memorySources.settings.saving': 'Zapisywanie…',
+  'memorySources.settings.saved': 'Ustawienia zapisane',
+  'memorySources.settings.saveFailed': 'Nie udało się zapisać ustawień',
   'backend.aiBackend': 'Backend AI',
   'backend.cloud': 'Chmura',
   'backend.recommended': 'Zalecane',
@@ -3796,6 +3825,16 @@ const messages: TranslationMap = {
   'settings.agentAccess.agentBlocked': 'zablokowane dla agenta',
   'settings.agentAccess.internalStateDesc':
     'Bazy danych pamięci, sesje, tokeny i inne podstawowe dane. Niedostępne dla narzędzi agenta.',
+  'settings.agentAccess.actionDirInputLabel': 'Ścieżka piaskownicy działań',
+  'settings.agentAccess.actionDirSave': 'Zapisz',
+  'settings.agentAccess.actionDirSaving': 'Zapisywanie…',
+  'settings.agentAccess.actionDirSaved': 'Piaskownica działań zaktualizowana.',
+  'settings.agentAccess.actionDirEmptyError': 'Ścieżka nie może być pusta.',
+  'settings.agentAccess.actionDirSaveError': 'Nie udało się zaktualizować piaskownicy działań.',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    'OPENHUMAN_ACTION_DIR jest ustawione — usuń zmienną środowiskową, aby edytować to w Ustawieniach.',
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    'Nadpisane przez OPENHUMAN_ACTION_DIR — usuń zmienną środowiskową, aby zarządzać tym w Ustawieniach.',
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
@@ -4838,6 +4877,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'Okno pamięci',
   'memoryData.windowUpdated': 'Okno pamięci zaktualizowane',
   'memoryData.windowUpdatedMsg': 'Ustawiono na {window}.',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'Bramka zatwierdzania wyłączona',
+  'security.approvalGateDisabled.body':
+    'W twoim środowisku ustawiono OPENHUMAN_APPROVAL_GATE=0. Narzędzia o zewnętrznym wpływie będą działać bez pytania o potwierdzenie.',
+  'security.approvalGateOverrideIgnored.title': 'Nadpisanie zablokowane',
+  'security.approvalGateOverrideIgnored.body':
+    'Wykryto nadpisanie OPENHUMAN_APPROVAL_GATE=0, ale je zignorowano: aplikacja desktopowa zawsze utrzymuje bramkę zatwierdzania włączoną.',
 
   // Run queue
   'runQueue.mode.interrupt': 'Przerwij',

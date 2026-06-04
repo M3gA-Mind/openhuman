@@ -161,6 +161,7 @@ const messages: TranslationMap = {
   'clearData.failed': '데이터 삭제 및 로그아웃에 실패했습니다. 다시 시도해 주세요.',
   'clearData.failedLogout': '로그아웃에 실패했습니다. 다시 시도해 주세요.',
   'clearData.failedPersist': '저장된 앱 상태를 삭제하지 못했습니다. 다시 시도해 주세요.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'OpenHuman에 오신 것을 환영합니다',
   'welcome.subtitle': '개인용 AI 슈퍼 인텔리전스입니다. 비공개이며, 간단하고, 매우 강력합니다.',
   'welcome.connectPrompt': 'RPC URL 구성(고급)',
@@ -1948,6 +1949,7 @@ const messages: TranslationMap = {
     '아직 사용자 지정 소스가 없습니다. 폴더, GitHub 리포지토리, RSS 피드 또는 웹 페이지를 추가해 시작하세요.',
   'memorySources.loadingConnections': '연결을 불러오는 중…',
   'memorySources.noConnections': '활성 Composio 연결을 찾을 수 없습니다. 먼저 통합을 연결하세요.',
+  'memorySources.connectionAccount': '계정',
   'memorySources.pickConnection': '연결 선택',
   'memorySources.selectConnection': '— 연결 선택 —',
   'memorySources.composioListFailed': 'Composio 연결을 불러오지 못했습니다.',
@@ -2000,6 +2002,32 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': '트리 빌드 완료',
   'memorySources.build.failedTitle': '빌드 실패',
   'memorySources.build.sealsMessage': '실링 완료',
+  'memorySources.allIn.button': '전체 활성화',
+  'memorySources.allIn.title': '전체 활성화할까요?',
+  'memorySources.allIn.message':
+    '모든 메모리 소스를 활성화하고 동기화 제한을 제거합니다. 가장 풍부한 메모리 그래프를 구축하지만 크레딧을 더 사용할 수 있습니다.',
+  'memorySources.allIn.confirm': '예',
+  'memorySources.allIn.cancel': '아니오',
+  'memorySources.allIn.success': '제한 없이 모든 소스가 활성화되었습니다. 동기화가 시작되었습니다.',
+  'memorySources.allIn.failed': '전체 활성화를 적용하지 못했습니다. 다시 시도해 주세요.',
+  'memorySources.settings.button': '설정',
+  'memorySources.settings.title': '동기화 설정',
+  'memorySources.settings.maxPrs': '최대 풀 리퀘스트 수',
+  'memorySources.settings.maxIssues': '최대 이슈 수',
+  'memorySources.settings.maxCommits': '최대 커밋 수',
+  'memorySources.settings.maxItems': '최대 항목 수',
+  'memorySources.settings.sinceDays': '조회 기간 (일)',
+  'memorySources.settings.syncDepthDays': '동기화 깊이 (일)',
+  'memorySources.settings.maxTokens': '동기화당 최대 토큰',
+  'memorySources.settings.maxCost': '동기화당 최대 비용 (USD)',
+  'memorySources.settings.unlimited': '무제한',
+  'memorySources.settings.unlimitedTooltip':
+    '{toolkit}에 대해 최대로 동기화하도록 선택했습니다. 여기에서 한도를 변경할 수 있습니다.',
+  'memorySources.settings.maxed': '최대',
+  'memorySources.settings.save': '저장',
+  'memorySources.settings.saving': '저장 중…',
+  'memorySources.settings.saved': '설정이 저장되었습니다',
+  'memorySources.settings.saveFailed': '설정을 저장하지 못했습니다',
   'backend.aiBackend': 'AI 백엔드',
   'backend.cloud': '클라우드',
   'backend.recommended': '추천',
@@ -3692,6 +3720,16 @@ const messages: TranslationMap = {
   'settings.agentAccess.agentBlocked': '에이전트 차단됨',
   'settings.agentAccess.internalStateDesc':
     '메모리 데이터베이스, 세션, 토큰 및 기타 핵심 데이터. 에이전트 도구에서 접근할 수 없습니다.',
+  'settings.agentAccess.actionDirInputLabel': '작업 샌드박스 경로',
+  'settings.agentAccess.actionDirSave': '저장',
+  'settings.agentAccess.actionDirSaving': '저장 중…',
+  'settings.agentAccess.actionDirSaved': '작업 샌드박스가 업데이트되었습니다.',
+  'settings.agentAccess.actionDirEmptyError': '경로는 비워둘 수 없습니다.',
+  'settings.agentAccess.actionDirSaveError': '작업 샌드박스를 업데이트할 수 없습니다.',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    'OPENHUMAN_ACTION_DIR이 설정되어 있습니다 — 설정에서 편집하려면 환경 변수를 해제하세요.',
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    'OPENHUMAN_ACTION_DIR에 의해 재정의됨 — 설정에서 관리하려면 환경 변수를 해제하세요.',
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
@@ -4710,6 +4748,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': '메모리 창',
   'memoryData.windowUpdated': '메모리 창 업데이트됨',
   'memoryData.windowUpdatedMsg': '{window}(으)로 설정되었습니다.',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': '승인 게이트 비활성화됨',
+  'security.approvalGateDisabled.body':
+    '환경에 OPENHUMAN_APPROVAL_GATE=0이 설정되어 있습니다. 외부 영향이 있는 도구가 확인을 요청하지 않고 실행됩니다.',
+  'security.approvalGateOverrideIgnored.title': '재정의 차단됨',
+  'security.approvalGateOverrideIgnored.body':
+    'OPENHUMAN_APPROVAL_GATE=0 재정의가 감지되었지만 무시되었습니다: 데스크톱 앱은 승인 게이트를 항상 켜둡니다.',
 
   // Run queue
   'runQueue.mode.interrupt': '중단',

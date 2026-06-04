@@ -302,6 +302,17 @@ pub async fn start_if_enabled(app_config: &Config) {
     });
 }
 
+/// Disable always-on listening at runtime (logout). Flips the `ENABLED` gate so
+/// the processor immediately drops all audio — nothing is transcribed or sent —
+/// the symmetric counterpart to [`start_if_enabled`]. The cpal stream itself
+/// stays open (it's spawned once per process and reused if the user logs back in
+/// and re-enables), but no audio is processed while disabled.
+pub fn stop() {
+    if ENABLED.swap(false, Ordering::SeqCst) {
+        log::info!("{LOG_PREFIX} stopped (logout) — capture idle, audio dropped");
+    }
+}
+
 /// Push a listener status to the always-visible notch pill via the
 /// `overlay:attention` channel. The notch maps "Listening" / "Processing" to the
 /// right icon; when the message expires it falls back to "Ready". Fire-and-forget.
@@ -647,6 +658,17 @@ mod macos_lock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stop_clears_enabled_gate() {
+        // stop() flips the runtime gate off so the processor drops all audio.
+        ENABLED.store(true, Ordering::SeqCst);
+        stop();
+        assert!(
+            !ENABLED.load(Ordering::SeqCst),
+            "stop() must clear the ENABLED gate so capture goes idle on logout"
+        );
+    }
 
     fn cfg() -> VadConfig {
         VadConfig {

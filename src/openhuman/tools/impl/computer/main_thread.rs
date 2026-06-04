@@ -47,3 +47,28 @@ where
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::event_bus::register_native_global;
+
+    /// With an executor registered (as the desktop shell does at startup), the
+    /// op's result passes straight back through the native registry — both the
+    /// success and the error variant. Registering here also exercises
+    /// `MainThreadInputOp` construction and the `Ok(inner) => inner` arm.
+    #[tokio::test]
+    async fn dispatches_op_result_through_registered_executor() {
+        // Stand-in for the Tauri main-thread handler: just run the op inline.
+        register_native_global::<MainThreadInputOp, Result<String, String>, _, _>(
+            INPUT_ON_MAIN_THREAD_METHOD,
+            |req| async move { Ok((req.run)()) },
+        );
+
+        let ok = run_input_on_main(|| Ok("clicked".to_string())).await;
+        assert_eq!(ok, Ok("clicked".to_string()));
+
+        let err = run_input_on_main(|| Err("enigo failed".to_string())).await;
+        assert_eq!(err, Err("enigo failed".to_string()));
+    }
+}

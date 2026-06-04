@@ -92,6 +92,11 @@ pub async fn stop_login_gated_services(config: &Config) {
     //    accumulate duplicate rdev listeners across logout → login cycles.
     crate::openhuman::voice::dictation_listener::stop();
 
+    // 6. Always-on listening — disable the runtime gate so the mic capture loop
+    //    stops transcribing/delivering after logout (no audio processed while
+    //    logged out). Symmetric with start_login_gated_services step 3b.
+    crate::openhuman::voice::always_on::stop();
+
     log::info!("[services] all login-gated services stopped");
 }
 

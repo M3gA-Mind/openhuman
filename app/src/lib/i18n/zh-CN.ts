@@ -158,6 +158,7 @@ const messages: TranslationMap = {
   'clearData.failed': '清除数据失败，请重试。',
   'clearData.failedLogout': '退出登录失败，请重试。',
   'clearData.failedPersist': '清除持久化应用状态失败，请重试。',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': '欢迎使用 OpenHuman',
   'welcome.subtitle': '你的私人 AI 超级智能。私密、简单、强大。',
   'welcome.connectPrompt': '输入 Core RPC 地址以开始使用',
@@ -1870,6 +1871,7 @@ const messages: TranslationMap = {
     '暂无自定义来源。添加文件夹、GitHub 仓库、RSS 订阅或网页即可开始。',
   'memorySources.loadingConnections': '正在加载连接…',
   'memorySources.noConnections': '未找到活跃的 Composio 连接。请先连接一个集成。',
+  'memorySources.connectionAccount': '账户',
   'memorySources.pickConnection': '选择连接',
   'memorySources.selectConnection': '— 选择连接 —',
   'memorySources.composioListFailed': '加载 Composio 连接失败。',
@@ -1922,6 +1924,32 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': '树构建完成',
   'memorySources.build.failedTitle': '构建失败',
   'memorySources.build.sealsMessage': '密封完成',
+  'memorySources.allIn.button': '全部启用',
+  'memorySources.allIn.title': '全部启用？',
+  'memorySources.allIn.message':
+    '这将启用所有记忆来源并移除所有同步限制。可构建最丰富的记忆图谱，但可能会消耗更多积分。',
+  'memorySources.allIn.confirm': '是',
+  'memorySources.allIn.cancel': '否',
+  'memorySources.allIn.success': '所有来源已无限制启用。同步已开始。',
+  'memorySources.allIn.failed': '无法应用全部启用。请重试。',
+  'memorySources.settings.button': '设置',
+  'memorySources.settings.title': '同步设置',
+  'memorySources.settings.maxPrs': '最大拉取请求数',
+  'memorySources.settings.maxIssues': '最大问题数',
+  'memorySources.settings.maxCommits': '最大提交数',
+  'memorySources.settings.maxItems': '最大条目数',
+  'memorySources.settings.sinceDays': '回溯天数',
+  'memorySources.settings.syncDepthDays': '同步深度（天）',
+  'memorySources.settings.maxTokens': '每次同步最大令牌数',
+  'memorySources.settings.maxCost': '每次同步最大费用（USD）',
+  'memorySources.settings.unlimited': '无限制',
+  'memorySources.settings.unlimitedTooltip':
+    '您已选择为 {toolkit} 同步最大数量。您可以在此处更改上限。',
+  'memorySources.settings.maxed': '已满',
+  'memorySources.settings.save': '保存',
+  'memorySources.settings.saving': '保存中…',
+  'memorySources.settings.saved': '设置已保存',
+  'memorySources.settings.saveFailed': '无法保存设置',
   'backend.aiBackend': 'AI 后端',
   'backend.cloud': '云端',
   'backend.recommended': '推荐',
@@ -3549,6 +3577,16 @@ const messages: TranslationMap = {
   'settings.agentAccess.agentBlocked': '代理已阻止',
   'settings.agentAccess.internalStateDesc':
     '内存数据库、会话、令牌和其他核心数据。代理工具无法访问。',
+  'settings.agentAccess.actionDirInputLabel': '操作沙箱路径',
+  'settings.agentAccess.actionDirSave': '保存',
+  'settings.agentAccess.actionDirSaving': '正在保存…',
+  'settings.agentAccess.actionDirSaved': '操作沙箱已更新。',
+  'settings.agentAccess.actionDirEmptyError': '路径不能为空。',
+  'settings.agentAccess.actionDirSaveError': '无法更新操作沙箱。',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    'OPENHUMAN_ACTION_DIR 已设置 — 请取消该环境变量以在设置中编辑此项。',
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    '已被 OPENHUMAN_ACTION_DIR 覆盖 — 请取消该环境变量以在设置中管理。',
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
@@ -4524,6 +4562,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': '记忆时间窗口',
   'memoryData.windowUpdated': '记忆时间窗口已更新',
   'memoryData.windowUpdatedMsg': '已设置为 {window}。',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': '审批门已禁用',
+  'security.approvalGateDisabled.body':
+    '您的环境中设置了 OPENHUMAN_APPROVAL_GATE=0。具有外部影响的工具将在不请求确认的情况下运行。',
+  'security.approvalGateOverrideIgnored.title': '覆盖已阻止',
+  'security.approvalGateOverrideIgnored.body':
+    '检测到 OPENHUMAN_APPROVAL_GATE=0 覆盖，但已忽略：桌面应用始终保持审批门开启。',
 
   // Run queue
   'runQueue.mode.interrupt': '中断',

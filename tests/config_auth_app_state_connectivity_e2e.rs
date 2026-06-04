@@ -2856,6 +2856,7 @@ async fn worker_a_controller_schemas_are_fully_exposed() {
             "memory_sources",
             vec![
                 "openhuman.memory_sources_add",
+                "openhuman.memory_sources_apply_all_in",
                 "openhuman.memory_sources_estimate_sync_cost",
                 "openhuman.memory_sources_get",
                 "openhuman.memory_sources_list",

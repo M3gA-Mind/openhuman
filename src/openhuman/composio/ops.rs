@@ -1264,6 +1264,8 @@ pub async fn composio_get_user_profile(
         toolkit: toolkit.clone(),
         connection_id: Some(connection_id.to_string()),
         usage: Default::default(),
+        max_items: None,
+        sync_depth_days: None,
     };
 
     let profile = provider.fetch_user_profile(&ctx).await.map_err(|e| {
@@ -1336,6 +1338,8 @@ pub async fn composio_refresh_all_identities(
             toolkit: toolkit.clone(),
             connection_id: Some(connection_id.clone()),
             usage: Default::default(),
+            max_items: None,
+            sync_depth_days: None,
         };
 
         match provider.fetch_user_profile(&ctx).await {
@@ -1433,6 +1437,8 @@ pub async fn composio_sync(
         toolkit: toolkit.clone(),
         connection_id: Some(connection_id.to_string()),
         usage: Default::default(),
+        max_items: None,
+        sync_depth_days: None,
     };
     let started_at_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

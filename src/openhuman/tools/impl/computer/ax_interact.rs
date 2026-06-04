@@ -58,8 +58,10 @@ pub(crate) fn is_sensitive_app(app_name: &str) -> bool {
 pub struct AxInteractTool {
     /// When false, the mutating actions (`press` / `set_value`) are refused
     /// with guidance to enable `computer_control.ax_interact_mutations`. The
-    /// read-only `list` action is always available. Mirrors the opt-in posture
-    /// of the mouse/keyboard tools (`computer_control.enabled`).
+    /// read-only `list` action is always available. Like the mouse/keyboard
+    /// tools (`computer_control.enabled`), this is opt-in **and** approval-gated:
+    /// the mutating actions return `external_effect_with_args == true` so they
+    /// route through the ApprovalGate.
     allow_mutations: bool,
 }
 
