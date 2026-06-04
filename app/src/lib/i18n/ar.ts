@@ -1389,6 +1389,9 @@ const messages: TranslationMap = {
   'voice.debug.silenceThreshold': 'عتبة الصمت (RMS)',
   'voice.debug.silenceThresholdDesc':
     'تُعامَل التسجيلات ذات الطاقة الأدنى من هذا الحد كصمت ويُتخطى فيها. كلما كانت القيمة أصغر، كان النظام أكثر حساسية.',
+  'voice.debug.alwaysOn': 'الاستماع الدائم',
+  'voice.debug.alwaysOnDesc':
+    'أبقِ الميكروفون مفتوحًا وأرسل ما تقوله إلى الوكيل تلقائيًا دون مفتاح اختصار. يتوقف مؤقتًا عند قفل الشاشة.',
   'voice.providers.saved': 'تم حفظ موفري الصوت.',
   'voice.providers.failedToSave': 'فشل في حفظ موفري الصوت',
   'voice.providers.ellipsis': '…',
@@ -4681,6 +4684,13 @@ const messages: TranslationMap = {
   'runQueue.collectHint': 'إضافة كسياق إضافي',
   'runQueue.status': '{total} في الانتظار',
   'runQueue.cleared': 'تم مسح قائمة الانتظار',
+  'notch.ready': 'جاهز',
+  'notch.processing': 'جارٍ المعالجة…',
+  'notch.listening': 'أستمع…',
+  'notch.thinking': 'أفكر…',
+  'notch.speaking': 'أتحدث…',
+  'notch.transcribing': 'أفسّر…',
+  'notch.executing': 'أنفّذ…',
 };
 
 export default messages;
