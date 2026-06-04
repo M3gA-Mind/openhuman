@@ -5,6 +5,13 @@ use super::*;
 use crate::core::event_bus::DomainEvent;
 use crate::openhuman::voice::speak_bus::{subscribe_speak_events, SpeakRequest};
 use tokio::sync::broadcast::error::TryRecvError;
+use tokio::sync::Mutex;
+
+/// The speak bus is a process-global broadcast and every approval prompt shares
+/// the same `VOICE_APPROVAL_SOURCE`, so a parallel test's published prompt would
+/// leak into these receivers. Serialize the bus-touching tests: lock first, then
+/// subscribe, so each runs with an isolated view of the bus.
+static SPEAK_BUS_LOCK: Mutex<()> = Mutex::const_new(());
 
 fn approval_event(action_summary: &str, is_voice: bool) -> DomainEvent {
     DomainEvent::ApprovalRequested {
@@ -62,6 +69,7 @@ fn spoken_prompt_empty_is_none() {
 
 #[tokio::test]
 async fn speaks_for_voice_initiated_approval() {
+    let _guard = SPEAK_BUS_LOCK.lock().await;
     let mut rx = subscribe_speak_events();
     let sub = VoiceApprovalSurfaceSubscriber;
     sub.handle(&approval_event("Post to Slack", true)).await;
@@ -74,6 +82,7 @@ async fn speaks_for_voice_initiated_approval() {
 
 #[tokio::test]
 async fn silent_for_typed_approval() {
+    let _guard = SPEAK_BUS_LOCK.lock().await;
     let mut rx = subscribe_speak_events();
     let sub = VoiceApprovalSurfaceSubscriber;
     sub.handle(&approval_event("Post to Slack", false)).await;
@@ -86,6 +95,7 @@ async fn silent_for_typed_approval() {
 
 #[tokio::test]
 async fn ignores_non_approval_events() {
+    let _guard = SPEAK_BUS_LOCK.lock().await;
     let mut rx = subscribe_speak_events();
     let sub = VoiceApprovalSurfaceSubscriber;
     sub.handle(&DomainEvent::ApprovalDecided {
@@ -99,6 +109,7 @@ async fn ignores_non_approval_events() {
 
 #[tokio::test]
 async fn empty_summary_does_not_speak() {
+    let _guard = SPEAK_BUS_LOCK.lock().await;
     let mut rx = subscribe_speak_events();
     let sub = VoiceApprovalSurfaceSubscriber;
     sub.handle(&approval_event("   ", true)).await;

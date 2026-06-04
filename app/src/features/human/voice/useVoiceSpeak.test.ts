@@ -1,6 +1,8 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useVoiceSpeak } from './useVoiceSpeak';
+
 const hoisted = vi.hoisted(() => ({
   onMock: vi.fn<(event: string, cb: (...args: unknown[]) => void) => void>(),
   offMock: vi.fn(),
@@ -13,12 +15,7 @@ vi.mock('../../../services/socketService', () => ({
   socketService: { on: hoisted.onMock, off: hoisted.offMock },
 }));
 vi.mock('./ttsClient', () => ({ synthesizeSpeech: hoisted.synthMock }));
-vi.mock('./audioPlayer', () => ({
-  playBase64Audio: hoisted.playMock,
-  swallowAudioStop: vi.fn(),
-}));
-
-import { useVoiceSpeak } from './useVoiceSpeak';
+vi.mock('./audioPlayer', () => ({ playBase64Audio: hoisted.playMock, swallowAudioStop: vi.fn() }));
 
 /** Grab the `voice:speak` handler the hook registered with socketService. */
 function speakHandler(): (...args: unknown[]) => void {

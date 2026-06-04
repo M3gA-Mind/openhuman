@@ -1,9 +1,7 @@
+import debug from 'debug';
 import { useEffect, useRef } from 'react';
 
-import debug from 'debug';
-
 import { socketService } from '../../../services/socketService';
-
 import { type PlaybackHandle, playBase64Audio, swallowAudioStop } from './audioPlayer';
 import { synthesizeSpeech } from './ttsClient';
 
