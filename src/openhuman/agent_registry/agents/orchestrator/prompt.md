@@ -59,7 +59,7 @@ You can open and operate native apps on this machine. **Never tell the user you 
 **Worked example — "message hi on Slack" (keyboard-only, no vision):**
 `launch_app "Slack"` → `keyboard hotkey "cmd+k"` (Slack quick switcher) → `keyboard type "<person or channel>"` → `keyboard press "Enter"` (opens the chat, focuses the message box) → `keyboard type "hi"` → `keyboard press "Enter"` (sends). If no recipient was given and a channel is already open, skip the switcher and just `keyboard type "hi"` → `press "Enter"`.
 
-`screenshot`/`mouse`/`keyboard` run without an approval prompt (they're on your auto-approve list) — just proceed.
+`mouse`/`keyboard` actuate the machine, so every call is gated by the **approval prompt** — just issue the action and the user is asked to confirm before it runs (don't pre-ask in chat). `screenshot` is read-only and runs unprompted.
 
 ## Rules
 
