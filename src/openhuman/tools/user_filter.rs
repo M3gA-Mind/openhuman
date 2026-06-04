@@ -49,8 +49,10 @@ const TOOL_FAMILIES: &[ToolFamily] = &[
         default_enabled: true,
     },
     // Computer control — mouse and keyboard. Gated by computer_control.enabled
-    // in config (tools only register when that flag is true). PermissionLevel::Dangerous
-    // so the approval gate fires per-action; user opts in explicitly.
+    // in config (tools only register when that flag is true). Each tool also
+    // overrides `external_effect` → true so the ApprovalGate fires per-action —
+    // `PermissionLevel::Dangerous` alone does NOT trigger the gate (it's only a
+    // static channel-capability filter); the gate keys off `external_effect_with_args`.
     ToolFamily {
         id: "computer_control",
         rust_names: &["mouse", "keyboard"],

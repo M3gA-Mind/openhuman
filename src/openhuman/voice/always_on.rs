@@ -302,6 +302,16 @@ pub async fn start_if_enabled(app_config: &Config) {
     });
 }
 
+/// Disable always-on listening at runtime (logout). Flips the `ENABLED` gate so
+/// the processor immediately drops all audio — nothing is transcribed or sent —
+/// the symmetric counterpart to [`start_if_enabled`]. The cpal stream itself
+/// stays open (it's spawned once per process and reused if the user logs back in
+/// and re-enables), but no audio is processed while disabled.
+pub fn stop() {
+    if ENABLED.swap(false, Ordering::SeqCst) {
+        log::info!("{LOG_PREFIX} stopped (logout) — capture idle, audio dropped");
+    }
+}
 /// Push a listener status to the always-visible notch pill via the
 /// `overlay:attention` channel. The notch maps "Listening" / "Processing" to the
 /// right icon; when the message expires it falls back to "Ready". Fire-and-forget.
@@ -362,7 +372,8 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
             // ("Hey Tiny, …"). Strip the wake phrase and deliver the command.
             match extract_command(&text, &config.voice_server.wake_word) {
                 Some(cmd) => {
-                    log::info!("{LOG_PREFIX} wake word matched → command={cmd:?}");
+                    // Redacted: never log the raw spoken command (always-on mic PII).
+                    log::info!("{LOG_PREFIX} wake word matched → cmd_len={}", cmd.len());
                     notch_status("Processing", 12000); // pill: running the command
                     deliver_command(config, cmd).await;
                 }
@@ -386,19 +397,27 @@ async fn transcribe_and_deliver(config: &Config, samples_16k: Vec<f32>) {
 async fn deliver_command(config: &Config, cmd: String) {
     use crate::openhuman::voice::command_router::{route, VoiceIntent};
     let intent = route(&cmd);
+    // Log only the intent *kind* + lengths — never the transcript-derived query /
+    // app / result text (always-on mic PII).
     if matches!(intent, VoiceIntent::Unknown) {
-        log::info!("{LOG_PREFIX} no fast intent → agent: {cmd:?}");
+        log::info!(
+            "{LOG_PREFIX} no fast intent → agent (cmd_len={})",
+            cmd.len()
+        );
         crate::openhuman::voice::dictation_listener::publish_transcription(cmd);
         return;
     }
-    log::info!("{LOG_PREFIX} fast intent {intent:?} (local execution)");
+    log::info!(
+        "{LOG_PREFIX} fast intent={} (local execution)",
+        intent.kind()
+    );
     match execute_intent(config, intent).await {
         Ok(msg) => {
-            log::info!("{LOG_PREFIX} fast route done: {msg}");
+            log::info!("{LOG_PREFIX} fast route done (summary_len={})", msg.len());
             notch_status(&msg, 2500);
         }
-        Err(e) => {
-            log::warn!("{LOG_PREFIX} fast route failed ({e}); falling back to agent");
+        Err(_e) => {
+            log::warn!("{LOG_PREFIX} fast route failed; falling back to agent");
             crate::openhuman::voice::dictation_listener::publish_transcription(cmd);
         }
     }
@@ -471,12 +490,18 @@ async fn execute_intent(
 async fn osa(script: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        let out = tokio::process::Command::new("osascript")
-            .arg("-e")
-            .arg(script)
-            .output()
-            .await
-            .map_err(|e| format!("osascript spawn failed: {e}"))?;
+        // Bound the subprocess so a hung osascript can't stall deliver_command
+        // (which would block the agent fallback). 5s is ample for a one-liner.
+        let out = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tokio::process::Command::new("osascript")
+                .arg("-e")
+                .arg(script)
+                .output(),
+        )
+        .await
+        .map_err(|_| "osascript timed out".to_string())?
+        .map_err(|e| format!("osascript spawn failed: {e}"))?;
         if out.status.success() {
             Ok(())
         } else {
@@ -760,6 +785,17 @@ mod macos_lock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stop_clears_enabled_gate() {
+        // stop() flips the runtime gate off so the processor drops all audio.
+        ENABLED.store(true, Ordering::SeqCst);
+        stop();
+        assert!(
+            !ENABLED.load(Ordering::SeqCst),
+            "stop() must clear the ENABLED gate so capture goes idle on logout"
+        );
+    }
 
     fn cfg() -> VadConfig {
         VadConfig {

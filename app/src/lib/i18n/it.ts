@@ -167,6 +167,7 @@ const messages: TranslationMap = {
   'clearData.failed': 'Impossibile cancellare i dati ed effettuare il logout. Riprova.',
   'clearData.failedLogout': 'Impossibile effettuare il logout. Riprova.',
   'clearData.failedPersist': "Impossibile cancellare lo stato persistente dell'app. Riprova.",
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Benvenuto in OpenHuman',
   'welcome.subtitle':
     'La tua super intelligenza AI personale. Privata, semplice ed estremamente potente.',
@@ -2003,6 +2004,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Caricamento delle connessioni…',
   'memorySources.noConnections':
     "Nessuna connessione Composio attiva trovata. Collega prima un'integrazione.",
+  'memorySources.connectionAccount': 'Account',
   'memorySources.pickConnection': 'Scegli una connessione',
   'memorySources.selectConnection': '— Seleziona una connessione —',
   'memorySources.composioListFailed': 'Impossibile caricare le connessioni Composio.',
@@ -2055,6 +2057,33 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': 'Albero costruito',
   'memorySources.build.failedTitle': 'Costruzione fallita',
   'memorySources.build.sealsMessage': 'sigillatura completata',
+  'memorySources.allIn.button': 'Tutto attivo',
+  'memorySources.allIn.title': 'Attivare tutto?',
+  'memorySources.allIn.message':
+    'Questo attiverà tutte le sorgenti di memoria e rimuoverà tutti i limiti di sincronizzazione. Costruisce il grafico di memoria più ricco, ma potrebbe utilizzare più crediti.',
+  'memorySources.allIn.confirm': 'Sì',
+  'memorySources.allIn.cancel': 'No',
+  'memorySources.allIn.success':
+    'Tutte le sorgenti attivate senza limiti. Sincronizzazione avviata.',
+  'memorySources.allIn.failed': 'Impossibile attivare tutto. Riprova.',
+  'memorySources.settings.button': 'Impostazioni',
+  'memorySources.settings.title': 'Impostazioni di sincronizzazione',
+  'memorySources.settings.maxPrs': 'Numero massimo di pull request',
+  'memorySources.settings.maxIssues': 'Numero massimo di issue',
+  'memorySources.settings.maxCommits': 'Numero massimo di commit',
+  'memorySources.settings.maxItems': 'Numero massimo di elementi',
+  'memorySources.settings.sinceDays': 'Periodo di ricerca (giorni)',
+  'memorySources.settings.syncDepthDays': 'Profondità di sincronizzazione (giorni)',
+  'memorySources.settings.maxTokens': 'Token massimi per sincronizzazione',
+  'memorySources.settings.maxCost': 'Costo massimo per sincronizzazione (USD)',
+  'memorySources.settings.unlimited': 'Illimitato',
+  'memorySources.settings.unlimitedTooltip':
+    'Hai scelto di sincronizzare il massimo per {toolkit}. Puoi modificare i limiti qui.',
+  'memorySources.settings.maxed': 'Pieno',
+  'memorySources.settings.save': 'Salva',
+  'memorySources.settings.saving': 'Salvataggio…',
+  'memorySources.settings.saved': 'Impostazioni salvate',
+  'memorySources.settings.saveFailed': 'Impossibile salvare le impostazioni',
   'backend.aiBackend': 'Backend AI',
   'backend.cloud': 'Cloud',
   'backend.recommended': 'Consigliato',
@@ -3794,6 +3823,16 @@ const messages: TranslationMap = {
   'settings.agentAccess.agentBlocked': "bloccato per l'agente",
   'settings.agentAccess.internalStateDesc':
     "Database memoria, sessioni, token e altri dati fondamentali. Non accessibile dagli strumenti dell'agente.",
+  'settings.agentAccess.actionDirInputLabel': 'Percorso della sandbox delle azioni',
+  'settings.agentAccess.actionDirSave': 'Salva',
+  'settings.agentAccess.actionDirSaving': 'Salvataggio…',
+  'settings.agentAccess.actionDirSaved': 'Sandbox delle azioni aggiornata.',
+  'settings.agentAccess.actionDirEmptyError': 'Il percorso non può essere vuoto.',
+  'settings.agentAccess.actionDirSaveError': 'Impossibile aggiornare la sandbox delle azioni.',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    "OPENHUMAN_ACTION_DIR è impostata — rimuovi la variabile d'ambiente per modificarla dalle Impostazioni.",
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    "Sovrascritta da OPENHUMAN_ACTION_DIR — rimuovi la variabile d'ambiente per gestirla dalle Impostazioni.",
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',

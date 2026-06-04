@@ -84,7 +84,15 @@ pub(crate) fn show(app: &AppHandle<AppRuntime>) -> Result<(), String> {
         .ok_or_else(|| "notch_window::show called off the main thread".to_string())?;
 
     let source = resolve_page_source(app)?;
-    log::info!("[notch-window] loading source={source:?}");
+    // Log only the source *kind* — bundled paths contain `/Users/<login>/…`
+    // (PII), so never log the absolute resource paths.
+    log::info!(
+        "[notch-window] loading source_kind={}",
+        match &source {
+            PageSource::Dev { .. } => "dev",
+            PageSource::Bundled { .. } => "bundled",
+        }
+    );
 
     let frame = top_center_frame(mtm);
     log::debug!(
@@ -152,10 +160,7 @@ fn resolve_page_source(app: &AppHandle<AppRuntime>) -> Result<PageSource, String
             });
         }
     }
-    Err(format!(
-        "notch bundled index.html not found under resource_dir={}",
-        resource_dir.display()
-    ))
+    Err("notch bundled index.html not found under the app resource dir".to_string())
 }
 
 // ── Frame geometry ────────────────────────────────────────────────────────────
@@ -298,15 +303,19 @@ unsafe fn build_webview(
                         let _ =
                             webview.loadFileURL_allowingReadAccessToURL(&ns_url, &read_access_ns);
                         log::info!(
-                            "[notch-window] loaded bundled index={} root={}",
-                            index_html.display(),
-                            root.display()
+                            "[notch-window] loaded bundled page index={}",
+                            index_html
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("index.html")
                         );
                     }
                     _ => log::warn!(
-                        "[notch-window] could not parse bundled file URLs index={} root={}",
-                        file_url,
-                        read_access_url
+                        "[notch-window] could not parse bundled file URLs (index={})",
+                        index_html
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("index.html")
                     ),
                 }
             }

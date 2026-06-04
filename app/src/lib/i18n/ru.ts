@@ -164,6 +164,7 @@ const messages: TranslationMap = {
   'clearData.failed': 'Не удалось очистить данные и выйти. Попробуй ещё раз.',
   'clearData.failedLogout': 'Не удалось выйти. Попробуй ещё раз.',
   'clearData.failedPersist': 'Не удалось сбросить состояние приложения. Попробуй ещё раз.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Добро пожаловать в OpenHuman',
   'welcome.subtitle': 'Твой персональный суперинтеллект. Приватный, простой и невероятно мощный.',
   'welcome.connectPrompt': 'Настроить RPC URL (дополнительно)',
@@ -1984,6 +1985,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Загрузка подключений…',
   'memorySources.noConnections':
     'Активных соединений Composio не ​​найдено. Сначала подключите интеграцию.',
+  'memorySources.connectionAccount': 'Аккаунт',
   'memorySources.pickConnection': 'Выберите соединение',
   'memorySources.selectConnection': '— Выберите соединение —',
   'memorySources.composioListFailed': 'Не удалось загрузить соединения Composio.',
@@ -2036,6 +2038,34 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': 'Дерево построено',
   'memorySources.build.failedTitle': 'Ошибка построения',
   'memorySources.build.sealsMessage': 'запечатывание завершено',
+  'memorySources.allIn.button': 'Включить всё',
+  'memorySources.allIn.title': 'Включить всё?',
+  'memorySources.allIn.message':
+    'Это активирует все источники памяти и снимет все ограничения синхронизации. Создаёт наиболее богатый граф памяти, но может использовать больше кредитов.',
+  'memorySources.allIn.confirm': 'Да',
+  'memorySources.allIn.cancel': 'Нет',
+  'memorySources.allIn.success':
+    'Все источники активированы без ограничений. Синхронизация запущена.',
+  'memorySources.allIn.failed':
+    'Не удалось применить «Включить всё». Пожалуйста, попробуйте снова.',
+  'memorySources.settings.button': 'Настройки',
+  'memorySources.settings.title': 'Настройки синхронизации',
+  'memorySources.settings.maxPrs': 'Максимум pull request',
+  'memorySources.settings.maxIssues': 'Максимум задач',
+  'memorySources.settings.maxCommits': 'Максимум коммитов',
+  'memorySources.settings.maxItems': 'Максимум элементов',
+  'memorySources.settings.sinceDays': 'Период (дней)',
+  'memorySources.settings.syncDepthDays': 'Глубина синхронизации (дней)',
+  'memorySources.settings.maxTokens': 'Максимум токенов за синхронизацию',
+  'memorySources.settings.maxCost': 'Максимальная стоимость за синхронизацию (USD)',
+  'memorySources.settings.unlimited': 'Без лимита',
+  'memorySources.settings.unlimitedTooltip':
+    'Вы выбрали синхронизацию максимума для {toolkit}. Лимиты можно изменить здесь.',
+  'memorySources.settings.maxed': 'Заполнено',
+  'memorySources.settings.save': 'Сохранить',
+  'memorySources.settings.saving': 'Сохранение…',
+  'memorySources.settings.saved': 'Настройки сохранены',
+  'memorySources.settings.saveFailed': 'Не удалось сохранить настройки',
   'backend.aiBackend': 'AI-бэкенд',
   'backend.cloud': 'Облако',
   'backend.recommended': 'Рекомендуется',
@@ -3763,6 +3793,16 @@ const messages: TranslationMap = {
   'settings.agentAccess.agentBlocked': 'заблокировано для агента',
   'settings.agentAccess.internalStateDesc':
     'Базы данных памяти, сеансы, токены и другие основные данные. Недоступно для инструментов агента.',
+  'settings.agentAccess.actionDirInputLabel': 'Путь к песочнице действий',
+  'settings.agentAccess.actionDirSave': 'Сохранить',
+  'settings.agentAccess.actionDirSaving': 'Сохранение…',
+  'settings.agentAccess.actionDirSaved': 'Песочница действий обновлена.',
+  'settings.agentAccess.actionDirEmptyError': 'Путь не может быть пустым.',
+  'settings.agentAccess.actionDirSaveError': 'Не удалось обновить песочницу действий.',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    'OPENHUMAN_ACTION_DIR установлена — снимите переменную окружения, чтобы изменить это в Настройках.',
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    'Переопределено OPENHUMAN_ACTION_DIR — снимите переменную окружения, чтобы управлять этим в Настройках.',
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',

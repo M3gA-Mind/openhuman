@@ -105,7 +105,7 @@ pub async fn add_rpc(req: AddRequest) -> Result<RpcOutcome<AddResponse>, String>
         "[memory_sources] add_rpc: entry"
     );
 
-    let entry = MemorySourceEntry {
+    let mut entry = MemorySourceEntry {
         id: format!("src_{}", uuid::Uuid::new_v4().as_simple()),
         kind: req.kind,
         label: req.label,
@@ -117,9 +117,6 @@ pub async fn add_rpc(req: AddRequest) -> Result<RpcOutcome<AddResponse>, String>
         url: req.url,
         branch: req.branch,
         paths: req.paths,
-        // Per-type GitHub sync caps default to DEFAULT_GITHUB_ITEM_LIMIT
-        // (2000) in the reader when None. Overrides are applied via the
-        // update/patch path (`MemorySourcePatch`).
         max_commits: req.max_commits,
         max_issues: req.max_issues,
         max_prs: req.max_prs,
@@ -132,8 +129,46 @@ pub async fn add_rpc(req: AddRequest) -> Result<RpcOutcome<AddResponse>, String>
         sync_depth_days: req.sync_depth_days,
     };
 
+    // Apply conservative per-kind defaults when the caller left caps unset.
+    apply_kind_defaults(&mut entry);
+
     let source = registry::add_source(entry).await?;
     Ok(RpcOutcome::new(AddResponse { source }, vec![]))
+}
+
+/// Apply conservative per-kind cap defaults to a new source entry.
+///
+/// Only fills fields that are still `None` — never overwrites a
+/// caller-supplied value. This mirrors the retroactive migration logic in
+/// `reconcile::apply_composio_source_caps_migration` so the same defaults
+/// are applied consistently at creation time and during migration.
+pub fn apply_kind_defaults(entry: &mut MemorySourceEntry) {
+    match entry.kind {
+        SourceKind::GithubRepo => {
+            if entry.max_prs.is_none() {
+                entry.max_prs = Some(10);
+            }
+            if entry.max_issues.is_none() {
+                entry.max_issues = Some(10);
+            }
+            if entry.max_commits.is_none() {
+                entry.max_commits = Some(50);
+            }
+        }
+        SourceKind::RssFeed => {
+            if entry.max_items.is_none() {
+                entry.max_items = Some(20);
+            }
+        }
+        SourceKind::TwitterQuery => {
+            if entry.since_days.is_none() {
+                entry.since_days = Some(7);
+            }
+        }
+        // Folder / WebPage / Composio: no defaults to apply here.
+        // Composio defaults are set at upsert time in registry::upsert_composio_source.
+        _ => {}
+    }
 }
 
 // ── Update ──
@@ -390,6 +425,75 @@ pub async fn monthly_cost_summary_rpc() -> Result<RpcOutcome<MonthlyCostSummaryR
             total_items,
             total_input_tokens,
             total_output_tokens,
+        },
+        vec![],
+    ))
+}
+
+// ── Apply All In ──
+
+/// Response returned by `memory_sources_apply_all_in`.
+#[derive(Debug, serde::Serialize)]
+pub struct AllInResponse {
+    /// All memory source entries after the "all in" transformation
+    /// (every source enabled, every cap cleared).
+    pub sources: Vec<MemorySourceEntry>,
+    /// Number of sync tasks spawned (one per enabled source).
+    pub sync_triggered: u32,
+}
+
+/// Enable ALL memory sources, clear all caps, and trigger a sync for
+/// every source.
+///
+/// Returns immediately with the updated source list and the number of
+/// syncs queued. Individual syncs run in the background and publish
+/// `MemorySyncStageChanged` events as they progress.
+pub async fn apply_all_in_rpc() -> Result<RpcOutcome<AllInResponse>, String> {
+    tracing::info!("[memory_sources] apply_all_in_rpc: entry");
+
+    // Enable all sources and clear caps.
+    let sources = registry::apply_all_in().await?;
+
+    // Trigger a background sync for every enabled source.
+    let config = config_rpc::load_config_with_timeout().await?;
+    let mut sync_triggered: u32 = 0;
+
+    for source in &sources {
+        if !source.enabled {
+            continue;
+        }
+        tracing::debug!(
+            source_id = %source.id,
+            kind = %source.kind.as_str(),
+            "[memory_sources] apply_all_in_rpc: triggering sync"
+        );
+        match crate::openhuman::memory_sources::sync::sync_source(source.clone(), config.clone())
+            .await
+        {
+            Ok(()) => {
+                sync_triggered += 1;
+            }
+            Err(e) => {
+                // Non-fatal: log and continue — best-effort sync trigger.
+                tracing::warn!(
+                    source_id = %source.id,
+                    error = %e,
+                    "[memory_sources] apply_all_in_rpc: sync trigger failed for source"
+                );
+            }
+        }
+    }
+
+    tracing::info!(
+        sources = sources.len(),
+        sync_triggered,
+        "[memory_sources] apply_all_in_rpc: complete"
+    );
+
+    Ok(RpcOutcome::new(
+        AllInResponse {
+            sources,
+            sync_triggered,
         },
         vec![],
     ))

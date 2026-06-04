@@ -452,18 +452,9 @@ export async function openhumanGetAgentPaths(): Promise<CommandResponse<AgentPat
 
 /** Partial update for the agent's editable filesystem roots (issue #3240). */
 export interface AgentPathsUpdate {
-  /**
-   * New absolute action sandbox path. An empty string clears the override and
-   * reverts to the default; omit the field to leave it unchanged.
-   */
   action_dir?: string;
 }
 
-/**
- * Update the agent's `action_dir` sandbox root. The backend validates the path
- * (must be absolute; auto-creates a missing directory; rejects the internal
- * workspace dir) and returns the refreshed {@link AgentPaths} payload.
- */
 export async function openhumanUpdateAgentPaths(
   update: AgentPathsUpdate
 ): Promise<CommandResponse<AgentPaths>> {

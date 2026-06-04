@@ -168,6 +168,7 @@ const messages: TranslationMap = {
   'clearData.failed': "Échec de l'effacement des données et de la déconnexion. Réessaie.",
   'clearData.failedLogout': 'Échec de la déconnexion. Réessaie.',
   'clearData.failedPersist': "Échec de l'effacement de l'état persisté. Réessaie.",
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Bienvenue sur OpenHuman',
   'welcome.subtitle':
     'Ton assistant IA personnel super-intelligent. Privé, simple et extrêmement puissant.',
@@ -2019,6 +2020,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Chargement des connexions…',
   'memorySources.noConnections':
     "Aucune connexion Composio active trouvée. Connectez d'abord une intégration.",
+  'memorySources.connectionAccount': 'Compte',
   'memorySources.pickConnection': 'Choisissez une connexion',
   'memorySources.selectConnection': '— Sélectionnez une connexion —',
   'memorySources.composioListFailed': 'Échec du chargement des connexions Composio.',
@@ -2071,6 +2073,32 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': 'Arbre construit',
   'memorySources.build.failedTitle': 'Échec de construction',
   'memorySources.build.sealsMessage': 'scellement(s) terminé(s)',
+  'memorySources.allIn.button': 'Tout activer',
+  'memorySources.allIn.title': 'Tout activer ?',
+  'memorySources.allIn.message':
+    'Cela activera toutes les sources de mémoire et supprimera toutes les limites de synchronisation. Cela construit le graphe de mémoire le plus riche, mais peut utiliser davantage de crédits.',
+  'memorySources.allIn.confirm': 'Oui',
+  'memorySources.allIn.cancel': 'Non',
+  'memorySources.allIn.success': 'Toutes les sources activées sans limite. Synchronisation lancée.',
+  'memorySources.allIn.failed': "Impossible d'appliquer tout activer. Veuillez réessayer.",
+  'memorySources.settings.button': 'Paramètres',
+  'memorySources.settings.title': 'Paramètres de synchronisation',
+  'memorySources.settings.maxPrs': 'Nombre maximal de pull requests',
+  'memorySources.settings.maxIssues': "Nombre maximal d'issues",
+  'memorySources.settings.maxCommits': 'Nombre maximal de commits',
+  'memorySources.settings.maxItems': "Nombre maximal d'éléments",
+  'memorySources.settings.sinceDays': 'Période de recherche (jours)',
+  'memorySources.settings.syncDepthDays': 'Profondeur de synchronisation (jours)',
+  'memorySources.settings.maxTokens': 'Tokens maximum par synchronisation',
+  'memorySources.settings.maxCost': 'Coût maximum par synchronisation (USD)',
+  'memorySources.settings.unlimited': 'Illimité',
+  'memorySources.settings.unlimitedTooltip':
+    'Vous avez choisi de synchroniser le maximum pour {toolkit}. Vous pouvez modifier les limites ici.',
+  'memorySources.settings.maxed': 'Plein',
+  'memorySources.settings.save': 'Enregistrer',
+  'memorySources.settings.saving': 'Enregistrement…',
+  'memorySources.settings.saved': 'Paramètres enregistrés',
+  'memorySources.settings.saveFailed': "Impossible d'enregistrer les paramètres",
   'backend.aiBackend': 'Backend IA',
   'backend.cloud': 'Cloud',
   'backend.recommended': 'Recommandé',
@@ -3814,6 +3842,17 @@ const messages: TranslationMap = {
   'settings.agentAccess.agentBlocked': "bloqué pour l'agent",
   'settings.agentAccess.internalStateDesc':
     "Bases de données mémoire, sessions, jetons et autres données essentielles. Non accessible aux outils de l'agent.",
+  'settings.agentAccess.actionDirInputLabel': "Chemin du bac à sable d'actions",
+  'settings.agentAccess.actionDirSave': 'Enregistrer',
+  'settings.agentAccess.actionDirSaving': 'Enregistrement…',
+  'settings.agentAccess.actionDirSaved': "Bac à sable d'actions mis à jour.",
+  'settings.agentAccess.actionDirEmptyError': 'Le chemin ne peut pas être vide.',
+  'settings.agentAccess.actionDirSaveError':
+    "Impossible de mettre à jour le bac à sable d'actions.",
+  'settings.agentAccess.actionDirEnvOverrideError':
+    "OPENHUMAN_ACTION_DIR est défini — désactivez la variable d'environnement pour modifier cela depuis les Paramètres.",
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    "Remplacé par OPENHUMAN_ACTION_DIR — désactivez la variable d'environnement pour gérer cela depuis les Paramètres.",
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',

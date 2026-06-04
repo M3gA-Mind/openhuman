@@ -92,6 +92,11 @@ pub async fn stop_login_gated_services(config: &Config) {
     //    accumulate duplicate rdev listeners across logout → login cycles.
     crate::openhuman::voice::dictation_listener::stop();
 
+    // 6. Always-on listening — disable the runtime gate so the mic capture loop
+    //    stops transcribing/delivering after logout (no audio processed while
+    //    logged out). Symmetric with start_login_gated_services step 3b.
+    crate::openhuman::voice::always_on::stop();
+
     log::info!("[services] all login-gated services stopped");
 }
 
@@ -171,6 +176,33 @@ pub async fn store_session(
         sanitize_stored_session_user(user).unwrap_or(settings)
     };
     metadata.insert("user_json".to_string(), user_for_store.to_string());
+
+    // Record the JWT `exp` so `require_live_session_token` can reject an expired
+    // token locally instead of firing a doomed backend 401 (#3297 RCA — the
+    // TAURI-RUST-8WY/8WZ flood). Local offline sessions aren't JWTs and carry no
+    // `exp`; `decode_jwt_exp` returns None for them and the key is simply omitted
+    // (presence-only check + the `flatten_authed_error` 401 net still apply).
+    if !local_session {
+        match crate::api::jwt::decode_jwt_exp(trimmed_token) {
+            Some(exp) => {
+                metadata.insert(
+                    crate::openhuman::credentials::session_support::SESSION_EXPIRES_AT_META
+                        .to_string(),
+                    exp.to_rfc3339(),
+                );
+                tracing::info!(
+                    domain = "credentials",
+                    operation = "store_session",
+                    "[credentials] recorded app-session expiry exp={exp} for local precheck"
+                );
+            }
+            None => tracing::debug!(
+                domain = "credentials",
+                operation = "store_session",
+                "[credentials] app-session token has no decodable `exp`; local expiry precheck disabled (falls back to 401 net)"
+            ),
+        }
+    }
 
     // Determine user_id so we can scope the openhuman directory to this user.
     let resolved_user_id = metadata.get("user_id").cloned();

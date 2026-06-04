@@ -1025,3 +1025,160 @@ fn classify_agent_anyhow_does_not_leak_when_downcast_succeeds() {
     assert_ne!(msg, AGENT_JOB_USER_FAILURE_MESSAGE);
     assert!(msg.contains("credentials"));
 }
+
+// ── #3312: scheduler auto-recovery ──────────────────────────────────────────
+
+/// #3312: a successful `tick_once` poll must publish
+/// `HealthChanged { component: "scheduler", healthy: true }` even when
+/// the job queue is empty. Without this recovery signal, a single
+/// transient job failure that flipped the component to `error` via
+/// `process_due_jobs` would stay there indefinitely while the queue
+/// was idle, leaving the Docker health check returning 503 for hours
+/// until a manual restart (the production bug captured 924 consecutive
+/// failures across 7h43m).
+///
+/// We assert on the bus event rather than the process-global registry
+/// row so this test doesn't race the many other tests in this binary
+/// that mutate the same `"scheduler"` row: snapshotting the wire is
+/// monotonic and per-subscriber, while the registry row is a
+/// last-writer-wins map that any parallel test can flip.
+#[tokio::test]
+async fn scheduler_tick_once_publishes_health_recovery_signal_on_empty_queue() {
+    use crate::core::event_bus::{
+        init_global, subscribe_global, DomainEvent, EventHandler, DEFAULT_CAPACITY,
+    };
+    use async_trait::async_trait;
+    use std::sync::Mutex as StdMutex;
+
+    #[derive(Default)]
+    struct HealthEventCollector {
+        events: Arc<StdMutex<Vec<(String, bool)>>>,
+    }
+
+    #[async_trait]
+    impl EventHandler for HealthEventCollector {
+        fn name(&self) -> &str {
+            "test::scheduler::tick_once::collector"
+        }
+
+        fn domains(&self) -> Option<&[&str]> {
+            Some(&["system"])
+        }
+
+        async fn handle(&self, event: &DomainEvent) {
+            if let DomainEvent::HealthChanged {
+                component, healthy, ..
+            } = event
+            {
+                self.events
+                    .lock()
+                    .unwrap()
+                    .push((component.clone(), *healthy));
+            }
+        }
+    }
+
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp).await;
+
+    init_global(DEFAULT_CAPACITY);
+    let events: Arc<StdMutex<Vec<(String, bool)>>> = Arc::new(StdMutex::new(Vec::new()));
+    let collector = Arc::new(HealthEventCollector {
+        events: Arc::clone(&events),
+    });
+    let _handle = subscribe_global(collector).expect("bus subscriber installed");
+
+    let security = Arc::new(SecurityPolicy::from_config(
+        &config.autonomy,
+        &config.workspace_dir,
+        &config.action_dir,
+    ));
+
+    // No jobs are due — this is exactly the scenario from #3312 after
+    // the failing cron job: the queue stays empty for a long stretch
+    // while a prior error sits in the registry. The fix is verified by
+    // observing that the tick still emits the recovery signal.
+    let before = events.lock().unwrap().len();
+    // Start with `None` so the very first tick is treated as a
+    // transition and fires the recovery event — same shape as `run()`
+    // immediately after boot.
+    let mut last_emitted_health: Option<bool> = None;
+    tick_once(&config, &security, &mut last_emitted_health).await;
+
+    // Bus delivery is async — wait briefly for the subscriber to drain.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        let saw_recovery = events
+            .lock()
+            .unwrap()
+            .iter()
+            .skip(before)
+            .any(|(component, healthy)| component == "scheduler" && *healthy);
+        if saw_recovery {
+            break;
+        }
+        if std::time::Instant::now() >= deadline {
+            let recent: Vec<(String, bool)> = events
+                .lock()
+                .unwrap()
+                .iter()
+                .skip(before)
+                .cloned()
+                .collect();
+            panic!(
+                "tick_once with an empty queue must publish HealthChanged{{scheduler, healthy: true}} (#3312); \
+                 events after tick: {recent:?}"
+            );
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+}
+
+/// #3329 review nit (oxoxDev): a successful empty poll must only emit a
+/// `HealthChanged` event on a **transition**, not every tick. Once the
+/// recovery signal is on the wire, subsequent steady-state ticks should
+/// stay silent so subscribers don't see an event-storm on a 30 s poll
+/// interval.
+///
+/// We assert on the local `last_emitted_health` tracker rather than the
+/// global bus to stay race-free against the many sibling tests in this
+/// binary that publish `HealthChanged { component: "scheduler", ... }`
+/// for unrelated reasons. The tracker's transitions are 1:1 with the
+/// `publish_global` calls inside `tick_once` by construction (every
+/// emit-branch updates it, every no-emit branch doesn't), so a stable
+/// `Some(true)` across multiple successful ticks is a sufficient proxy
+/// for "no event hit the wire".
+#[tokio::test]
+async fn scheduler_tick_once_does_not_re_emit_recovery_signal_on_steady_state() {
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp).await;
+    let security = Arc::new(SecurityPolicy::from_config(
+        &config.autonomy,
+        &config.workspace_dir,
+        &config.action_dir,
+    ));
+
+    let mut last_emitted_health: Option<bool> = None;
+
+    // First tick: transition from None → Some(true), publishes once.
+    tick_once(&config, &security, &mut last_emitted_health).await;
+    assert_eq!(
+        last_emitted_health,
+        Some(true),
+        "first successful tick must flip the local tracker to Some(true) \
+         (and publish HealthChanged on the bus)"
+    );
+
+    // Second + third ticks: steady-state, no transition. The tracker
+    // must stay Some(true) — meaning the `if *last_emitted_health !=
+    // Some(true)` guard inside `tick_once` short-circuited and no
+    // `publish_global` call ran on those ticks.
+    for tick in 2..=5 {
+        tick_once(&config, &security, &mut last_emitted_health).await;
+        assert_eq!(
+            last_emitted_health,
+            Some(true),
+            "tick #{tick} must leave the tracker at Some(true) (steady state, no publish)"
+        );
+    }
+}
