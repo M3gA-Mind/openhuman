@@ -265,23 +265,30 @@ export default function NotchApp() {
   // ── Core URL bootstrap ──────────────────────────────────────────────────────
 
   useEffect(() => {
+    // Track the in-flight connect's disposer so an unmount (or a new core-url)
+    // cancels a still-resolving connectCoreSocket — otherwise the async branch
+    // could attach listeners / setState after teardown.
+    let disposePendingConnect: (() => void) | undefined;
+
     // Check if Rust already injected the URL before this component mounted.
     const preloaded = (window as { __OPENHUMAN_NOTCH_CORE_URL__?: string })
       .__OPENHUMAN_NOTCH_CORE_URL__;
     if (preloaded) {
-      connectSocket(preloaded);
+      disposePendingConnect = connectSocket(preloaded);
     }
 
     // Also listen for the event (fires when core becomes ready after mount).
     const handler = (e: CustomEvent<{ url: string }>) => {
       if (e.detail?.url) {
-        connectSocket(e.detail.url);
+        disposePendingConnect?.();
+        disposePendingConnect = connectSocket(e.detail.url);
       }
     };
     window.addEventListener('notch:core-url', handler as EventListener);
 
     return () => {
       window.removeEventListener('notch:core-url', handler as EventListener);
+      disposePendingConnect?.();
       socketRef.current?.disconnect();
       socketRef.current = null;
       clearDismiss();

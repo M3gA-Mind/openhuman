@@ -3047,6 +3047,8 @@ async fn memory_sync_provider_trait_defaults_and_connection_hook_are_determinist
         toolkit: "raw_coverage".into(),
         connection_id: Some("conn-1".into()),
         usage: Default::default(),
+        max_items: None,
+        sync_depth_days: None,
     };
     let provider = RawCoverageProvider { fail_profile: true };
     assert_eq!(provider.sync_interval_secs(), Some(15 * 60));

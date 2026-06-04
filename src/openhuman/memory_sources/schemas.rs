@@ -56,6 +56,24 @@ fn kind_specific_fields() -> Vec<FieldSchema> {
             required: false,
         },
         FieldSchema {
+            name: "max_commits",
+            ty: TypeSchema::Option(Box::new(TypeSchema::U64)),
+            comment: "Max commits per sync for github_repo sources.",
+            required: false,
+        },
+        FieldSchema {
+            name: "max_issues",
+            ty: TypeSchema::Option(Box::new(TypeSchema::U64)),
+            comment: "Max issues per sync for github_repo sources.",
+            required: false,
+        },
+        FieldSchema {
+            name: "max_prs",
+            ty: TypeSchema::Option(Box::new(TypeSchema::U64)),
+            comment: "Max pull requests per sync for github_repo sources.",
+            required: false,
+        },
+        FieldSchema {
             name: "query",
             ty: TypeSchema::Option(Box::new(TypeSchema::String)),
             comment: "Search query for twitter_query sources.",
@@ -70,7 +88,7 @@ fn kind_specific_fields() -> Vec<FieldSchema> {
         FieldSchema {
             name: "max_items",
             ty: TypeSchema::Option(Box::new(TypeSchema::U64)),
-            comment: "Maximum items for rss_feed sources.",
+            comment: "Maximum items for rss_feed or composio sources.",
             required: false,
         },
         FieldSchema {
@@ -114,6 +132,7 @@ pub fn all_controller_schemas() -> Vec<ControllerSchema> {
         schemas("sync_audit_log"),
         schemas("estimate_sync_cost"),
         schemas("monthly_cost_summary"),
+        schemas("apply_all_in"),
     ]
 }
 
@@ -166,6 +185,10 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
         RegisteredController {
             schema: schemas("monthly_cost_summary"),
             handler: handle_monthly_cost_summary,
+        },
+        RegisteredController {
+            schema: schemas("apply_all_in"),
+            handler: handle_apply_all_in,
         },
     ]
 }
@@ -487,6 +510,29 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 },
             ],
         },
+        "apply_all_in" => ControllerSchema {
+            namespace: NAMESPACE,
+            function: "apply_all_in",
+            description: "Enable ALL memory sources, clear all per-source caps, \
+                          and trigger a background sync for every source. \
+                          Returns immediately with the updated source list and \
+                          the count of sync tasks queued.",
+            inputs: vec![],
+            outputs: vec![
+                FieldSchema {
+                    name: "sources",
+                    ty: TypeSchema::Array(Box::new(TypeSchema::Ref("MemorySourceEntry"))),
+                    comment: "All memory sources after the all-in transformation.",
+                    required: true,
+                },
+                FieldSchema {
+                    name: "sync_triggered",
+                    ty: TypeSchema::U64,
+                    comment: "Number of sync tasks spawned.",
+                    required: true,
+                },
+            ],
+        },
         other => panic!("unknown memory_sources schema function: {other}"),
     }
 }
@@ -561,6 +607,10 @@ fn handle_estimate_sync_cost(params: Map<String, Value>) -> ControllerFuture {
 
 fn handle_monthly_cost_summary(_params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move { to_json(rpc::monthly_cost_summary_rpc().await?) })
+}
+
+fn handle_apply_all_in(_params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move { to_json(rpc::apply_all_in_rpc().await?) })
 }
 
 fn parse_value<T: DeserializeOwned>(v: Value) -> Result<T, String> {

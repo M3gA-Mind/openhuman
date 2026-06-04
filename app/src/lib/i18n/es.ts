@@ -170,6 +170,7 @@ const messages: TranslationMap = {
   'clearData.failedLogout': 'No se pudo cerrar sesión. Inténtalo de nuevo.',
   'clearData.failedPersist':
     'No se pudo borrar el estado persistido de la app. Inténtalo de nuevo.',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'Bienvenido a OpenHuman',
   'welcome.subtitle':
     'Tu super inteligencia artificial personal. Privada, simple y extremadamente poderosa.',
@@ -2013,6 +2014,7 @@ const messages: TranslationMap = {
   'memorySources.loadingConnections': 'Cargando conexiones…',
   'memorySources.noConnections':
     'No se encontraron conexiones activas de Composio. Conecta una integración primero.',
+  'memorySources.connectionAccount': 'Cuenta',
   'memorySources.pickConnection': 'Elige una conexión',
   'memorySources.selectConnection': '— Seleccionar una conexión —',
   'memorySources.composioListFailed': 'Error al cargar las conexiones Composio.',
@@ -2065,6 +2067,33 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': 'Árbol construido',
   'memorySources.build.failedTitle': 'Construcción fallida',
   'memorySources.build.sealsMessage': 'sellado(s) completado(s)',
+  'memorySources.allIn.button': 'Todo activo',
+  'memorySources.allIn.title': '¿Activar todo?',
+  'memorySources.allIn.message':
+    'Esto activará todas las fuentes de memoria y eliminará todos los límites de sincronización. Construye el gráfico de memoria más rico, pero puede usar más créditos.',
+  'memorySources.allIn.confirm': 'Sí',
+  'memorySources.allIn.cancel': 'No',
+  'memorySources.allIn.success':
+    'Todas las fuentes activadas sin límites. Sincronización iniciada.',
+  'memorySources.allIn.failed': 'No se pudo aplicar todo activo. Por favor, inténtelo de nuevo.',
+  'memorySources.settings.button': 'Configuración',
+  'memorySources.settings.title': 'Configuración de sincronización',
+  'memorySources.settings.maxPrs': 'Máximo de pull requests',
+  'memorySources.settings.maxIssues': 'Máximo de issues',
+  'memorySources.settings.maxCommits': 'Máximo de commits',
+  'memorySources.settings.maxItems': 'Máximo de elementos',
+  'memorySources.settings.sinceDays': 'Período de búsqueda (días)',
+  'memorySources.settings.syncDepthDays': 'Profundidad de sincronización (días)',
+  'memorySources.settings.maxTokens': 'Máximo de tokens por sincronización',
+  'memorySources.settings.maxCost': 'Costo máximo por sincronización (USD)',
+  'memorySources.settings.unlimited': 'Sin límite',
+  'memorySources.settings.unlimitedTooltip':
+    'Has optado por sincronizar el máximo para {toolkit}. Puedes cambiar los límites aquí.',
+  'memorySources.settings.maxed': 'Lleno',
+  'memorySources.settings.save': 'Guardar',
+  'memorySources.settings.saving': 'Guardando…',
+  'memorySources.settings.saved': 'Configuración guardada',
+  'memorySources.settings.saveFailed': 'No se pudo guardar la configuración',
   'backend.aiBackend': 'Backend de IA',
   'backend.cloud': 'Nube',
   'backend.recommended': 'Recomendado',
@@ -3802,6 +3831,16 @@ const messages: TranslationMap = {
   'settings.agentAccess.agentBlocked': 'bloqueado para el agente',
   'settings.agentAccess.internalStateDesc':
     'Bases de datos de memoria, sesiones, tokens y otros datos esenciales. No accesible para herramientas del agente.',
+  'settings.agentAccess.actionDirInputLabel': 'Ruta del sandbox de acciones',
+  'settings.agentAccess.actionDirSave': 'Guardar',
+  'settings.agentAccess.actionDirSaving': 'Guardando…',
+  'settings.agentAccess.actionDirSaved': 'Sandbox de acciones actualizado.',
+  'settings.agentAccess.actionDirEmptyError': 'La ruta no puede estar vacía.',
+  'settings.agentAccess.actionDirSaveError': 'No se pudo actualizar el sandbox de acciones.',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    'OPENHUMAN_ACTION_DIR está definido — elimina la variable de entorno para editar esto desde Ajustes.',
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    'Anulado por OPENHUMAN_ACTION_DIR — elimina la variable de entorno para gestionarlo desde Ajustes.',
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
@@ -4857,6 +4896,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'Ventana de memoria',
   'memoryData.windowUpdated': 'Ventana de memoria actualizada',
   'memoryData.windowUpdatedMsg': 'Establecida en {window}.',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'Puerta de aprobación desactivada',
+  'security.approvalGateDisabled.body':
+    'OPENHUMAN_APPROVAL_GATE=0 está configurado en tu entorno. Las herramientas con efectos externos se ejecutarán sin pedir confirmación.',
+  'security.approvalGateOverrideIgnored.title': 'Anulación bloqueada',
+  'security.approvalGateOverrideIgnored.body':
+    'Se detectó una anulación OPENHUMAN_APPROVAL_GATE=0, pero se ignoró: la aplicación de escritorio mantiene siempre activa la puerta de aprobación.',
 
   // Run queue
   'runQueue.mode.interrupt': 'Interrumpir',

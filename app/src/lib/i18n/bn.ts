@@ -161,6 +161,7 @@ const messages: TranslationMap = {
   'clearData.failed': 'ডেটা মুছতে ও লগ আউট করতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।',
   'clearData.failedLogout': 'লগ আউট করতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।',
   'clearData.failedPersist': 'অ্যাপ স্টেট মুছতে ব্যর্থ হয়েছে। আবার চেষ্টা করুন।',
+  'welcome.logoAlt': 'OpenHuman',
   'welcome.title': 'OpenHuman-এ স্বাগতম',
   'welcome.subtitle':
     'আপনার ব্যক্তিগত AI সুপার ইন্টেলিজেন্স। ব্যক্তিগত, সহজ এবং অত্যন্ত শক্তিশালী।',
@@ -1970,6 +1971,7 @@ const messages: TranslationMap = {
     'কোনো স্বনির্ধারিত উৎস পাওয়া যায়নি। একটি ফোল্ডার যোগ করুন, xqx1x rex, xqxqx pxkx ফিড, অথবা ওয়েব পেজ আরম্ভ করুন।',
   'memorySources.loadingConnections': 'সংযোগ লোড করা হচ্ছে...',
   'memorySources.noConnections': 'কোনো সক্রিয় xqxqx সংযোগ পাওয়া যায়নি। একটা সম্পর্ক প্রথমে।',
+  'memorySources.connectionAccount': 'অ্যাকাউন্ট',
   'memorySources.pickConnection': 'একটি সংযোগ নির্বাচন করুন',
   'memorySources.selectConnection': '- একটি সংযোগ নির্বাচন করুন -',
   'memorySources.composioListFailed': 'Xqxqx সংযোগ লোড করতে ব্যর্থ।',
@@ -2022,6 +2024,32 @@ const messages: TranslationMap = {
   'memorySources.build.successTitle': 'ট্রি তৈরি হয়েছে',
   'memorySources.build.failedTitle': 'তৈরি ব্যর্থ',
   'memorySources.build.sealsMessage': 'সিল সম্পন্ন হয়েছে',
+  'memorySources.allIn.button': 'সব চালু',
+  'memorySources.allIn.title': 'সব সক্রিয় করবেন?',
+  'memorySources.allIn.message':
+    'এটি সমস্ত মেমরি উৎস সক্রিয় করবে এবং সিঙ্ক সীমা সরিয়ে দেবে। এটি সমৃদ্ধতম মেমরি গ্রাফ তৈরি করে, তবে আরও ক্রেডিট ব্যবহার করতে পারে।',
+  'memorySources.allIn.confirm': 'হ্যাঁ',
+  'memorySources.allIn.cancel': 'না',
+  'memorySources.allIn.success': 'সব উৎস সীমা ছাড়া সক্রিয় হয়েছে। সিঙ্ক শুরু হয়েছে।',
+  'memorySources.allIn.failed': 'সব চালু করা সম্ভব হয়নি। আবার চেষ্টা করুন।',
+  'memorySources.settings.button': 'সেটিংস',
+  'memorySources.settings.title': 'সিঙ্ক সেটিংস',
+  'memorySources.settings.maxPrs': 'সর্বোচ্চ পুল রিকোয়েস্ট',
+  'memorySources.settings.maxIssues': 'সর্বোচ্চ ইস্যু',
+  'memorySources.settings.maxCommits': 'সর্বোচ্চ কমিট',
+  'memorySources.settings.maxItems': 'সর্বোচ্চ আইটেম',
+  'memorySources.settings.sinceDays': 'পূর্ববর্তী সময় (দিনে)',
+  'memorySources.settings.syncDepthDays': 'সিঙ্ক গভীরতা (দিনে)',
+  'memorySources.settings.maxTokens': 'প্রতি সিঙ্কে সর্বোচ্চ টোকেন',
+  'memorySources.settings.maxCost': 'প্রতি সিঙ্কে সর্বোচ্চ খরচ (USD)',
+  'memorySources.settings.unlimited': 'সীমাহীন',
+  'memorySources.settings.unlimitedTooltip':
+    'আপনি {toolkit}-এর জন্য সর্বাধিক সিঙ্ক করার অপশন বেছে নিয়েছেন। আপনি এখানে সীমা পরিবর্তন করতে পারেন।',
+  'memorySources.settings.maxed': 'পূর্ণ',
+  'memorySources.settings.save': 'সংরক্ষণ',
+  'memorySources.settings.saving': 'সংরক্ষণ হচ্ছে…',
+  'memorySources.settings.saved': 'সেটিংস সংরক্ষিত হয়েছে',
+  'memorySources.settings.saveFailed': 'সেটিংস সংরক্ষণ করা সম্ভব হয়নি',
   'backend.aiBackend': 'AI ব্যাকএন্ড',
   'backend.cloud': 'ক্লাউড',
   'backend.recommended': 'প্রস্তাবিত',
@@ -3730,6 +3758,16 @@ const messages: TranslationMap = {
   'settings.agentAccess.agentBlocked': 'এজেন্ট-অবরুদ্ধ',
   'settings.agentAccess.internalStateDesc':
     'মেমরি ডেটাবেস, সেশন, টোকেন এবং অন্যান্য মূল ডেটা। এজেন্ট টুলের কাছে অ্যাক্সেসযোগ্য নয়।',
+  'settings.agentAccess.actionDirInputLabel': 'অ্যাকশন স্যান্ডবক্স পাথ',
+  'settings.agentAccess.actionDirSave': 'সংরক্ষণ',
+  'settings.agentAccess.actionDirSaving': 'সংরক্ষণ করা হচ্ছে…',
+  'settings.agentAccess.actionDirSaved': 'অ্যাকশন স্যান্ডবক্স আপডেট করা হয়েছে।',
+  'settings.agentAccess.actionDirEmptyError': 'পাথ ফাঁকা থাকতে পারবে না।',
+  'settings.agentAccess.actionDirSaveError': 'অ্যাকশন স্যান্ডবক্স আপডেট করা যায়নি।',
+  'settings.agentAccess.actionDirEnvOverrideError':
+    'OPENHUMAN_ACTION_DIR সেট করা আছে — সেটিংস থেকে সম্পাদনা করতে এনভ ভ্যারিয়েবলটি আনসেট করুন।',
+  'settings.agentAccess.actionDirEnvOverrideNote':
+    'OPENHUMAN_ACTION_DIR দ্বারা ওভাররাইড হয়েছে — সেটিংস থেকে পরিচালনা করতে এনভ ভ্যারিয়েবলটি আনসেট করুন।',
   'settings.agentAccess.approvalHistory': 'Approval history',
   'settings.agentAccess.approvalHistoryDesc':
     'Review past Approve / Deny decisions the agent requested.',
@@ -4755,6 +4793,13 @@ const messages: TranslationMap = {
   'memoryData.windowError': 'মেমোরি উইন্ডো',
   'memoryData.windowUpdated': 'মেমোরি উইন্ডো আপডেট হয়েছে',
   'memoryData.windowUpdatedMsg': '{window}-এ সেট করা হয়েছে।',
+  // Security banner (approval-gate host-aware boot state)
+  'security.approvalGateDisabled.title': 'অনুমোদন গেট নিষ্ক্রিয়',
+  'security.approvalGateDisabled.body':
+    'আপনার পরিবেশে OPENHUMAN_APPROVAL_GATE=0 সেট করা আছে। বাহ্যিক প্রভাব সম্পন্ন টুলগুলি নিশ্চিতকরণ ছাড়াই চলবে।',
+  'security.approvalGateOverrideIgnored.title': 'ওভাররাইড অবরুদ্ধ',
+  'security.approvalGateOverrideIgnored.body':
+    'একটি OPENHUMAN_APPROVAL_GATE=0 ওভাররাইড সনাক্ত করা হয়েছিল কিন্তু উপেক্ষা করা হয়েছে: ডেস্কটপ অ্যাপ সর্বদা অনুমোদন গেট চালু রাখে।',
 
   // Run queue
   'runQueue.mode.interrupt': 'বাধা দিন',
