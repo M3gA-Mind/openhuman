@@ -708,6 +708,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
       model: 'reasoning-v1',
       profileId: 'default',
       locale: 'en',
+      voice: false,
     });
   });
 
@@ -732,6 +733,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
         model: 'reasoning-v1',
         profileId: 'default',
         locale: 'en',
+        voice: true,
       });
     });
   });
@@ -784,6 +786,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
       model: 'reasoning-v1',
       profileId: 'default',
       locale: 'en',
+      voice: false,
     });
     expect(screen.getByRole('button', { name: 'Send message' })).toBeDisabled();
     resolveSend?.();
@@ -1149,6 +1152,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
         model: 'reasoning-v1',
         profileId: 'default',
         locale: 'en',
+        voice: false,
       });
     });
   });
@@ -1224,6 +1228,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
         model: 'reasoning-v1',
         profileId: 'default',
         locale: 'en',
+        voice: false,
       });
     });
   });
