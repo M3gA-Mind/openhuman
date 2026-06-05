@@ -386,7 +386,10 @@ mod tests {
             MonitorStartRequest {
                 command: "yes x | head -c 1100000".into(),
                 description: None,
-                timeout_ms: Some(2_000),
+                // Generous so the 1.1 MB is fully captured (and the bound trips)
+                // even under slow `cargo-llvm-cov` instrumentation — a 2 s cap
+                // killed the command early on loaded CI, leaving dropped_bytes 0.
+                timeout_ms: Some(30_000),
                 persistent: false,
                 category: None,
             },
@@ -398,7 +401,9 @@ mod tests {
         .unwrap()
         .value;
         let mut snapshot = store.get(&response.monitor_id).await.unwrap();
-        for _ in 0..50 {
+        // Poll up to ~20 s (400 × 50 ms) — bounded by the monitor timeout above;
+        // breaks early on dropped output or a terminal status.
+        for _ in 0..400 {
             if snapshot.dropped_bytes > 0
                 || matches!(
                     snapshot.status,
