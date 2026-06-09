@@ -511,8 +511,7 @@ describe('VoicePanel', () => {
 
   // ─── Always-on listening toggle ↔ notch indicator ───────────────────────
 
-  // Temporarily hidden in the UI (always-on toggle disabled for now in VoicePanel).
-  it.skip('shows the notch when always-on listening is enabled and hides it when disabled', async () => {
+  it('shows the notch when always-on listening is enabled and hides it when disabled', async () => {
     renderWithProviders(<VoicePanel />, { initialEntries: ['/settings/voice'] });
 
     const toggle = await screen.findByTestId('voice-always-on-toggle');
@@ -537,8 +536,7 @@ describe('VoicePanel', () => {
     await waitFor(() => expect(vi.mocked(syncNotchVisibility)).toHaveBeenCalledWith(false));
   });
 
-  // Temporarily hidden in the UI (always-on toggle disabled for now in VoicePanel).
-  it.skip('does not touch the notch and reverts the toggle when the update RPC fails', async () => {
+  it('does not touch the notch and reverts the toggle when the update RPC fails', async () => {
     vi.mocked(openhumanUpdateVoiceServerSettings).mockRejectedValueOnce(new Error('rpc down'));
 
     renderWithProviders(<VoicePanel />, { initialEntries: ['/settings/voice'] });

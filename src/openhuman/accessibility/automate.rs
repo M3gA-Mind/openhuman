@@ -71,6 +71,9 @@ pub struct Action {
     /// Natural-language target for `vision_click` (e.g. "the green Call button").
     #[serde(default)]
     pub description: String,
+    /// Key chord / single key for `hotkey` (e.g. `["Cmd","L"]`, `["/"]`).
+    #[serde(default)]
+    pub keys: Vec<String>,
     /// Final message for `done` / `fail`.
     #[serde(default)]
     pub summary: String,
@@ -112,11 +115,38 @@ pub trait AutomateBackend: Send + Sync {
     /// Open a URL / URI-scheme (e.g. `music://…search?term=…`) via the OS opener.
     /// Used by deterministic app fast-paths; the general loop does not call it.
     async fn open_url(&self, url: &str) -> Result<String, String>;
+    /// Open a URL in a **specific** app (e.g. a chosen browser) so navigation
+    /// lands in the app the user named — `open_url` uses the *default* handler,
+    /// which would send a `https://` link to whatever the default browser is.
+    /// Default delegates to [`open_url`](Self::open_url) so non-browser backends
+    /// stay correct. Used by the browser fast-path.
+    async fn open_url_in_app(&self, _app: &str, url: &str) -> Result<String, String> {
+        self.open_url(url).await
+    }
+    /// Send a keyboard chord (`["Cmd","L"]`) or a single key (`["/"]`) to the
+    /// frontmost app. Lets fast-paths and the loop drive app shortcuts (focus
+    /// the address bar, YouTube `/` search, `k`/space play-pause) instead of
+    /// hunting AX labels. Default errors so input-less backends can't actuate.
+    async fn key(&self, _keys: &[String]) -> Result<String, String> {
+        Err("keyboard unsupported by this backend".to_string())
+    }
+    /// Type literal text into the frontmost app. Default errors (see [`key`]).
+    async fn type_text(&self, _text: &str) -> Result<String, String> {
+        Err("typing unsupported by this backend".to_string())
+    }
     /// Best-effort: is media currently playing? `None` when the backend can't
     /// tell (non-macOS, or not applicable). Media fast-paths use this to confirm
     /// an action *actually started playback* rather than just succeeding at the
     /// AX level — the false-success that made "play" silently no-op (§1.11).
     async fn verify_playing(&self) -> Option<bool> {
+        None
+    }
+    /// The currently-playing track as `(name, artist)`, if the backend can read
+    /// it. Used by the Music fast-path to confirm it played the *right* track
+    /// (the AX row label carries only the title, so "Numb" can resolve to the
+    /// wrong artist — see tracker §1.x). `None` when unknown (non-macOS, nothing
+    /// playing, or not applicable).
+    async fn now_playing(&self) -> Option<(String, String)> {
         None
     }
     /// Capture the target app's window + the geometry needed to map a click
@@ -183,17 +213,21 @@ fn system_prompt() -> String {
      \n\
      Respond with EXACTLY ONE JSON object and nothing else:\n\
      {\"thought\":\"...\",\"action\":\"<verb>\",\"app\":\"<optional>\",\
-     \"filter\":\"...\",\"label\":\"...\",\"value\":\"...\",\"summary\":\"...\"}\n\
+     \"filter\":\"...\",\"label\":\"...\",\"value\":\"...\",\"keys\":[],\"summary\":\"...\"}\n\
      \n\
      Verbs:\n\
      • launch     — open the app (use first if it isn't showing any elements)\n\
      • list       — re-read elements; set `filter` to a substring to narrow them\n\
      • press      — activate the element whose label matches `label`\n\
      • set_value  — type `value` into the field matching `label` (omit label = first field)\n\
+     • hotkey     — send an app keyboard shortcut; put the chord in `keys` (modifiers \
+     first, e.g. [\"Cmd\",\"L\"] to focus a browser address bar, [\"Cmd\",\"T\"] new tab) \
+     or a single key (e.g. [\"/\"] to focus YouTube search, [\"k\"] play/pause, [\"f\"] \
+     fullscreen). Prefer a known shortcut over hunting labels or clicking.\n\
      • vision_click — click an element by sight; put a short `description` of the \
      target (e.g. 'the green Call button'). Use this when the element list is \
-     EMPTY or missing your target — common for Electron apps (Slack, Discord, \
-     VS Code) that expose no accessibility tree.\n\
+     EMPTY or missing your target — common for Electron/Chromium apps (browsers, \
+     Slack, Discord, VS Code) that expose no accessibility tree.\n\
      • done       — goal achieved; put a short result in `summary`\n\
      • fail       — goal cannot be achieved; explain in `summary`\n\
      \n\
@@ -203,8 +237,11 @@ fn system_prompt() -> String {
      (e.g. open a song, THEN press its 'Play'). After such a press, `list` again \
      to see the new screen.\n\
      - Prefer an exact label match. Keep `filter` specific so the snapshot stays small.\n\
-     - If the app shows NO elements, prefer `vision_click` with a clear \
-     `description` over guessing labels.\n\
+     - For browsers and web apps, prefer `hotkey` for navigation and media control \
+     (address bar, search focus, play/pause/next) — it's faster and more reliable \
+     than clicking, and works even when the accessibility tree is empty.\n\
+     - If the app shows NO elements, prefer `hotkey` (if a known shortcut applies) \
+     or `vision_click` with a clear `description` over guessing labels.\n\
      - Output JSON only — no prose, no code fences."
         .to_string()
 }
@@ -300,6 +337,10 @@ pub async fn run(
     // instead of burning the whole step budget.
     let mut last_sig = String::new();
     let mut repeat_count = 0u32;
+    // Most recent rendered snapshot — surfaced in terminal failure responses so
+    // the agent sees what was actually on screen (instead of a bare "budget
+    // exhausted"), and can pick a real label next time.
+    let mut last_snapshot = String::new();
 
     for step in 0..opts.step_budget {
         // ── perceive ──
@@ -310,6 +351,7 @@ pub async fn run(
                 format!("(perceive error: {e})")
             }
         };
+        last_snapshot = snapshot.clone();
 
         // ── decide ──
         let user = format!(
@@ -361,8 +403,12 @@ pub async fn run(
         // ── no-progress guard ──
         if !matches!(action.action.as_str(), "done" | "fail") {
             let sig = format!(
-                "{}|{}|{}|{}",
-                action.action, action.label, action.filter, action.description
+                "{}|{}|{}|{}|{}",
+                action.action,
+                action.label,
+                action.filter,
+                action.description,
+                action.keys.join("+")
             );
             if sig == last_sig {
                 repeat_count += 1;
@@ -378,7 +424,11 @@ pub async fn run(
                     action.action
                 ));
                 return AutomateOutcome::fail(
-                    "Got stuck repeating the same action with no progress.",
+                    format!(
+                        "Stuck repeating '{}' with no progress — that action isn't advancing the goal.{} Switch tactics: pick a specific label from the screen, take a screenshot + vision_click, or use a keyboard shortcut.",
+                        action.action,
+                        screen_hint(&last_snapshot),
+                    ),
                     steps,
                 );
             }
@@ -455,6 +505,19 @@ pub async fn run(
                 }
                 backend.settle(target_app).await;
             }
+            "hotkey" => {
+                if action.keys.is_empty() {
+                    steps.push("hotkey skipped: no keys".to_string());
+                    continue;
+                }
+                let combo = action.keys.join("+");
+                progress(format!("Pressing {combo}…"), OverlayAttentionTone::Accent);
+                match backend.key(&action.keys).await {
+                    Ok(msg) => steps.push(format!("hotkey: {msg}")),
+                    Err(e) => steps.push(format!("hotkey FAILED: {e}")),
+                }
+                backend.settle(target_app).await;
+            }
             "vision_click" => {
                 let description = action.description.trim();
                 if description.is_empty() {
@@ -527,11 +590,28 @@ pub async fn run(
     log::info!("{LOG_PREFIX} step budget ({}) exhausted", opts.step_budget);
     AutomateOutcome::fail(
         format!(
-            "Step budget ({}) exhausted before the goal was confirmed complete.",
-            opts.step_budget
+            "Step budget ({}) exhausted before the goal was confirmed complete.{} Try a different approach (a screenshot/vision_click, a known keyboard shortcut, or a more specific filter) — repeating the same steps won't help.",
+            opts.step_budget,
+            screen_hint(&last_snapshot),
         ),
         steps,
     )
+}
+
+/// A compact " On screen: [role] a, [role] b, …" hint built from the last
+/// rendered snapshot, for failure responses. Empty when there's nothing useful.
+fn screen_hint(snapshot: &str) -> String {
+    let labels: Vec<&str> = snapshot
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with('[') || l.starts_with("• ["))
+        .take(10)
+        .collect();
+    if labels.is_empty() {
+        String::new()
+    } else {
+        format!(" On screen: {}.", labels.join("; "))
+    }
 }
 
 /// Production backend: real AX primitives + a fast LLM for decisions.
@@ -664,6 +744,50 @@ impl AutomateBackend for RealBackend {
         }
     }
 
+    async fn open_url_in_app(&self, app: &str, url: &str) -> Result<String, String> {
+        // macOS: `open -a "<app>" "<url>"` both launches/foregrounds the named
+        // app AND opens the URL in it — exactly the deterministic browser nav we
+        // want (no address-bar typing, no AX). Linux/Windows can't target a
+        // browser by display name as cleanly, so fall back to the default
+        // handler via `open_url` (documented best-effort).
+        #[cfg(target_os = "macos")]
+        {
+            match tokio::process::Command::new("open")
+                .arg("-a")
+                .arg(app)
+                .arg(url)
+                .output()
+                .await
+            {
+                Ok(o) if o.status.success() => Ok(format!("Opened {url} in {app}")),
+                Ok(o) => Err(format!(
+                    "open -a {app} exited {}: {}",
+                    o.status,
+                    String::from_utf8_lossy(&o.stderr).trim()
+                )),
+                Err(e) => Err(format!("failed to launch opener: {e}")),
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = app;
+            self.open_url(url).await
+        }
+    }
+
+    async fn key(&self, keys: &[String]) -> Result<String, String> {
+        use crate::openhuman::tools::implementations::computer::keyboard;
+        match keys.len() {
+            0 => Err("no keys provided".to_string()),
+            1 => keyboard::run_key(&keys[0]).await,
+            _ => keyboard::run_hotkey(keys).await,
+        }
+    }
+
+    async fn type_text(&self, text: &str) -> Result<String, String> {
+        crate::openhuman::tools::implementations::computer::keyboard::run_type_text(text).await
+    }
+
     async fn verify_playing(&self) -> Option<bool> {
         // macOS: ask Apple Music for ground-truth player state. Other OSes can't
         // verify this way → None (fast-path treats None as best-effort).
@@ -676,6 +800,34 @@ impl AutomateBackend for RealBackend {
                 .ok()?;
             let state = String::from_utf8_lossy(&out.stdout).trim().to_lowercase();
             Some(state == "playing")
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            None
+        }
+    }
+
+    async fn now_playing(&self) -> Option<(String, String)> {
+        // macOS: ask Apple Music for the current track's name + artist. We join
+        // them with a tab (unlikely in titles) so we can split unambiguously.
+        #[cfg(target_os = "macos")]
+        {
+            let script = "tell application \"Music\" to try
+                set t to current track
+                return (name of t) & \"\\t\" & (artist of t)
+            end try";
+            let out = tokio::process::Command::new("osascript")
+                .args(["-e", script])
+                .output()
+                .await
+                .ok()?;
+            let line = String::from_utf8_lossy(&out.stdout);
+            let line = line.trim();
+            if line.is_empty() {
+                return None;
+            }
+            let (name, artist) = line.split_once('\t')?;
+            Some((name.trim().to_string(), artist.trim().to_string()))
         }
         #[cfg(not(target_os = "macos"))]
         {
