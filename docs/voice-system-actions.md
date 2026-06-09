@@ -1,9 +1,9 @@
 # Voice → System Action Feature Tracker
 
 **GitHub Issue:** [#3148](https://github.com/tinyhumansai/openhuman/issues/3148)  
-**Branch:** `feat/voice-always-on-all` (cumulative) — Phase 1 landed via [#3168](https://github.com/tinyhumansai/openhuman/pull/3168); the full feature was split from the mega-PR [#3307](https://github.com/tinyhumansai/openhuman/pull/3307) into an 8-PR stack [#3340–#3346](https://github.com/tinyhumansai/openhuman/pull/3340) + [#3362](https://github.com/tinyhumansai/openhuman/pull/3362) (Phase 1.5 vision fallback)  
+**Branch:** `feat/voice-always-on-all` (cumulative) — **all merged to `main`.** Phase 1 landed via [#3168](https://github.com/tinyhumansai/openhuman/pull/3168); the full feature was split from the mega-PR [#3307](https://github.com/tinyhumansai/openhuman/pull/3307) (now **closed** in favour of the stack) into an 8-PR stack — **all 8 merged 2026-06-04**: [#3340](https://github.com/tinyhumansai/openhuman/pull/3340) (main-thread input + CEF fix), [#3341](https://github.com/tinyhumansai/openhuman/pull/3341) (AX/UIA perception + automate engine), [#3342](https://github.com/tinyhumansai/openhuman/pull/3342) (wire automate/ax_interact tools), [#3343](https://github.com/tinyhumansai/openhuman/pull/3343) (Phase 2 always-on engine + RPC), [#3344](https://github.com/tinyhumansai/openhuman/pull/3344) (always-on Settings toggle + i18n), [#3345](https://github.com/tinyhumansai/openhuman/pull/3345) (notch status pill — supersedes the closed [#3166](https://github.com/tinyhumansai/openhuman/pull/3166)), [#3346](https://github.com/tinyhumansai/openhuman/pull/3346) (Phase 3 fast command router), [#3362](https://github.com/tinyhumansai/openhuman/pull/3362) (Phase 1.5 vision-click fallback)  
 **Started:** 2026-06-02  
-**Last updated:** 2026-06-04  
+**Last updated:** 2026-06-09 — verified all 8 stack PRs merged to `main`; code paths confirmed present post-refactor [#3424](https://github.com/tinyhumansai/openhuman/pull/3424). Related: global push-to-talk ([#3090](https://github.com/tinyhumansai/openhuman/issues/3090) via [#3349](https://github.com/tinyhumansai/openhuman/pull/3349)) landed separately as an alternative manual trigger. **Only open item across all phases: the on-device audio wake-word model (Phase 3) — not started; text-based "Hey Tiny" match remains the interim.**  
 
 ---
 
@@ -567,7 +567,9 @@ Shipped on the Windows machine (2026-06-02):
 
 ---
 
-## Phase 3 — Wake-Word + Fast Routing 🔨 In progress
+## Phase 3 — Wake-Word + Fast Routing 🔨 Fast routing shipped; audio wake-word model pending
+
+> Fast command routing is **merged** ([#3346](https://github.com/tinyhumansai/openhuman/pull/3346)). The single remaining Phase 3 item is the on-device **audio** wake-word model — **not started**; the text-based "Hey Tiny" transcribe-then-gate match from Phase 2 is the interim.
 
 **Fast routing — DONE & WIRED:** `src/openhuman/voice/command_router.rs` (new) — pure `route(transcript) -> VoiceIntent` classifier (Play/Pause/Resume/Next/Previous/OpenApp/SetVolume/VolumeUp·Down/Mute/Unmute, else `Unknown`). High-confidence intents execute directly (launch_app / Music fast-path / osascript volume) without a full chat-LLM turn — the ≤500 ms path; `Unknown` defers to the agent so routing only ever shortcuts. Filler-tolerant ("please open up slack"). 5 unit tests.
 

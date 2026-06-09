@@ -87,6 +87,11 @@ interface VoicePanelProps {
   embedded?: boolean;
 }
 
+/** Temporarily hide the always-on listening toggle. Set back to `true` to
+ *  restore the control (the backend engine is unchanged). See
+ *  docs/voice-system-actions.md. */
+const SHOW_ALWAYS_ON_TOGGLE = false;
+
 const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
   const { t } = useT();
   const { navigateBack, navigateToSettings, breadcrumbs } = useSettingsNavigation();
@@ -489,7 +494,8 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
 
       <div className={embedded ? 'space-y-4' : 'p-4 space-y-4'}>
         {/* ─── Always-on listening (Phase 2) ──────────────────────────── */}
-        {settings && (
+        {/* Temporarily hidden — gated on SHOW_ALWAYS_ON_TOGGLE (set to false). */}
+        {SHOW_ALWAYS_ON_TOGGLE && settings && (
           <section className="space-y-3">
             <div className="bg-stone-50 dark:bg-neutral-800/60 rounded-lg border border-stone-200 dark:border-neutral-800 p-4">
               <div className="flex items-start justify-between gap-3">
