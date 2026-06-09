@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import PttSettingsPanel from '../../../pages/settings/voice/PttSettingsPanel';
+import { IS_DEV_LIKE } from '../../../utils/config';
 import {
   installPiper,
   installWhisper,
@@ -87,10 +88,10 @@ interface VoicePanelProps {
   embedded?: boolean;
 }
 
-/** Temporarily hide the always-on listening toggle. Set back to `true` to
- *  restore the control (the backend engine is unchanged). See
- *  docs/voice-system-actions.md. */
-const SHOW_ALWAYS_ON_TOGGLE = false;
+/** Always-on listening toggle is hidden in production for now, but shown in
+ *  dev/debug builds so the feature can be exercised. Set unconditionally to
+ *  `true` to expose it everywhere. See docs/voice-system-actions.md. */
+const SHOW_ALWAYS_ON_TOGGLE = IS_DEV_LIKE;
 
 const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
   const { t } = useT();
@@ -494,7 +495,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
 
       <div className={embedded ? 'space-y-4' : 'p-4 space-y-4'}>
         {/* ─── Always-on listening (Phase 2) ──────────────────────────── */}
-        {/* Temporarily hidden — gated on SHOW_ALWAYS_ON_TOGGLE (set to false). */}
+        {/* Gated on SHOW_ALWAYS_ON_TOGGLE — shown in dev/debug builds, hidden in prod. */}
         {SHOW_ALWAYS_ON_TOGGLE && settings && (
           <section className="space-y-3">
             <div className="bg-stone-50 dark:bg-neutral-800/60 rounded-lg border border-stone-200 dark:border-neutral-800 p-4">
