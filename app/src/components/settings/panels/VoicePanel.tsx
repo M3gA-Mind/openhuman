@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
 import PttSettingsPanel from '../../../pages/settings/voice/PttSettingsPanel';
-import { IS_DEV_LIKE } from '../../../utils/config';
 import {
   installPiper,
   installWhisper,
@@ -19,6 +18,7 @@ import {
   type VoiceProviderView,
   type VoiceSettings,
 } from '../../../services/api/voiceSettingsApi';
+import { IS_DEV_LIKE } from '../../../utils/config';
 import {
   openhumanGetVoiceServerSettings,
   openhumanUpdateVoiceServerSettings,
