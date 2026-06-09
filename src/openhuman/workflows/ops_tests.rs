@@ -1637,6 +1637,11 @@ fn uninstall_resolves_agents_skills_legacy_root() {
     assert!(!dir.exists(), "uninstall should remove the dir");
 }
 
+// Unix-only: exercises `std::os::unix::fs::symlink`. Windows symlink creation
+// uses a different API and requires elevated privileges / Developer Mode, so
+// this case is gated off there (the Windows lib test binary otherwise fails to
+// compile on this line).
+#[cfg(unix)]
 #[test]
 fn symlinked_manifest_file_is_rejected() {
     // `exists()` follows symlinks; a manifest pointed at an external file would

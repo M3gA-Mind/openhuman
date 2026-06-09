@@ -614,6 +614,31 @@ fn screen_hint(snapshot: &str) -> String {
     }
 }
 
+/// Map a browser **display name** (as resolved by the browser fast-path —
+/// `"Google Chrome"`, `"Brave Browser"`, …) to the token the Windows shell
+/// `start` verb resolves via the `App Paths` registry. `None` for browsers that
+/// don't exist on Windows (Safari/Arc) or any unrecognized name, so the caller
+/// falls back to the default URL handler. Matched case-insensitively by
+/// substring so aliases ("Chrome", "Microsoft Edge") all resolve.
+#[cfg(target_os = "windows")]
+pub(crate) fn windows_browser_launch_token(app: &str) -> Option<&'static str> {
+    let a = app.to_lowercase();
+    // Order matters: check the more specific names first ("microsoft edge"
+    // contains neither "chrome" nor "firefox", but keep edge before a bare
+    // "chrome" check anyway for clarity).
+    if a.contains("brave") {
+        Some("brave")
+    } else if a.contains("edge") {
+        Some("msedge")
+    } else if a.contains("firefox") {
+        Some("firefox")
+    } else if a.contains("chrome") || a.contains("chromium") {
+        Some("chrome")
+    } else {
+        None
+    }
+}
+
 /// Production backend: real AX primitives + a fast LLM for decisions.
 pub struct RealBackend {
     config: crate::openhuman::config::Config,
@@ -747,9 +772,7 @@ impl AutomateBackend for RealBackend {
     async fn open_url_in_app(&self, app: &str, url: &str) -> Result<String, String> {
         // macOS: `open -a "<app>" "<url>"` both launches/foregrounds the named
         // app AND opens the URL in it — exactly the deterministic browser nav we
-        // want (no address-bar typing, no AX). Linux/Windows can't target a
-        // browser by display name as cleanly, so fall back to the default
-        // handler via `open_url` (documented best-effort).
+        // want (no address-bar typing, no AX).
         #[cfg(target_os = "macos")]
         {
             match tokio::process::Command::new("open")
@@ -768,7 +791,43 @@ impl AutomateBackend for RealBackend {
                 Err(e) => Err(format!("failed to launch opener: {e}")),
             }
         }
-        #[cfg(not(target_os = "macos"))]
+        // Windows: the shell `start` verb resolves a browser by its registered
+        // App Paths token (`chrome`, `msedge`, `firefox`, `brave`, …) and opens
+        // the URL in it. When the browser is already running this lands in a NEW
+        // TAB of the existing window — so the deterministic fast-path does NOT
+        // pile up windows (the live bug: each re-delegation `launch_app`-ed Chrome
+        // again → ~10 windows). Falls back to the default handler when the named
+        // browser has no known token (e.g. Safari/Arc, which aren't on Windows).
+        #[cfg(target_os = "windows")]
+        {
+            let Some(token) = windows_browser_launch_token(app) else {
+                log::info!(
+                    "[automate] open_url_in_app: no Windows token for {app:?}; using default handler"
+                );
+                return self.open_url(url).await;
+            };
+            // `cmd /C start "" <token> "<url>"` — the empty "" is `start`'s title
+            // arg (required so a quoted token isn't mistaken for the title). The
+            // URL is app-controlled (built by the fast-path), never user free-text.
+            match tokio::process::Command::new("cmd")
+                .args(["/C", "start", "", token, url])
+                .output()
+                .await
+            {
+                Ok(o) if o.status.success() => Ok(format!("Opened {url} in {app}")),
+                Ok(o) => {
+                    // `start` failed (token not registered?) — best-effort fall back.
+                    log::warn!(
+                        "[automate] open_url_in_app: start {token} exited {}: {}; falling back",
+                        o.status,
+                        String::from_utf8_lossy(&o.stderr).trim()
+                    );
+                    self.open_url(url).await
+                }
+                Err(e) => Err(format!("failed to launch opener: {e}")),
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
             let _ = app;
             self.open_url(url).await
@@ -851,3 +910,23 @@ impl AutomateBackend for RealBackend {
 #[cfg(test)]
 #[path = "automate_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+mod windows_tests {
+    use super::windows_browser_launch_token as tok;
+
+    #[test]
+    fn browser_display_names_map_to_start_tokens() {
+        assert_eq!(tok("Google Chrome"), Some("chrome"));
+        assert_eq!(tok("Brave Browser"), Some("brave"));
+        assert_eq!(tok("Microsoft Edge"), Some("msedge"));
+        assert_eq!(tok("Firefox"), Some("firefox"));
+        // Aliases / case-insensitive.
+        assert_eq!(tok("chrome"), Some("chrome"));
+        assert_eq!(tok("EDGE"), Some("msedge"));
+        // Not on Windows / unknown → None → caller uses the default handler.
+        assert_eq!(tok("Safari"), None);
+        assert_eq!(tok("Arc"), None);
+        assert_eq!(tok("Some Random App"), None);
+    }
+}
