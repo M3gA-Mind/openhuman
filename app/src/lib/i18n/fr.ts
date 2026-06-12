@@ -4407,6 +4407,24 @@ const messages: TranslationMap = {
   'settings.modelHealth.modal.apply': 'Appliquer le remplacement',
   'settings.modelHealth.tag.cheaper': 'CHEAPER',
   'settings.modelHealth.tag.better': 'BETTER',
+  'settings.desktopAgent.title': 'Agent de bureau',
+  'settings.desktopAgent.description':
+    'Vérifiez et accordez les autorisations dont l’agent de bureau a besoin.',
+  'settings.desktopAgent.microphone': 'Microphone',
+  'settings.desktopAgent.grant': 'Accorder',
+  'settings.desktopAgent.notRequiredOnOs': 'Non requis sur ce système d’exploitation',
+  'settings.desktopAgent.allGranted':
+    'Tout est prêt : l’agent de bureau dispose de toutes les autorisations nécessaires.',
+  'settings.desktopAgent.recheck': 'Revérifier',
+  'settings.desktopAgent.restartAndRecheck': 'Redémarrer le cœur et revérifier',
+  'settings.desktopAgent.seamless.title': 'Actions de l’agent',
+  'settings.desktopAgent.seamless.label': 'Laisser l’agent agir sans demander',
+  'settings.desktopAgent.seamless.description':
+    'Accordez l’accès complet et approuvez automatiquement les actions de bureau (ouvrir des applications, contrôler leurs interfaces) afin que l’agent les exécute sans demande de confirmation.',
+  'settings.desktopAgent.seamless.note':
+    'Seules les actions de bureau évitent la demande — exécuter des commandes shell, modifier des fichiers, les requêtes réseau et l’installation de logiciels demandent toujours. Désactiver ceci arrête l’approbation automatique des actions de bureau mais laisse le niveau d’accès inchangé.',
+  'settings.desktopAgent.beta':
+    'Bêta — l’agent de bureau est expérimental et peut ne pas toujours fonctionner comme prévu.',
   'settings.screenIntel.permissions.accessibility': 'Accessibilité',
   'settings.screenIntel.permissions.grantHint': "Indice d'autorisation",
   'settings.screenIntel.permissions.inputMonitoring': 'Surveillance des entrées',

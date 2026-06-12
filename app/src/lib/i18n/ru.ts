@@ -4347,6 +4347,24 @@ const messages: TranslationMap = {
   'settings.modelHealth.modal.apply': 'Применить замену',
   'settings.modelHealth.tag.cheaper': 'CHEAPER',
   'settings.modelHealth.tag.better': 'BETTER',
+  'settings.desktopAgent.title': 'Агент рабочего стола',
+  'settings.desktopAgent.description':
+    'Проверьте и предоставьте разрешения, необходимые агенту рабочего стола.',
+  'settings.desktopAgent.microphone': 'Микрофон',
+  'settings.desktopAgent.grant': 'Предоставить',
+  'settings.desktopAgent.notRequiredOnOs': 'Не требуется в этой операционной системе',
+  'settings.desktopAgent.allGranted':
+    'Всё готово — у агента рабочего стола есть все необходимые разрешения.',
+  'settings.desktopAgent.recheck': 'Проверить снова',
+  'settings.desktopAgent.restartAndRecheck': 'Перезапустить ядро и проверить снова',
+  'settings.desktopAgent.seamless.title': 'Действия агента',
+  'settings.desktopAgent.seamless.label': 'Разрешить агенту действовать без запроса',
+  'settings.desktopAgent.seamless.description':
+    'Предоставьте полный доступ и автоматически одобряйте действия на рабочем столе (открытие приложений, управление их интерфейсами), чтобы агент выполнял их без запроса на подтверждение.',
+  'settings.desktopAgent.seamless.note':
+    'Запрос пропускают только действия на рабочем столе — выполнение команд оболочки, редактирование файлов, сетевые запросы и установка программ по-прежнему запрашивают подтверждение. Отключение этой опции прекращает автоматическое одобрение действий на рабочем столе, но уровень доступа остаётся прежним.',
+  'settings.desktopAgent.beta':
+    'Бета — агент рабочего стола является экспериментальным и может не всегда работать как ожидается.',
   'settings.screenIntel.permissions.accessibility': 'Доступность',
   'settings.screenIntel.permissions.grantHint': 'Подсказка по предоставлению',
   'settings.screenIntel.permissions.inputMonitoring': 'Мониторинг ввода',

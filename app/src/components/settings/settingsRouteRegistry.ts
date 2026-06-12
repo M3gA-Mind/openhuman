@@ -312,6 +312,22 @@ export const SETTINGS_ROUTE_REGISTRY: SettingsRegistryEntry[] = [
     searchKeywords: ['screen', 'awareness', 'vision', 'capture'],
   },
   {
+    id: 'desktop-agent',
+    titleKey: 'settings.desktopAgent.title',
+    descriptionKey: 'settings.desktopAgent.description',
+    section: 'features',
+    searchKeywords: [
+      'desktop',
+      'agent',
+      'automation',
+      'permissions',
+      'microphone',
+      'accessibility',
+      'screen recording',
+      'input monitoring',
+    ],
+  },
+  {
     id: 'tools',
     titleKey: 'pages.settings.features.tools',
     descriptionKey: 'pages.settings.features.toolsDesc',

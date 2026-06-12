@@ -4382,6 +4382,24 @@ const messages: TranslationMap = {
   'settings.modelHealth.modal.apply': 'Applica sostituzione',
   'settings.modelHealth.tag.cheaper': 'CHEAPER',
   'settings.modelHealth.tag.better': 'BETTER',
+  'settings.desktopAgent.title': 'Agente desktop',
+  'settings.desktopAgent.description':
+    'Verifica e concedi le autorizzazioni necessarie all’agente desktop.',
+  'settings.desktopAgent.microphone': 'Microfono',
+  'settings.desktopAgent.grant': 'Concedi',
+  'settings.desktopAgent.notRequiredOnOs': 'Non necessario su questo sistema operativo',
+  'settings.desktopAgent.allGranted':
+    'Tutto pronto: l’agente desktop dispone di tutte le autorizzazioni necessarie.',
+  'settings.desktopAgent.recheck': 'Verifica di nuovo',
+  'settings.desktopAgent.restartAndRecheck': 'Riavvia il core e verifica di nuovo',
+  'settings.desktopAgent.seamless.title': 'Azioni dell’agente',
+  'settings.desktopAgent.seamless.label': 'Lascia che l’agente agisca senza chiedere',
+  'settings.desktopAgent.seamless.description':
+    'Concedi l’accesso completo e approva automaticamente le azioni desktop (aprire app, controllarne le interfacce) così l’agente le esegue senza una richiesta di conferma.',
+  'settings.desktopAgent.seamless.note':
+    'Solo le azioni desktop saltano la richiesta — eseguire comandi shell, modificare file, le richieste di rete e l’installazione di software continuano a chiedere. Disattivando questa opzione si interrompe l’approvazione automatica delle azioni desktop, ma il livello di accesso resta invariato.',
+  'settings.desktopAgent.beta':
+    'Beta — l’agente desktop è sperimentale e potrebbe non funzionare sempre come previsto.',
   'settings.screenIntel.permissions.accessibility': 'Accessibilità',
   'settings.screenIntel.permissions.grantHint': 'Suggerimento concessione',
   'settings.screenIntel.permissions.inputMonitoring': 'Monitoraggio input',

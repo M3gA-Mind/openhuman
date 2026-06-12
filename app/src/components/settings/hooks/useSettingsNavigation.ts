@@ -28,6 +28,7 @@ export type SettingsRoute =
   | 'features'
   | 'cron-jobs'
   | 'screen-intelligence'
+  | 'desktop-agent'
   | 'autocomplete'
   | 'privacy'
   | 'billing'

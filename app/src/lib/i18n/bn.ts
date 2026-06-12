@@ -4302,6 +4302,24 @@ const messages: TranslationMap = {
   'settings.modelHealth.modal.apply': '& বদলাও',
   'settings.modelHealth.tag.cheaper': 'CHEAPER',
   'settings.modelHealth.tag.better': 'BETTER',
+  'settings.desktopAgent.title': 'ডেস্কটপ এজেন্ট',
+  'settings.desktopAgent.description':
+    'ডেস্কটপ এজেন্টের প্রয়োজনীয় অনুমতিগুলি যাচাই করুন ও মঞ্জুর করুন।',
+  'settings.desktopAgent.microphone': 'মাইক্রোফোন',
+  'settings.desktopAgent.grant': 'মঞ্জুর করুন',
+  'settings.desktopAgent.notRequiredOnOs': 'এই অপারেটিং সিস্টেমে প্রয়োজন নেই',
+  'settings.desktopAgent.allGranted':
+    'সব প্রস্তুত — ডেস্কটপ এজেন্টের কাছে প্রয়োজনীয় সব অনুমতি রয়েছে।',
+  'settings.desktopAgent.recheck': 'পুনরায় যাচাই',
+  'settings.desktopAgent.restartAndRecheck': 'কোর পুনরায় চালু করে পুনরায় যাচাই করুন',
+  'settings.desktopAgent.seamless.title': 'এজেন্টের কাজ',
+  'settings.desktopAgent.seamless.label': 'এজেন্টকে অনুমতি না চেয়ে কাজ করতে দিন',
+  'settings.desktopAgent.seamless.description':
+    'সম্পূর্ণ অ্যাক্সেস দিন এবং ডেস্কটপের কাজ (অ্যাপ খোলা, অ্যাপের ইন্টারফেস নিয়ন্ত্রণ) স্বয়ংক্রিয়ভাবে অনুমোদন করুন, যাতে এজেন্ট অনুমোদনের অনুরোধ ছাড়াই সেগুলি চালায়।',
+  'settings.desktopAgent.seamless.note':
+    'শুধু ডেস্কটপের কাজই অনুরোধ এড়িয়ে যায় — শেল কমান্ড চালানো, ফাইল সম্পাদনা, নেটওয়ার্ক অনুরোধ এবং সফটওয়্যার ইনস্টল করা এখনও অনুমতি চায়। এটি বন্ধ করলে ডেস্কটপের কাজের স্বয়ংক্রিয় অনুমোদন থামে, তবে অ্যাক্সেসের স্তর অপরিবর্তিত থাকে।',
+  'settings.desktopAgent.beta':
+    'বিটা — ডেস্কটপ এজেন্ট পরীক্ষামূলক এবং সবসময় প্রত্যাশিতভাবে কাজ নাও করতে পারে।',
   'settings.screenIntel.permissions.accessibility': 'অ্যাক্সেসিবিলিটি',
   'settings.screenIntel.permissions.grantHint': 'গ্রান্ট হিন্ট',
   'settings.screenIntel.permissions.inputMonitoring': 'ইনপুট মনিটরিং',
