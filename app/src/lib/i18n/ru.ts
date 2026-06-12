@@ -4368,7 +4368,7 @@ const messages: TranslationMap = {
   'settings.desktopAgent.beta':
     'Бета — агент рабочего стола является экспериментальным и может не всегда работать как ожидается.',
   'settings.desktopAgent.wakeWordHint':
-    'Скажите «Hey Tiny» перед командой, чтобы разбудить агента — например, «Hey Tiny, open Music».',
+    'Скажите «Hey Tiny» перед командой, чтобы разбудить агента.',
   'settings.screenIntel.permissions.accessibility': 'Доступность',
   'settings.screenIntel.permissions.grantHint': 'Подсказка по предоставлению',
   'settings.screenIntel.permissions.inputMonitoring': 'Мониторинг ввода',

@@ -85,6 +85,7 @@ const DesktopAgentPanel = () => {
 
   // Always-on listening (relocated from the Voice panel). Null until loaded.
   const [alwaysOn, setAlwaysOn] = useState<boolean | null>(null);
+  const [isUpdatingAlwaysOn, setIsUpdatingAlwaysOn] = useState(false);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -123,19 +124,35 @@ const DesktopAgentPanel = () => {
     void loadVoice();
   }, [refresh, loadAutonomy, loadVoice]);
 
-  const toggleAlwaysOn = useCallback(async (next: boolean) => {
-    // Optimistic flip; revert on failure so the UI matches the persisted value.
-    setAlwaysOn(next);
-    setError(null);
-    try {
-      await openhumanUpdateVoiceServerSettings({ always_on_enabled: next });
-      // The notch pill is the always-on listening HUD: show on, hide off.
-      await syncNotchVisibility(next);
-    } catch (err) {
-      setAlwaysOn(!next);
-      setError(errorMessage(err));
-    }
-  }, []);
+  const toggleAlwaysOn = useCallback(
+    async (next: boolean) => {
+      // Guard against rapid re-toggles racing and committing out of order.
+      if (isUpdatingAlwaysOn) return;
+      const previous = alwaysOn;
+      setIsUpdatingAlwaysOn(true);
+      setAlwaysOn(next); // optimistic flip
+      setError(null);
+      try {
+        await openhumanUpdateVoiceServerSettings({ always_on_enabled: next });
+      } catch (err) {
+        // Persist failed — revert the optimistic flip and surface the error.
+        setAlwaysOn(previous);
+        setError(errorMessage(err));
+        setIsUpdatingAlwaysOn(false);
+        return;
+      }
+      try {
+        // The notch pill is the always-on listening HUD: show on, hide off.
+        // Persistence already succeeded, so keep the UI state even if this fails.
+        await syncNotchVisibility(next);
+      } catch (err) {
+        setError(errorMessage(err));
+      } finally {
+        setIsUpdatingAlwaysOn(false);
+      }
+    },
+    [alwaysOn, isUpdatingAlwaysOn]
+  );
 
   const seamlessOn =
     autoApprove !== null && SEAMLESS_TOOLS.every(tool => autoApprove.includes(tool));
@@ -299,7 +316,7 @@ const DesktopAgentPanel = () => {
                 id="desktop-agent-always-on"
                 data-testid="voice-always-on-toggle"
                 checked={alwaysOn ?? false}
-                disabled={alwaysOn === null}
+                disabled={alwaysOn === null || isUpdatingAlwaysOn}
                 onCheckedChange={next => void toggleAlwaysOn(next)}
                 aria-label={t('voice.debug.alwaysOn')}
               />

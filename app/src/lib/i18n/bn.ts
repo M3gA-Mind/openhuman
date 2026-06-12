@@ -4322,8 +4322,7 @@ const messages: TranslationMap = {
     'শুধু ডেস্কটপের কাজই অনুরোধ এড়িয়ে যায় — শেল কমান্ড চালানো, ফাইল সম্পাদনা, নেটওয়ার্ক অনুরোধ এবং সফটওয়্যার ইনস্টল করা এখনও অনুমতি চায়। এটি বন্ধ করলে ডেস্কটপের কাজের স্বয়ংক্রিয় অনুমোদন থামে, তবে অ্যাক্সেসের স্তর অপরিবর্তিত থাকে।',
   'settings.desktopAgent.beta':
     'বিটা — ডেস্কটপ এজেন্ট পরীক্ষামূলক এবং সবসময় প্রত্যাশিতভাবে কাজ নাও করতে পারে।',
-  'settings.desktopAgent.wakeWordHint':
-    'এজেন্টকে জাগাতে আপনার আদেশের আগে ”Hey Tiny” বলুন — উদাহরণস্বরূপ, ”Hey Tiny, open Music”।',
+  'settings.desktopAgent.wakeWordHint': 'এজেন্টকে জাগাতে আপনার আদেশের আগে ”Hey Tiny” বলুন।',
   'settings.screenIntel.permissions.accessibility': 'অ্যাক্সেসিবিলিটি',
   'settings.screenIntel.permissions.grantHint': 'গ্রান্ট হিন্ট',
   'settings.screenIntel.permissions.inputMonitoring': 'ইনপুট মনিটরিং',

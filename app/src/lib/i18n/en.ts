@@ -4850,8 +4850,7 @@ const en: TranslationMap = {
   'settings.desktopAgent.title': 'Desktop Agent',
   'settings.desktopAgent.beta':
     'Beta — the desktop agent is experimental and may not always work as expected.',
-  'settings.desktopAgent.wakeWordHint':
-    'Say “Hey Tiny” before your command to wake the agent — for example, “Hey Tiny, open Music”.',
+  'settings.desktopAgent.wakeWordHint': 'Say “Hey Tiny” before your command to wake the agent.',
   'settings.desktopAgent.description': 'Check and grant the permissions the desktop agent needs.',
   'settings.desktopAgent.microphone': 'Microphone',
   'settings.desktopAgent.grant': 'Grant',

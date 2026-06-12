@@ -4341,7 +4341,7 @@ const messages: TranslationMap = {
   'settings.desktopAgent.beta':
     'Beta — agen desktop masih eksperimental dan mungkin tidak selalu bekerja seperti yang diharapkan.',
   'settings.desktopAgent.wakeWordHint':
-    'Ucapkan “Hey Tiny” sebelum perintah Anda untuk membangunkan agen — misalnya, “Hey Tiny, open Music”.',
+    'Ucapkan “Hey Tiny” sebelum perintah Anda untuk membangunkan agen.',
   'settings.screenIntel.permissions.accessibility': 'Aksesibilitas',
   'settings.screenIntel.permissions.grantHint': 'Petunjuk izin',
   'settings.screenIntel.permissions.inputMonitoring': 'Pemantauan Input',

@@ -4404,7 +4404,7 @@ const messages: TranslationMap = {
   'settings.desktopAgent.beta':
     'Beta — o agente de desktop é experimental e pode nem sempre funcionar como esperado.',
   'settings.desktopAgent.wakeWordHint':
-    'Diga “Hey Tiny” antes do seu comando para ativar o agente — por exemplo, “Hey Tiny, open Music”.',
+    'Diga “Hey Tiny” antes do seu comando para ativar o agente.',
   'settings.screenIntel.permissions.accessibility': 'Acessibilidade',
   'settings.screenIntel.permissions.grantHint': 'Dica de concessão',
   'settings.screenIntel.permissions.inputMonitoring': 'Monitoramento de Entrada',

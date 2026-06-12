@@ -4428,7 +4428,7 @@ const messages: TranslationMap = {
   'settings.desktopAgent.beta':
     'Bêta — l’agent de bureau est expérimental et peut ne pas toujours fonctionner comme prévu.',
   'settings.desktopAgent.wakeWordHint':
-    'Dites « Hey Tiny » avant votre commande pour réveiller l’agent — par exemple, « Hey Tiny, open Music ».',
+    'Dites « Hey Tiny » avant votre commande pour réveiller l’agent.',
   'settings.screenIntel.permissions.accessibility': 'Accessibilité',
   'settings.screenIntel.permissions.grantHint': "Indice d'autorisation",
   'settings.screenIntel.permissions.inputMonitoring': 'Surveillance des entrées',
