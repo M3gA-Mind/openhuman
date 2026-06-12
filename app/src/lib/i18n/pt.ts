@@ -4385,6 +4385,26 @@ const messages: TranslationMap = {
   'settings.modelHealth.modal.apply': 'Aplicar Substituição',
   'settings.modelHealth.tag.cheaper': 'CHEAPER',
   'settings.modelHealth.tag.better': 'BETTER',
+  'settings.desktopAgent.title': 'Agente de desktop',
+  'settings.desktopAgent.description':
+    'Verifique e conceda as permissões necessárias para o agente de desktop.',
+  'settings.desktopAgent.microphone': 'Microfone',
+  'settings.desktopAgent.grant': 'Conceder',
+  'settings.desktopAgent.notRequiredOnOs': 'Não necessário neste sistema operacional',
+  'settings.desktopAgent.allGranted':
+    'Tudo pronto: o agente de desktop tem todas as permissões necessárias.',
+  'settings.desktopAgent.recheck': 'Verificar novamente',
+  'settings.desktopAgent.restartAndRecheck': 'Reiniciar o núcleo e verificar novamente',
+  'settings.desktopAgent.seamless.title': 'Ações do agente',
+  'settings.desktopAgent.seamless.label': 'Deixe o agente agir sem perguntar',
+  'settings.desktopAgent.seamless.description':
+    'Conceda acesso total e aprove automaticamente as ações de área de trabalho (abrir aplicativos, controlar suas interfaces) para que o agente as execute sem pedir confirmação.',
+  'settings.desktopAgent.seamless.note':
+    'Apenas as ações de área de trabalho ignoram a confirmação — executar comandos de shell, editar arquivos, solicitações de rede e instalar software continuam perguntando. Desativar isto interrompe a aprovação automática das ações de área de trabalho, mas mantém o nível de acesso inalterado.',
+  'settings.desktopAgent.beta':
+    'Beta — o agente de desktop é experimental e pode nem sempre funcionar como esperado.',
+  'settings.desktopAgent.wakeWordHint':
+    'Diga “Hey Tiny” antes do seu comando para ativar o agente — por exemplo, “Hey Tiny, open Music”.',
   'settings.screenIntel.permissions.accessibility': 'Acessibilidade',
   'settings.screenIntel.permissions.grantHint': 'Dica de concessão',
   'settings.screenIntel.permissions.inputMonitoring': 'Monitoramento de Entrada',

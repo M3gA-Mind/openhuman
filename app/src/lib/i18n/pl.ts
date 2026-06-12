@@ -4376,6 +4376,26 @@ const messages: TranslationMap = {
   'settings.modelHealth.modal.apply': 'Zastosuj zamianę',
   'settings.modelHealth.tag.cheaper': 'TAŃSZY',
   'settings.modelHealth.tag.better': 'LEPSZY',
+  'settings.desktopAgent.title': 'Agent pulpitu',
+  'settings.desktopAgent.description':
+    'Sprawdź i przyznaj uprawnienia wymagane przez agenta pulpitu.',
+  'settings.desktopAgent.microphone': 'Mikrofon',
+  'settings.desktopAgent.grant': 'Przyznaj',
+  'settings.desktopAgent.notRequiredOnOs': 'Niewymagane w tym systemie operacyjnym',
+  'settings.desktopAgent.allGranted':
+    'Wszystko gotowe — agent pulpitu ma wszystkie wymagane uprawnienia.',
+  'settings.desktopAgent.recheck': 'Sprawdź ponownie',
+  'settings.desktopAgent.restartAndRecheck': 'Uruchom ponownie rdzeń i sprawdź ponownie',
+  'settings.desktopAgent.seamless.title': 'Działania agenta',
+  'settings.desktopAgent.seamless.label': 'Pozwól agentowi działać bez pytania',
+  'settings.desktopAgent.seamless.description':
+    'Przyznaj pełny dostęp i automatycznie zatwierdzaj działania na pulpicie (otwieranie aplikacji, sterowanie ich interfejsami), aby agent wykonywał je bez prośby o zatwierdzenie.',
+  'settings.desktopAgent.seamless.note':
+    'Tylko działania na pulpicie pomijają prośbę — uruchamianie poleceń powłoki, edycja plików, żądania sieciowe i instalowanie oprogramowania nadal pytają. Wyłączenie tego zatrzymuje automatyczne zatwierdzanie działań na pulpicie, ale poziom dostępu pozostaje bez zmian.',
+  'settings.desktopAgent.beta':
+    'Beta — agent pulpitu jest eksperymentalny i może nie zawsze działać zgodnie z oczekiwaniami.',
+  'settings.desktopAgent.wakeWordHint':
+    'Powiedz „Hey Tiny” przed poleceniem, aby obudzić agenta — na przykład „Hey Tiny, open Music”.',
   'settings.screenIntel.permissions.accessibility': 'Dostępność',
   'settings.screenIntel.permissions.grantHint': 'System otworzy okno żądania uprawnień.',
   'settings.screenIntel.permissions.inputMonitoring': 'Monitorowanie wejścia',

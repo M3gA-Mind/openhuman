@@ -4391,6 +4391,26 @@ const messages: TranslationMap = {
   'settings.modelHealth.modal.apply': 'Aplicar reemplazo',
   'settings.modelHealth.tag.cheaper': 'CHEAPER',
   'settings.modelHealth.tag.better': 'BETTER',
+  'settings.desktopAgent.title': 'Agente de escritorio',
+  'settings.desktopAgent.description':
+    'Comprueba y concede los permisos que necesita el agente de escritorio.',
+  'settings.desktopAgent.microphone': 'Micrófono',
+  'settings.desktopAgent.grant': 'Conceder',
+  'settings.desktopAgent.notRequiredOnOs': 'No es necesario en este sistema operativo',
+  'settings.desktopAgent.allGranted':
+    'Todo listo: el agente de escritorio tiene todos los permisos que necesita.',
+  'settings.desktopAgent.recheck': 'Volver a comprobar',
+  'settings.desktopAgent.restartAndRecheck': 'Reiniciar el núcleo y volver a comprobar',
+  'settings.desktopAgent.seamless.title': 'Acciones del agente',
+  'settings.desktopAgent.seamless.label': 'Deja que el agente actúe sin preguntar',
+  'settings.desktopAgent.seamless.description':
+    'Concede acceso completo y aprueba automáticamente las acciones de escritorio (abrir aplicaciones, controlar sus interfaces) para que el agente las ejecute sin pedir confirmación.',
+  'settings.desktopAgent.seamless.note':
+    'Solo las acciones de escritorio omiten la confirmación: ejecutar comandos de shell, editar archivos, peticiones de red e instalar software siguen preguntando. Al desactivarlo se deja de aprobar automáticamente las acciones de escritorio, pero el nivel de acceso no cambia.',
+  'settings.desktopAgent.beta':
+    'Beta: el agente de escritorio es experimental y puede no funcionar siempre como se espera.',
+  'settings.desktopAgent.wakeWordHint':
+    'Di “Hey Tiny” antes de tu orden para activar el agente; por ejemplo, “Hey Tiny, open Music”.',
   'settings.screenIntel.permissions.accessibility': 'Accesibilidad',
   'settings.screenIntel.permissions.grantHint': 'Sugerencia de permiso',
   'settings.screenIntel.permissions.inputMonitoring': 'Monitoreo de entrada',

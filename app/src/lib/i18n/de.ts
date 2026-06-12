@@ -4417,6 +4417,26 @@ const messages: TranslationMap = {
   'settings.modelHealth.modal.apply': 'Ersatz anwenden',
   'settings.modelHealth.tag.cheaper': 'CHEAPER',
   'settings.modelHealth.tag.better': 'BETTER',
+  'settings.desktopAgent.title': 'Desktop-Agent',
+  'settings.desktopAgent.description':
+    'Überprüfen und erteilen Sie die Berechtigungen, die der Desktop-Agent benötigt.',
+  'settings.desktopAgent.microphone': 'Mikrofon',
+  'settings.desktopAgent.grant': 'Erlauben',
+  'settings.desktopAgent.notRequiredOnOs': 'Auf diesem Betriebssystem nicht erforderlich',
+  'settings.desktopAgent.allGranted':
+    'Alles bereit – der Desktop-Agent hat alle erforderlichen Berechtigungen.',
+  'settings.desktopAgent.recheck': 'Erneut prüfen',
+  'settings.desktopAgent.restartAndRecheck': 'Kern neu starten und erneut prüfen',
+  'settings.desktopAgent.seamless.title': 'Agentenaktionen',
+  'settings.desktopAgent.seamless.label': 'Den Agenten ohne Nachfrage handeln lassen',
+  'settings.desktopAgent.seamless.description':
+    'Vollzugriff erteilen und Desktop-Aktionen (Apps öffnen, App-Oberflächen steuern) automatisch genehmigen, damit der Agent sie ohne Bestätigungsabfrage ausführt.',
+  'settings.desktopAgent.seamless.note':
+    'Nur Desktop-Aktionen überspringen die Abfrage — das Ausführen von Shell-Befehlen, das Bearbeiten von Dateien, Netzwerkanfragen und das Installieren von Software fragen weiterhin nach. Wird dies deaktiviert, endet die automatische Genehmigung von Desktop-Aktionen, die Zugriffsstufe bleibt jedoch unverändert.',
+  'settings.desktopAgent.beta':
+    'Beta – der Desktop-Agent ist experimentell und funktioniert möglicherweise nicht immer wie erwartet.',
+  'settings.desktopAgent.wakeWordHint':
+    'Sagen Sie „Hey Tiny“ vor Ihrem Befehl, um den Agenten zu wecken – zum Beispiel „Hey Tiny, open Music“.',
   'settings.screenIntel.permissions.accessibility': 'Barrierefreiheit',
   'settings.screenIntel.permissions.grantHint': 'Grant-Hinweis',
   'settings.screenIntel.permissions.inputMonitoring': 'Eingabeüberwachung',

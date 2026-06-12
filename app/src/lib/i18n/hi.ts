@@ -4309,6 +4309,25 @@ const messages: TranslationMap = {
   'settings.modelHealth.modal.apply': 'प्रतिस्थापन लागू करें',
   'settings.modelHealth.tag.cheaper': 'CHEAPER',
   'settings.modelHealth.tag.better': 'BETTER',
+  'settings.desktopAgent.title': 'डेस्कटॉप एजेंट',
+  'settings.desktopAgent.description':
+    'डेस्कटॉप एजेंट को जिन अनुमतियों की आवश्यकता है उन्हें जाँचें और प्रदान करें।',
+  'settings.desktopAgent.microphone': 'माइक्रोफ़ोन',
+  'settings.desktopAgent.grant': 'प्रदान करें',
+  'settings.desktopAgent.notRequiredOnOs': 'इस ऑपरेटिंग सिस्टम पर आवश्यक नहीं',
+  'settings.desktopAgent.allGranted': 'सब तैयार — डेस्कटॉप एजेंट के पास सभी आवश्यक अनुमतियाँ हैं।',
+  'settings.desktopAgent.recheck': 'पुनः जाँचें',
+  'settings.desktopAgent.restartAndRecheck': 'कोर पुनः आरंभ करें और पुनः जाँचें',
+  'settings.desktopAgent.seamless.title': 'एजेंट की कार्रवाइयाँ',
+  'settings.desktopAgent.seamless.label': 'एजेंट को बिना पूछे कार्य करने दें',
+  'settings.desktopAgent.seamless.description':
+    'पूर्ण पहुँच दें और डेस्कटॉप की कार्रवाइयों (ऐप खोलना, ऐप के इंटरफ़ेस को नियंत्रित करना) को स्वतः स्वीकृत करें, ताकि एजेंट उन्हें अनुमोदन के अनुरोध के बिना चलाए।',
+  'settings.desktopAgent.seamless.note':
+    'केवल डेस्कटॉप की कार्रवाइयाँ ही अनुरोध को छोड़ती हैं — शेल कमांड चलाना, फ़ाइलें संपादित करना, नेटवर्क अनुरोध और सॉफ़्टवेयर इंस्टॉल करना अब भी पूछते हैं। इसे बंद करने पर डेस्कटॉप कार्रवाइयों की स्वतः स्वीकृति रुक जाती है, पर पहुँच का स्तर अपरिवर्तित रहता है।',
+  'settings.desktopAgent.beta':
+    'बीटा — डेस्कटॉप एजेंट प्रायोगिक है और हमेशा अपेक्षित रूप से काम नहीं कर सकता।',
+  'settings.desktopAgent.wakeWordHint':
+    'एजेंट को जगाने के लिए अपने आदेश से पहले ”Hey Tiny” कहें — उदाहरण के लिए, ”Hey Tiny, open Music”।',
   'settings.screenIntel.permissions.accessibility': 'एक्सेसिबिलिटी',
   'settings.screenIntel.permissions.grantHint': 'स्वीकृति संकेत',
   'settings.screenIntel.permissions.inputMonitoring': 'इनपुट मॉनिटरिंग',

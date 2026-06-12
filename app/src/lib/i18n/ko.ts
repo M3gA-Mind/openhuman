@@ -4263,6 +4263,25 @@ const messages: TranslationMap = {
   'settings.modelHealth.modal.apply': '교체 적용',
   'settings.modelHealth.tag.cheaper': '더 저렴함',
   'settings.modelHealth.tag.better': '더 좋음',
+  'settings.desktopAgent.title': '데스크톱 에이전트',
+  'settings.desktopAgent.description': '데스크톱 에이전트에 필요한 권한을 확인하고 허용하세요.',
+  'settings.desktopAgent.microphone': '마이크',
+  'settings.desktopAgent.grant': '허용',
+  'settings.desktopAgent.notRequiredOnOs': '이 운영 체제에서는 필요하지 않음',
+  'settings.desktopAgent.allGranted':
+    '모두 완료 — 데스크톱 에이전트에 필요한 모든 권한이 있습니다.',
+  'settings.desktopAgent.recheck': '다시 확인',
+  'settings.desktopAgent.restartAndRecheck': '코어 재시작 후 다시 확인',
+  'settings.desktopAgent.seamless.title': '에이전트 작업',
+  'settings.desktopAgent.seamless.label': '에이전트가 묻지 않고 실행하도록 허용',
+  'settings.desktopAgent.seamless.description':
+    '전체 접근을 허용하고 데스크톱 작업(앱 열기, 앱 인터페이스 제어)을 자동 승인하여 에이전트가 승인 요청 없이 실행하도록 합니다.',
+  'settings.desktopAgent.seamless.note':
+    '데스크톱 작업만 확인을 건너뜁니다 — 셸 명령 실행, 파일 편집, 네트워크 요청, 소프트웨어 설치는 여전히 확인을 요청합니다. 이 기능을 끄면 데스크톱 작업의 자동 승인이 중단되지만 접근 수준은 그대로 유지됩니다.',
+  'settings.desktopAgent.beta':
+    '베타 — 데스크톱 에이전트는 실험적 기능이며 항상 기대대로 작동하지 않을 수 있습니다.',
+  'settings.desktopAgent.wakeWordHint':
+    '에이전트를 깨우려면 명령 앞에 “Hey Tiny”라고 말하세요 — 예: “Hey Tiny, open Music”.',
   'settings.screenIntel.permissions.accessibility': '접근성',
   'settings.screenIntel.permissions.grantHint': '권한 허용 안내',
   'settings.screenIntel.permissions.inputMonitoring': '입력 모니터링',

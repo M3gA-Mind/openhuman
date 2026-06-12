@@ -22,6 +22,7 @@ import CompanionPanel from '../components/settings/panels/CompanionPanel';
 import ComposioPanel from '../components/settings/panels/ComposioPanel';
 import ComposioTriagePanel from '../components/settings/panels/ComposioTriagePanel';
 import CronJobsPanel from '../components/settings/panels/CronJobsPanel';
+import DesktopAgentPanel from '../components/settings/panels/DesktopAgentPanel';
 import DeveloperOptionsPanel from '../components/settings/panels/DeveloperOptionsPanel';
 import DevicesComingSoonPanel from '../components/settings/panels/DevicesComingSoonPanel';
 import DevWorkflowPanel from '../components/settings/panels/DevWorkflowPanel';
@@ -135,6 +136,16 @@ const NotificationsIcon = (
       strokeLinejoin="round"
       strokeWidth={2}
       d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+    />
+  </svg>
+);
+const DesktopAgentIcon = (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M9 17v2m6-2v2M5 5h14a1 1 0 011 1v8a1 1 0 01-1 1H5a1 1 0 01-1-1V6a1 1 0 011-1zm4 4l-2 2 2 2m6-4l2 2-2 2"
     />
   </svg>
 );
@@ -330,6 +341,13 @@ const Settings = () => {
       description: t('pages.settings.features.screenAwarenessDesc'),
       route: 'screen-intelligence',
       icon: ScreenIcon,
+    },
+    {
+      id: 'desktop-agent',
+      title: t('settings.desktopAgent.title'),
+      description: t('settings.desktopAgent.description'),
+      route: 'desktop-agent',
+      icon: DesktopAgentIcon,
     },
     // Autocomplete + Voice Dictation hidden per #717 (routes retained for re-enable).
     // notifications moved to notifications-hub section (no longer duplicated here).
@@ -555,6 +573,7 @@ const Settings = () => {
         <Route path="wallet-balances" element={wrapSettingsPage(<WalletBalancesPanel />)} />
         {/* Features leaf panels */}
         <Route path="screen-intelligence" element={wrapSettingsPage(<ScreenIntelligencePanel />)} />
+        <Route path="desktop-agent" element={wrapSettingsPage(<DesktopAgentPanel />)} />
         <Route path="autocomplete" element={wrapSettingsPage(<AutocompletePanel />)} />
         <Route path="voice" element={wrapSettingsPage(<VoicePanel />)} />
         <Route path="notifications" element={wrapSettingsPage(<NotificationsTabbedPanel />)} />

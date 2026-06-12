@@ -4847,6 +4847,24 @@ const en: TranslationMap = {
   'settings.modelHealth.modal.apply': 'Apply Replacement',
   'settings.modelHealth.tag.cheaper': 'CHEAPER',
   'settings.modelHealth.tag.better': 'BETTER',
+  'settings.desktopAgent.title': 'Desktop Agent',
+  'settings.desktopAgent.beta':
+    'Beta — the desktop agent is experimental and may not always work as expected.',
+  'settings.desktopAgent.wakeWordHint':
+    'Say “Hey Tiny” before your command to wake the agent — for example, “Hey Tiny, open Music”.',
+  'settings.desktopAgent.description': 'Check and grant the permissions the desktop agent needs.',
+  'settings.desktopAgent.microphone': 'Microphone',
+  'settings.desktopAgent.grant': 'Grant',
+  'settings.desktopAgent.notRequiredOnOs': 'Not required on this OS',
+  'settings.desktopAgent.allGranted': 'All set — the desktop agent has every permission it needs.',
+  'settings.desktopAgent.recheck': 'Recheck',
+  'settings.desktopAgent.restartAndRecheck': 'Restart core & recheck',
+  'settings.desktopAgent.seamless.title': 'Agent actions',
+  'settings.desktopAgent.seamless.label': 'Let the agent act without asking',
+  'settings.desktopAgent.seamless.description':
+    'Grant Full access and auto-approve desktop actions (opening apps, controlling app interfaces) so the agent runs them without an approval prompt.',
+  'settings.desktopAgent.seamless.note':
+    'Only desktop actions skip the prompt — running shell commands, editing files, network requests, and installing software still ask. Turning this off stops auto-approving desktop actions but leaves the access level unchanged.',
   'settings.screenIntel.permissions.accessibility': 'Accessibility',
   'settings.screenIntel.permissions.grantHint':
     'Grant these permissions in System Settings, then restart the core.',
