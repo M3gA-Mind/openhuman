@@ -4233,6 +4233,8 @@ const messages: TranslationMap = {
   'settings.desktopAgent.seamless.note':
     'إجراءات سطح المكتب وحدها هي التي تتخطّى المطالبة — أما تنفيذ أوامر الصدفة وتحرير الملفات وطلبات الشبكة وتثبيت البرامج فما زالت تطلب الإذن. إيقاف هذا الخيار يوقف الاعتماد التلقائي لإجراءات سطح المكتب لكنه يترك مستوى الوصول دون تغيير.',
   'settings.desktopAgent.beta': 'تجريبي — وكيل سطح المكتب تجريبي وقد لا يعمل دائمًا كما هو متوقّع.',
+  'settings.desktopAgent.wakeWordHint':
+    'قل ”Hey Tiny“ قبل أمرك لتنبيه الوكيل — على سبيل المثال: ”Hey Tiny, open Music“.',
   'settings.screenIntel.permissions.accessibility': 'إمكانية الوصول',
   'settings.screenIntel.permissions.grantHint': 'تلميح المنح',
   'settings.screenIntel.permissions.inputMonitoring': 'مراقبة الإدخال',

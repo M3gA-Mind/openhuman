@@ -4400,6 +4400,8 @@ const messages: TranslationMap = {
     'Solo le azioni desktop saltano la richiesta — eseguire comandi shell, modificare file, le richieste di rete e l’installazione di software continuano a chiedere. Disattivando questa opzione si interrompe l’approvazione automatica delle azioni desktop, ma il livello di accesso resta invariato.',
   'settings.desktopAgent.beta':
     'Beta — l’agente desktop è sperimentale e potrebbe non funzionare sempre come previsto.',
+  'settings.desktopAgent.wakeWordHint':
+    'Di’ “Hey Tiny” prima del comando per attivare l’agente — ad esempio, “Hey Tiny, open Music”.',
   'settings.screenIntel.permissions.accessibility': 'Accessibilità',
   'settings.screenIntel.permissions.grantHint': 'Suggerimento concessione',
   'settings.screenIntel.permissions.inputMonitoring': 'Monitoraggio input',

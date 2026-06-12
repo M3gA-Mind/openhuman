@@ -307,6 +307,27 @@ const DesktopAgentPanel = () => {
           />
         </SettingsSection>
 
+        <div
+          data-testid="desktop-agent-wake-word-hint"
+          className="-mt-2 flex items-center gap-3 rounded-xl border border-primary-200 dark:border-primary-500/30 bg-primary-50 dark:bg-primary-500/10 px-3.5 py-2.5">
+          <svg
+            className="h-5 w-5 flex-shrink-0 text-primary-500 dark:text-primary-300"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            viewBox="0 0 24 24"
+            aria-hidden="true">
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
+            />
+          </svg>
+          <p className="text-xs leading-relaxed text-primary-800 dark:text-primary-200">
+            {t('settings.desktopAgent.wakeWordHint')}
+          </p>
+        </div>
+
         {allGranted ? (
           <div
             data-testid="desktop-agent-all-granted"

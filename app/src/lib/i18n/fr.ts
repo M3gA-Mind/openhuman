@@ -4425,6 +4425,8 @@ const messages: TranslationMap = {
     'Seules les actions de bureau évitent la demande — exécuter des commandes shell, modifier des fichiers, les requêtes réseau et l’installation de logiciels demandent toujours. Désactiver ceci arrête l’approbation automatique des actions de bureau mais laisse le niveau d’accès inchangé.',
   'settings.desktopAgent.beta':
     'Bêta — l’agent de bureau est expérimental et peut ne pas toujours fonctionner comme prévu.',
+  'settings.desktopAgent.wakeWordHint':
+    'Dites « Hey Tiny » avant votre commande pour réveiller l’agent — par exemple, « Hey Tiny, open Music ».',
   'settings.screenIntel.permissions.accessibility': 'Accessibilité',
   'settings.screenIntel.permissions.grantHint': "Indice d'autorisation",
   'settings.screenIntel.permissions.inputMonitoring': 'Surveillance des entrées',

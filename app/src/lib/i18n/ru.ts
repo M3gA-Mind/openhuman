@@ -4365,6 +4365,8 @@ const messages: TranslationMap = {
     'Запрос пропускают только действия на рабочем столе — выполнение команд оболочки, редактирование файлов, сетевые запросы и установка программ по-прежнему запрашивают подтверждение. Отключение этой опции прекращает автоматическое одобрение действий на рабочем столе, но уровень доступа остаётся прежним.',
   'settings.desktopAgent.beta':
     'Бета — агент рабочего стола является экспериментальным и может не всегда работать как ожидается.',
+  'settings.desktopAgent.wakeWordHint':
+    'Скажите «Hey Tiny» перед командой, чтобы разбудить агента — например, «Hey Tiny, open Music».',
   'settings.screenIntel.permissions.accessibility': 'Доступность',
   'settings.screenIntel.permissions.grantHint': 'Подсказка по предоставлению',
   'settings.screenIntel.permissions.inputMonitoring': 'Мониторинг ввода',

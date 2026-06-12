@@ -4407,6 +4407,8 @@ const messages: TranslationMap = {
     'Solo las acciones de escritorio omiten la confirmación: ejecutar comandos de shell, editar archivos, peticiones de red e instalar software siguen preguntando. Al desactivarlo se deja de aprobar automáticamente las acciones de escritorio, pero el nivel de acceso no cambia.',
   'settings.desktopAgent.beta':
     'Beta: el agente de escritorio es experimental y puede no funcionar siempre como se espera.',
+  'settings.desktopAgent.wakeWordHint':
+    'Di “Hey Tiny” antes de tu orden para activar el agente; por ejemplo, “Hey Tiny, open Music”.',
   'settings.screenIntel.permissions.accessibility': 'Accesibilidad',
   'settings.screenIntel.permissions.grantHint': 'Sugerencia de permiso',
   'settings.screenIntel.permissions.inputMonitoring': 'Monitoreo de entrada',

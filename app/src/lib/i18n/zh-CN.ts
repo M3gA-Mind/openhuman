@@ -4108,6 +4108,8 @@ const messages: TranslationMap = {
   'settings.desktopAgent.seamless.note':
     '只有桌面操作会跳过提示——运行 shell 命令、编辑文件、网络请求和安装软件仍会询问。关闭此选项会停止自动批准桌面操作，但访问级别保持不变。',
   'settings.desktopAgent.beta': '测试版——桌面智能体为实验性功能，可能并不总是按预期工作。',
+  'settings.desktopAgent.wakeWordHint':
+    '在指令前说“Hey Tiny”来唤醒智能体——例如“Hey Tiny, open Music”。',
   'settings.screenIntel.permissions.accessibility': '辅助功能',
   'settings.screenIntel.permissions.grantHint': '在系统设置中授权后，点击下方刷新',
   'settings.screenIntel.permissions.inputMonitoring': '输入监控',

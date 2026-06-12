@@ -4278,6 +4278,8 @@ const messages: TranslationMap = {
     '데스크톱 작업만 확인을 건너뜁니다 — 셸 명령 실행, 파일 편집, 네트워크 요청, 소프트웨어 설치는 여전히 확인을 요청합니다. 이 기능을 끄면 데스크톱 작업의 자동 승인이 중단되지만 접근 수준은 그대로 유지됩니다.',
   'settings.desktopAgent.beta':
     '베타 — 데스크톱 에이전트는 실험적 기능이며 항상 기대대로 작동하지 않을 수 있습니다.',
+  'settings.desktopAgent.wakeWordHint':
+    '에이전트를 깨우려면 명령 앞에 “Hey Tiny”라고 말하세요 — 예: “Hey Tiny, open Music”.',
   'settings.screenIntel.permissions.accessibility': '접근성',
   'settings.screenIntel.permissions.grantHint': '권한 허용 안내',
   'settings.screenIntel.permissions.inputMonitoring': '입력 모니터링',

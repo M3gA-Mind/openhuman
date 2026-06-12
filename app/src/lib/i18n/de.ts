@@ -4433,6 +4433,8 @@ const messages: TranslationMap = {
     'Nur Desktop-Aktionen überspringen die Abfrage — das Ausführen von Shell-Befehlen, das Bearbeiten von Dateien, Netzwerkanfragen und das Installieren von Software fragen weiterhin nach. Wird dies deaktiviert, endet die automatische Genehmigung von Desktop-Aktionen, die Zugriffsstufe bleibt jedoch unverändert.',
   'settings.desktopAgent.beta':
     'Beta – der Desktop-Agent ist experimentell und funktioniert möglicherweise nicht immer wie erwartet.',
+  'settings.desktopAgent.wakeWordHint':
+    'Sagen Sie „Hey Tiny“ vor Ihrem Befehl, um den Agenten zu wecken – zum Beispiel „Hey Tiny, open Music“.',
   'settings.screenIntel.permissions.accessibility': 'Barrierefreiheit',
   'settings.screenIntel.permissions.grantHint': 'Grant-Hinweis',
   'settings.screenIntel.permissions.inputMonitoring': 'Eingabeüberwachung',

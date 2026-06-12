@@ -4338,6 +4338,8 @@ const messages: TranslationMap = {
     'Hanya tindakan desktop yang melewati permintaan — menjalankan perintah shell, menyunting berkas, permintaan jaringan, dan memasang perangkat lunak tetap meminta izin. Mematikan ini menghentikan persetujuan otomatis tindakan desktop, tetapi tingkat akses tidak berubah.',
   'settings.desktopAgent.beta':
     'Beta — agen desktop masih eksperimental dan mungkin tidak selalu bekerja seperti yang diharapkan.',
+  'settings.desktopAgent.wakeWordHint':
+    'Ucapkan “Hey Tiny” sebelum perintah Anda untuk membangunkan agen — misalnya, “Hey Tiny, open Music”.',
   'settings.screenIntel.permissions.accessibility': 'Aksesibilitas',
   'settings.screenIntel.permissions.grantHint': 'Petunjuk izin',
   'settings.screenIntel.permissions.inputMonitoring': 'Pemantauan Input',

@@ -4401,6 +4401,8 @@ const messages: TranslationMap = {
     'Apenas as ações de área de trabalho ignoram a confirmação — executar comandos de shell, editar arquivos, solicitações de rede e instalar software continuam perguntando. Desativar isto interrompe a aprovação automática das ações de área de trabalho, mas mantém o nível de acesso inalterado.',
   'settings.desktopAgent.beta':
     'Beta — o agente de desktop é experimental e pode nem sempre funcionar como esperado.',
+  'settings.desktopAgent.wakeWordHint':
+    'Diga “Hey Tiny” antes do seu comando para ativar o agente — por exemplo, “Hey Tiny, open Music”.',
   'settings.screenIntel.permissions.accessibility': 'Acessibilidade',
   'settings.screenIntel.permissions.grantHint': 'Dica de concessão',
   'settings.screenIntel.permissions.inputMonitoring': 'Monitoramento de Entrada',

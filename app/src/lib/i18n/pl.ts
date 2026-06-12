@@ -4392,6 +4392,8 @@ const messages: TranslationMap = {
     'Tylko działania na pulpicie pomijają prośbę — uruchamianie poleceń powłoki, edycja plików, żądania sieciowe i instalowanie oprogramowania nadal pytają. Wyłączenie tego zatrzymuje automatyczne zatwierdzanie działań na pulpicie, ale poziom dostępu pozostaje bez zmian.',
   'settings.desktopAgent.beta':
     'Beta — agent pulpitu jest eksperymentalny i może nie zawsze działać zgodnie z oczekiwaniami.',
+  'settings.desktopAgent.wakeWordHint':
+    'Powiedz „Hey Tiny” przed poleceniem, aby obudzić agenta — na przykład „Hey Tiny, open Music”.',
   'settings.screenIntel.permissions.accessibility': 'Dostępność',
   'settings.screenIntel.permissions.grantHint': 'System otworzy okno żądania uprawnień.',
   'settings.screenIntel.permissions.inputMonitoring': 'Monitorowanie wejścia',

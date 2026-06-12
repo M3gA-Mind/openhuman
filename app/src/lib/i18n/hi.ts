@@ -4324,6 +4324,8 @@ const messages: TranslationMap = {
     'केवल डेस्कटॉप की कार्रवाइयाँ ही अनुरोध को छोड़ती हैं — शेल कमांड चलाना, फ़ाइलें संपादित करना, नेटवर्क अनुरोध और सॉफ़्टवेयर इंस्टॉल करना अब भी पूछते हैं। इसे बंद करने पर डेस्कटॉप कार्रवाइयों की स्वतः स्वीकृति रुक जाती है, पर पहुँच का स्तर अपरिवर्तित रहता है।',
   'settings.desktopAgent.beta':
     'बीटा — डेस्कटॉप एजेंट प्रायोगिक है और हमेशा अपेक्षित रूप से काम नहीं कर सकता।',
+  'settings.desktopAgent.wakeWordHint':
+    'एजेंट को जगाने के लिए अपने आदेश से पहले ”Hey Tiny” कहें — उदाहरण के लिए, ”Hey Tiny, open Music”।',
   'settings.screenIntel.permissions.accessibility': 'एक्सेसिबिलिटी',
   'settings.screenIntel.permissions.grantHint': 'स्वीकृति संकेत',
   'settings.screenIntel.permissions.inputMonitoring': 'इनपुट मॉनिटरिंग',
