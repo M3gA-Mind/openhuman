@@ -38,7 +38,14 @@ import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
  *     without an in-app approval card (reuses the autonomy RPCs).
  */
 
-/** The four permissions the desktop agent depends on, in setup order. */
+/**
+ * The four permissions the desktop agent depends on, in setup order.
+ *
+ * Accessibility / Screen Recording / Input Monitoring intentionally reuse the
+ * existing `settings.screenIntel.permissions.*` labels (same OS permissions as the
+ * Screen Intelligence panel) to avoid duplicate translations; only Microphone needs
+ * a desktop-agent-specific key.
+ */
 const PERMISSIONS: ReadonlyArray<{ kind: AccessibilityPermissionKind; labelKey: string }> = [
   { kind: 'microphone', labelKey: 'settings.desktopAgent.microphone' },
   { kind: 'accessibility', labelKey: 'settings.screenIntel.permissions.accessibility' },
@@ -100,6 +107,7 @@ const DesktopAgentPanel = () => {
   }, []);
 
   const loadAutonomy = useCallback(async () => {
+    setError(null);
     try {
       const resp = await openhumanGetAutonomySettings();
       setAutoApprove(resp.result.auto_approve ?? []);
@@ -109,6 +117,7 @@ const DesktopAgentPanel = () => {
   }, []);
 
   const loadVoice = useCallback(async () => {
+    setError(null);
     try {
       const resp = await openhumanGetVoiceServerSettings();
       setAlwaysOn(resp.result.always_on_enabled);
@@ -175,7 +184,8 @@ const DesktopAgentPanel = () => {
         } else {
           // Remove only the desktop tools + restore the plan-approval prompt. Leave
           // the autonomy tier as-is (managed in Settings → Agent Access).
-          const pruned = current.filter(tool => !SEAMLESS_TOOLS.includes(tool as never));
+          const seamlessSet = new Set<string>(SEAMLESS_TOOLS);
+          const pruned = current.filter(tool => !seamlessSet.has(tool));
           await openhumanUpdateAutonomySettings({
             require_task_plan_approval: true,
             auto_approve: pruned,
