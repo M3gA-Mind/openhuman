@@ -32,6 +32,9 @@ const messages: TranslationMap = {
   'brain.subtitle': 'Dein Wissensgraph, deine Speicherquellen und Steuerelemente.',
   'brain.tabs.memory': 'Gedächtnis',
   'brain.tabs.subconscious': 'Unterbewusstsein',
+  'brain.tabs.graph': 'Graph',
+  'brain.tabs.sources': 'Quellen',
+  'brain.tabs.sync': 'Synchronisierung',
   'brain.empty': 'Dein Gehirn ist noch leer – verbinde eine Quelle, um Speicher aufzubauen.',
   'brain.error': 'Dein Gehirn konnte nicht geladen werden. Bitte versuche es erneut.',
   'common.cancel': 'Abbrechen',
@@ -88,11 +91,12 @@ const messages: TranslationMap = {
   'settings.groups.notifications': 'Benachrichtigungen',
   'settings.groups.about': 'Über',
   'settings.assistant.personality': 'Persönlichkeit',
-  'settings.assistant.personalityDesc': 'Name, Beschreibung und SOUL.md-Persona',
+  'settings.personalityFace.title': 'Persönlichkeit & Gesicht',
+  'settings.personalityFace.menuDesc':
+    'Charakter deines Assistenten anpassen und sein Gesicht wählen',
   'settings.assistant.voice': 'Stimme',
   'settings.assistant.voiceDesc': 'Sprache-zu-Text und Text-zu-Sprache Einstellungen',
   'settings.assistant.faceMascot': 'Gesicht / Maskottchen',
-  'settings.assistant.faceMascotDesc': 'Maskottchen-Farbe in der App auswählen',
   'settings.assistant.backgroundActivity': 'Unterbewusstsein',
   'settings.assistant.backgroundActivityDesc':
     'Steuern, wie aktiv Ihr Assistent im Hintergrund arbeitet',
@@ -170,6 +174,11 @@ const messages: TranslationMap = {
   'settings.exitLocalSession': 'Lokale Sitzung beenden',
   'settings.exitLocalSessionDesc': 'Zum Anmeldebildschirm zurückkehren',
   'settings.language': 'Sprache',
+  'settings.navGroups.general': 'Allgemein',
+  'settings.navGroups.assistant': 'Assistent',
+  'settings.navGroups.data': 'Daten',
+  'settings.navGroups.connections': 'Verbindungen',
+  'settings.navGroups.system': 'System',
   'settings.betaBuild': 'Beta-Build – v{version}',
   'settings.languageDesc': 'Anzeigesprache für die App-Oberfläche',
   'settings.alerts': 'Warnungen',
@@ -399,6 +408,11 @@ const messages: TranslationMap = {
   'connections.tabs.mcp': 'MCP-Server',
   'connections.tabs.skills': 'Fähigkeiten',
   'connections.tabs.meetings': 'Meetings',
+  'connections.groups.integrations': 'Integrationen',
+  'connections.tabs.oauth': 'OAuth',
+  'connections.tabs.composioKey': 'Composio',
+  'connections.groups.apiKeys': 'API-Schlüssel',
+  'connections.groups.intelligence': 'Intelligenz',
   'memory.title': 'Erinnerung',
   'memory.search': 'Erinnerungen suchen...',
   'memory.noResults': 'Keine Erinnerungen gefunden',
@@ -921,14 +935,9 @@ const messages: TranslationMap = {
   'settings.about.connectionHelperCloud':
     'Verbunden mit einem Remote-Core. Ändern Sie dies in BootCheck oder in der Cloud-Modus-Auswahl.',
   'settings.heartbeat.title': 'Heartbeat und Schleifen',
-  'settings.heartbeat.desc':
-    'Kontrollieren Sie die Hintergrundplanungskadenzen und inspizieren Sie die Schleifenkarte.',
-  'settings.ledgerUsage.title': 'Nutzungsbuch',
-  'settings.ledgerUsage.desc':
-    'Aktuelle Kreditausgaben, Budgetmathematik und Hintergrund API Lesebudget.',
+  'settings.usage.title': 'Nutzung & Limits',
+  'settings.usage.menuDesc': 'Kosten, Token-Verbrauch, Budgets und Hintergrundaktivität',
   'settings.costDashboard.title': 'Kosten-Dashboard',
-  'settings.costDashboard.desc':
-    '7-tägige Ausgaben und Token brennen über den Schwarm, mit Budgettempo und Aufschlüsselung nach Modell.',
   'settings.costDashboard.sevenDayCost': '7-Tage-Tageskosten',
   'settings.costDashboard.sevenDayTokens': '7-Tage-Token-Nutzung',
   'settings.costDashboard.totalSpend': '7 Tage insgesamt',
@@ -1982,6 +1991,9 @@ const messages: TranslationMap = {
   'chat.editThreadTitle': 'Thread-Titel bearbeiten',
   'chat.hideSidebar': 'Seitenleiste ausblenden',
   'chat.showSidebar': 'Seitenleiste anzeigen',
+  'chat.searchThreads': 'Unterhaltungen suchen',
+  'layout.resizeSidebar': 'Seitenleiste anpassen',
+  'layout.showSidebar': 'Seitenleiste anzeigen',
   'chat.newThreadShortcut': 'Neuer Thread (/new)',
   'chat.new': 'Neu',
   'chat.failedToLoadMessages': 'Nachrichten konnten nicht geladen werden',
@@ -3155,9 +3167,6 @@ const messages: TranslationMap = {
   'pages.settings.aiSection.description':
     'Sprachmodellanbieter, lokal Ollama und Sprache (STT / TTS).',
   'pages.settings.aiSection.title': 'AI',
-  'pages.settings.composioSection.title': 'Composio',
-  'pages.settings.composioSection.description':
-    'Routing, Trigger und Verlauf für Integrationen, die von Composio unterstützt werden.',
   'settings.developerMenu.composio.title': 'Composio',
   'settings.developerMenu.composio.desc':
     'Routing-Modus, Integrations-Trigger und Trigger-Verlaufsarchiv.',
@@ -4893,6 +4902,8 @@ const messages: TranslationMap = {
   'walletSend.genericError':
     'Überweisung konnte nicht abgeschlossen werden. Bitte versuche es erneut.',
   'settings.taskSources.title': 'Aufgabenquellen',
+  'settings.integrations.title': 'Integrationen',
+  'settings.integrations.menuDesc': 'Aufgabenquellen, Composio-Routing und Webhook-Trigger',
   'settings.taskSources.subtitle': 'Ziehen Sie Aufgaben aus Ihren Tools auf das Agenten-ToDo-Board',
   'settings.taskSources.description':
     'Sammeln Sie Arbeitselemente von GitHub, Notion, Linear und ClickUp, bereichern Sie sie und leiten Sie sie an das Agent-ToDo-Board weiter.',
@@ -5519,6 +5530,57 @@ const messages: TranslationMap = {
   'notch.speaking': 'Spreche…',
   'notch.transcribing': 'Transkribiere…',
   'notch.executing': 'Führe aus…',
+  // ── Agent Profiles ───────────────────────────────────────────────────────
+  'settings.profiles.title': 'Agentenprofile',
+  'settings.profiles.subtitle':
+    'Agenten mit Charakter – jeder mit eigener Seele, Erinnerung, Konnektoren und Fähigkeiten.',
+  'settings.profiles.menuDesc': 'Agentenprofile erstellen und verwalten',
+  'settings.profiles.new': 'Neues Profil',
+  'settings.profiles.empty': 'Noch keine Agentenprofile',
+  'settings.profiles.loadError': 'Profile konnten nicht geladen werden',
+  'settings.profiles.active': 'Aktiv',
+  'settings.profiles.setActive': 'Als aktiv festlegen',
+  'settings.profiles.sourceBuiltIn': 'Integriert',
+  'settings.profiles.sourceCustom': 'Benutzerdefiniert',
+  'settings.profiles.deleteConfirm':
+    'Dieses Profil löschen? Das kann nicht rückgängig gemacht werden.',
+  'settings.profiles.editor.createTitle': 'Neues Profil',
+  'settings.profiles.editor.editTitle': 'Profil bearbeiten',
+  'settings.profiles.editor.name': 'Name',
+  'settings.profiles.editor.id': 'Kennung',
+  'settings.profiles.editor.idHint': 'Nur Kleinbuchstaben, Ziffern und Bindestriche.',
+  'settings.profiles.editor.description': 'Beschreibung',
+  'settings.profiles.editor.soul': 'Seele (SOUL.md)',
+  'settings.profiles.editor.soulHint':
+    'Benutzerdefinierte Identität dieses Profils. Leer greift auf die SOUL.md des Arbeitsbereichs zurück.',
+  'settings.profiles.editor.baseAgent': 'Basis-Agent',
+  'settings.profiles.editor.baseAgentHint':
+    'Mit welcher Agentendefinition dieses Profil läuft (z. B. orchestrator).',
+  'settings.profiles.editor.model': 'Modell',
+  'settings.profiles.editor.modelHint':
+    'Optionale Modellüberschreibung. Leer erbt die Standardeinstellung.',
+  'settings.profiles.editor.temperature': 'Temperatur',
+  'settings.profiles.editor.systemPromptSuffix': 'Suffix der Systemaufforderung',
+  'settings.profiles.editor.agentConversations': 'Agentengespräche abrufen',
+  'settings.profiles.editor.agentConversationsHint':
+    'Erinnerungen aus früheren und chatübergreifenden Gesprächen in den Kontext dieses Profils einbeziehen.',
+  'settings.profiles.editor.memorySources': 'Gedächtnisquellen',
+  'settings.profiles.editor.memorySourcesHint':
+    'Gedächtnisquellen, aus denen dieses Profil abruft.',
+  'settings.profiles.editor.connectors': 'Konnektoren',
+  'settings.profiles.editor.connectorsHint': 'Composio-Toolkits, die dieses Profil verwenden kann.',
+  'settings.profiles.editor.skills': 'Fähigkeiten',
+  'settings.profiles.editor.skillsHint':
+    'Workflows, die dieses Profil auflisten und ausführen kann.',
+  'settings.profiles.editor.mcpServers': 'MCP-Server',
+  'settings.profiles.editor.mcpServersHint': 'MCP-Server, die dieses Profil erreichen kann.',
+  'settings.profiles.editor.all': 'Alle',
+  'settings.profiles.editor.selected': 'Ausgewählt',
+  'settings.profiles.editor.addPlaceholder': 'Kennung eingeben und Enter drücken',
+  'settings.profiles.editor.removeAria': '{item} entfernen',
+  'settings.profiles.editor.notFound': 'Profil nicht gefunden',
+  'settings.profiles.editor.saving': 'Wird gespeichert…',
+  'settings.profiles.editor.idRequired': 'Die Profil-Kennung darf nicht leer sein',
 };
 
 export default messages;

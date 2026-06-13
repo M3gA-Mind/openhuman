@@ -26,8 +26,9 @@ import {
   type VoiceServerSettings,
   type VoiceStatus,
 } from '../../../utils/tauriCommands';
+import PanelPage from '../../layout/PanelPage';
 import Button from '../../ui/Button';
-import SettingsHeader from '../components/SettingsHeader';
+import SettingsBackButton from '../components/SettingsBackButton';
 import {
   SettingsRow,
   SettingsSection,
@@ -95,7 +96,7 @@ interface VoicePanelProps {
 
 const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
   const { t } = useT();
-  const { navigateBack, navigateToSettings, breadcrumbs } = useSettingsNavigation();
+  const { navigateBack, navigateToSettings } = useSettingsNavigation();
   const [settings, setSettings] = useState<VoiceServerSettings | null>(null);
   const [savedSettings, setSavedSettings] = useState<VoiceServerSettings | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus | null>(null);
@@ -483,16 +484,11 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
   const piperReady = piperInstall?.state === 'installed';
 
   return (
-    <div className="z-10 relative">
-      {!embedded && (
-        <SettingsHeader
-          title={t('voice.title')}
-          showBackButton={true}
-          onBack={navigateBack}
-          breadcrumbs={breadcrumbs}
-        />
-      )}
-
+    <PanelPage
+      className="z-10"
+      contentClassName=""
+      description={embedded ? undefined : t('pages.settings.ai.voiceDesc')}
+      leading={embedded ? undefined : <SettingsBackButton onBack={navigateBack} />}>
       <div className={embedded ? 'space-y-4' : 'p-4 space-y-4'}>
         {/* Always-on listening moved to Settings → Features → Desktop Agent. */}
 
@@ -1246,7 +1242,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
                     {t('voice.providers.mascotVoiceDescPrefix')}{' '}
                     <button
                       type="button"
-                      onClick={() => navigateToSettings('mascot')}
+                      onClick={() => navigateToSettings('personality#face')}
                       className="underline text-primary-600 dark:text-primary-300 hover:text-primary-700 dark:hover:text-primary-200">
                       {t('voice.providers.mascotSettings')}
                     </button>
@@ -1266,7 +1262,7 @@ const VoicePanel = ({ embedded = false }: VoicePanelProps = {}) => {
           savingLabel={t('common.loading')}
         />
       </div>
-    </div>
+    </PanelPage>
   );
 };
 
