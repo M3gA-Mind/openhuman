@@ -452,6 +452,8 @@ export const SETTINGS_ROUTE_REGISTRY: SettingsRegistryEntry[] = [
       'screen recording',
       'input monitoring',
     ],
+    navGroup: 'connections',
+    navOrder: 2,
   },
   {
     id: 'tools',
@@ -460,7 +462,7 @@ export const SETTINGS_ROUTE_REGISTRY: SettingsRegistryEntry[] = [
     section: 'features',
     searchKeywords: ['tools', 'capabilities', 'functions'],
     navGroup: 'connections',
-    navOrder: 2,
+    navOrder: 3,
   },
   {
     id: 'companion',
@@ -469,7 +471,7 @@ export const SETTINGS_ROUTE_REGISTRY: SettingsRegistryEntry[] = [
     section: 'features',
     searchKeywords: ['desktop', 'overlay', 'companion'],
     navGroup: 'connections',
-    navOrder: 3,
+    navOrder: 4,
   },
 
   // =========================================================================
