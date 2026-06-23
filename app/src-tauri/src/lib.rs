@@ -1995,10 +1995,14 @@ fn append_platform_cef_gpu_workarounds(
 }
 
 /// Whether a CEF command-line flag is `--time-ticks-at-unix-epoch` (in any
-/// dash/casing form). See [`strip_time_ticks_at_unix_epoch`] for why we care.
+/// dash/casing form, with or without an inline `=<value>` suffix). See
+/// [`strip_time_ticks_at_unix_epoch`] for why we care.
 fn is_time_ticks_at_unix_epoch_flag(flag: &str) -> bool {
-    flag.trim_start_matches('-')
-        .eq_ignore_ascii_case("time-ticks-at-unix-epoch")
+    let name = flag.trim_start_matches('-');
+    // Chromium switches can carry their value inline (`--flag=value`); compare
+    // only the switch name so the inline form can't slip past the guard.
+    let name = name.split_once('=').map_or(name, |(n, _)| n);
+    name.eq_ignore_ascii_case("time-ticks-at-unix-epoch")
 }
 
 /// Issue #3554: `--time-ticks-at-unix-epoch` carries the monotonic-clock

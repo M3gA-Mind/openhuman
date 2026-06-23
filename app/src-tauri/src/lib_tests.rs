@@ -456,6 +456,25 @@ fn strip_time_ticks_removes_negative_value_and_keeps_the_rest() {
 }
 
 #[test]
+fn strip_time_ticks_removes_inline_value_form() {
+    // The critical bypass case: when the value is carried inline as
+    // `--flag=value` (a single token) rather than as a separate value, the
+    // matcher must still recognise and strip it.
+    let mut args = vec![
+        ("--use-mock-keychain", None),
+        ("--time-ticks-at-unix-epoch=-1780937467390432", None),
+        ("--disable-gpu", None),
+    ];
+    strip_time_ticks_at_unix_epoch(&mut args);
+
+    assert_eq!(
+        args,
+        vec![("--use-mock-keychain", None), ("--disable-gpu", None)],
+        "the inline time-ticks switch must be removed; everything else kept"
+    );
+}
+
+#[test]
 fn strip_time_ticks_removes_the_flag_regardless_of_value() {
     // Even a non-negative value is dropped: OpenHuman must let Chromium
     // compute the clock origin rather than anchor it from the shell.
