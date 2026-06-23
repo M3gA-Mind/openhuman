@@ -546,12 +546,7 @@ export async function testCoreRpcConnection(
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  return fetch(rpcUrl, {
-    method: 'POST',
-    headers,
-    body,
-    signal: init?.signal,
-  });
+  return fetch(rpcUrl, { method: 'POST', headers, body, signal: init?.signal });
 }
 
 export async function getCoreHttpBaseUrl(): Promise<string> {
@@ -653,8 +648,16 @@ export async function callCoreRpc<T>({
         // webview can't fetch cleartext http cross-origin (mixed content), so
         // relay through the Rust host. Loopback (local core) and https stay on
         // the direct fetch path below. See #3865.
-        coreRpcLog('[rpc] relaying via shell (non-loopback http) url=%s', redactRpcUrlForLog(rpcUrl));
-        response = await relayRpcViaShell(rpcUrl, token, JSON.stringify(payload), controller.signal);
+        coreRpcLog(
+          '[rpc] relaying via shell (non-loopback http) url=%s',
+          redactRpcUrlForLog(rpcUrl)
+        );
+        response = await relayRpcViaShell(
+          rpcUrl,
+          token,
+          JSON.stringify(payload),
+          controller.signal
+        );
       } else {
         response = await fetch(rpcUrl, {
           method: 'POST',

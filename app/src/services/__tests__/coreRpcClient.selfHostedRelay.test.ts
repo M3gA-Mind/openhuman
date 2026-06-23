@@ -12,6 +12,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
+import { rpcUrlNeedsShellRelay, testCoreRpcConnection } from '../coreRpcClient';
+
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(), isTauri: vi.fn(() => true) }));
 vi.mock('../../utils/tauriCommands/common', async importOriginal => {
   const actual = await importOriginal<typeof import('../../utils/tauriCommands/common')>();
@@ -20,8 +22,6 @@ vi.mock('../../utils/tauriCommands/common', async importOriginal => {
 vi.mock('../../lib/ai/localCoreAiMemory', () => ({
   dispatchLocalAiMethod: vi.fn(async () => ({ source: 'local-ai' })),
 }));
-
-import { rpcUrlNeedsShellRelay, testCoreRpcConnection } from '../coreRpcClient';
 
 describe('rpcUrlNeedsShellRelay', () => {
   test('non-loopback cleartext-http URLs need the shell relay', () => {
