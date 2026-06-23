@@ -121,11 +121,16 @@ impl OpenAiCompatEmbedder {
         let api_key = crate::openhuman::embeddings::resolve_api_key(config, cred_slug);
 
         // Model: prefer the explicit `embedding_model`; otherwise fall back to an
-        // inline `slug:model` suffix on the provider string.
+        // inline `slug:model` suffix on the provider string. The `custom:<url>`
+        // form is exempt — its suffix is an endpoint URL, not a model name, so
+        // splitting it would mis-route the URL as the model. Leave the model
+        // empty in that case and let the endpoint default apply.
         let model = {
             let explicit = config.memory.embedding_model.trim();
             if !explicit.is_empty() {
                 explicit
+            } else if provider.starts_with("custom:") {
+                ""
             } else {
                 provider
                     .split_once(':')
@@ -227,6 +232,18 @@ mod tests {
         let (_tmp, cfg) = cfg_with_provider("custom:https://embed.example/v1");
         let got = OpenAiCompatEmbedder::try_from_config(&cfg).expect("no error");
         let e = got.expect("custom should build an adapter");
+        assert_eq!(e.name(), "custom");
+    }
+
+    /// When `embedding_model` is unset, a `custom:<url>` provider must NOT treat
+    /// the endpoint URL suffix as an inline model name (CodeRabbit #3781). The
+    /// adapter still builds; the model is simply left empty.
+    #[test]
+    fn some_for_custom_endpoint_does_not_use_url_as_model() {
+        let (_tmp, mut cfg) = cfg_with_provider("custom:https://embed.example/v1");
+        cfg.memory.embedding_model = String::new(); // force the inline fallback path
+        let got = OpenAiCompatEmbedder::try_from_config(&cfg).expect("no error");
+        let e = got.expect("custom endpoint with no model should still build");
         assert_eq!(e.name(), "custom");
     }
 
