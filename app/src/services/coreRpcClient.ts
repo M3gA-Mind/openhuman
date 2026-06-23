@@ -6,7 +6,12 @@ import { CORE_RPC_TIMEOUT_MS, CORE_RPC_URL } from '../utils/config';
 import { getStoredCoreToken, normalizeRpcUrl, peekStoredRpcUrl } from '../utils/configPersistence';
 import { redactRpcUrlForLog } from '../utils/redactRpcUrlForLog';
 import { sanitizeError } from '../utils/sanitize';
-import { isTauri as coreIsTauri } from '../utils/tauriCommands/common';
+// The bridge-gap-aware Tauri guard: returns true only when the IPC bridge
+// (`__TAURI_INTERNALS__.invoke`) is actually wired, not merely when running
+// under Tauri — so command invokes below (incl. relay_http_rpc) never fire
+// before the bridge is usable. Prefer this over the bare @tauri-apps/api/core
+// `isTauri`, which doesn't verify bridge readiness.
+import { isTauri } from '../utils/tauriCommands/common';
 import { normalizeRpcMethod } from './rpcMethods';
 import type { CoreTransport } from './transport/CoreTransport';
 
@@ -318,7 +323,7 @@ export async function getCoreRpcUrl(): Promise<string> {
     return resolvedCoreRpcUrl;
   }
 
-  if (!coreIsTauri()) {
+  if (!isTauri()) {
     // Web environment: respect any user-stored URL (including one that
     // happens to equal the build-time default). `peekStoredRpcUrl` returns
     // null when nothing is stored, which lets us distinguish "user hasn't
@@ -413,7 +418,7 @@ export async function getCoreRpcToken(): Promise<string | null> {
     return resolvedCoreRpcToken;
   }
 
-  if (!coreIsTauri()) return null;
+  if (!isTauri()) return null;
   if (resolvingCoreRpcToken) return resolvingCoreRpcToken;
 
   resolvingCoreRpcToken = (async () => {
@@ -537,7 +542,7 @@ export async function testCoreRpcConnection(
   // Self-hosted runtime on a LAN IP: the secure `tauri://localhost` webview
   // cannot fetch cleartext http cross-origin (mixed content → "Failed to
   // fetch"), so relay the request through the Rust host (#3865).
-  if (coreIsTauri() && rpcUrlNeedsShellRelay(rpcUrl)) {
+  if (isTauri() && rpcUrlNeedsShellRelay(rpcUrl)) {
     coreRpcLog('[rpc] test connection relaying via shell url=%s', redactRpcUrlForLog(rpcUrl));
     return relayRpcViaShell(rpcUrl, token ?? null, body, init?.signal);
   }
@@ -625,7 +630,7 @@ export async function callCoreRpc<T>({
         tokenSource: getStoredCoreToken() ? 'cloud-stored' : 'local-resolved',
       });
     }
-    if (coreIsTauri() && !token) {
+    if (isTauri() && !token) {
       throw new Error('Core RPC token unavailable in Tauri; local RPC auth cannot be satisfied');
     }
 
@@ -643,7 +648,7 @@ export async function callCoreRpc<T>({
     const timeoutId = setTimeout(() => controller.abort(), effectiveTimeoutMs);
     let response: Response;
     try {
-      if (coreIsTauri() && rpcUrlNeedsShellRelay(rpcUrl)) {
+      if (isTauri() && rpcUrlNeedsShellRelay(rpcUrl)) {
         // Self-hosted runtime on a LAN IP — the secure `tauri://localhost`
         // webview can't fetch cleartext http cross-origin (mixed content), so
         // relay through the Rust host. Loopback (local core) and https stay on
