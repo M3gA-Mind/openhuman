@@ -622,7 +622,10 @@ describe('coreRpcClient', () => {
       const fetchMock = vi.mocked(fetch);
       fetchMock.mockResolvedValueOnce({ ok: true, status: 200 } as Response);
 
-      await testCoreRpcConnection('http://example.test:7788/rpc');
+      // Trustworthy localhost http stays on the direct fetch path even in
+      // Tauri (no shell relay), so the bearer header is attached here. A
+      // non-trustworthy LAN host would relay instead — covered separately below.
+      await testCoreRpcConnection('http://127.0.0.1:7788/rpc');
 
       const requestInit = fetchMock.mock.calls[0][1] as RequestInit;
       const headers = requestInit.headers as Record<string, string>;
@@ -642,6 +645,40 @@ describe('coreRpcClient', () => {
 
       expect(response).toBe(probe);
       expect(response.status).toBe(405);
+    });
+
+    test('relays through the Rust host for non-trustworthy http URLs in Tauri (#3865)', async () => {
+      vi.resetModules();
+      vi.mocked(isTauri).mockReturnValue(true);
+      const relayCalls: Array<{ url: string; token: string | null; body: string }> = [];
+      vi.mocked(invoke).mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+        if (cmd === 'core_rpc_token') return 'deadbeef';
+        if (cmd === 'relay_http_rpc') {
+          relayCalls.push(args as { url: string; token: string | null; body: string });
+          return { status: 200, body: '{"jsonrpc":"2.0","id":1,"result":{}}' };
+        }
+        throw new Error(`unexpected command: ${cmd}`);
+      });
+      const { testCoreRpcConnection } = await import('../coreRpcClient');
+
+      const response = await testCoreRpcConnection('http://192.168.1.50:7788/rpc');
+
+      // LAN http can't be fetched cross-origin from the secure tauri webview,
+      // so it must be relayed through the Rust host carrying the bearer token.
+      expect(relayCalls).toHaveLength(1);
+      expect(relayCalls[0].url).toContain('192.168.1.50');
+      expect(relayCalls[0].token).toBe('deadbeef');
+      expect(response.status).toBe(200);
+    });
+
+    test('rpcUrlNeedsShellRelay flags only non-trustworthy http URLs', async () => {
+      vi.resetModules();
+      const { rpcUrlNeedsShellRelay } = await import('../coreRpcClient');
+      expect(rpcUrlNeedsShellRelay('http://192.168.1.50:7788/rpc')).toBe(true);
+      expect(rpcUrlNeedsShellRelay('http://127.0.0.1:7788/rpc')).toBe(false);
+      expect(rpcUrlNeedsShellRelay('http://localhost:7788/rpc')).toBe(false);
+      expect(rpcUrlNeedsShellRelay('https://example.test:7788/rpc')).toBe(false);
+      expect(rpcUrlNeedsShellRelay('not a url')).toBe(false);
     });
   });
 });
