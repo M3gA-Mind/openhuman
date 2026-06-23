@@ -8,8 +8,13 @@
 //!   `openhuman.tinyplace_<function>`
 //! e.g. `openhuman.tinyplace_directory_list_agents`.
 
-use crate::core::all::RegisteredController;
+use serde_json::{Map, Value};
+
+use crate::core::all::{ControllerFuture, RegisteredController};
 use crate::core::{ControllerSchema, FieldSchema, TypeSchema};
+use crate::openhuman::config::rpc as config_rpc;
+use crate::openhuman::cron::{add_agent_job_with_definition, remove_job, Schedule, SessionTarget};
+use crate::rpc::RpcOutcome;
 
 use crate::openhuman::tinyplace::manifest::{
     handle_tinyplace_artifacts_get,
@@ -2556,6 +2561,138 @@ fn schema_graphql_identity_sales() -> ControllerSchema {
 }
 
 /// All tinyplace controller schemas (for schema discovery / validation).
+// ── Autonomous agent run/cancel surface ──────────────────────────────────
+//
+// Programmatic start/stop for the `tinyplace_agent` built-in. These wrap the
+// existing cron store (`add_agent_job_with_definition` / `remove_job`) so a
+// caller can trigger an unattended Tiny Place agent run without going through
+// the renderer's routines UI. No new persistence — a one-shot cron job is the
+// unit of work, and the cron scheduler's `JobType::Agent` path runs it.
+
+/// Grep-friendly log prefix for the run/cancel surface.
+const LOG_PREFIX: &str = "[tinyplace]";
+
+/// Built-in agent definition id resolved by the cron scheduler for run/cancel.
+const TINYPLACE_AGENT_ID: &str = "tinyplace_agent";
+
+fn schema_agent_run() -> ControllerSchema {
+    ControllerSchema {
+        namespace: "tinyplace",
+        function: "agent_run",
+        description: "Start a one-shot autonomous Tiny Place agent run with the \
+                      given prompt. Schedules the `tinyplace_agent` built-in to \
+                      run immediately via cron (JobType::Agent) and returns the \
+                      job_id for status polling. The job is deleted after it runs.",
+        inputs: vec![
+            required_string(
+                "prompt",
+                "Goal for the agent, e.g. \"Post a hello to the Tiny Place feed\".",
+            ),
+            optional_string(
+                "name",
+                "Optional human-readable label for the scheduled job.",
+            ),
+            optional_string(
+                "model",
+                "Optional model override; defaults to the agent definition's hint.",
+            ),
+        ],
+        outputs: vec![json_output(
+            "result",
+            "The created CronJob object, including its `id` for status polling/cancel.",
+        )],
+    }
+}
+
+fn schema_agent_cancel() -> ControllerSchema {
+    ControllerSchema {
+        namespace: "tinyplace",
+        function: "agent_cancel",
+        description: "Cancel a Tiny Place agent run by job_id, stopping a \
+                      scheduled or queued `tinyplace_agent` task. Wraps the cron \
+                      store's remove_job.",
+        inputs: vec![required_string(
+            "job_id",
+            "The cron job id returned by `tinyplace_agent_run`.",
+        )],
+        outputs: vec![json_output("result", "Cancellation acknowledgement object.")],
+    }
+}
+
+/// `openhuman.tinyplace_agent_run` — schedule a one-shot autonomous agent run.
+pub(crate) fn handle_tinyplace_agent_run(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let prompt = params
+            .get("prompt")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "'prompt' is required and must be non-empty".to_string())?
+            .to_string();
+        let name = params
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let model = params
+            .get("model")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        log::debug!(
+            "{LOG_PREFIX} agent_run prompt_len={} name={name:?} model={model:?}",
+            prompt.len()
+        );
+
+        let config = config_rpc::load_config_with_timeout().await?;
+        // One-shot: fire on the next scheduler tick and delete after it runs.
+        // `Schedule::At` requires a strictly-future instant (see
+        // `validate_schedule`), so nudge a second ahead of `now`.
+        let schedule = Schedule::At {
+            at: chrono::Utc::now() + chrono::Duration::seconds(1),
+        };
+        let job = add_agent_job_with_definition(
+            &config,
+            name,
+            schedule,
+            &prompt,
+            SessionTarget::Isolated,
+            model,
+            None,
+            true,
+            Some(TINYPLACE_AGENT_ID.to_string()),
+        )
+        .map_err(|e| e.to_string())?;
+
+        log::info!("{LOG_PREFIX} agent_run scheduled job_id={}", job.id);
+        RpcOutcome::single_log(job, "tinyplace agent run scheduled").into_cli_compatible_json()
+    })
+}
+
+/// `openhuman.tinyplace_agent_cancel` — cancel a scheduled/queued agent run.
+pub(crate) fn handle_tinyplace_agent_cancel(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let job_id = params
+            .get("job_id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| "'job_id' is required and must be non-empty".to_string())?
+            .to_string();
+
+        log::debug!("{LOG_PREFIX} agent_cancel job_id={job_id}");
+
+        let config = config_rpc::load_config_with_timeout().await?;
+        remove_job(&config, &job_id).map_err(|e| e.to_string())?;
+
+        log::info!("{LOG_PREFIX} agent_cancel removed job_id={job_id}");
+        RpcOutcome::single_log(
+            serde_json::json!({ "cancelled": true, "job_id": job_id }),
+            "tinyplace agent run cancelled",
+        )
+        .into_cli_compatible_json()
+    })
+}
+
 pub fn all_tinyplace_controller_schemas() -> Vec<ControllerSchema> {
     vec![
         schema_directory_list_agents(),
@@ -2719,6 +2856,9 @@ pub fn all_tinyplace_controller_schemas() -> Vec<ControllerSchema> {
         schema_graphql_identity_bids(),
         schema_graphql_identity_offers(),
         schema_graphql_identity_sales(),
+        // Autonomous agent run/cancel surface
+        schema_agent_run(),
+        schema_agent_cancel(),
     ]
 }
 
@@ -3309,6 +3449,15 @@ pub fn all_tinyplace_registered_controllers() -> Vec<RegisteredController> {
             schema: schema_graphql_identity_sales(),
             handler: handle_tinyplace_graphql_identity_sales,
         },
+        // Autonomous agent run/cancel surface
+        RegisteredController {
+            schema: schema_agent_run(),
+            handler: handle_tinyplace_agent_run,
+        },
+        RegisteredController {
+            schema: schema_agent_cancel(),
+            handler: handle_tinyplace_agent_cancel,
+        },
     ]
 }
 
@@ -3342,6 +3491,75 @@ mod tests {
                 "method {method} does not start with openhuman.tinyplace_"
             );
         }
+    }
+
+    /// The autonomous agent run/cancel controllers are registered with the
+    /// expected method names.
+    #[test]
+    fn agent_run_cancel_handlers_are_registered() {
+        use crate::core::all::rpc_method_name;
+        let expected = [
+            "openhuman.tinyplace_agent_run",
+            "openhuman.tinyplace_agent_cancel",
+        ];
+        let registered: Vec<String> = all_tinyplace_registered_controllers()
+            .into_iter()
+            .map(|c| rpc_method_name(&c.schema))
+            .collect();
+        for method in &expected {
+            assert!(
+                registered.contains(&method.to_string()),
+                "expected handler for {method} to be registered, found: {registered:?}"
+            );
+        }
+    }
+
+    /// `agent_run` schema requires `prompt`; `agent_cancel` requires `job_id`.
+    #[test]
+    fn agent_run_cancel_schemas_declare_required_inputs() {
+        let run = schema_agent_run();
+        assert_eq!(run.function, "agent_run");
+        assert!(
+            run.inputs.iter().any(|f| f.name == "prompt" && f.required),
+            "agent_run must require `prompt`"
+        );
+
+        let cancel = schema_agent_cancel();
+        assert_eq!(cancel.function, "agent_cancel");
+        assert!(
+            cancel.inputs.iter().any(|f| f.name == "job_id" && f.required),
+            "agent_cancel must require `job_id`"
+        );
+    }
+
+    /// Dispatch layer: a missing/blank `prompt` is rejected before any cron or
+    /// config work, and a blank `job_id` is rejected for cancel — so callers get
+    /// a clear validation error rather than a downstream failure.
+    #[test]
+    fn agent_run_cancel_reject_blank_required_args() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime");
+
+        let run_missing = rt.block_on(handle_tinyplace_agent_run(Map::new()));
+        assert!(
+            run_missing.is_err(),
+            "agent_run without prompt should error, got {run_missing:?}"
+        );
+
+        let mut blank_prompt = Map::new();
+        blank_prompt.insert("prompt".into(), Value::String("   ".into()));
+        let run_blank = rt.block_on(handle_tinyplace_agent_run(blank_prompt));
+        assert!(
+            run_blank.is_err(),
+            "agent_run with blank prompt should error, got {run_blank:?}"
+        );
+
+        let cancel_missing = rt.block_on(handle_tinyplace_agent_cancel(Map::new()));
+        assert!(
+            cancel_missing.is_err(),
+            "agent_cancel without job_id should error, got {cancel_missing:?}"
+        );
     }
 
     /// Verify the six feeds write handlers (Phase A) are registered with correct method names.
