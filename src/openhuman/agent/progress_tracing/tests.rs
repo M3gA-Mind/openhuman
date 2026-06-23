@@ -72,7 +72,13 @@ fn tool_started(call_id: &str, tool: &str, iter: u32) -> AgentProgress {
     }
 }
 
-fn tool_completed(call_id: &str, tool: &str, success: bool, chars: usize, elapsed: u64) -> AgentProgress {
+fn tool_completed(
+    call_id: &str,
+    tool: &str,
+    success: bool,
+    chars: usize,
+    elapsed: u64,
+) -> AgentProgress {
     AgentProgress::ToolCallCompleted {
         call_id: call_id.to_string(),
         tool_name: tool.to_string(),
@@ -95,7 +101,10 @@ fn full_turn_builds_correlated_span_tree() {
             1_010,
         ),
         (tool_started("call-1", "web_search", 1), 1_020),
-        (tool_completed("call-1", "web_search", true, 321, 200), 1_020),
+        (
+            tool_completed("call-1", "web_search", true, 321, 200),
+            1_020,
+        ),
         (
             AgentProgress::TurnCostUpdated {
                 model: "claude-opus-4-8".to_string(),
@@ -120,10 +129,22 @@ fn full_turn_builds_correlated_span_tree() {
     assert_eq!(turn.attributes["session.id"], serde_json::json!("sess-42"));
     assert_eq!(turn.attributes["user.id"], serde_json::json!("client-7"));
     // Cost / usage attributes ride on the root.
-    assert_eq!(turn.attributes["gen_ai.usage.input_tokens"], serde_json::json!(1_200));
-    assert_eq!(turn.attributes["gen_ai.usage.output_tokens"], serde_json::json!(480));
-    assert_eq!(turn.attributes["gen_ai.usage.cached_input_tokens"], serde_json::json!(64));
-    assert_eq!(turn.attributes["gen_ai.request.model"], serde_json::json!("claude-opus-4-8"));
+    assert_eq!(
+        turn.attributes["gen_ai.usage.input_tokens"],
+        serde_json::json!(1_200)
+    );
+    assert_eq!(
+        turn.attributes["gen_ai.usage.output_tokens"],
+        serde_json::json!(480)
+    );
+    assert_eq!(
+        turn.attributes["gen_ai.usage.cached_input_tokens"],
+        serde_json::json!(64)
+    );
+    assert_eq!(
+        turn.attributes["gen_ai.request.model"],
+        serde_json::json!("claude-opus-4-8")
+    );
     assert_eq!(turn.attributes["agent.iterations"], serde_json::json!(1));
     assert_eq!(turn.status, SpanStatus::Ok);
     assert!(turn.attributes.get("gen_ai.usage.cost_usd").is_some());
@@ -132,7 +153,10 @@ fn full_turn_builds_correlated_span_tree() {
     let iter = find(spans, "agent.iteration#1");
     assert_eq!(iter.kind, SpanKind::Iteration);
     assert_eq!(iter.parent_span_id.as_deref(), Some(turn.span_id.as_str()));
-    assert_eq!(iter.attributes["agent.max_iterations"], serde_json::json!(5));
+    assert_eq!(
+        iter.attributes["agent.max_iterations"],
+        serde_json::json!(5)
+    );
 
     // Tool parented to the iteration.
     let tool = find(spans, "tool.web_search");
@@ -151,7 +175,13 @@ fn full_turn_builds_correlated_span_tree() {
 fn failed_tool_marks_error_status() {
     let mut c = collect(&[
         (AgentProgress::TurnStarted, 0),
-        (AgentProgress::IterationStarted { iteration: 1, max_iterations: 3 }, 1),
+        (
+            AgentProgress::IterationStarted {
+                iteration: 1,
+                max_iterations: 3,
+            },
+            1,
+        ),
         (tool_started("c1", "shell", 1), 2),
         (tool_completed("c1", "shell", false, 12, 5), 2),
     ]);
@@ -165,13 +195,32 @@ fn failed_tool_marks_error_status() {
 fn iteration_started_closes_the_previous_iteration() {
     let c = collect(&[
         (AgentProgress::TurnStarted, 0),
-        (AgentProgress::IterationStarted { iteration: 1, max_iterations: 3 }, 10),
-        (AgentProgress::IterationStarted { iteration: 2, max_iterations: 3 }, 20),
+        (
+            AgentProgress::IterationStarted {
+                iteration: 1,
+                max_iterations: 3,
+            },
+            10,
+        ),
+        (
+            AgentProgress::IterationStarted {
+                iteration: 2,
+                max_iterations: 3,
+            },
+            20,
+        ),
     ]);
     let first = find(c.spans(), "agent.iteration#1");
-    assert_eq!(first.end_unix_ms, Some(20), "iter#1 closes when iter#2 opens");
+    assert_eq!(
+        first.end_unix_ms,
+        Some(20),
+        "iter#1 closes when iter#2 opens"
+    );
     let second = find(c.spans(), "agent.iteration#2");
-    assert!(second.end_unix_ms.is_none(), "iter#2 still open until finish");
+    assert!(
+        second.end_unix_ms.is_none(),
+        "iter#2 still open until finish"
+    );
 }
 
 // ── subagents ───────────────────────────────────────────────────────────────
@@ -192,7 +241,13 @@ fn spawn(task: &str, display: &str) -> AgentProgress {
 fn subagent_lifecycle_nests_under_the_turn() {
     let mut c = collect(&[
         (AgentProgress::TurnStarted, 0),
-        (AgentProgress::IterationStarted { iteration: 1, max_iterations: 5 }, 5),
+        (
+            AgentProgress::IterationStarted {
+                iteration: 1,
+                max_iterations: 5,
+            },
+            5,
+        ),
         (spawn("task-1", "Researcher"), 10),
         (
             AgentProgress::SubagentIterationStarted {
@@ -248,18 +303,33 @@ fn subagent_lifecycle_nests_under_the_turn() {
     let sub = find(spans, "subagent.Researcher");
     assert_eq!(sub.kind, SpanKind::Subagent);
     assert_eq!(sub.parent_span_id.as_deref(), Some(iter.span_id.as_str()));
-    assert_eq!(sub.attributes["subagent.task_id"], serde_json::json!("task-1"));
+    assert_eq!(
+        sub.attributes["subagent.task_id"],
+        serde_json::json!("task-1")
+    );
     assert_eq!(sub.attributes["subagent.iterations"], serde_json::json!(3));
-    assert_eq!(sub.attributes["subagent.output_chars"], serde_json::json!(1024));
+    assert_eq!(
+        sub.attributes["subagent.output_chars"],
+        serde_json::json!(1024)
+    );
     assert_eq!(sub.duration_ms(), Some(500));
 
     let child_iter = find(spans, "subagent.iteration#1");
     assert_eq!(child_iter.kind, SpanKind::SubagentIteration);
-    assert_eq!(child_iter.parent_span_id.as_deref(), Some(sub.span_id.as_str()));
-    assert_eq!(child_iter.attributes["agent.extended_policy"], serde_json::json!(true));
+    assert_eq!(
+        child_iter.parent_span_id.as_deref(),
+        Some(sub.span_id.as_str())
+    );
+    assert_eq!(
+        child_iter.attributes["agent.extended_policy"],
+        serde_json::json!(true)
+    );
 
     let child_tool = find(spans, "tool.read_file");
-    assert_eq!(child_tool.parent_span_id.as_deref(), Some(child_iter.span_id.as_str()));
+    assert_eq!(
+        child_tool.parent_span_id.as_deref(),
+        Some(child_iter.span_id.as_str())
+    );
     assert_eq!(child_tool.status, SpanStatus::Ok);
 
     // Worktree paths / changed file names must never be exported.
@@ -289,7 +359,10 @@ fn subagent_failure_records_error_without_raw_text() {
     assert!(sub.attributes.get("error.length").is_some());
 
     let blob = serde_json::to_string(c.spans()).unwrap();
-    assert!(!blob.contains("sk-secret-123"), "raw error text must not leak");
+    assert!(
+        !blob.contains("sk-secret-123"),
+        "raw error text must not leak"
+    );
 }
 
 #[test]
@@ -320,8 +393,20 @@ fn unknown_subagent_task_ids_are_ignored() {
 fn content_bearing_events_produce_no_spans_and_no_leak() {
     let c = collect(&[
         (AgentProgress::TurnStarted, 0),
-        (AgentProgress::TextDelta { delta: "TOP-SECRET-REPLY".to_string(), iteration: 1 }, 1),
-        (AgentProgress::ThinkingDelta { delta: "secret reasoning".to_string(), iteration: 1 }, 2),
+        (
+            AgentProgress::TextDelta {
+                delta: "TOP-SECRET-REPLY".to_string(),
+                iteration: 1,
+            },
+            1,
+        ),
+        (
+            AgentProgress::ThinkingDelta {
+                delta: "secret reasoning".to_string(),
+                iteration: 1,
+            },
+            2,
+        ),
         (
             AgentProgress::ToolCallArgsDelta {
                 call_id: "c".to_string(),
@@ -348,7 +433,10 @@ fn tool_arguments_are_never_serialized() {
     ]);
     c.finish(10);
     let blob = serde_json::to_string(c.spans()).unwrap();
-    assert!(!blob.contains("do-not-export"), "tool args must not be exported");
+    assert!(
+        !blob.contains("do-not-export"),
+        "tool args must not be exported"
+    );
 }
 
 // ── lazy root + finish ──────────────────────────────────────────────────────
@@ -357,7 +445,13 @@ fn tool_arguments_are_never_serialized() {
 fn first_event_lazily_opens_the_turn_span() {
     // Stream that begins mid-flight (no TurnStarted) still correlates.
     let mut c = SpanCollector::new(ctx());
-    c.record(&AgentProgress::IterationStarted { iteration: 4, max_iterations: 9 }, 100);
+    c.record(
+        &AgentProgress::IterationStarted {
+            iteration: 4,
+            max_iterations: 9,
+        },
+        100,
+    );
     let turn = find(c.spans(), "agent.turn");
     assert_eq!(turn.trace_id, "sess-42");
     let iter = find(c.spans(), "agent.iteration#4");
@@ -368,7 +462,13 @@ fn first_event_lazily_opens_the_turn_span() {
 fn finish_seals_all_open_spans_idempotently() {
     let mut c = collect(&[
         (AgentProgress::TurnStarted, 0),
-        (AgentProgress::IterationStarted { iteration: 1, max_iterations: 2 }, 5),
+        (
+            AgentProgress::IterationStarted {
+                iteration: 1,
+                max_iterations: 2,
+            },
+            5,
+        ),
         (tool_started("c1", "x", 1), 6),
     ]);
     assert!(c.spans().iter().any(|s| s.end_unix_ms.is_none()));
@@ -376,7 +476,10 @@ fn finish_seals_all_open_spans_idempotently() {
     assert!(c.spans().iter().all(|s| s.end_unix_ms.is_some()));
     // idempotent.
     c.finish(200);
-    assert!(c.spans().iter().all(|s| s.end_unix_ms == Some(s.end_unix_ms.unwrap())));
+    assert!(c
+        .spans()
+        .iter()
+        .all(|s| s.end_unix_ms == Some(s.end_unix_ms.unwrap())));
 }
 
 #[test]
@@ -394,7 +497,10 @@ fn cost_update_before_turn_start_lazily_opens_root() {
         100,
     );
     let turn = find(c.spans(), "agent.turn");
-    assert_eq!(turn.attributes["gen_ai.usage.input_tokens"], serde_json::json!(10));
+    assert_eq!(
+        turn.attributes["gen_ai.usage.input_tokens"],
+        serde_json::json!(10)
+    );
 }
 
 #[test]
@@ -459,7 +565,10 @@ fn export_disabled_is_a_noop_and_writes_nothing() {
         export_path: Some(path.to_string_lossy().to_string()),
     };
     export_spans(&cfg, &one_turn_spans());
-    assert!(!path.exists(), "disabled tracing must not create the export file");
+    assert!(
+        !path.exists(),
+        "disabled tracing must not create the export file"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

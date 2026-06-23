@@ -301,7 +301,10 @@ impl SpanCollector {
                 let parent = self.ensure_turn_span(now_unix_ms);
                 let mut attrs = BTreeMap::new();
                 attrs.insert("agent.iteration".to_string(), json_u32(*iteration));
-                attrs.insert("agent.max_iterations".to_string(), json_u32(*max_iterations));
+                attrs.insert(
+                    "agent.max_iterations".to_string(),
+                    json_u32(*max_iterations),
+                );
                 let (id, index) = self.open_span(
                     SpanKind::Iteration,
                     format!("agent.iteration#{iteration}"),
@@ -344,7 +347,10 @@ impl SpanCollector {
                 if let Some(index) = self.open_tools.remove(call_id) {
                     let start = self.spans[index].start_unix_ms;
                     let mut extra = BTreeMap::new();
-                    extra.insert("tool.success".to_string(), serde_json::Value::Bool(*success));
+                    extra.insert(
+                        "tool.success".to_string(),
+                        serde_json::Value::Bool(*success),
+                    );
                     extra.insert("tool.output_chars".to_string(), json_usize(*output_chars));
                     extra.insert("tool.elapsed_ms".to_string(), json_u64(*elapsed_ms));
                     self.close_span(index, start + elapsed_ms, status_of(*success), extra);
@@ -370,7 +376,10 @@ impl SpanCollector {
                     "subagent.dedicated_thread".to_string(),
                     serde_json::Value::Bool(*dedicated_thread),
                 );
-                attrs.insert("subagent.prompt_chars".to_string(), json_usize(*prompt_chars));
+                attrs.insert(
+                    "subagent.prompt_chars".to_string(),
+                    json_usize(*prompt_chars),
+                );
                 if let Some(name) = display_name {
                     attrs.insert("subagent.display_name".to_string(), json_str(name));
                 }
@@ -414,7 +423,10 @@ impl SpanCollector {
                 }
                 let mut attrs = BTreeMap::new();
                 attrs.insert("agent.iteration".to_string(), json_u32(*iteration));
-                attrs.insert("agent.max_iterations".to_string(), json_u32(*max_iterations));
+                attrs.insert(
+                    "agent.max_iterations".to_string(),
+                    json_u32(*max_iterations),
+                );
                 attrs.insert(
                     "agent.extended_policy".to_string(),
                     serde_json::Value::Bool(*extended_policy),
@@ -478,7 +490,10 @@ impl SpanCollector {
                 };
                 let start = self.spans[index].start_unix_ms;
                 let mut extra = BTreeMap::new();
-                extra.insert("tool.success".to_string(), serde_json::Value::Bool(*success));
+                extra.insert(
+                    "tool.success".to_string(),
+                    serde_json::Value::Bool(*success),
+                );
                 extra.insert("tool.output_chars".to_string(), json_usize(*output_chars));
                 extra.insert("tool.elapsed_ms".to_string(), json_u64(*elapsed_ms));
                 self.close_span(index, start + elapsed_ms, status_of(*success), extra);
@@ -502,7 +517,10 @@ impl SpanCollector {
                 let start = self.spans[state.span_index].start_unix_ms;
                 let mut extra = BTreeMap::new();
                 extra.insert("subagent.iterations".to_string(), json_u32(*iterations));
-                extra.insert("subagent.output_chars".to_string(), json_usize(*output_chars));
+                extra.insert(
+                    "subagent.output_chars".to_string(),
+                    json_usize(*output_chars),
+                );
                 extra.insert("subagent.elapsed_ms".to_string(), json_u64(*elapsed_ms));
                 self.close_span(state.span_index, start + elapsed_ms, SpanStatus::Ok, extra);
             }
@@ -544,8 +562,10 @@ impl SpanCollector {
                 if let Some(span) = self.spans.get_mut(index) {
                     span.attributes
                         .insert("gen_ai.request.model".to_string(), json_str(model));
-                    span.attributes
-                        .insert("gen_ai.usage.input_tokens".to_string(), json_u64(*input_tokens));
+                    span.attributes.insert(
+                        "gen_ai.usage.input_tokens".to_string(),
+                        json_u64(*input_tokens),
+                    );
                     span.attributes.insert(
                         "gen_ai.usage.output_tokens".to_string(),
                         json_u64(*output_tokens),
@@ -677,10 +697,7 @@ pub fn export_spans(config: &AgentTracingConfig, spans: &[TraceSpan]) {
                             spans.len()
                         );
                     } else {
-                        log::debug!(
-                            "[agent-tracing] exported {} spans to {path}",
-                            spans.len()
-                        );
+                        log::debug!("[agent-tracing] exported {} spans to {path}", spans.len());
                     }
                 }
                 Err(err) => log::warn!("[agent-tracing] failed to open {path}: {err}"),
