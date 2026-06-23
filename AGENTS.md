@@ -233,6 +233,7 @@ Each domain owns `bus.rs` with handlers. Convention: `<Purpose>Subscriber`, `nam
 - **i18n**: all UI text through `useT()` from `app/src/lib/i18n/I18nContext`. Add key to `en.ts` **and real translations to all locale files** (`ar`, `bn`, `de`, `es`, `fr`, `hi`, `id`, `it`, `ko`, `pl`, `pt`, `ru`, `zh-CN`). CI enforces parity (`pnpm i18n:check`) and detects English placeholders (`pnpm i18n:english:check`).
 - **Dual socket sync**: keep `socketService`/MCP transport aligned with core socket behavior.
 - **Tauri guard**: use `isTauri()` or wrap `invoke(...)` in try/catch — never check `window.__TAURI__` directly.
+- **Generated docs**: some architecture docs contain generated blocks marked `<!-- BEGIN/END GENERATED: … -->` sourced from code (today: the frontend provider chain in [`gitbooks/developing/architecture/frontend.md`](gitbooks/developing/architecture/frontend.md), from the `@generated-source:provider-chain` marker in `app/src/App.tsx`). Don't hand-edit between the markers — update the code source, then run `pnpm docs:generate`. CI (`pnpm docs:check`, the **Docs Drift** lane) fails on stale generated docs. Generator + tests: `scripts/generate-architecture-docs.mjs`.
 
 ---
 
