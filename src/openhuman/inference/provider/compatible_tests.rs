@@ -1151,7 +1151,7 @@ const DEEPSEEK_402_BODY: &str = r#"{"error":{"message":"Insufficient Balance","t
 /// Install a capturing Sentry hub for the duration of the returned guard. The
 /// `TestTransport` records any event `report_error` would emit, so an empty
 /// event list proves the failure was demoted (info log) rather than reported.
-fn install_capturing_sentry() -> (TestTransport, sentry::HubSwitchGuard) {
+fn install_capturing_sentry() -> (Arc<TestTransport>, sentry::HubSwitchGuard) {
     let transport = TestTransport::new();
     let sentry_options = sentry::ClientOptions {
         dsn: Some("https://public@sentry.invalid/1".parse().unwrap()),
@@ -1210,7 +1210,7 @@ async fn stream_chat_insufficient_credits_402_not_reported_to_sentry() {
         "hello",
         "deepseek-chat",
         0.7,
-        super::traits::StreamOptions::new(true),
+        crate::openhuman::inference::provider::traits::StreamOptions::new(true),
     );
     let mut saw_error = false;
     while let Some(item) = stream.next().await {
@@ -1242,7 +1242,7 @@ async fn stream_chat_history_insufficient_credits_402_not_reported_to_sentry() {
         &[ChatMessage::user("hello")],
         "deepseek-chat",
         0.7,
-        super::traits::StreamOptions::new(true),
+        crate::openhuman::inference::provider::traits::StreamOptions::new(true),
     );
     let mut saw_error = false;
     while let Some(item) = stream.next().await {
