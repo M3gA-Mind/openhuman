@@ -148,14 +148,15 @@ export function initSentry(): void {
     defaultIntegrations: false,
     integrations: [
       // #3963: `defaultIntegrations: false` (above) drops every default
-      // integration — including `inboundFiltersIntegration`, the ONLY one that
-      // consumes the top-level `ignoreErrors` option below. Without it the
-      // curated `ignoreErrors` list is dead config and benign browser noise
+      // integration — including `eventFiltersIntegration` (the v9 rename of the
+      // old `inboundFiltersIntegration`), the ONLY one that consumes the
+      // top-level `ignoreErrors` option below. Without it the curated
+      // `ignoreErrors` list is dead config and benign browser noise
       // ("ResizeObserver loop completed with undelivered notifications", etc.)
       // floods the dashboard. Re-register it explicitly so the filters run
       // (as an event processor, ahead of `beforeSend`). Keep this first so a
       // future curated-list edit is less likely to drop it silently.
-      Sentry.inboundFiltersIntegration(),
+      Sentry.eventFiltersIntegration(),
       Sentry.functionToStringIntegration(),
       Sentry.linkedErrorsIntegration(),
       Sentry.dedupeIntegration(),
