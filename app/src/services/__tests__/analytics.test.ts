@@ -16,6 +16,7 @@ const hoisted = vi.hoisted(() => ({
   browserApiErrorsIntegration: vi.fn(() => ({ name: 'BrowserApiErrors' })),
   globalHandlersIntegration: vi.fn(() => ({ name: 'GlobalHandlers' })),
   httpContextIntegration: vi.fn(() => ({ name: 'HttpContext' })),
+  inboundFiltersIntegration: vi.fn(() => ({ name: 'InboundFilters' })),
   // Config state
   analyticsEnabled: false,
   appEnvironment: 'staging' as 'staging' | 'production' | 'development',
@@ -35,6 +36,7 @@ vi.mock('@sentry/react', () => ({
   browserApiErrorsIntegration: hoisted.browserApiErrorsIntegration,
   globalHandlersIntegration: hoisted.globalHandlersIntegration,
   httpContextIntegration: hoisted.httpContextIntegration,
+  inboundFiltersIntegration: hoisted.inboundFiltersIntegration,
 }));
 
 // `initSentry()` reads `getCoreStateSnapshot().snapshot.analyticsEnabled` to
@@ -306,6 +308,38 @@ describe('initSentry beforeSend manual-staging bypass', () => {
     expect(opts.replaysOnErrorSampleRate).toBe(0);
     const names = opts.integrations.map(i => i.name).filter(Boolean);
     expect(names).toContain('HttpContext');
+  });
+
+  test('registers inboundFiltersIntegration so ignoreErrors takes effect (#3963)', async () => {
+    // Regression for #3963: `defaultIntegrations: false` dropped
+    // `inboundFiltersIntegration`, the only integration that consumes the
+    // top-level `ignoreErrors` option. That made the curated `ignoreErrors`
+    // list dead config (since PR #52) and let "ResizeObserver loop completed
+    // with undelivered notifications" + the other intended noise filters leak.
+    // Assert BOTH halves of the fix so a future curated-list edit can't
+    // silently re-break it: the integration is registered AND the
+    // ignoreErrors patterns are present.
+    hoisted.init.mockReset();
+    const { initSentry } = await import('../analytics');
+    initSentry();
+
+    const opts = hoisted.init.mock.calls[0][0] as {
+      integrations: Array<{ name?: string }>;
+      ignoreErrors: string[];
+    };
+    const names = opts.integrations.map(i => i.name).filter(Boolean);
+    expect(names).toContain('InboundFilters');
+    // The integration factory must actually have been invoked.
+    expect(hoisted.inboundFiltersIntegration).toHaveBeenCalled();
+    // The intended noise filters must still be configured for it to consume.
+    expect(opts.ignoreErrors).toEqual(
+      expect.arrayContaining([
+        'ResizeObserver loop',
+        'Network request failed',
+        'Load failed',
+        'AbortError',
+      ])
+    );
   });
 
   test('keeps os/browser/device contexts and forwards them through beforeSend (#1403)', async () => {
