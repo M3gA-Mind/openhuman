@@ -127,7 +127,10 @@ impl OpenAiCompatEmbedder {
             if !explicit.is_empty() {
                 explicit
             } else {
-                provider.split_once(':').map(|(_, m)| m.trim()).unwrap_or("")
+                provider
+                    .split_once(':')
+                    .map(|(_, m)| m.trim())
+                    .unwrap_or("")
             }
         };
 
