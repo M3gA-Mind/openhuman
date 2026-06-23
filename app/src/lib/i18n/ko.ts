@@ -716,6 +716,7 @@ const messages: TranslationMap = {
   'alerts.empty': '아직 알림이 없습니다',
   'alerts.markAllRead': '모두 읽음으로 표시',
   'alerts.unread': '읽지 않음',
+  'alerts.filterAll': '전체',
   'rewards.title': '보상',
   'rewards.referrals': '추천',
   'rewards.coupons': '교환',

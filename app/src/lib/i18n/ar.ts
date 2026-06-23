@@ -705,6 +705,7 @@ const messages: TranslationMap = {
   'alerts.empty': 'لا توجد تنبيهات بعد',
   'alerts.markAllRead': 'تحديد الكل كمقروء',
   'alerts.unread': 'غير مقروء',
+  'alerts.filterAll': 'الكل',
   'rewards.title': 'المكافآت',
   'rewards.referrals': 'الإحالات',
   'rewards.coupons': 'استرداد',

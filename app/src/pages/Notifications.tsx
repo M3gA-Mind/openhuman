@@ -1,8 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import NotificationBody from '../components/notifications/NotificationBody';
 import NotificationCenter from '../components/notifications/NotificationCenter';
+import PillTabBar from '../components/PillTabBar';
 import { useT } from '../lib/i18n/I18nContext';
 import { resolveSystemRoute } from '../lib/notificationRouter';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
@@ -14,6 +15,22 @@ import {
   type NotificationItem,
   selectUnreadCount,
 } from '../store/notificationSlice';
+
+// Canonical display order for category chips; only categories present in the
+// feed get a chip, but when several are present they always appear in this
+// order so the row is stable regardless of arrival order.
+const CATEGORY_ORDER: NotificationCategory[] = [
+  'messages',
+  'agents',
+  'skills',
+  'system',
+  'meetings',
+  'reminders',
+  'important',
+];
+
+// Sentinel value for the "All" chip (clears the category filter).
+type CategoryFilter = NotificationCategory | 'all';
 
 function formatTime(ts: number, t: (key: string) => string): string {
   const delta = Date.now() - ts;
@@ -32,6 +49,23 @@ const Notifications = () => {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const unread = useMemo(() => selectUnreadCount(items), [items]);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all');
+
+  // Categories actually present in the feed, in canonical order — drives the
+  // chip row so there are never any dead chips.
+  const availableCategories = useMemo(() => {
+    const present = new Set(items.map(item => item.category));
+    return CATEGORY_ORDER.filter(category => present.has(category));
+  }, [items]);
+
+  // Items shown in the list, narrowed to the selected category ('all' = no filter).
+  const visibleItems = useMemo(
+    () =>
+      selectedCategory === 'all'
+        ? items
+        : items.filter(item => item.category === selectedCategory),
+    [items, selectedCategory],
+  );
 
   const categoryLabel = (category: NotificationCategory): string => {
     switch (category) {
@@ -97,13 +131,34 @@ const Notifications = () => {
           </div>
         </div>
 
-        {items.length === 0 ? (
+        {/* Category-chip filter row — hidden entirely when the feed is empty. */}
+        {items.length > 0 && (
+          <div
+            data-testid="notification-category-filter"
+            className="border-b border-stone-100 dark:border-neutral-800 px-4 py-2">
+            <PillTabBar<CategoryFilter>
+              items={[
+                { label: t('alerts.filterAll'), value: 'all' },
+                ...availableCategories.map(category => ({
+                  label: categoryLabel(category),
+                  value: category,
+                })),
+              ]}
+              selected={selectedCategory}
+              onChange={setSelectedCategory}
+            />
+          </div>
+        )}
+
+        {/* Empty when the feed is empty OR the active category filter excludes
+            every item. */}
+        {visibleItems.length === 0 ? (
           <div className="px-6 py-16 text-center text-sm text-stone-500 dark:text-neutral-400">
             {t('alerts.empty')}
           </div>
         ) : (
           <ul className="divide-y divide-stone-100 dark:divide-neutral-800">
-            {items.map(item => (
+            {visibleItems.map(item => (
               <li key={item.id} data-testid="notification-item">
                 {/* `role="button"` instead of a real `<button>` — the row body
                     contains `NotificationLinkPill` (also a `<button>`), and

@@ -139,3 +139,53 @@ describe('Notifications page row wrapper', () => {
     expect(store.getState().notifications.items[0].read).toBe(false);
   });
 });
+
+// #3715: category-chip filter row above the system-events list.
+describe('Notifications page category filter', () => {
+  it('hides the chip row entirely when there are no notifications', () => {
+    renderPage([]);
+    expect(screen.queryByTestId('notification-category-filter')).not.toBeInTheDocument();
+  });
+
+  it('renders an "All" chip plus one chip per category present (no dead chips)', () => {
+    renderPage([
+      makeItem('n-1', 'a', { category: 'messages' }),
+      makeItem('n-2', 'b', { category: 'agents' }),
+      makeItem('n-3', 'c', { category: 'messages' }),
+    ]);
+
+    const filter = screen.getByTestId('notification-category-filter');
+    const chips = within(filter).getAllByRole('tab');
+    // All + messages + agents — and NOT the absent categories.
+    expect(chips.map(c => c.textContent)).toEqual([
+      'alerts.filterAll',
+      'notifications.category.messages',
+      'notifications.category.agents',
+    ]);
+    expect(
+      within(filter).queryByText('notifications.category.system')
+    ).not.toBeInTheDocument();
+  });
+
+  it('filters the list to the selected category and back to all', () => {
+    renderPage([
+      makeItem('n-1', 'a', { category: 'messages' }),
+      makeItem('n-2', 'b', { category: 'agents' }),
+    ]);
+
+    // Default: All — both rows visible.
+    expect(screen.getAllByTestId('notification-item')).toHaveLength(2);
+
+    const filter = screen.getByTestId('notification-category-filter');
+    fireEvent.click(within(filter).getByText('notifications.category.messages'));
+
+    // Narrowed to the single messages row.
+    const rows = screen.getAllByTestId('notification-item');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].textContent).toContain('notifications.category.messages');
+
+    // Clicking "All" restores the full feed.
+    fireEvent.click(within(filter).getByText('alerts.filterAll'));
+    expect(screen.getAllByTestId('notification-item')).toHaveLength(2);
+  });
+});

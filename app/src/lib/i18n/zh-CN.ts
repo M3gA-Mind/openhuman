@@ -694,6 +694,7 @@ const messages: TranslationMap = {
   'alerts.empty': '暂无通知',
   'alerts.markAllRead': '全部标记为已读',
   'alerts.unread': '未读',
+  'alerts.filterAll': '全部',
   'rewards.title': '奖励',
   'rewards.referrals': '邀请',
   'rewards.coupons': '优惠券',

@@ -717,6 +717,7 @@ const messages: TranslationMap = {
   'alerts.empty': 'अभी कोई अलर्ट नहीं',
   'alerts.markAllRead': 'सभी पढ़ा हुआ मार्क करें',
   'alerts.unread': 'अनरीड',
+  'alerts.filterAll': 'सभी',
   'rewards.title': 'रिवॉर्ड',
   'rewards.referrals': 'रेफरल',
   'rewards.coupons': 'रिडीम करें',

@@ -720,6 +720,7 @@ const messages: TranslationMap = {
   'alerts.empty': 'এখনো কোনো সতর্কতা নেই',
   'alerts.markAllRead': 'সব পঠিত চিহ্নিত করুন',
   'alerts.unread': 'অপঠিত',
+  'alerts.filterAll': 'সব',
   'rewards.title': 'পুরস্কার',
   'rewards.referrals': 'রেফারেল',
   'rewards.coupons': 'রিডিম',

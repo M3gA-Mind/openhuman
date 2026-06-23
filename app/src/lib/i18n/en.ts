@@ -976,6 +976,7 @@ const en: TranslationMap = {
   'alerts.empty': 'No alerts yet',
   'alerts.markAllRead': 'Mark all as read',
   'alerts.unread': 'unread',
+  'alerts.filterAll': 'All',
 
   // Rewards
   'rewards.title': 'Rewards',

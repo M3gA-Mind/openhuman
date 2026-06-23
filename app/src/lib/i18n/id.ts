@@ -722,6 +722,7 @@ const messages: TranslationMap = {
   'alerts.empty': 'Belum ada peringatan',
   'alerts.markAllRead': 'Tandai semua sudah dibaca',
   'alerts.unread': 'belum dibaca',
+  'alerts.filterAll': 'Semua',
   'rewards.title': 'Hadiah',
   'rewards.referrals': 'Referral',
   'rewards.coupons': 'Tukarkan',

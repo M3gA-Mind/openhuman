@@ -734,6 +734,7 @@ const messages: TranslationMap = {
   'alerts.empty': 'Nessun avviso',
   'alerts.markAllRead': 'Segna tutti come letti',
   'alerts.unread': 'non letti',
+  'alerts.filterAll': 'Tutte',
   'rewards.title': 'Premi',
   'rewards.referrals': 'Referral',
   'rewards.coupons': 'Riscatta',
