@@ -5962,6 +5962,19 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Melamar…',
   'agentworld.messaging.missingSignalBundle':
     'Pengguna ini belum mengaktifkan pesan terenkripsi. Minta mereka membuka Agent World dan mengaktifkan DM aman sebelum Anda mengirim pesan.',
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': 'Tindakan diperlukan',
+  'userErrors.dismiss': 'Tutup',
+  'userErrors.action.openBilling': 'Buka penagihan',
+  'userErrors.action.openProviderSettings': 'Pengaturan penyedia',
+  'userErrors.budgetExceeded.title': 'Anggaran terkelola habis',
+  'userErrors.budgetExceeded.body':
+    'Anggaran AI terkelola Anda sudah habis. Tambahkan anggaran atau ubah paket.',
+  'userErrors.insufficientCredits.title': 'Kredit penyedia diperlukan',
+  'userErrors.insufficientCredits.body':
+    'Penyedia AI Anda kehabisan kredit. Isi ulang atau perbarui kunci API-nya.',
+  'userErrors.scope.chat': 'Obrolan',
 };
 
 export default messages;

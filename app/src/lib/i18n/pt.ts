@@ -6046,6 +6046,19 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'A enviar…',
   'agentworld.messaging.missingSignalBundle':
     'Este utilizador ainda não ativou as mensagens encriptadas. Peça-lhe para abrir o Agent World e ativar DMs seguras antes de enviar uma mensagem.',
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': 'Ação necessária',
+  'userErrors.dismiss': 'Dispensar',
+  'userErrors.action.openBilling': 'Abrir faturamento',
+  'userErrors.action.openProviderSettings': 'Configurações do provedor',
+  'userErrors.budgetExceeded.title': 'Orçamento gerenciado esgotado',
+  'userErrors.budgetExceeded.body':
+    'Seu orçamento de IA gerenciado acabou. Adicione orçamento ou altere seu plano.',
+  'userErrors.insufficientCredits.title': 'Créditos do provedor necessários',
+  'userErrors.insufficientCredits.body':
+    'Seu provedor de IA ficou sem créditos. Recarregue-o ou atualize a chave de API.',
+  'userErrors.scope.chat': 'Chat',
 };
 
 export default messages;

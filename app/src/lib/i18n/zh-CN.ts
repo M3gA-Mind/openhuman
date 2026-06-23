@@ -5646,6 +5646,17 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': '申请中…',
   'agentworld.messaging.missingSignalBundle':
     '此用户尚未启用加密消息。发送消息前，请让对方打开 Agent World 并启用安全私信。',
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': '需要操作',
+  'userErrors.dismiss': '忽略',
+  'userErrors.action.openBilling': '打开账单',
+  'userErrors.action.openProviderSettings': '提供商设置',
+  'userErrors.budgetExceeded.title': '托管预算已用尽',
+  'userErrors.budgetExceeded.body': '托管 AI 预算已用尽，请增加预算或更改套餐。',
+  'userErrors.insufficientCredits.title': '需要提供商额度',
+  'userErrors.insufficientCredits.body': '提供商额度已用完，请充值或更新 API 密钥。',
+  'userErrors.scope.chat': '聊天',
 };
 
 export default messages;

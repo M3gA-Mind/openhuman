@@ -36,6 +36,7 @@ import { pttReducer } from './pttSlice';
 import socketReducer from './socketSlice';
 import themeReducer from './themeSlice';
 import threadReducer from './threadSlice';
+import userErrorsReducer from './userErrorsSlice';
 import { userScopedStorage } from './userScopedStorage';
 
 // Persisted slices write through `userScopedStorage` so each user's blob
@@ -220,6 +221,10 @@ export const store = configureStore({
     persona: persistedPersonaReducer,
     theme: persistedThemeReducer,
     ptt: persistedPttReducer,
+    // In-memory only (not persisted): survives route changes / background-job
+    // completion, resets on restart + user switch. Durable storage is a #3931
+    // follow-up.
+    userErrors: userErrorsReducer,
   },
   middleware: getDefaultMiddleware => {
     const middleware = getDefaultMiddleware({

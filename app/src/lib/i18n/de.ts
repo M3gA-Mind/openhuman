@@ -6107,6 +6107,19 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Wird eingereicht…',
   'agentworld.messaging.missingSignalBundle':
     'Dieser Benutzer hat verschlüsselte Nachrichten noch nicht aktiviert. Bitte ihn, Agent World zu öffnen und sichere DMs zu aktivieren, bevor du eine Nachricht sendest.',
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': 'Aktion erforderlich',
+  'userErrors.dismiss': 'Verwerfen',
+  'userErrors.action.openBilling': 'Abrechnung öffnen',
+  'userErrors.action.openProviderSettings': 'Anbietereinstellungen',
+  'userErrors.budgetExceeded.title': 'Verwaltetes Budget erreicht',
+  'userErrors.budgetExceeded.body':
+    'Dein verwaltetes KI-Budget ist aufgebraucht. Füge Budget hinzu oder ändere deinen Tarif.',
+  'userErrors.insufficientCredits.title': 'Anbieter-Guthaben erforderlich',
+  'userErrors.insufficientCredits.body':
+    'Deinem KI-Anbieter ist das Guthaben ausgegangen. Lade es auf oder aktualisiere den Schlüssel.',
+  'userErrors.scope.chat': 'Chat',
 };
 
 export default messages;

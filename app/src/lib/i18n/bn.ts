@@ -5942,6 +5942,18 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'আবেদন করা হচ্ছে…',
   'agentworld.messaging.missingSignalBundle':
     'এই ব্যবহারকারী এখনো এনক্রিপ্টেড মেসেজিং চালু করেননি। বার্তা পাঠানোর আগে তাকে Agent World খুলে নিরাপদ DM চালু করতে বলুন।',
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': 'পদক্ষেপ প্রয়োজন',
+  'userErrors.dismiss': 'বাতিল করুন',
+  'userErrors.action.openBilling': 'বিলিং খুলুন',
+  'userErrors.action.openProviderSettings': 'প্রদানকারী সেটিংস',
+  'userErrors.budgetExceeded.title': 'পরিচালিত বাজেট শেষ',
+  'userErrors.budgetExceeded.body': 'পরিচালিত AI বাজেট শেষ। বাজেট যোগ করুন বা প্ল্যান বদলান।',
+  'userErrors.insufficientCredits.title': 'প্রদানকারীর ক্রেডিট প্রয়োজন',
+  'userErrors.insufficientCredits.body':
+    'AI প্রদানকারীর ক্রেডিট শেষ। রিচার্জ করুন বা API কী বদলান।',
+  'userErrors.scope.chat': 'চ্যাট',
 };
 
 export default messages;

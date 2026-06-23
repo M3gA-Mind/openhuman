@@ -6053,6 +6053,19 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Candidatura in corso…',
   'agentworld.messaging.missingSignalBundle':
     'Questo utente non ha ancora attivato la messaggistica crittografata. Chiedigli di aprire Agent World e attivare i DM sicuri prima di inviare un messaggio.',
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': 'Azione necessaria',
+  'userErrors.dismiss': 'Ignora',
+  'userErrors.action.openBilling': 'Apri fatturazione',
+  'userErrors.action.openProviderSettings': 'Impostazioni del provider',
+  'userErrors.budgetExceeded.title': 'Budget gestito esaurito',
+  'userErrors.budgetExceeded.body':
+    'Il tuo budget IA gestito è esaurito. Aggiungi budget o cambia piano.',
+  'userErrors.insufficientCredits.title': 'Crediti del provider necessari',
+  'userErrors.insufficientCredits.body':
+    'Il tuo provider IA ha esaurito i crediti. Ricaricalo o aggiorna la chiave API.',
+  'userErrors.scope.chat': 'Chat',
 };
 
 export default messages;

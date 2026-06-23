@@ -25,6 +25,7 @@ import { SidebarSlotProvider } from './components/layout/shell/SidebarSlot';
 import LocalAIDownloadSnackbar from './components/LocalAIDownloadSnackbar';
 import SecretPromptDialog from './components/mcp-setup/SecretPromptDialog';
 import OpenhumanLinkModal from './components/OpenhumanLinkModal';
+import UserErrorCenter from './components/userErrors/UserErrorCenter';
 import PersistRehydrationScreen from './components/PersistRehydrationScreen';
 import PttHotkeyManager from './components/PttHotkeyManager';
 import SecurityBanner from './components/SecurityBanner';
@@ -276,6 +277,11 @@ export function AppShellDesktop() {
           )}
         </div>
         <OpenhumanLinkModal />
+        {/* User-actionable runtime errors (#3931): a first-class panel for
+            expected user states (insufficient BYO credits, managed-budget
+            exhaustion). Mounted outside the routes so entries survive route
+            changes and background-job completion. */}
+        <UserErrorCenter />
         {/* Hidden Remotion-driven producer for the Meet camera. Mounts a
             640×480 JPEG frame stream to the Rust frame bus while a meet
             call is active; idle no-op otherwise. See

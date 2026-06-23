@@ -5824,6 +5824,17 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'جارٍ التقديم…',
   'agentworld.messaging.missingSignalBundle':
     'لم يفعّل هذا المستخدم الرسائل المشفرة بعد. اطلب منه فتح Agent World وتفعيل الرسائل المباشرة الآمنة قبل إرسال رسالة.',
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': 'إجراء مطلوب',
+  'userErrors.dismiss': 'تجاهل',
+  'userErrors.action.openBilling': 'فتح الفوترة',
+  'userErrors.action.openProviderSettings': 'إعدادات المزود',
+  'userErrors.budgetExceeded.title': 'تم استنفاد الميزانية المُدارة',
+  'userErrors.budgetExceeded.body': 'نفدت الميزانية المُدارة. أضف ميزانية أو غيّر خطتك.',
+  'userErrors.insufficientCredits.title': 'مطلوب رصيد المزود',
+  'userErrors.insufficientCredits.body': 'نفد رصيد المزود. أعد الشحن أو حدّث مفتاح API.',
+  'userErrors.scope.chat': 'الدردشة',
 };
 
 export default messages;

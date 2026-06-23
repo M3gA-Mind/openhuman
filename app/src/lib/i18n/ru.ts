@@ -6009,6 +6009,17 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Отправка…',
   'agentworld.messaging.missingSignalBundle':
     'Этот пользователь еще не включил зашифрованные сообщения. Попросите его открыть Agent World и включить безопасные личные сообщения перед отправкой.',
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': 'Требуется действие',
+  'userErrors.dismiss': 'Отклонить',
+  'userErrors.action.openBilling': 'Открыть оплату',
+  'userErrors.action.openProviderSettings': 'Настройки провайдера',
+  'userErrors.budgetExceeded.title': 'Управляемый бюджет исчерпан',
+  'userErrors.budgetExceeded.body': 'Управляемый бюджет ИИ исчерпан. Измените план.',
+  'userErrors.insufficientCredits.title': 'Требуются кредиты провайдера',
+  'userErrors.insufficientCredits.body': 'У провайдера закончились кредиты. Пополните их.',
+  'userErrors.scope.chat': 'Чат',
 };
 
 export default messages;

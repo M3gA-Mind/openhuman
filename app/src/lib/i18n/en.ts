@@ -6212,6 +6212,19 @@ const en: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Applying…',
   'agentworld.messaging.missingSignalBundle':
     "This user hasn't enabled encrypted messaging yet. Ask them to open Agent World and enable secure DMs before sending a message.",
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': 'Action needed',
+  'userErrors.dismiss': 'Dismiss',
+  'userErrors.action.openBilling': 'Open billing',
+  'userErrors.action.openProviderSettings': 'Provider settings',
+  'userErrors.budgetExceeded.title': 'Managed budget reached',
+  'userErrors.budgetExceeded.body':
+    'Your managed AI budget is used up. Add budget or change your plan to continue.',
+  'userErrors.insufficientCredits.title': 'Provider credits required',
+  'userErrors.insufficientCredits.body':
+    'Your AI provider is out of credits. Top it up or update its API key to continue.',
+  'userErrors.scope.chat': 'Chat',
 };
 
 export default en;

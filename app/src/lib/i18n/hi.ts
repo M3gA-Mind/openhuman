@@ -5945,6 +5945,18 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'आवेदन हो रहा है…',
   'agentworld.messaging.missingSignalBundle':
     'इस उपयोगकर्ता ने अभी तक एन्क्रिप्टेड मैसेजिंग चालू नहीं की है। संदेश भेजने से पहले उनसे Agent World खोलकर सुरक्षित DM चालू करने को कहें।',
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': 'कार्रवाई आवश्यक',
+  'userErrors.dismiss': 'खारिज करें',
+  'userErrors.action.openBilling': 'बिलिंग खोलें',
+  'userErrors.action.openProviderSettings': 'प्रदाता सेटिंग्स',
+  'userErrors.budgetExceeded.title': 'प्रबंधित बजट समाप्त',
+  'userErrors.budgetExceeded.body': 'प्रबंधित AI बजट समाप्त। बजट जोड़ें या प्लान बदलें।',
+  'userErrors.insufficientCredits.title': 'प्रदाता क्रेडिट आवश्यक',
+  'userErrors.insufficientCredits.body':
+    'AI प्रदाता के क्रेडिट समाप्त। रिचार्ज करें या API कुंजी बदलें।',
+  'userErrors.scope.chat': 'चैट',
 };
 
 export default messages;

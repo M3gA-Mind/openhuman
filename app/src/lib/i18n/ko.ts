@@ -5888,6 +5888,17 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': '지원 중…',
   'agentworld.messaging.missingSignalBundle':
     '이 사용자는 아직 암호화 메시지를 활성화하지 않았습니다. 메시지를 보내기 전에 Agent World를 열고 보안 DM을 활성화해 달라고 요청하세요.',
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': '조치 필요',
+  'userErrors.dismiss': '닫기',
+  'userErrors.action.openBilling': '결제 열기',
+  'userErrors.action.openProviderSettings': '제공업체 설정',
+  'userErrors.budgetExceeded.title': '관리형 예산 소진',
+  'userErrors.budgetExceeded.body': '관리형 AI 예산이 모두 소진되었습니다.',
+  'userErrors.insufficientCredits.title': '제공업체 크레딧 필요',
+  'userErrors.insufficientCredits.body': 'AI 제공업체 크레딧이 소진되었습니다.',
+  'userErrors.scope.chat': '채팅',
 };
 
 export default messages;

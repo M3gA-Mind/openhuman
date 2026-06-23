@@ -6068,6 +6068,19 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Enviando…',
   'agentworld.messaging.missingSignalBundle':
     'Este usuario aún no ha activado la mensajería cifrada. Pídele que abra Agent World y active los DM seguros antes de enviarle un mensaje.',
+
+  // User-actionable runtime errors (#3931)
+  'userErrors.title': 'Acción necesaria',
+  'userErrors.dismiss': 'Descartar',
+  'userErrors.action.openBilling': 'Abrir facturación',
+  'userErrors.action.openProviderSettings': 'Configuración del proveedor',
+  'userErrors.budgetExceeded.title': 'Presupuesto gestionado agotado',
+  'userErrors.budgetExceeded.body':
+    'Tu presupuesto de IA gestionado se ha agotado. Añade presupuesto o cambia de plan.',
+  'userErrors.insufficientCredits.title': 'Se requieren créditos del proveedor',
+  'userErrors.insufficientCredits.body':
+    'Tu proveedor de IA se quedó sin créditos. Recárgalo o actualiza su clave de API.',
+  'userErrors.scope.chat': 'Chat',
 };
 
 export default messages;
