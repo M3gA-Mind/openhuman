@@ -87,8 +87,7 @@ mod tests {
     #[test]
     fn classifier_is_coupled_to_the_wallet_message_constant() {
         assert_eq!(
-            WALLET_NOT_CONFIGURED_MESSAGE,
-            "wallet is not configured; run wallet setup first",
+            WALLET_NOT_CONFIGURED_MESSAGE, "wallet is not configured; run wallet setup first",
             "the tiny.place classifier and the wallet origin must agree on this \
              exact string; update both sites together if it changes"
         );
