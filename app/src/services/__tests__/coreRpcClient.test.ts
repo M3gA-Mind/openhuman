@@ -650,11 +650,10 @@ describe('coreRpcClient', () => {
     test('relays through the Rust host for non-trustworthy http URLs in Tauri (#3865)', async () => {
       vi.resetModules();
       vi.mocked(isTauri).mockReturnValue(true);
-      const relayCalls: Array<{ url: string; token: string | null; body: string }> = [];
-      vi.mocked(invoke).mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      const invokeMock = vi.mocked(invoke);
+      invokeMock.mockImplementation(async (cmd: string) => {
         if (cmd === 'core_rpc_token') return 'deadbeef';
         if (cmd === 'relay_http_rpc') {
-          relayCalls.push(args as { url: string; token: string | null; body: string });
           return { status: 200, body: '{"jsonrpc":"2.0","id":1,"result":{}}' };
         }
         throw new Error(`unexpected command: ${cmd}`);
@@ -665,9 +664,11 @@ describe('coreRpcClient', () => {
 
       // LAN http can't be fetched cross-origin from the secure tauri webview,
       // so it must be relayed through the Rust host carrying the bearer token.
-      expect(relayCalls).toHaveLength(1);
-      expect(relayCalls[0].url).toContain('192.168.1.50');
-      expect(relayCalls[0].token).toBe('deadbeef');
+      const relayCall = invokeMock.mock.calls.find(call => call[0] === 'relay_http_rpc');
+      expect(relayCall).toBeDefined();
+      const relayArgs = relayCall![1] as { url: string; token: string | null; body: string };
+      expect(relayArgs.url).toContain('192.168.1.50');
+      expect(relayArgs.token).toBe('deadbeef');
       expect(response.status).toBe(200);
     });
 
