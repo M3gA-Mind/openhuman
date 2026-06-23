@@ -194,6 +194,17 @@ impl Provider for OpenAiCompatibleProvider {
                     Some(model),
                     status,
                 );
+            } else if super::super::is_provider_insufficient_credits_402(status, &error) {
+                // Residual 402 after the request already caps max_tokens: the
+                // user's own BYO provider balance is exhausted — no local lever,
+                // so demote to info instead of paging on every retry
+                // (TAURI-RUST-4QF / #3961).
+                super::super::log_provider_insufficient_credits_402(
+                    "chat_completions",
+                    self.name.as_str(),
+                    Some(model),
+                    status,
+                );
             } else if super::super::should_report_provider_http_failure(status) {
                 crate::core::observability::report_error(
                     message.as_str(),
@@ -996,6 +1007,20 @@ impl Provider for OpenAiCompatibleProvider {
                         Some(model_owned.as_str()),
                         status,
                     );
+                } else if crate::openhuman::inference::provider::is_provider_insufficient_credits_402(
+                    status,
+                    &raw_error,
+                ) {
+                    // Residual 402 after max_tokens is already capped: the user's
+                    // BYO provider balance is exhausted (no local lever), so demote
+                    // to info instead of paging on every retry (TAURI-RUST-4QF /
+                    // #3961).
+                    crate::openhuman::inference::provider::log_provider_insufficient_credits_402(
+                        "stream_chat",
+                        provider_name.as_str(),
+                        Some(model_owned.as_str()),
+                        status,
+                    );
                 } else if crate::openhuman::inference::provider::should_report_provider_http_failure(
                     status,
                 ) {
@@ -1208,6 +1233,20 @@ impl Provider for OpenAiCompatibleProvider {
                     &raw_error,
                 ) {
                     crate::openhuman::inference::provider::log_byo_provider_auth_failure(
+                        "stream_chat_history",
+                        provider_name.as_str(),
+                        Some(model_owned.as_str()),
+                        status,
+                    );
+                } else if crate::openhuman::inference::provider::is_provider_insufficient_credits_402(
+                    status,
+                    &raw_error,
+                ) {
+                    // Residual 402 after max_tokens is already capped: the user's
+                    // BYO provider balance is exhausted (no local lever), so demote
+                    // to info instead of paging on every retry (TAURI-RUST-4QF /
+                    // #3961).
+                    crate::openhuman::inference::provider::log_provider_insufficient_credits_402(
                         "stream_chat_history",
                         provider_name.as_str(),
                         Some(model_owned.as_str()),

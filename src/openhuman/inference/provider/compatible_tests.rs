@@ -1132,6 +1132,156 @@ async fn streaming_chat_byo_auth_failure_propagates_error_without_sentry_report(
 }
 
 // ----------------------------------------------------------
+// BYO insufficient-credits 402 demotion (#3961 / TAURI-RUST-4QF)
+// ----------------------------------------------------------
+//
+// A user's own BYO provider (e.g. DeepSeek) running out of balance returns
+// `402 Insufficient Balance` on every agent retry. That is expected user-state
+// once `max_tokens` is already capped — no local lever — so it must be demoted
+// to an info log, not paged to Sentry. The demote arm existed only in the
+// `native_chat` cascade (#3617); these guard the four other emit paths it now
+// also covers: non-streaming `chat_completions`, `stream_chat`,
+// `stream_chat_history`, and the shared `api_error` helper.
+
+/// Verbatim TAURI-RUST-4QF DeepSeek body. Coupling the test to the exact wire
+/// string makes a provider wording drift fail CI rather than silently leak
+/// events back to Sentry.
+const DEEPSEEK_402_BODY: &str = r#"{"error":{"message":"Insufficient Balance","type":"unknown_error","param":null,"code":"invalid_request_error"}}"#;
+
+/// Install a capturing Sentry hub for the duration of the returned guard. The
+/// `TestTransport` records any event `report_error` would emit, so an empty
+/// event list proves the failure was demoted (info log) rather than reported.
+fn install_capturing_sentry() -> (TestTransport, sentry::HubSwitchGuard) {
+    let transport = TestTransport::new();
+    let sentry_options = sentry::ClientOptions {
+        dsn: Some("https://public@sentry.invalid/1".parse().unwrap()),
+        transport: Some(Arc::new(transport.clone())),
+        ..Default::default()
+    };
+    let hub = Arc::new(sentry::Hub::new(
+        Some(Arc::new(sentry_options.into())),
+        Arc::new(Default::default()),
+    ));
+    let guard = sentry::HubSwitchGuard::new(hub);
+    (transport, guard)
+}
+
+#[tokio::test]
+async fn chat_completions_insufficient_credits_402_not_reported_to_sentry() {
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(402).set_body_string(DEEPSEEK_402_BODY))
+        .mount(&mock_server)
+        .await;
+
+    let (transport, _sentry_guard) = install_capturing_sentry();
+    let provider =
+        OpenAiCompatibleProvider::new("deepseek", &mock_server.uri(), None, AuthStyle::None);
+
+    let err = provider
+        .chat_with_system(None, "hello", "deepseek-chat", 0.7)
+        .await
+        .expect_err("402 insufficient balance must still propagate as Err");
+    assert!(err.to_string().contains("402"), "err: {err}");
+    assert!(
+        transport.fetch_and_clear_events().is_empty(),
+        "BYO 402 insufficient balance (chat_completions) must not be reported to Sentry"
+    );
+}
+
+#[tokio::test]
+async fn stream_chat_insufficient_credits_402_not_reported_to_sentry() {
+    use futures_util::StreamExt;
+
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(402).set_body_string(DEEPSEEK_402_BODY))
+        .mount(&mock_server)
+        .await;
+
+    let (transport, _sentry_guard) = install_capturing_sentry();
+    let provider =
+        OpenAiCompatibleProvider::new("deepseek", &mock_server.uri(), None, AuthStyle::None);
+
+    let mut stream = provider.stream_chat_with_system(
+        None,
+        "hello",
+        "deepseek-chat",
+        0.7,
+        super::traits::StreamOptions::new(true),
+    );
+    let mut saw_error = false;
+    while let Some(item) = stream.next().await {
+        saw_error |= item.is_err();
+    }
+    assert!(saw_error, "402 must surface as a stream error");
+    assert!(
+        transport.fetch_and_clear_events().is_empty(),
+        "BYO 402 insufficient balance (stream_chat) must not be reported to Sentry"
+    );
+}
+
+#[tokio::test]
+async fn stream_chat_history_insufficient_credits_402_not_reported_to_sentry() {
+    use futures_util::StreamExt;
+
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(402).set_body_string(DEEPSEEK_402_BODY))
+        .mount(&mock_server)
+        .await;
+
+    let (transport, _sentry_guard) = install_capturing_sentry();
+    let provider =
+        OpenAiCompatibleProvider::new("deepseek", &mock_server.uri(), None, AuthStyle::None);
+
+    let mut stream = provider.stream_chat_with_history(
+        &[ChatMessage::user("hello")],
+        "deepseek-chat",
+        0.7,
+        super::traits::StreamOptions::new(true),
+    );
+    let mut saw_error = false;
+    while let Some(item) = stream.next().await {
+        saw_error |= item.is_err();
+    }
+    assert!(saw_error, "402 must surface as a stream error");
+    assert!(
+        transport.fetch_and_clear_events().is_empty(),
+        "BYO 402 insufficient balance (stream_chat_history) must not be reported to Sentry"
+    );
+}
+
+#[tokio::test]
+async fn api_error_helper_insufficient_credits_402_not_reported_to_sentry() {
+    // Direct coverage of the shared `api_error` helper, which backs
+    // `chat_with_history` / `chat_with_tools` and any other path that delegates
+    // its HTTP-error construction.
+    let mock_server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(402).set_body_string(DEEPSEEK_402_BODY))
+        .mount(&mock_server)
+        .await;
+
+    let (transport, _sentry_guard) = install_capturing_sentry();
+    let response = reqwest::Client::new()
+        .post(mock_server.uri())
+        .send()
+        .await
+        .expect("mock request should succeed");
+
+    let err = crate::openhuman::inference::provider::api_error("deepseek", response).await;
+    assert!(err.to_string().contains("402"), "err: {err}");
+    assert!(
+        transport.fetch_and_clear_events().is_empty(),
+        "BYO 402 insufficient balance (api_error) must not be reported to Sentry"
+    );
+}
+
+// ----------------------------------------------------------
 // Custom endpoint path tests (Issue #114)
 // ----------------------------------------------------------
 

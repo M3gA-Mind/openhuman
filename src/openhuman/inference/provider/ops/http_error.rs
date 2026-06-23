@@ -719,6 +719,10 @@ pub async fn api_error(provider: &str, response: reqwest::Response) -> anyhow::E
     // from Sentry (TAURI-RUST-8FQ flood).
     let is_openai_oauth_session_expired =
         is_openai_oauth_session_expired_http(provider, status, &body);
+    // BYO provider balance exhausted (402 + credit/payment phrase). Residual
+    // user-state once max_tokens is already capped — no local lever, so demote
+    // from Sentry instead of paging on every retry (TAURI-RUST-4QF / #3961).
+    let is_insufficient_credits = is_provider_insufficient_credits_402(status, &body);
 
     if is_auth_failure && is_backend {
         // Single source of truth for backend session-expiry handling (warn +
@@ -741,6 +745,8 @@ pub async fn api_error(provider: &str, response: reqwest::Response) -> anyhow::E
         log_byo_provider_auth_failure("api_error", provider, None, status);
     } else if is_openai_oauth_session_expired {
         log_openai_oauth_session_expired("api_error", provider, None, status);
+    } else if is_insufficient_credits {
+        log_provider_insufficient_credits_402("api_error", provider, None, status);
     } else if should_report_provider_http_failure(status) {
         crate::core::observability::report_error(
             message.as_str(),
