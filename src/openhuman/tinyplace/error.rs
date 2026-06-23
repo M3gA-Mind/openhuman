@@ -36,6 +36,9 @@ pub const WALLET_NOT_CONFIGURED_KIND: &str = "WalletNotConfigured";
 /// other error string is returned verbatim so genuine failures still page.
 pub(crate) fn classify_client_build_error(err: String) -> String {
     if err == WALLET_NOT_CONFIGURED_MESSAGE {
+        log::debug!(
+            "[tinyplace] client-build error reclassified as expected user state kind={WALLET_NOT_CONFIGURED_KIND} (Sentry-suppressed, #3964)"
+        );
         StructuredRpcError {
             message: err,
             data: Some(json!({ "kind": WALLET_NOT_CONFIGURED_KIND })),
@@ -43,6 +46,7 @@ pub(crate) fn classify_client_build_error(err: String) -> String {
         }
         .encode()
     } else {
+        log::debug!("[tinyplace] client-build error passed through unchanged (still pages)");
         err
     }
 }
