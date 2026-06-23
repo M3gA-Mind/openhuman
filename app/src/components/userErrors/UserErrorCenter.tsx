@@ -36,6 +36,11 @@ const ACTION_LABEL_KEY: Record<Exclude<UserErrorAction, 'dismiss'>, string> = {
   open_provider_settings: 'userErrors.action.openProviderSettings',
 };
 
+// Wall-clock read for the resolve/dismiss timestamps. Defined at module scope
+// so the component body doesn't reference an impure function during render
+// (react-hooks/purity); the calls below run only from event handlers.
+const nowMs = (): number => Date.now();
+
 export function UserErrorCenter() {
   const { t } = useT();
   const dispatch = useAppDispatch();
@@ -50,7 +55,7 @@ export function UserErrorCenter() {
     if (entry.action !== 'dismiss') {
       navigate(ACTION_ROUTE[entry.action]);
     }
-    dispatch(resolveUserError({ id: entry.id, at: Date.now() }));
+    dispatch(resolveUserError({ id: entry.id, at: nowMs() }));
     setOpen(false);
   };
 
