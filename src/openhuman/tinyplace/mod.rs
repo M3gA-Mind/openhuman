@@ -27,6 +27,7 @@
 
 pub(crate) mod agent;
 mod agent_tools;
+mod error;
 mod manifest;
 mod ops;
 mod payment;

@@ -50,6 +50,11 @@ impl TinyPlaceState {
     ///
     /// Returns `Err` if the wallet is locked/unconfigured or the seed derivation
     /// fails — the renderer should surface an "unlock wallet" prompt.
+    ///
+    /// The wallet-not-configured case is reclassified into an expected
+    /// user-state envelope ([`error::classify_client_build_error`]) so the
+    /// JSON-RPC boundary keeps it out of Sentry (#3964). Decrypt / key-derivation
+    /// / config failures pass through unchanged and still page.
     pub(crate) async fn client(&self) -> Result<&TinyPlaceClient, String> {
         self.client
             .get_or_try_init(|| async {
@@ -69,5 +74,6 @@ impl TinyPlaceState {
                 }))
             })
             .await
+            .map_err(super::error::classify_client_build_error)
     }
 }

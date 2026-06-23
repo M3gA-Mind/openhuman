@@ -35,7 +35,7 @@ pub use execution::{
 /// Crate-internal signing primitives the `web3` layer builds on. Not part of
 /// the agent / RPC surface.
 pub(crate) use execution::{sign_and_broadcast_evm, sign_and_broadcast_solana};
-pub(crate) use ops::secret_material;
+pub(crate) use ops::{secret_material, WALLET_NOT_CONFIGURED_MESSAGE};
 pub use ops::{
     reveal_recovery_phrase, setup, status, RevealRecoveryPhraseResult, WalletAccount, WalletChain,
     WalletSetupParams, WalletSetupSource, WalletStatus,

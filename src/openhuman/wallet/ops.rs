@@ -17,6 +17,12 @@ use crate::rpc::RpcOutcome;
 
 const LOG_PREFIX: &str = "[wallet]";
 const WALLET_STATE_FILENAME: &str = "wallet-state.json";
+/// Canonical error string for "no wallet configured yet". Hoisted to a shared
+/// constant so downstream chokepoints (e.g. the tiny.place client builder) can
+/// classify this exact expected-user-state condition without re-typing the
+/// literal — a coupling test in `tinyplace::error` guards against drift.
+pub(crate) const WALLET_NOT_CONFIGURED_MESSAGE: &str =
+    "wallet is not configured; run wallet setup first";
 const VALID_MNEMONIC_WORD_COUNTS: [u8; 5] = [12, 15, 18, 21, 24];
 /// Keychain key for the encrypted mnemonic blob (user_id is added by the keyring module).
 const KEYCHAIN_MNEMONIC_KEY: &str = "wallet.mnemonic";
@@ -738,7 +744,7 @@ pub(crate) async fn secret_material(chain: WalletChain) -> Result<WalletSecretMa
                 "{LOG_PREFIX} secret_material missing wallet state chain={}",
                 chain.as_str()
             );
-            return Err("wallet is not configured; run wallet setup first".to_string());
+            return Err(WALLET_NOT_CONFIGURED_MESSAGE.to_string());
         }
     };
     let encrypted_mnemonic = state
