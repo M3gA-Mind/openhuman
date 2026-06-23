@@ -3463,6 +3463,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             core_rpc_url,
             core_rpc_token,
+            // Host-side HTTP relay so the renderer can reach a self-hosted
+            // runtime on a LAN IP that the secure `tauri://localhost` webview
+            // cannot fetch directly (cleartext mixed content). See #3865.
+            core_rpc::relay_http_rpc,
             overlay_parent_rpc_url,
             process_diagnostics_list_owned,
             // `mod artifact_commands;` is `#[cfg(any(target_os = "macos", target_os = "linux"))]`

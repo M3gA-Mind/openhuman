@@ -437,6 +437,81 @@ export async function getCoreRpcToken(): Promise<string | null> {
 }
 
 /**
+ * Hosts the webview can reach over cleartext http from its secure
+ * `tauri://localhost` origin. Chromium treats these as "potentially
+ * trustworthy" (W3C secure-contexts), so browser `fetch()` works; any other
+ * host over plain http is mixed content and is blocked.
+ */
+function isPotentiallyTrustworthyHost(host: string): boolean {
+  const h = host.replace(/^\[|\]$/g, '').toLowerCase();
+  return h === '127.0.0.1' || h === 'localhost' || h === '::1' || h.endsWith('.localhost');
+}
+
+/**
+ * Whether `rpcUrl` must be relayed through the Rust host instead of a direct
+ * webview `fetch()`.
+ *
+ * The desktop webview origin is `tauri://localhost`, a secure context. Plain
+ * `http://` to a non-loopback host (e.g. a self-hosted runtime at
+ * `http://192.168.1.74:7788`) is active mixed content → Chromium blocks it
+ * before the request leaves the browser ("Failed to fetch"), which is exactly
+ * the #3865 symptom. Loopback http and any https URL are fine to fetch
+ * directly, so only non-loopback http needs the shell relay.
+ */
+export function rpcUrlNeedsShellRelay(rpcUrl: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(rpcUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'http:') return false;
+  return !isPotentiallyTrustworthyHost(parsed.hostname);
+}
+
+/**
+ * Perform a JSON-RPC POST via the Rust host (`relay_http_rpc` Tauri command),
+ * returning a synthesized `Response` so callers reuse their existing
+ * `.ok` / `.status` / `.json()` / `.text()` handling unchanged. Used for
+ * self-hosted runtimes the webview cannot fetch directly (#3865). The Rust
+ * client carries a 30s timeout; the optional `signal` lets the caller's own
+ * timeout/abort still reject the await.
+ */
+async function relayRpcViaShell(
+  rpcUrl: string,
+  token: string | null,
+  body: string,
+  signal?: AbortSignal
+): Promise<Response> {
+  const invokePromise = invoke<{ status: number; body: string }>('relay_http_rpc', {
+    url: rpcUrl,
+    token: token ?? null,
+    body,
+  }).then(
+    res =>
+      new Response(res.body, {
+        status: res.status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+  );
+
+  if (!signal) return invokePromise;
+
+  return Promise.race([
+    invokePromise,
+    new Promise<Response>((_resolve, reject) => {
+      if (signal.aborted) {
+        reject(new DOMException('Aborted', 'AbortError'));
+        return;
+      }
+      signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), {
+        once: true,
+      });
+    }),
+  ]);
+}
+
+/**
  * Probe an arbitrary core RPC URL with `core.ping`. Used by the
  * Welcome page's "Test Connection" affordance to validate a user-entered
  * RPC URL without going through the cached `getCoreRpcUrl` resolution.
@@ -457,6 +532,16 @@ export async function testCoreRpcConnection(
 ): Promise<Response> {
   const rpcUrl = normalizeRpcUrl(url);
   const token = tokenOverride?.trim() || (await getCoreRpcToken());
+  const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'core.ping', params: {} });
+
+  // Self-hosted runtime on a LAN IP: the secure `tauri://localhost` webview
+  // cannot fetch cleartext http cross-origin (mixed content → "Failed to
+  // fetch"), so relay the request through the Rust host (#3865).
+  if (coreIsTauri() && rpcUrlNeedsShellRelay(rpcUrl)) {
+    coreRpcLog('[rpc] test connection relaying via shell url=%s', redactRpcUrlForLog(rpcUrl));
+    return relayRpcViaShell(rpcUrl, token ?? null, body, init?.signal);
+  }
+
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -464,7 +549,7 @@ export async function testCoreRpcConnection(
   return fetch(rpcUrl, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'core.ping', params: {} }),
+    body,
     signal: init?.signal,
   });
 }
@@ -563,12 +648,21 @@ export async function callCoreRpc<T>({
     const timeoutId = setTimeout(() => controller.abort(), effectiveTimeoutMs);
     let response: Response;
     try {
-      response = await fetch(rpcUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
+      if (coreIsTauri() && rpcUrlNeedsShellRelay(rpcUrl)) {
+        // Self-hosted runtime on a LAN IP — the secure `tauri://localhost`
+        // webview can't fetch cleartext http cross-origin (mixed content), so
+        // relay through the Rust host. Loopback (local core) and https stay on
+        // the direct fetch path below. See #3865.
+        coreRpcLog('[rpc] relaying via shell (non-loopback http) url=%s', redactRpcUrlForLog(rpcUrl));
+        response = await relayRpcViaShell(rpcUrl, token, JSON.stringify(payload), controller.signal);
+      } else {
+        response = await fetch(rpcUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      }
     } catch (fetchErr) {
       if (controller.signal.aborted) {
         // Throw a fully-classified `CoreRpcError` here so the outer catch
