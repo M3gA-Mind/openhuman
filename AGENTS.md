@@ -59,6 +59,8 @@ GGML_NATIVE=OFF cargo check --manifest-path Cargo.toml
 
 `pnpm core:stage` is a no-op (sidecar removed).
 
+**Build speed**: both `Cargo.toml` files set `[profile.dev.package."*"] debug = false` — dependencies compile without DWARF in `dev`/`test` (faster builds + smaller `target/`); our own crates keep full debuginfo so panics/backtraces still resolve to file:line. `release`/`ci` profiles are unchanged. Keep this stanza in sync across the root and `app/src-tauri/Cargo.toml` if you touch profiles.
+
 **Tests**: `pnpm test` (Vitest) · `pnpm test:coverage` · `pnpm test:rust` (`scripts/test-rust-with-mock.sh`).
 **Quality**: ESLint + Prettier + Husky. Pre-push hook runs `pnpm rust:check`.
 
