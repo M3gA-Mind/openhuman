@@ -353,12 +353,6 @@ impl Agent {
         // Load the user's persisted tool preferences once. They drive two
         // things below: granting the App UI Control / App Automation mutation
         // opt-in (#3762) and filtering the tool set to the enabled snapshot.
-        // Set when app-state load fails outright (a genuine IO/decrypt error —
-        // missing files and quarantined-invalid JSON already resolve to an Ok
-        // default upstream). On such a failure we cannot know the user's tool
-        // opt-ins, so we fail closed to read-only tools below rather than expose
-        // the full mutating set the user never opted into (#3762 review).
-        let mut app_state_load_failed = false;
         let enabled_tools: Vec<String> = {
             use crate::openhuman::app_state::load_stored_app_state;
             match load_stored_app_state(config) {
@@ -367,11 +361,9 @@ impl Agent {
                     .map(|tasks| tasks.enabled_tools)
                     .unwrap_or_default(),
                 Err(e) => {
-                    log::error!(
-                        "[session-builder] failed to load app state for tool filtering; \
-                         failing closed to read-only tools: {e}"
+                    log::warn!(
+                        "[session-builder] failed to load app state for tool filtering: {e}"
                     );
-                    app_state_load_failed = true;
                     Vec::new()
                 }
             }
@@ -421,19 +413,16 @@ impl Agent {
             crate::openhuman::tools::filter_tools_by_user_preference(&mut tools, &enabled_tools);
         }
 
-        if read_only_tools_only || app_state_load_failed {
+        if read_only_tools_only {
             let before = tools.len();
             tools.retain(|tool| {
                 tool.permission_level() <= tools::PermissionLevel::ReadOnly
                     && !matches!(tool.scope(), tools::ToolScope::CliRpcOnly)
             });
             log::info!(
-                "[agent::builder] read-only tool filter applied: before={} after={} \
-                 (read_only_request={} app_state_load_failed={})",
+                "[agent::builder] read-only tool filter applied: before={} after={}",
                 before,
-                tools.len(),
-                read_only_tools_only,
-                app_state_load_failed
+                tools.len()
             );
         }
 
