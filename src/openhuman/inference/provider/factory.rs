@@ -418,7 +418,7 @@ pub(crate) fn resolve_byok_fallback_provider_string(config: &Config) -> Option<S
 pub mod test_provider_override {
     use super::Provider;
     use crate::openhuman::inference::provider::traits::{
-        ChatRequest, ChatResponse, ProviderCapabilities,
+        ChatRequest, ChatResponse, PromptCacheCapabilities, ProviderCapabilities,
     };
     use async_trait::async_trait;
     use std::sync::{Arc, Mutex, OnceLock};
@@ -456,6 +456,9 @@ pub mod test_provider_override {
     impl Provider for ProviderHandle {
         fn capabilities(&self) -> ProviderCapabilities {
             self.0.capabilities()
+        }
+        fn prompt_cache_capabilities(&self) -> PromptCacheCapabilities {
+            self.0.prompt_cache_capabilities()
         }
         async fn chat_with_system(
             &self,

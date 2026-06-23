@@ -3707,7 +3707,7 @@ fn prompt_cache_caps_openai_style_for_known_slugs() {
 fn prompt_cache_caps_match_slug_family_variants() {
     // Case-insensitive, leading-segment family match so renamed/suffixed slugs
     // still resolve to the verified family.
-    for slug in ["OpenAI", "openai:gpt-5.1", "openai/responses"] {
+    for slug in ["OpenAI", "openai:gpt-5.1", "openai/responses", "openai-eu"] {
         let caps = super::prompt_cache_for_compatible_slug(slug);
         assert!(
             caps.automatic_prefix_cache && caps.usage_reports_cached_input,
