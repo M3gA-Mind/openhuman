@@ -40,6 +40,23 @@ fn relay_bearer_header(token: Option<&str>) -> Option<String> {
         .map(|t| format!("Bearer {t}"))
 }
 
+/// Redact a relay URL before it lands in a log line or error string: drop the
+/// query, fragment, and any userinfo (which can carry tokens/credentials),
+/// keeping just `scheme://host[:port]/path` so transport diagnostics stay
+/// useful without persisting secrets. Falls back to a coarse sentinel when the
+/// URL can't be parsed.
+fn redact_url_for_log(url: &str) -> String {
+    url.parse::<url::Url>()
+        .map(|mut parsed| {
+            parsed.set_query(None);
+            parsed.set_fragment(None);
+            let _ = parsed.set_username("");
+            let _ = parsed.set_password(None);
+            parsed.to_string()
+        })
+        .unwrap_or_else(|_| "<invalid relay url>".to_string())
+}
+
 /// POST a JSON-RPC body to an arbitrary self-hosted runtime URL from the Rust
 /// host instead of the webview.
 ///
@@ -79,19 +96,23 @@ pub(crate) async fn relay_http_rpc(
         builder = builder.header("Authorization", value);
     }
 
-    log::debug!("[core_rpc][relay] POST {url} (auth={})", bearer.is_some());
+    let safe_url = redact_url_for_log(&url);
+    log::debug!(
+        "[core_rpc][relay] POST {safe_url} (auth={})",
+        bearer.is_some()
+    );
 
     let resp = builder
         .send()
         .await
-        .map_err(|e| format!("request to {url} failed: {e}"))?;
+        .map_err(|e| format!("request to {safe_url} failed: {e}"))?;
     let status = resp.status().as_u16();
     let text = resp
         .text()
         .await
-        .map_err(|e| format!("failed to read response body from {url}: {e}"))?;
+        .map_err(|e| format!("failed to read response body from {safe_url}: {e}"))?;
     log::debug!(
-        "[core_rpc][relay] ← {url} status={status} body_len={}",
+        "[core_rpc][relay] ← {safe_url} status={status} body_len={}",
         text.len()
     );
     Ok(RelayHttpResponse { status, body: text })
