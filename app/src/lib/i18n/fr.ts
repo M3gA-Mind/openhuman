@@ -6096,7 +6096,7 @@ const messages: TranslationMap = {
     'Votre budget IA géré est épuisé. Ajoutez du budget ou changez de forfait.',
   'userErrors.insufficientCredits.title': 'Crédits du fournisseur requis',
   'userErrors.insufficientCredits.body':
-    'Votre fournisseur IA n\'a plus de crédits. Rechargez-le ou mettez à jour sa clé API.',
+    "Votre fournisseur IA n'a plus de crédits. Rechargez-le ou mettez à jour sa clé API.",
   'userErrors.scope.chat': 'Chat',
 };
 

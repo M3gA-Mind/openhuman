@@ -8,7 +8,6 @@
 import { createSelector } from '@reduxjs/toolkit';
 
 import type { UserActionableError } from '../types/userError';
-
 import type { RootState } from './index';
 import type { UserErrorsState } from './userErrorsSlice';
 

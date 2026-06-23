@@ -4,8 +4,8 @@ import { Provider } from 'react-redux';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { UserErrorDescriptor } from '../../../types/userError';
 import userErrorsReducer, { reportUserError } from '../../../store/userErrorsSlice';
+import type { UserErrorDescriptor } from '../../../types/userError';
 import UserErrorCenter from '../UserErrorCenter';
 
 const budget: UserErrorDescriptor = {

@@ -14,7 +14,6 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit';
 
 import type { UserActionableError, UserErrorDescriptor } from '../types/userError';
-
 import { resetUserScopedState } from './resetActions';
 
 export interface UserErrorsState {
@@ -34,10 +33,7 @@ const userErrorsSlice = createSlice({
      * appended; existing active ids increment `count`; a previously-resolved id
      * re-opens. `at` (epoch ms) is passed in so the reducer stays pure.
      */
-    reportUserError(
-      state,
-      action: PayloadAction<{ descriptor: UserErrorDescriptor; at: number }>
-    ) {
+    reportUserError(state, action: PayloadAction<{ descriptor: UserErrorDescriptor; at: number }>) {
       const { descriptor, at } = action.payload;
       const existing = state.byId[descriptor.id];
       if (!existing) {
@@ -88,11 +84,7 @@ const userErrorsSlice = createSlice({
   },
 });
 
-export const {
-  reportUserError,
-  resolveUserError,
-  dismissUserError,
-  clearResolvedUserErrors,
-} = userErrorsSlice.actions;
+export const { reportUserError, resolveUserError, dismissUserError, clearResolvedUserErrors } =
+  userErrorsSlice.actions;
 
 export default userErrorsSlice.reducer;

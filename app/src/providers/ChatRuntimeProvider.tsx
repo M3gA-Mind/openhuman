@@ -2,8 +2,8 @@ import debug from 'debug';
 import { useCallback, useEffect, useRef } from 'react';
 
 import { requestUsageRefresh } from '../hooks/usageRefresh';
-import { ingestRuntimeErrorSignal } from '../lib/userErrors/report';
 import { useRefetchSnapshotOnTurnEnd } from '../hooks/useRefetchSnapshotOnTurnEnd';
+import { ingestRuntimeErrorSignal } from '../lib/userErrors/report';
 import {
   type ChatApprovalRequestEvent,
   type ChatDoneEvent,

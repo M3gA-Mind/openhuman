@@ -4,13 +4,10 @@ import { describe, expect, it } from 'vitest';
 import type { UserErrorDescriptor } from '../../types/userError';
 import type { RootState } from '../index';
 import { resetUserScopedState } from '../resetActions';
-import {
-  selectActiveUserErrorCount,
-  selectActiveUserErrors,
-} from '../userErrorsSelectors';
+import { selectActiveUserErrorCount, selectActiveUserErrors } from '../userErrorsSelectors';
 import reducer, {
-  dismissUserError,
   clearResolvedUserErrors,
+  dismissUserError,
   reportUserError,
   resolveUserError,
 } from '../userErrorsSlice';

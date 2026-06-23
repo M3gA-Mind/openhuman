@@ -11,7 +11,6 @@ import debug from 'debug';
 
 import type { AppDispatch } from '../../store';
 import { reportUserError } from '../../store/userErrorsSlice';
-
 import { classifyUserActionableError, type RuntimeErrorSignal } from './classify';
 
 const log = debug('openhuman:user-errors');
