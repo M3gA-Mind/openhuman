@@ -1994,6 +1994,42 @@ fn append_platform_cef_gpu_workarounds(
     }
 }
 
+/// Whether a CEF command-line flag is `--time-ticks-at-unix-epoch` (in any
+/// dash/casing form). See [`strip_time_ticks_at_unix_epoch`] for why we care.
+fn is_time_ticks_at_unix_epoch_flag(flag: &str) -> bool {
+    flag.trim_start_matches('-')
+        .eq_ignore_ascii_case("time-ticks-at-unix-epoch")
+}
+
+/// Issue #3554: `--time-ticks-at-unix-epoch` carries the monotonic-clock
+/// origin (in microseconds) that CEF child processes — renderer / GPU /
+/// utility — use to map Chromium's `TimeTicks` onto wall-clock time. Chromium
+/// derives this value itself when it spawns each child, and it must stay
+/// consistent with the host clock.
+///
+/// OpenHuman must never inject this switch into the CEF command line: a stale
+/// or negative value (e.g. the `-1780937467390432` reported in #3554) pins the
+/// renderer's internal clock ~56 years before the Unix epoch, which surfaces
+/// as a wrong "Current Date & Time" in the app. The CEF command line is
+/// assembled from several sources (the static list here plus any
+/// `RuntimeInitAttribute::CommandLineArgs` contributed elsewhere), so strip the
+/// flag from the final list as a guard and let Chromium compute the origin
+/// locally for each process.
+fn strip_time_ticks_at_unix_epoch(args: &mut Vec<CefCommandLineArg>) {
+    args.retain(|(flag, value)| {
+        if is_time_ticks_at_unix_epoch_flag(flag) {
+            log::warn!(
+                "[cef-startup] dropping OpenHuman-supplied --time-ticks-at-unix-epoch{} so \
+                 Chromium computes the clock origin locally (issue #3554)",
+                value.map(|v| format!("={v}")).unwrap_or_default()
+            );
+            false
+        } else {
+            true
+        }
+    });
+}
+
 /// Linux only: replace Xlib's default error handler with a logging no-op.
 ///
 /// Why: on Wayland sessions (GNOME/KDE/Hyprland) running CEF via XWayland,
@@ -2635,6 +2671,10 @@ pub fn run() {
             std::env::consts::ARCH,
             force_gpu_env.as_deref(),
         );
+        // #3554: never forward a `--time-ticks-at-unix-epoch` switch to CEF —
+        // a corrupt/negative value drives the renderer's clock decades off and
+        // shows a wrong "Current Date & Time". Let Chromium compute it.
+        strip_time_ticks_at_unix_epoch(&mut args);
         tauri::Builder::<tauri::Cef>::new().command_line_args::<&str, &str>(args)
     };
 
