@@ -195,7 +195,10 @@ jobs:
       image: ghcr.io/tinyhumansai/openhuman_ci:rust-1.93.0
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        # Pinned to the v5 commit SHA for supply-chain hardening (CodeRabbit
+        # review on #3892). The other lanes still use the @v5 tag; migrating
+        # them is a separate repo-wide change.
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           fetch-depth: 1
 
