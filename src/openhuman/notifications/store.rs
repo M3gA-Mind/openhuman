@@ -189,7 +189,8 @@ pub fn list_core_notifications(
 
         let mut out = Vec::new();
         for row in rows {
-            let payload = row.context("[notifications::store] read core notification row failed")?;
+            let payload =
+                row.context("[notifications::store] read core notification row failed")?;
             match serde_json::from_str::<CoreNotificationEvent>(&payload) {
                 Ok(event) => out.push(event),
                 // A single corrupt row must not break the whole sync-down.

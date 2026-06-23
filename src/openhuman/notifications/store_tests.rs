@@ -319,7 +319,10 @@ fn core_notification_insert_is_idempotent_on_id() {
     // Same id re-published — must not create a duplicate row.
     assert!(!insert_core_notification(&config, &sample_core_event("cron:dup", 100)).unwrap());
 
-    assert_eq!(list_core_notifications(&config, false, 50).unwrap().len(), 1);
+    assert_eq!(
+        list_core_notifications(&config, false, 50).unwrap().len(),
+        1
+    );
     assert_eq!(unread_core_notification_count(&config).unwrap(), 1);
 }
 
@@ -341,7 +344,10 @@ fn core_notification_mark_read_excludes_from_unread_list() {
     assert_eq!(unread_core_notification_count(&config).unwrap(), 1);
 
     // Non-filtered list still returns both (read + unread).
-    assert_eq!(list_core_notifications(&config, false, 50).unwrap().len(), 2);
+    assert_eq!(
+        list_core_notifications(&config, false, 50).unwrap().len(),
+        2
+    );
 }
 
 #[test]
@@ -350,7 +356,8 @@ fn core_notification_list_respects_limit() {
     let config = test_config(&dir);
 
     for i in 0..5 {
-        insert_core_notification(&config, &sample_core_event(&format!("cron:{i}"), 100 + i)).unwrap();
+        insert_core_notification(&config, &sample_core_event(&format!("cron:{i}"), 100 + i))
+            .unwrap();
     }
     assert_eq!(list_core_notifications(&config, true, 3).unwrap().len(), 3);
 }
@@ -365,5 +372,8 @@ fn core_notification_roundtrip_preserves_payload() {
 
     let items = list_core_notifications(&config, true, 1).unwrap();
     assert_eq!(items.len(), 1);
-    assert_eq!(items[0], event, "payload must round-trip through the store unchanged");
+    assert_eq!(
+        items[0], event,
+        "payload must round-trip through the store unchanged"
+    );
 }
