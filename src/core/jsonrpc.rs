@@ -2170,7 +2170,7 @@ fn register_domain_subscribers(
         }
 
         crate::openhuman::health::bus::register_health_subscriber();
-        crate::openhuman::notifications::register_notification_bridge_subscriber();
+        crate::openhuman::notifications::register_notification_bridge_subscriber(config.clone());
         crate::openhuman::memory_conversations::register_conversation_persistence_subscriber(
             workspace_dir.clone(),
         );
