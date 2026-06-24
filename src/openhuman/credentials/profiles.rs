@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock, TryLockError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -1181,19 +1181,6 @@ impl AuthProfilesStore {
                 .with_context(|| "Failed to create auth profile lock directory".to_string())?;
         }
 
-        // Serialize same-process acquirers on an in-memory lock keyed by this
-        // path before we ever touch the on-disk lock file. Two things depend on
-        // holding it: (1) concurrent `app_state_snapshot` calls in this process
-        // queue here instead of racing `create_new`/`Drop` on the file, and
-        // (2) it lets us treat an on-disk lock recording our own pid as a leaked
-        // `Drop` unlink and reclaim it immediately — no other thread in this
-        // process can hold a live guard while we own this in-memory lock (see
-        // `reclaim_self_owned_lock`). Held for the lifetime of the returned
-        // guard. Poison is recoverable: the `()` payload carries no invariant.
-        let in_process_guard = in_process_lock_for(&self.lock_path)
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-
         // Drive timeout + stale-recheck off wall-clock elapsed time, not the
         // sum of explicit `thread::sleep(LOCK_WAIT_MS)` calls. The earlier
         // counter-based approach excluded time spent inside
@@ -1203,6 +1190,36 @@ impl AuthProfilesStore {
         // both `LOCK_TIMEOUT_MS` and `next_stale_recheck_ms` significantly
         // later than intended.
         let started_at = Instant::now();
+
+        // Serialize same-process acquirers on an in-memory lock keyed by this
+        // path before we ever touch the on-disk lock file. Two things depend on
+        // holding it: (1) concurrent `app_state_snapshot` calls in this process
+        // queue here instead of racing `create_new`/`Drop` on the file, and
+        // (2) it lets us treat an on-disk lock recording our own pid as a leaked
+        // `Drop` unlink and reclaim it immediately — no other thread in this
+        // process can hold a live guard while we own this in-memory lock (see
+        // `reclaim_self_owned_lock`). Held for the lifetime of the returned
+        // guard.
+        //
+        // Use `try_lock` against the *same* `LOCK_TIMEOUT_MS` budget as the
+        // on-disk wait rather than a blocking `lock()`: a wedged in-process
+        // holder must not be able to strand an RPC/blocking worker past the
+        // timeout the caller (e.g. `app_state_snapshot`) expects. Poison is
+        // recoverable — the `()` payload carries no invariant.
+        let in_process_lock = in_process_lock_for(&self.lock_path);
+        let in_process_guard = loop {
+            match in_process_lock.try_lock() {
+                Ok(guard) => break guard,
+                Err(TryLockError::Poisoned(poisoned)) => break poisoned.into_inner(),
+                Err(TryLockError::WouldBlock) => {
+                    if started_at.elapsed().as_millis() as u64 >= LOCK_TIMEOUT_MS {
+                        anyhow::bail!("Timed out waiting for auth profile lock");
+                    }
+                    thread::sleep(Duration::from_millis(LOCK_WAIT_MS));
+                }
+            }
+        };
+
         let mut cleared_stale = false;
         // Periodically re-probe for stale locks during the busy-wait. A
         // lock that started fresh (live pid, recent mtime) can age past
@@ -1450,18 +1467,38 @@ impl AuthProfilesStore {
     /// timeout, so every `app_state_snapshot` timed out and retry-stormed for
     /// the whole 30s window before age-reclaim kicked in.
     fn reclaim_self_owned_lock(&self) -> bool {
+        let me = std::process::id();
+        tracing::trace!(
+            target: "auth-profiles",
+            "[credentials] probing for self-owned leaked lock at {} (our pid {me})",
+            self.lock_path.display()
+        );
         let content = match fs::read_to_string(&self.lock_path) {
             Ok(s) => s,
             // NotFound: already gone (raced with another reclaim / the guard's
             // own Drop). Any other read error: fall back to the age-based and
             // busy-wait paths rather than guess at ownership.
-            Err(_) => return false,
+            Err(e) => {
+                tracing::debug!(
+                    target: "auth-profiles",
+                    "[credentials] self-owned probe could not read lock at {} ({e}); \
+                     deferring to stale/busy-wait recovery",
+                    self.lock_path.display()
+                );
+                return false;
+            }
         };
 
         let pid = content
             .lines()
             .find_map(|line| line.trim().strip_prefix("pid=")?.trim().parse::<u32>().ok());
-        if pid != Some(std::process::id()) {
+        if pid != Some(me) {
+            tracing::trace!(
+                target: "auth-profiles",
+                "[credentials] lock at {} is not self-owned (recorded {pid:?}, our pid {me}); \
+                 deferring to stale/busy-wait recovery",
+                self.lock_path.display()
+            );
             return false;
         }
 
@@ -1470,10 +1507,9 @@ impl AuthProfilesStore {
                 tracing::info!(
                     target: "auth-profiles",
                     "[credentials] reclaimed leaked self-owned auth profile lock at {} \
-                     (recorded our own live pid {}; a prior guard's Drop unlink was blocked, \
+                     (recorded our own live pid {me}; a prior guard's Drop unlink was blocked, \
                      most likely by Windows AV/indexer)",
-                    self.lock_path.display(),
-                    std::process::id()
+                    self.lock_path.display()
                 );
                 true
             }
@@ -1555,15 +1591,32 @@ fn is_pid_alive(pid: u32) -> bool {
 /// acquirers here is what lets [`AuthProfilesStore::reclaim_self_owned_lock`]
 /// treat an on-disk lock carrying our own pid as a leak (no live same-process
 /// guard can exist while a caller holds this lock).
+///
+/// The registry key is **canonicalized** (real parent directory + lock
+/// filename), so two `AuthProfilesStore`s pointing at the same lock through
+/// aliased spellings (`state` vs `state/.`, relative vs absolute, a symlinked
+/// parent, Windows case variants) share one mutex. Without this, aliased paths
+/// would take *different* mutexes and a second same-process acquirer could see
+/// the first live guard's pid, mistake it for a leak, and reclaim it — entering
+/// the critical section concurrently. `acquire_lock` always calls this *after*
+/// `create_dir_all(parent)`, so the parent exists and `canonicalize` succeeds;
+/// if it ever fails we fall back to the raw path (no worse than before).
 fn in_process_lock_for(path: &Path) -> &'static Mutex<()> {
     static REGISTRY: OnceLock<Mutex<HashMap<PathBuf, &'static Mutex<()>>>> = OnceLock::new();
+    let key = path
+        .parent()
+        .and_then(|parent| {
+            let canonical = fs::canonicalize(parent).ok()?;
+            path.file_name().map(|name| canonical.join(name))
+        })
+        .unwrap_or_else(|| path.to_path_buf());
     let registry = REGISTRY.get_or_init(|| Mutex::new(HashMap::new()));
     let mut map = registry
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     // Deref the `&mut &'static Mutex<()>` to copy the `'static` reference out,
     // so the returned handle is not tied to the dropped `map` guard.
-    *map.entry(path.to_path_buf())
+    *map.entry(key)
         .or_insert_with(|| &*Box::leak(Box::new(Mutex::new(()))))
 }
 

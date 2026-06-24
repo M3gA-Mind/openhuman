@@ -559,6 +559,38 @@ fn acquire_lock_recovers_immediately_from_leaked_self_pid_lock() {
 }
 
 #[test]
+fn acquire_lock_serializes_same_process_acquirers() {
+    let tmp = TempDir::new().unwrap();
+    let store = AuthProfilesStore::new(tmp.path(), false);
+    let lock_path = tmp.path().join(LOCK_FILENAME);
+
+    // Hold the in-process lock for this path directly, forcing a concurrent
+    // acquirer to spin the `try_lock` WouldBlock retry loop until we release —
+    // it must NOT race the on-disk file or bail early. Use the same registry
+    // entry `acquire_lock` resolves (canonicalized parent + filename).
+    let held = in_process_lock_for(&lock_path)
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    let other = store.clone();
+    let waiter = std::thread::spawn(move || other.load());
+
+    // Let the waiter enter the WouldBlock loop, then release; it should proceed.
+    std::thread::sleep(std::time::Duration::from_millis(150));
+    drop(held);
+
+    let result = waiter.join().expect("waiter thread panicked");
+    assert!(
+        result.is_ok(),
+        "same-process acquirer should succeed once the in-process lock frees: {result:?}"
+    );
+    assert!(
+        !lock_path.exists(),
+        "the waiter's guard should have removed the on-disk lock on drop"
+    );
+}
+
+#[test]
 fn clear_lock_if_stale_leaves_malformed_lock_alone() {
     let tmp = TempDir::new().unwrap();
     let store = AuthProfilesStore::new(tmp.path(), false);
