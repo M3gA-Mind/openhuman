@@ -331,9 +331,8 @@ pub fn is_ollama_cloud_internal_500(
 /// split. Keyed on the [`OLLAMA_CLOUD_INTERNAL_500_USER_PREFIX`] anchor, which we
 /// own, so it cannot collide with an unrelated provider body.
 pub fn is_ollama_cloud_internal_500_message(message: &str) -> bool {
-    message
-        .to_ascii_lowercase()
-        .contains(&OLLAMA_CLOUD_INTERNAL_500_USER_PREFIX.to_ascii_lowercase())
+    let needle = OLLAMA_CLOUD_INTERNAL_500_USER_PREFIX.to_ascii_lowercase();
+    message.to_ascii_lowercase().contains(needle.as_str())
 }
 
 /// Build the actionable user-facing message for an Ollama-Cloud hosted-inference
@@ -1207,6 +1206,17 @@ mod tests {
         let without_model =
             ollama_cloud_internal_500_user_message(None, StatusCode::INTERNAL_SERVER_ERROR);
         assert!(is_ollama_cloud_internal_500_message(&without_model));
+    }
+
+    #[test]
+    fn log_ollama_cloud_internal_500_smoke() {
+        // The helper only emits a demotion info log; calling it covers that path.
+        log_ollama_cloud_internal_500(
+            "native_chat",
+            "ollama",
+            Some("minimax-m3:cloud"),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
     }
 
     #[test]
