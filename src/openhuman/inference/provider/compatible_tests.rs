@@ -410,7 +410,7 @@ async fn native_chat_ollama_cloud_500_demoted_and_actionable() {
     }];
     let err = provider
         .chat(
-            ChatRequest {
+            super::super::ChatRequest {
                 messages: &messages,
                 tools: None,
                 stream: None,
@@ -532,7 +532,7 @@ async fn api_error_ollama_cloud_500_demoted_and_actionable() {
         .send()
         .await
         .expect("mock request");
-    let err = api_error("ollama", response).await;
+    let err = super::super::api_error("ollama", response).await;
 
     let msg = err.to_string();
     assert!(
