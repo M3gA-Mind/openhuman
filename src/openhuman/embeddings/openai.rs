@@ -244,6 +244,25 @@ impl EmbeddingProvider for OpenAiEmbedding {
                          embeddings-capable provider in Settings → Memory",
                     );
                 }
+                // A 400 "… does not exist" / "does not support embeddings" body
+                // means the endpoint IS an embeddings API but the configured
+                // model id is not an embeddings model — the user pasted a chat
+                // model (e.g. an OpenRouter `…:free` id) into the embeddings
+                // model field. Append an actionable remediation while PRESERVING
+                // the `(400` + body text that `observability::
+                // is_embedding_model_rejected` keys on, so the event is demoted
+                // from a per-embed Sentry flood to a breadcrumb. Scoped to the
+                // model-rejection body shape so a genuine 400 (oversized input,
+                // real server fault) still reaches Sentry. TAURI-RUST-9SK.
+                else if status.as_u16() == 400
+                    && (text.contains("does not exist")
+                        || text.contains("does not support embeddings"))
+                {
+                    message.push_str(
+                        " — this model isn't an embeddings model; pick an \
+                         embeddings-capable model in Settings → Memory",
+                    );
+                }
                 // Use `report_error_or_expected` so transient upstream HTTP
                 // failures (e.g. 429 Too Many Requests after retry cap) log a
                 // warning breadcrumb instead of firing a Sentry error event.

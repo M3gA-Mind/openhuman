@@ -449,6 +449,21 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     if is_embedding_endpoint_absent(&lower) {
         return Some(ExpectedErrorKind::ProviderConfigRejection);
     }
+    // TAURI-RUST-9SK — the user entered a non-embedding (chat) model id as the
+    // embeddings model (e.g. an OpenRouter `…:free` chat model), so the
+    // embeddings endpoint 400s `Model <id> does not exist` on every memory
+    // re-embed (2205 events / 1 user). OpenRouter's bare `"does not exist"` +
+    // integer `"code":400` body matches none of the chat-side phrases in
+    // `is_provider_config_rejection_message` (which key on the OpenAI-native
+    // `"does not exist or you do not have access"` / `model_not_found`), so
+    // without this it reaches Sentry. Deterministic user-config state; the
+    // settings UI surfaces an actionable "pick an embeddings-capable model"
+    // remediation. Scoped to the 400 model-rejection body so a real 400
+    // (oversized input, server fault) stays visible — same polarity contract as
+    // `is_embedding_endpoint_absent`.
+    if is_embedding_model_rejected(&lower) {
+        return Some(ExpectedErrorKind::ProviderConfigRejection);
+    }
     // Provider config-rejection (unknown model / abstract tier leaked to a
     // custom provider / model-specific temperature). Body-shape based and
     // intrinsically scoped to third-party providers — the OpenHuman
@@ -731,6 +746,34 @@ fn is_embedding_backend_auth_failure(lower: &str) -> bool {
 /// two never drift.
 pub(crate) fn is_embedding_endpoint_absent(lower: &str) -> bool {
     lower.contains("embedding api error") && (lower.contains("(404") || lower.contains("(405"))
+}
+
+/// Detect a custom/cloud embeddings endpoint that IS an embeddings API but
+/// **rejected the configured model id** — the user pasted a non-embedding
+/// (chat/reasoning) model into the embeddings model field. Canonical wire shape
+/// from `src/openhuman/embeddings/openai.rs` (TAURI-RUST-9SK, ~2205 events):
+///
+/// ```text
+/// Embedding API error (400 Bad Request): {"error":{"message":"Model nvidia/nemotron-3-super-120b-a12b does not exist","code":400}}
+/// ```
+///
+/// Deterministic user-config state, re-emitted on every memory re-embed; the
+/// embeddings settings UI surfaces an actionable "pick an embeddings-capable
+/// model" remediation (appended to the message at the emit site). The
+/// OpenRouter body — bare `"does not exist"` with an integer `"code":400` —
+/// matches none of the chat-side phrases in
+/// `inference::provider::is_provider_config_rejection_message` (those key on the
+/// OpenAI-native `"does not exist or you do not have access"` /
+/// `model_not_found`), so this dedicated matcher is what demotes it.
+///
+/// Polarity (important): scoped to **400** + a model-rejection body. A bare
+/// 400 (oversized input — prevented at source by the chunk cap #3598) or a 500
+/// from a valid embeddings endpoint is a real fault and must keep reaching
+/// Sentry, so this never fires on them.
+fn is_embedding_model_rejected(lower: &str) -> bool {
+    lower.contains("embedding api error")
+        && lower.contains("(400")
+        && (lower.contains("does not exist") || lower.contains("does not support embeddings"))
 }
 
 /// Detect the memory-store chunk DB's circuit-breaker-open message that
@@ -2883,6 +2926,44 @@ mod tests {
                 "should classify embedding backend auth failure as SessionExpired: {raw}"
             );
         }
+    }
+
+    #[test]
+    fn classifies_embedding_model_does_not_exist_400_as_config_rejection() {
+        // TAURI-RUST-9SK (~2205 events / 1 user) — a chat model id pasted as the
+        // embeddings model. Verbatim OpenRouter wire body (bare "does not exist"
+        // + integer "code":400), plus the enriched form after the emit site
+        // appends the actionable remediation. Both must demote so the per-embed
+        // flood stays out of Sentry.
+        for raw in [
+            r#"Embedding API error (400 Bad Request): {"error":{"message":"Model nvidia/nemotron-3-super-120b-a12b does not exist","code":400}}"#,
+            "Embedding API error (400 Bad Request): {\"error\":{\"message\":\"Model nvidia/nemotron-3-super-120b-a12b does not exist\",\"code\":400}} — this model isn't an embeddings model; pick an embeddings-capable model in Settings → Memory",
+            r#"Embedding API error (400 Bad Request): {"error":{"message":"this model does not support embeddings"}}"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::ProviderConfigRejection),
+                "should classify embedding model-rejection 400 as config rejection: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn does_not_classify_unrelated_embedding_400s() {
+        // Polarity: a 400 that is NOT a model-rejection (e.g. oversized input)
+        // and any non-400 must keep reaching Sentry.
+        assert_eq!(
+            expected_error_kind(
+                r#"Embedding API error (400 Bad Request): {"error":{"message":"input exceeds the maximum number of tokens"}}"#
+            ),
+            None
+        );
+        assert_eq!(
+            expected_error_kind(
+                r#"Embedding API error (500 Internal Server Error): {"error":"model does not exist"}"#
+            ),
+            None
+        );
     }
 
     #[test]
