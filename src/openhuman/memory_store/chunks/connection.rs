@@ -818,8 +818,10 @@ mod tests {
         let (_tmp, cfg) = corrupt_test_config();
         // Force a healthy DB into existence.
         with_connection(&cfg, |conn| {
-            conn.query_row("SELECT COUNT(*) FROM mem_tree_jobs", [], |r| r.get::<_, i64>(0))
-                .context("seed healthy db")
+            conn.query_row("SELECT COUNT(*) FROM mem_tree_jobs", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .context("seed healthy db")
         })
         .unwrap();
 

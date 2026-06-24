@@ -175,51 +175,14 @@ pub fn start(config: Config) {
                                 // claim UPDATE fails forever, so re-polling every
                                 // second and paging Sentry each time turns one
                                 // unrecoverable file into a flood (TAURI-RUST-E93:
-                                // 1,633 events in ~17 min, one host). This is a
-                                // data path, so suppression alone is wrong: we
-                                // report ONCE (not per-poll) and then drive an
-                                // actual recovery — quarantine the corrupt file
-                                // (preserved as `.corrupt-<ts>`, not deleted) and
-                                // rebuild an empty schema so the queue resumes.
-                                // Long backoff afterwards so a failed recovery
-                                // never re-floods. `notify` still wakes us on new
-                                // enqueues once the rebuild succeeds.
-                                if !CORRUPT_REPORTED.swap(true, Ordering::Relaxed) {
-                                    crate::core::observability::report_error(
-                                        &err,
-                                        "memory",
-                                        "tree_jobs_worker_corrupt",
-                                        &[("worker_idx", &idx.to_string())],
-                                    );
-                                }
-                                log::error!(
-                                    "[memory::jobs] worker {idx} hit SQLITE_CORRUPT (malformed DB \
-                                     image), attempting quarantine + rebuild recovery: {err:#}"
-                                );
-                                match crate::openhuman::memory_store::chunks::store::recover_corrupt_db(&cfg) {
-                                    Ok(true) => {
-                                        log::warn!(
-                                            "[memory::jobs] worker {idx} quarantined corrupt mem_tree \
-                                             DB and rebuilt empty schema; queue will resume"
-                                        );
-                                        // Recovery settled — allow a future,
-                                        // genuinely-new corruption to page once.
-                                        CORRUPT_REPORTED.store(false, Ordering::Relaxed);
-                                    }
-                                    Ok(false) => {
-                                        log::info!(
-                                            "[memory::jobs] worker {idx} corruption recovery: \
-                                             quick_check now passes, no quarantine needed"
-                                        );
-                                        CORRUPT_REPORTED.store(false, Ordering::Relaxed);
-                                    }
-                                    Err(rec_err) => {
-                                        log::error!(
-                                            "[memory::jobs] worker {idx} corruption recovery FAILED, \
-                                             retrying after backoff: {rec_err:#}"
-                                        );
-                                    }
-                                }
+                                // 1,633 events in ~17 min, one host). Report once,
+                                // drive quarantine+rebuild recovery (factored into
+                                // `recover_corrupt_db_once` so it is unit-testable
+                                // without spinning the live loop), then back off
+                                // long so a failed recovery never re-floods.
+                                // `notify` still wakes us on new enqueues once the
+                                // rebuild succeeds.
+                                recover_corrupt_db_once(idx, &err, &cfg);
                                 tokio::time::sleep(Duration::from_secs(300)).await;
                             } else {
                                 crate::core::observability::report_error(
@@ -500,8 +463,54 @@ fn is_sqlite_corrupt(err: &anyhow::Error) -> bool {
         }
     }
     let msg = format!("{err:#}").to_ascii_lowercase();
-    msg.contains("database disk image is malformed")
-        || msg.contains("file is not a database")
+    msg.contains("database disk image is malformed") || msg.contains("file is not a database")
+}
+
+/// Handle a confirmed `SQLITE_CORRUPT` failure from the worker loop: report it
+/// to Sentry **once** (process-wide [`CORRUPT_REPORTED`] latch, not per-poll
+/// across the workers) and drive the quarantine+rebuild recovery in
+/// [`recover_corrupt_db`](crate::openhuman::memory_store::chunks::store::recover_corrupt_db).
+///
+/// Factored out of [`start`]'s error arm so the report-once + recovery decision
+/// logic is unit-testable without spinning the live worker loop. The caller
+/// applies the long backoff after this returns.
+fn recover_corrupt_db_once(idx: usize, err: &anyhow::Error, config: &Config) {
+    if !CORRUPT_REPORTED.swap(true, Ordering::Relaxed) {
+        crate::core::observability::report_error(
+            err,
+            "memory",
+            "tree_jobs_worker_corrupt",
+            &[("worker_idx", &idx.to_string())],
+        );
+    }
+    log::error!(
+        "[memory::jobs] worker {idx} hit SQLITE_CORRUPT (malformed DB image), \
+         attempting quarantine + rebuild recovery: {err:#}"
+    );
+    match crate::openhuman::memory_store::chunks::store::recover_corrupt_db(config) {
+        Ok(true) => {
+            log::warn!(
+                "[memory::jobs] worker {idx} quarantined corrupt mem_tree DB and rebuilt \
+                 empty schema; queue will resume"
+            );
+            // Recovery settled — allow a future, genuinely-new corruption to
+            // page once.
+            CORRUPT_REPORTED.store(false, Ordering::Relaxed);
+        }
+        Ok(false) => {
+            log::info!(
+                "[memory::jobs] worker {idx} corruption recovery: quick_check now passes, \
+                 no quarantine needed"
+            );
+            CORRUPT_REPORTED.store(false, Ordering::Relaxed);
+        }
+        Err(rec_err) => {
+            log::error!(
+                "[memory::jobs] worker {idx} corruption recovery FAILED, retrying after \
+                 backoff: {rec_err:#}"
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -854,6 +863,41 @@ mod tests {
         assert!(!is_sqlite_corrupt(&anyhow::anyhow!(
             "upstream returned 500: internal server error"
         )));
+    }
+
+    /// The worker's corruption arm must quarantine a malformed image and rebuild
+    /// an empty, queryable schema so the queue resumes — exercising the
+    /// report-once + recover path the live loop runs.
+    #[tokio::test]
+    async fn recover_corrupt_db_once_quarantines_and_rebuilds() {
+        let (_tmp, cfg) = test_config();
+        // Lay down a malformed `chunks.db` (garbage header) at the canonical path.
+        let db_path = cfg.workspace_dir.join("memory_tree").join("chunks.db");
+        std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
+        std::fs::write(&db_path, b"not a sqlite database, just garbage bytes").unwrap();
+
+        let err = anyhow::anyhow!(
+            "Failed to claim next mem_tree_jobs row: database disk image is malformed"
+        );
+        recover_corrupt_db_once(0, &err, &cfg);
+
+        // Corrupt bytes are preserved alongside (never silently dropped) ...
+        let quarantined = std::fs::read_dir(db_path.parent().unwrap())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .contains("chunks.db.corrupt-")
+            });
+        assert!(
+            quarantined,
+            "corrupt image must be quarantined, not deleted"
+        );
+
+        // ... and the rebuilt queue DB is healthy and empty.
+        let processed = run_once(&cfg).await.unwrap();
+        assert!(!processed, "rebuilt queue starts empty");
     }
 
     #[tokio::test]
