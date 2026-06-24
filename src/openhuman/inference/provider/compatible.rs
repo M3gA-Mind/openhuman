@@ -335,9 +335,10 @@ fn responses_unsupported_endpoints() -> &'static std::sync::Mutex<std::collectio
 pub(super) fn mark_responses_api_unsupported(base_url: &str) {
     if let Ok(mut set) = responses_unsupported_endpoints().lock() {
         if set.insert(base_url.to_string()) {
-            log::info!(
-                "[provider] disabling /responses fallback for endpoint (404 from responses route); \
-                 routing chat-completions only henceforth"
+            log::debug!(
+                "[provider] /responses route 404'd — disabling responses fallback for \
+                 endpoint {} (chat-completions only henceforth)",
+                super::factory::redact_endpoint(base_url),
             );
         }
     }

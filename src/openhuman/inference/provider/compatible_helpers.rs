@@ -79,14 +79,23 @@ impl OpenAiCompatibleProvider {
             // `"… Responses API error: 404 Not Found"` form left the `404`
             // unanchored, so a terminal 404 was misclassified as retryable and
             // looped indefinitely (TAURI-RUST-FJZ, ~15k events).
-            let message = format!("{} Responses API error ({status_str}): {sanitized}", self.name);
-            // A 404 from the `/responses` route means this endpoint does not
-            // implement the Responses API. Disable the chat-completions-404 →
+            let message = format!(
+                "{} Responses API error ({status_str}): {sanitized}",
+                self.name
+            );
+            // A 404 from the `/responses` route can mean this endpoint has no
+            // Responses API at all — disable the chat-completions-404 →
             // `/responses` fallback for it so we stop issuing a guaranteed second
-            // 404. Skip when Responses is the primary path (Codex OAuth): there
-            // the fallback flag is never consulted and a 404 is not evidence the
-            // route is missing.
-            if status == reqwest::StatusCode::NOT_FOUND && !self.responses_api_primary {
+            // 404. Guard against poisoning the process-global cache on a
+            // model/deployment-specific 404 (the route exists, the model
+            // doesn't), which would wrongly drop the fallback for every other
+            // model on a Responses-capable endpoint. Skip when Responses is the
+            // primary path (Codex OAuth): the fallback flag is never consulted
+            // and a 404 there is not evidence the route is missing.
+            if status == reqwest::StatusCode::NOT_FOUND
+                && !self.responses_api_primary
+                && Self::responses_404_indicates_missing_route(&error)
+            {
                 super::mark_responses_api_unsupported(&self.base_url);
             }
             if super::super::is_budget_exhausted_http_400(status, &error) {
@@ -599,6 +608,20 @@ impl OpenAiCompatibleProvider {
                 || lower.contains("does not support")
                 || lower.contains("invalid")
                 || lower.contains("unexpected"))
+    }
+
+    /// Disambiguate a 404 from the `/responses` route: `true` when it signals the
+    /// *route itself* is absent (this endpoint has no Responses API), `false` when
+    /// it looks model/deployment-specific (the route exists, that model doesn't).
+    ///
+    /// Only a missing-route 404 should disable the fallback for the whole endpoint
+    /// (TAURI-RUST-FJZ). A bad-model 404 must NOT poison the process-global cache,
+    /// or a single bad model would drop the `/responses` fallback for every other
+    /// model on a Responses-capable endpoint. Conservative: any mention of a
+    /// model/deployment keeps the fallback enabled.
+    pub(super) fn responses_404_indicates_missing_route(error: &str) -> bool {
+        let lower = error.to_lowercase();
+        !(lower.contains("model") || lower.contains("deployment"))
     }
 
     /// Detect a 404 whose body says the model is completion-only. See issue #3193.

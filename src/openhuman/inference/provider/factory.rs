@@ -1724,7 +1724,7 @@ fn make_openai_compatible_provider_with_config(
 }
 
 /// Return a safe-to-log representation of a URL endpoint: `scheme://host` only.
-fn redact_endpoint(url: &str) -> String {
+pub(super) fn redact_endpoint(url: &str) -> String {
     let trimmed = url.trim();
     if let Some(rest) = trimmed.split_once("://") {
         let scheme = rest.0;

@@ -2946,12 +2946,8 @@ fn responses_404_disables_fallback_for_endpoint() {
     // attempting that fallback once the route is known-missing — routing to
     // chat-completions only. Use a unique base_url; the cache is process-global.
     let base_url = "https://responses-404-test.example.com/v1";
-    let p = OpenAiCompatibleProvider::new(
-        "nous-portal",
-        base_url,
-        Some("sk-test"),
-        AuthStyle::Bearer,
-    );
+    let p =
+        OpenAiCompatibleProvider::new("nous-portal", base_url, Some("sk-test"), AuthStyle::Bearer);
     assert!(
         p.responses_fallback_active(),
         "a fresh custom slug starts with the fallback enabled"
@@ -2978,6 +2974,29 @@ fn responses_404_disables_fallback_for_endpoint() {
     assert!(
         other.responses_fallback_active(),
         "the cache is keyed per-endpoint, not globally"
+    );
+}
+
+#[test]
+fn responses_404_route_vs_model_disambiguation() {
+    // A generic "route missing" 404 → this endpoint has no Responses API.
+    assert!(OpenAiCompatibleProvider::responses_404_indicates_missing_route("404 Not Found"));
+    assert!(
+        OpenAiCompatibleProvider::responses_404_indicates_missing_route(
+            "<html><body>404 page not found</body></html>"
+        )
+    );
+    // A model/deployment-specific 404 → the route exists; keep the fallback so
+    // we don't poison the cache for other models on a Responses-capable endpoint.
+    assert!(
+        !OpenAiCompatibleProvider::responses_404_indicates_missing_route(
+            r#"{"error":{"message":"model 'gpt-x' not found","code":"model_not_found"}}"#
+        )
+    );
+    assert!(
+        !OpenAiCompatibleProvider::responses_404_indicates_missing_route(
+            r#"{"error":{"message":"The API deployment for this resource does not exist"}}"#
+        )
     );
 }
 
