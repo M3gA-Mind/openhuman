@@ -100,7 +100,7 @@ impl Provider for OpenAiCompatibleProvider {
         {
             Ok(response) => response,
             Err(chat_error) => {
-                if self.supports_responses_fallback {
+                if self.responses_fallback_active() {
                     let detail = super::super::format_error_chain(&chat_error);
                     return self
                         .chat_via_responses(credential, &fallback_messages, model, None)
@@ -131,7 +131,7 @@ impl Provider for OpenAiCompatibleProvider {
                 return Err(err);
             }
 
-            if status == reqwest::StatusCode::NOT_FOUND && self.supports_responses_fallback {
+            if status == reqwest::StatusCode::NOT_FOUND && self.responses_fallback_active() {
                 return self
                     .chat_via_responses(credential, &fallback_messages, model, None)
                     .await
@@ -283,7 +283,7 @@ impl Provider for OpenAiCompatibleProvider {
         {
             Ok(response) => response,
             Err(chat_error) => {
-                if self.supports_responses_fallback {
+                if self.responses_fallback_active() {
                     let detail = super::super::format_error_chain(&chat_error);
                     return self
                         .chat_via_responses(credential, &effective_messages, model, None)
@@ -312,7 +312,7 @@ impl Provider for OpenAiCompatibleProvider {
                     return Err(err);
                 }
 
-                if self.supports_responses_fallback {
+                if self.responses_fallback_active() {
                     return self
                         .chat_via_responses(credential, &effective_messages, model, None)
                         .await
@@ -648,7 +648,7 @@ impl Provider for OpenAiCompatibleProvider {
         {
             Ok(response) => response,
             Err(chat_error) => {
-                if self.supports_responses_fallback {
+                if self.responses_fallback_active() {
                     let detail = super::super::format_error_chain(&chat_error);
                     return self
                         .chat_via_responses(
@@ -704,7 +704,7 @@ impl Provider for OpenAiCompatibleProvider {
                 return Err(err);
             }
 
-            if status == reqwest::StatusCode::NOT_FOUND && self.supports_responses_fallback {
+            if status == reqwest::StatusCode::NOT_FOUND && self.responses_fallback_active() {
                 return self
                     .chat_via_responses(credential, &effective_messages, model, request.max_tokens)
                     .await

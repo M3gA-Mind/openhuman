@@ -219,6 +219,21 @@ fn non_retryable_detects_common_patterns() {
     assert!(is_non_retryable(&anyhow::anyhow!(
         "SESSION_EXPIRED: backend session not active — sign in to resume LLM work"
     )));
+    // TAURI-RUST-FJZ: the Responses-path error now carries the status in the
+    // structured `(<status>)` position, so a terminal 404 from a provider that
+    // lacks the Responses API is classified non-retryable and the retry loop
+    // stops instead of hammering the permanent 404 (~15k events).
+    assert!(is_non_retryable(&anyhow::anyhow!(
+        "nous-portal Responses API error (404): Not Found"
+    )));
+    // The pre-fix form left `404` unanchored (preceded by `error: `), so it
+    // slipped past the structured-status regex and looped — guard the regression.
+    assert!(
+        !is_non_retryable(&anyhow::anyhow!(
+            "nous-portal Responses API error: 404 Not Found"
+        )),
+        "documents the pre-fix misclassification the structured `(404)` form fixes"
+    );
 }
 
 // C10: a 4xx-looking digit run that appears in *free text* (latency figures,

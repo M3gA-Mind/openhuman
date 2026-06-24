@@ -74,7 +74,21 @@ impl OpenAiCompatibleProvider {
             let status_str = status.as_u16().to_string();
             let error = response.text().await?;
             let sanitized = super::super::sanitize_api_error(&error);
-            let message = format!("{} Responses API error: {sanitized}", self.name);
+            // Emit the status in the structured `(<status>)` position the retry
+            // classifier understands (`reliable::structured_http_4xx`). The bare
+            // `"… Responses API error: 404 Not Found"` form left the `404`
+            // unanchored, so a terminal 404 was misclassified as retryable and
+            // looped indefinitely (TAURI-RUST-FJZ, ~15k events).
+            let message = format!("{} Responses API error ({status_str}): {sanitized}", self.name);
+            // A 404 from the `/responses` route means this endpoint does not
+            // implement the Responses API. Disable the chat-completions-404 →
+            // `/responses` fallback for it so we stop issuing a guaranteed second
+            // 404. Skip when Responses is the primary path (Codex OAuth): there
+            // the fallback flag is never consulted and a 404 is not evidence the
+            // route is missing.
+            if status == reqwest::StatusCode::NOT_FOUND && !self.responses_api_primary {
+                super::mark_responses_api_unsupported(&self.base_url);
+            }
             if super::super::is_budget_exhausted_http_400(status, &error) {
                 super::super::log_budget_exhausted_http_400(
                     "responses_api",

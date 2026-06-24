@@ -2940,6 +2940,48 @@ fn custom_openai_provider_has_no_responses_fallback() {
 }
 
 #[test]
+fn responses_404_disables_fallback_for_endpoint() {
+    // TAURI-RUST-FJZ: a custom slug (factory can't classify it, so the static
+    // fallback flag is ON) whose endpoint 404s on `/responses` must stop
+    // attempting that fallback once the route is known-missing — routing to
+    // chat-completions only. Use a unique base_url; the cache is process-global.
+    let base_url = "https://responses-404-test.example.com/v1";
+    let p = OpenAiCompatibleProvider::new(
+        "nous-portal",
+        base_url,
+        Some("sk-test"),
+        AuthStyle::Bearer,
+    );
+    assert!(
+        p.responses_fallback_active(),
+        "a fresh custom slug starts with the fallback enabled"
+    );
+
+    super::mark_responses_api_unsupported(base_url);
+
+    assert!(
+        super::responses_api_known_unsupported(base_url),
+        "the endpoint is recorded as Responses-incapable after a 404"
+    );
+    assert!(
+        !p.responses_fallback_active(),
+        "the fallback is disabled once `/responses` has 404'd for this endpoint"
+    );
+
+    // A provider for a different endpoint is unaffected.
+    let other = OpenAiCompatibleProvider::new(
+        "nous-portal",
+        "https://responses-404-test.example.com/v2",
+        Some("sk-test"),
+        AuthStyle::Bearer,
+    );
+    assert!(
+        other.responses_fallback_active(),
+        "the cache is keyed per-endpoint, not globally"
+    );
+}
+
+#[test]
 fn enrich_404_message_adds_hint_when_no_fallback() {
     let p = OpenAiCompatibleProvider::new_no_responses_fallback(
         "custom_openai",
