@@ -65,7 +65,9 @@ mod tests {
             "abacus no-remaining-credits 400 must classify as budget-exhausted user-state"
         );
         // Case-insensitive on the same phrase.
-        assert!(is_budget_exhausted_message("You have NO REMAINING CREDITS left"));
+        assert!(is_budget_exhausted_message(
+            "You have NO REMAINING CREDITS left"
+        ));
     }
 
     #[test]
