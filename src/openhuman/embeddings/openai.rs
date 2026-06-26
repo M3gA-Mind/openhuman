@@ -78,8 +78,7 @@ fn normalize_model_for_base_url(base_url: &str, model: &str) -> String {
 fn is_gemini_model_format_rejection(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
     lower.contains("unexpected model name format")
-        || (lower.contains("invalid_argument")
-            && lower.contains("batchembedcontentsrequest.model"))
+        || (lower.contains("invalid_argument") && lower.contains("batchembedcontentsrequest.model"))
 }
 
 impl OpenAiEmbedding {
