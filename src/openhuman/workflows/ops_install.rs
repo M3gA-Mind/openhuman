@@ -196,25 +196,29 @@ pub(crate) async fn install_workflow_from_url_with_home(
 
     let status = response.status();
     if !status.is_success() {
-        let status_str = status.as_u16().to_string();
-        let msg = format!(
-            "fetch failed: {fetch_url} returned status {}",
-            status.as_u16()
-        );
-        let report_msg = format!(
-            "fetch failed: {redacted_fetch_url} returned status {}",
-            status.as_u16()
-        );
-        crate::core::observability::report_error(
-            report_msg.as_str(),
-            "skills",
-            "install_fetch",
-            &[
-                ("url", redacted_fetch_url.as_str()),
-                ("status", status_str.as_str()),
-                ("failure", "non_2xx"),
-            ],
-        );
+        let code = status.as_u16();
+        let msg = format!("fetch failed: {fetch_url} returned status {code}");
+        // A 4xx (esp. 404/410) means the requested SKILL.md is gone or the URL
+        // is wrong — expected user/catalog input state, surfaced to the UI as
+        // "skill not found". Don't page Sentry for it (TAURI-RUST-CGE: ~1,446
+        // events / 72 users on `openhuman@0.57.53`, almost all 404). Keep
+        // reporting 5xx — a genuine remote failure is still Sentry-actionable.
+        // The `Err(msg)` return is unchanged in both cases so the UI always
+        // surfaces the failure.
+        if !status.is_client_error() {
+            let status_str = code.to_string();
+            let report_msg = format!("fetch failed: {redacted_fetch_url} returned status {code}");
+            crate::core::observability::report_error(
+                report_msg.as_str(),
+                "skills",
+                "install_fetch",
+                &[
+                    ("url", redacted_fetch_url.as_str()),
+                    ("status", status_str.as_str()),
+                    ("failure", "non_2xx"),
+                ],
+            );
+        }
         return Err(msg);
     }
 

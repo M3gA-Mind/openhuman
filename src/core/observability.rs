@@ -2445,6 +2445,31 @@ pub fn is_transient_integrations_failure(event: &sentry::protocol::Event<'_>) ->
         || is_transient_domain_failure(event, "composio")
 }
 
+/// Skill-install fetch **client errors** (4xx, esp. 404/410).
+///
+/// `install_workflow_from_url_with_home` fetches a user/catalog-supplied
+/// `SKILL.md`; a 4xx means the requested URL is gone or wrong — expected
+/// user-input state surfaced to the UI as "skill not found", not a
+/// Sentry-actionable defect. The primary suppression lives at that emit site
+/// (it no longer calls `report_error` for 4xx); this is the defense-in-depth
+/// net mirroring the `is_transient_*` filters, catching any future skills call
+/// site that reports a 4xx. Matched by the tags `report_error` writes:
+/// `domain=skills`, `failure=non_2xx`, and a 4xx `status`. A 5xx is a genuine
+/// remote failure and stays reportable. Drops TAURI-RUST-CGE (~1,446 events /
+/// 72 users on `openhuman@0.57.53`).
+pub fn is_skills_install_client_error_event(event: &sentry::protocol::Event<'_>) -> bool {
+    let tags = &event.tags;
+    if tags.get("domain").map(String::as_str) != Some("skills") {
+        return false;
+    }
+    if tags.get("failure").map(String::as_str) != Some("non_2xx") {
+        return false;
+    }
+    tags.get("status")
+        .and_then(|status| status.parse::<u16>().ok())
+        .is_some_and(|code| (400..500).contains(&code))
+}
+
 /// Transient updater failures from GitHub release probes/downloads.
 ///
 /// Core-side reports carry structured tags (`domain=update`, often
@@ -5684,6 +5709,58 @@ mod tests {
         assert!(
             !is_transient_integrations_failure(&non_matching_transport),
             "transport failures without an allowlisted phrase must stay visible"
+        );
+    }
+
+    /// TAURI-RUST-CGE: skill-install fetch 4xx (a missing/renamed catalog
+    /// `SKILL.md`) is expected user-input state — the before_send net must drop
+    /// it, while a genuine 5xx remote failure and unrelated domains stay
+    /// reportable.
+    #[test]
+    fn skills_install_client_error_filter_drops_4xx_keeps_5xx() {
+        // 4xx (esp. 404/410) = missing skill / wrong URL → dropped.
+        for status in ["400", "403", "404", "410", "429"] {
+            let event = event_with_tags(&[
+                ("domain", "skills"),
+                ("failure", "non_2xx"),
+                ("status", status),
+            ]);
+            assert!(
+                is_skills_install_client_error_event(&event),
+                "skills install 4xx {status} must be dropped"
+            );
+        }
+
+        // 5xx = genuine remote failure → stays a Sentry signal.
+        for status in ["500", "502", "503"] {
+            let event = event_with_tags(&[
+                ("domain", "skills"),
+                ("failure", "non_2xx"),
+                ("status", status),
+            ]);
+            assert!(
+                !is_skills_install_client_error_event(&event),
+                "skills install 5xx {status} must stay reportable"
+            );
+        }
+
+        // Domain scoping: a 4xx in another domain must not be touched here.
+        let other_domain = event_with_tags(&[
+            ("domain", "backend_api"),
+            ("failure", "non_2xx"),
+            ("status", "404"),
+        ]);
+        assert!(
+            !is_skills_install_client_error_event(&other_domain),
+            "non-skills 4xx must not be swallowed by the skills filter"
+        );
+
+        // A skills event without the non_2xx failure marker (e.g. a transport
+        // failure) must not be dropped by this status-scoped filter.
+        let skills_transport = event_with_tags(&[("domain", "skills"), ("failure", "transport")]);
+        assert!(
+            !is_skills_install_client_error_event(&skills_transport),
+            "skills transport failures are out of scope for the 4xx filter"
         );
     }
 
