@@ -5267,6 +5267,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.platforms.teams': 'Microsoft Teams',
   'skills.meetingBots.platforms.zoom': 'Zoom',
   'skills.meetingBots.sendTo': 'Senden an',
+  'skills.meetingBots.serverOverloaded':
+    'OpenHuman ist gerade stark ausgelastet. Bitte versuche es in ein paar Minuten erneut.',
   'skills.meetingBots.soonSuffix': 'bald',
   'skills.meetingBots.starting': 'Beginnend mit …',
   'skills.meetingBots.recentCallsAriaLabel': 'Letzte Meeting-Anrufe',

@@ -5033,6 +5033,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.platforms.teams': 'Microsoft Teams',
   'skills.meetingBots.platforms.zoom': 'تكبير',
   'skills.meetingBots.sendTo': 'إرسال إلى',
+  'skills.meetingBots.serverOverloaded':
+    'يشهد OpenHuman ضغطًا كبيرًا في الوقت الحالي. يُرجى المحاولة مرة أخرى بعد بضع دقائق.',
   'skills.meetingBots.soonSuffix': 'قريبًا',
   'skills.meetingBots.starting': 'جارٍ البدء…',
   'skills.meetingBots.recentCallsAriaLabel': 'مكالمات الاجتماعات الأخيرة',

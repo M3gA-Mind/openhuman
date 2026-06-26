@@ -5139,6 +5139,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.platforms.teams': 'माइक्रोसॉफ्ट टीमें',
   'skills.meetingBots.platforms.zoom': 'ज़ूम करें',
   'skills.meetingBots.sendTo': 'भेजें',
+  'skills.meetingBots.serverOverloaded':
+    'OpenHuman अभी भारी लोड में है। कृपया कुछ मिनटों में फिर से प्रयास करें।',
   'skills.meetingBots.soonSuffix': 'जल्द ही',
   'skills.meetingBots.starting': 'शुरू हो रहा है…',
   'skills.meetingBots.recentCallsAriaLabel': 'हाल की मीटिंग कॉल',

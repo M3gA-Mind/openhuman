@@ -5089,6 +5089,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.platforms.teams': 'Microsoft Teams',
   'skills.meetingBots.platforms.zoom': 'Zoom',
   'skills.meetingBots.sendTo': '보내기',
+  'skills.meetingBots.serverOverloaded':
+    '현재 OpenHuman의 부하가 매우 높습니다. 몇 분 후에 다시 시도해 주세요.',
   'skills.meetingBots.soonSuffix': '곧',
   'skills.meetingBots.starting': '시작 중…',
   'skills.meetingBots.recentCallsAriaLabel': '최근 회의 통화',

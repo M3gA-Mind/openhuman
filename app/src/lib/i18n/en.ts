@@ -5783,6 +5783,8 @@ const en: TranslationMap = {
   'skills.meetingBots.platforms.teams': 'Microsoft Teams',
   'skills.meetingBots.platforms.zoom': 'Zoom',
   'skills.meetingBots.sendTo': 'Send to {label}',
+  'skills.meetingBots.serverOverloaded':
+    'OpenHuman is under heavy load right now. Please try again in a few minutes.',
   'skills.meetingBots.soonSuffix': 'soon',
   'skills.meetingBots.starting': 'Starting…',
   'skills.meetingBots.recentCallsAriaLabel': 'Recent meeting calls',

@@ -8,7 +8,6 @@ import {
   leaveBackendMeetBot,
   listMeetCalls,
   type MeetCallRecord,
-  SERVER_OVERLOADED_MESSAGE,
 } from '../../services/meetCallService';
 import {
   type BackendMeetHarnessEvent,
@@ -264,8 +263,10 @@ function MeetingBotsInline({ onToast, hasSubmittedRef }: MeetingBotsInlineProps)
       hasSubmittedRef.current = false;
       const raw = meetError?.trim() || t('skills.meetingBots.failedToStart');
       // A capacity-gate error carries the backend's terse "…try again later."
-      // wording; show the tailored, actionable copy instead (#4151).
-      const message = isCapacityGateMessage(raw) ? SERVER_OVERLOADED_MESSAGE : raw;
+      // wording; show the tailored, actionable (and localized) copy instead (#4151).
+      const message = isCapacityGateMessage(raw)
+        ? t('skills.meetingBots.serverOverloaded')
+        : raw;
       setError(message);
       setSubmitting(false);
       onToast?.({ type: 'error', title: t('skills.meetingBots.couldNotStartTitle'), message });
@@ -294,7 +295,9 @@ function MeetingBotsInline({ onToast, hasSubmittedRef }: MeetingBotsInlineProps)
       });
     } catch (err) {
       const raw = err instanceof Error ? err.message : t('skills.meetingBots.failedToStart');
-      const message = isCapacityGateMessage(raw) ? SERVER_OVERLOADED_MESSAGE : raw;
+      const message = isCapacityGateMessage(raw)
+        ? t('skills.meetingBots.serverOverloaded')
+        : raw;
       setError(message);
       setSubmitting(false);
       hasSubmittedRef.current = false;

@@ -5223,6 +5223,8 @@ const messages: TranslationMap = {
   'skills.meetingBots.platforms.teams': 'Microsoft Teams',
   'skills.meetingBots.platforms.zoom': 'Zoom',
   'skills.meetingBots.sendTo': 'Enviar para',
+  'skills.meetingBots.serverOverloaded':
+    'O OpenHuman está sob carga intensa no momento. Tente novamente em alguns minutos.',
   'skills.meetingBots.soonSuffix': 'em breve',
   'skills.meetingBots.starting': 'Iniciando…',
   'skills.meetingBots.recentCallsAriaLabel': 'Chamadas de reunião recentes',

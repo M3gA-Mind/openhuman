@@ -4883,6 +4883,7 @@ const messages: TranslationMap = {
   'skills.meetingBots.platforms.teams': '微软团队',
   'skills.meetingBots.platforms.zoom': '变焦',
   'skills.meetingBots.sendTo': '发送到会议',
+  'skills.meetingBots.serverOverloaded': 'OpenHuman 当前负载过高，请几分钟后重试。',
   'skills.meetingBots.soonSuffix': '很快',
   'skills.meetingBots.starting': '启动中…',
   'skills.meetingBots.recentCallsAriaLabel': '最近的会议通话',
