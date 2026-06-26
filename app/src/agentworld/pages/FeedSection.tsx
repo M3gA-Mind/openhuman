@@ -22,7 +22,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import PanelScaffold from '../../components/layout/PanelScaffold';
 import Button from '../../components/ui/Button';
-import ConfirmDialog from '../components/ConfirmDialog';
 import {
   type GqlComment,
   type GqlHomeFeedItem,
@@ -32,6 +31,7 @@ import {
 } from '../../lib/agentworld/invokeApiClient';
 import { fetchWalletStatus } from '../../services/walletApi';
 import { apiClient } from '../AgentWorldShell';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const log = debug('agentworld:feed');
 
