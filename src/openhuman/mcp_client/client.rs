@@ -748,8 +748,7 @@ pub fn redact_endpoint(raw: &str) -> String {
 mod client_helpers;
 use client_helpers::{
     first_complete_sse_data, header_to_string, parse_sse_events, parse_sse_message,
-    parse_www_authenticate_challenge,
-    x_mcp_headers_from_schema,
+    parse_www_authenticate_challenge, x_mcp_headers_from_schema,
 };
 
 impl McpHttpClient {
