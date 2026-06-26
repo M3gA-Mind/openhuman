@@ -144,13 +144,28 @@ impl OpenAiCompatibleProvider {
         // model on a Responses-capable endpoint. Skip when Responses is the
         // primary path (Codex OAuth): the fallback flag is never consulted
         // and a 404 there is not evidence the route is missing.
-        if status == reqwest::StatusCode::NOT_FOUND
+        let responses_route_missing = status == reqwest::StatusCode::NOT_FOUND
             && !self.responses_api_primary
-            && Self::responses_404_indicates_missing_route(&error)
-        {
+            && Self::responses_404_indicates_missing_route(&error);
+        if responses_route_missing {
             super::mark_responses_api_unsupported(&self.base_url);
         }
-        if super::super::is_budget_exhausted_http_400(status, &error) {
+        if responses_route_missing {
+            // The `/responses` route 404'd: this endpoint is chat-completions
+            // only. We've just cached it unsupported so the fallback won't fire
+            // again this process, but the very first probe per process still
+            // lands here — and reporting it floods Sentry with one
+            // `"<provider> Responses API error (404): …"` event per fresh
+            // session (TAURI-RUST-5A1, ~900 status=404 events). It is an
+            // expected capability-probe miss (the chat-completions path serves
+            // the request), not a Sentry-actionable defect, so demote to info.
+            log::info!(
+                "[provider] {} /responses route 404 — endpoint is chat-completions only; \
+                 demoting and caching unsupported (fallback disabled henceforth): {}",
+                self.name,
+                super::factory::redact_endpoint(&self.base_url),
+            );
+        } else if super::super::is_budget_exhausted_http_400(status, &error) {
             super::super::log_budget_exhausted_http_400(
                 "responses_api",
                 self.name.as_str(),

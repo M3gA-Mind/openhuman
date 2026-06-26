@@ -25,7 +25,8 @@
 //! Unknown slugs and missing-creds configurations produce actionable errors.
 
 use crate::openhuman::config::schema::cloud_providers::{
-    builtin_cloud_supports_responses_api, is_builtin_cloud_slug, AuthStyle,
+    builtin_cloud_supports_responses_api, endpoint_host_is_chat_completions_only,
+    is_builtin_cloud_slug, AuthStyle,
 };
 use crate::openhuman::config::Config;
 use crate::openhuman::credentials::AuthService;
@@ -1639,8 +1640,16 @@ fn make_cloud_provider_by_slug(
             // local-provider TAURI-RUST-59Y fix). OpenAI keeps the fallback
             // (genuine `/responses`), and so do custom / unknown slugs, whose
             // endpoint may be a real OpenAI proxy.
-            let responses_fallback =
-                !is_builtin_cloud_slug(slug) || builtin_cloud_supports_responses_api(slug);
+            //
+            // The builtin-slug gate alone leaks for a *custom* slug pointed at a
+            // known chat-only host (e.g. a user slug at
+            // `integrate.api.nvidia.com`): `is_builtin_cloud_slug` is false so
+            // the fallback stayed on and `/responses` 404'd (TAURI-RUST-5A1).
+            // Also consult the endpoint host so a chat-only host disables the
+            // fallback regardless of slug; an unknown proxy host still keeps it.
+            let responses_fallback = (!is_builtin_cloud_slug(slug)
+                || builtin_cloud_supports_responses_api(slug))
+                && !endpoint_host_is_chat_completions_only(&openai_codex_routing.endpoint);
             let credential = (!key.trim().is_empty()).then_some(key.as_str());
             let base_provider = if responses_fallback {
                 OpenAiCompatibleProvider::new(
