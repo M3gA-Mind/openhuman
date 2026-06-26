@@ -1044,6 +1044,33 @@ describe('Trading tab — buy identity (x402)', () => {
     });
   });
 
+  test('Buy buttons re-enable after a purchase and Dismiss clears the banner (#4196)', async () => {
+    vi.mocked(apiClient.marketplace.buyIdentity)
+      .mockResolvedValueOnce({
+        challenge: { amount: '20000000', asset: 'USDC', network: 'solana-devnet' },
+        walletBalance: { raw: '50000000', formatted: '50', decimals: 6, assetSymbol: 'USDC' },
+        walletAddress: 'WalletXyz12345678',
+      })
+      .mockResolvedValueOnce({ result: { saleId: 's1' }, payment: { onChainTx: 'TxId1' } });
+    render(<IdentitiesSection />);
+    await gotoTab('Trading');
+    await userEvent.click(await screen.findByRole('button', { name: 'Buy' }));
+    await userEvent.click(await screen.findByTestId('x402-confirm'));
+
+    // Purchase completed.
+    await screen.findByTestId('buy-identity-success');
+
+    // Regression: the Buy button must NOT stay permanently disabled after a
+    // completed purchase (the old `disabled={buying !== null}` never reset
+    // because `closeBuy` was only reachable from the now-unmounted dialog).
+    expect(screen.getByRole('button', { name: 'Buy' })).toBeEnabled();
+
+    // Dismiss clears the terminal banner and keeps Buy usable.
+    await userEvent.click(screen.getByTestId('buy-identity-dismiss'));
+    expect(screen.queryByTestId('buy-identity-success')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buy' })).toBeEnabled();
+  });
+
   test('auction listings do not show a Buy button', async () => {
     vi.mocked(apiClient.marketplace.listIdentities).mockResolvedValue({
       identities: [{ ...fixedListing, listingType: 'auction' as const }],
