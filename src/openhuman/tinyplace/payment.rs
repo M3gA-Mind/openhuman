@@ -127,9 +127,7 @@ fn validate_challenge(challenge: &PaymentChallenge) -> Result<ValidatedChallenge
     } else {
         // Never surface the raw on-chain asset identifier to the user — log it
         // for support/diagnostics and return human-readable copy (#4199).
-        log::warn!(
-            "{LOG_PREFIX} rejecting unsupported x402 asset (not USDC/SOL): {asset}"
-        );
+        log::warn!("{LOG_PREFIX} rejecting unsupported x402 asset (not USDC/SOL): {asset}");
         return Err("Payment asset not supported — please contact support.".to_string());
     };
 
@@ -552,8 +550,10 @@ mod tests {
         assert!(!err.contains("WBTC"), "raw asset leaked to user: {err}");
 
         // A bogus mint address must likewise not be surfaced.
-        let err = validate_challenge(&mock_challenge("So1BogusMint1111111111111111111111111111111"))
-            .unwrap_err();
+        let err = validate_challenge(&mock_challenge(
+            "So1BogusMint1111111111111111111111111111111",
+        ))
+        .unwrap_err();
         assert_eq!(err, "Payment asset not supported — please contact support.");
         assert!(!err.contains("BogusMint"), "raw mint leaked to user: {err}");
     }
