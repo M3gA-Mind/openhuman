@@ -787,7 +787,20 @@ pub(crate) fn is_embedding_endpoint_absent(lower: &str) -> bool {
 fn is_embedding_model_rejected(lower: &str) -> bool {
     lower.contains("embedding api error")
         && lower.contains("(400")
-        && (lower.contains("does not exist") || lower.contains("does not support embeddings"))
+        && (lower.contains("does not exist")
+            || lower.contains("does not support embeddings")
+            // Gemini's OpenAI-compat shim (generativelanguage.googleapis.com)
+            // maps `/v1/embeddings` → `BatchEmbedContents` and rejects a bare
+            // model id with `BatchEmbedContentsRequest.model: unexpected model
+            // name format` / `INVALID_ARGUMENT` on every re-embed (TAURI-RUST-4SA,
+            // 4,494 events / 1 user). The Custom-endpoint path now normalizes the
+            // id to `models/<name>` at the source; this demotes any that slip
+            // through (already-stored bad state, older releases, other compat
+            // hosts) so the per-embed flood stays out of Sentry. Distinct cause
+            // from the #4070/9SK `"does not exist"` family.
+            || lower.contains("unexpected model name format")
+            || (lower.contains("invalid_argument")
+                && lower.contains("batchembedcontentsrequest.model")))
 }
 
 /// Detect the memory-store chunk DB's circuit-breaker-open message that
@@ -3042,6 +3055,27 @@ mod tests {
                 expected_error_kind(raw),
                 Some(ExpectedErrorKind::ProviderConfigRejection),
                 "should classify embedding model-rejection 400 as config rejection: {raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn classifies_gemini_model_format_400_as_config_rejection() {
+        // TAURI-RUST-4SA (~4,494 events / 1 user) — a bare model id sent to
+        // Gemini's OpenAI-compat shim, which maps `/v1/embeddings` →
+        // `BatchEmbedContents` and demands `models/<name>`. Verbatim Gemini wire
+        // body plus the enriched form after the emit site appends the Gemini
+        // remediation, and the alternate `INVALID_ARGUMENT` + field-path shape.
+        // All must demote so the per-embed flood stays out of Sentry.
+        for raw in [
+            r#"Embedding API error (400 Bad Request): {"error":{"code":400,"message":"BatchEmbedContentsRequest.model: unexpected model name format","status":"INVALID_ARGUMENT"}}"#,
+            "Embedding API error (400 Bad Request): {\"error\":{\"code\":400,\"message\":\"BatchEmbedContentsRequest.model: unexpected model name format\",\"status\":\"INVALID_ARGUMENT\"}} — Gemini needs the embeddings model id in `models/<name>` form (e.g. `models/text-embedding-004`); fix it in Settings → Memory",
+            r#"Embedding API error (400 Bad Request): {"error":{"code":400,"message":"Invalid value at 'model'","status":"INVALID_ARGUMENT","details":[{"field":"BatchEmbedContentsRequest.model"}]}}"#,
+        ] {
+            assert_eq!(
+                expected_error_kind(raw),
+                Some(ExpectedErrorKind::ProviderConfigRejection),
+                "should classify Gemini model-format 400 as config rejection: {raw}"
             );
         }
     }
