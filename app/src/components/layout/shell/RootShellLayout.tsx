@@ -180,7 +180,13 @@ export default function RootShellLayout({ sidebar, children }: RootShellLayoutPr
           native CEF webview glued to the content's bounds, which composites
           above the HTML layer — starts to its right and never covers it. */}
       {!isOpen && (
-        <div className="flex w-14 flex-none flex-col items-center gap-0.5 border-r border-line bg-surface pt-2">
+        <div className="flex w-14 flex-none flex-col items-center gap-0.5 border-r border-line bg-surface">
+          {/* macOS overlay title bar (titleBarStyle: Overlay) floats the traffic
+              lights over the top-left. The expanded SidebarHeader dodges them by
+              right-aligning, but this narrow rail can't — so reserve a draggable
+              strip the height of the window controls and start the rail below it,
+              clear of the lights. */}
+          <div className="h-7 w-full flex-none" data-tauri-drag-region />
           <Tooltip label={t('layout.showSidebar')}>
             <button
               type="button"
