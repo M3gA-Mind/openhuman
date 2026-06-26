@@ -555,8 +555,7 @@ function RegisterTab({ onRegistered }: { onRegistered?: () => void }) {
           ))}
         </div>
         <p className="mt-2 text-[11px] leading-relaxed text-content-faint">
-          Indicative only — the exact price is confirmed at checkout from the on-chain x402
-          quote.
+          Indicative only — the exact price is confirmed at checkout from the on-chain x402 quote.
         </p>
       </div>
 
