@@ -163,7 +163,7 @@ impl OpenAiCompatibleProvider {
                 "[provider] {} /responses route 404 — endpoint is chat-completions only; \
                  demoting and caching unsupported (fallback disabled henceforth): {}",
                 self.name,
-                super::factory::redact_endpoint(&self.base_url),
+                super::super::factory::redact_endpoint(&self.base_url),
             );
         } else if super::super::is_budget_exhausted_http_400(status, &error) {
             super::super::log_budget_exhausted_http_400(

@@ -712,7 +712,10 @@ mod tests {
             Some("api.groq.com")
         );
         // Bracketed IPv6 literal with port.
-        assert_eq!(endpoint_host("http://[::1]:8080/v1").as_deref(), Some("::1"));
+        assert_eq!(
+            endpoint_host("http://[::1]:8080/v1").as_deref(),
+            Some("::1")
+        );
         assert_eq!(endpoint_host("   ").as_deref(), None);
     }
 
