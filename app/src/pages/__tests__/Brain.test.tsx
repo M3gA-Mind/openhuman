@@ -16,7 +16,9 @@ vi.mock('../../utils/tauriCommands', () => ({
 
 vi.mock('../../providers/CoreStateProvider', () => ({
   useCoreState: () => ({
-    snapshot: { auth: { userId: coreAuthRef.current, isAuthenticated: coreAuthRef.current != null } },
+    snapshot: {
+      auth: { userId: coreAuthRef.current, isAuthenticated: coreAuthRef.current != null },
+    },
   }),
 }));
 
