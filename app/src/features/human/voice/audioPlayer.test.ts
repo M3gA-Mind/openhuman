@@ -196,6 +196,74 @@ describe('playBase64Audio', () => {
       vi.useRealTimers();
     }
   });
+
+  it('amplitude() is 0 when Web Audio is unavailable (#4077)', async () => {
+    // jsdom has no AudioContext, so the envelope never builds and amplitude()
+    // is a safe no-op — the mouth falls back to the viseme scheduler.
+    installAudio(url => new FakeAudio(url));
+    const handle = await playBase64Audio('AAA=');
+    expect(handle.amplitude()).toBe(0);
+  });
+
+  it('amplitude() samples a precomputed RMS envelope from the decoded audio (#4077)', async () => {
+    const created = installAudio(url => new FakeAudio(url));
+    // Fake AudioContext decoding to a known mono PCM buffer at 60 Hz, so each
+    // sample is its own envelope window (windowSize = sampleRate / 60 = 1) and
+    // the per-window RMS equals |sample|: envelope = [0, .5, .5, 1, 1, 0].
+    const samples = new Float32Array([0, 0.5, -0.5, 1, -1, 0]);
+    class FakeAudioContext {
+      decodeAudioData(_buf: ArrayBuffer): Promise<AudioBuffer> {
+        return Promise.resolve({
+          sampleRate: 60,
+          getChannelData: () => samples,
+        } as unknown as AudioBuffer);
+      }
+      close(): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+    const prevCtx = (window as unknown as { AudioContext?: unknown }).AudioContext;
+    (window as unknown as { AudioContext: unknown }).AudioContext = FakeAudioContext;
+    try {
+      const handle = await playBase64Audio('AAA=');
+      // Let the async decode + envelope build settle (a macrotask flushes the
+      // decodeAudioData microtasks).
+      await new Promise(resolve => setTimeout(resolve, 0));
+      // currentTime 0.058s → window floor(58 / (1000/60)) = 3 → |samples[3]| = 1.
+      created[0].currentTime = 0.058;
+      expect(handle.amplitude()).toBeCloseTo(1, 5);
+      // currentTime 0.02s → window 1 → |samples[1]| = 0.5.
+      created[0].currentTime = 0.02;
+      expect(handle.amplitude()).toBeCloseTo(0.5, 5);
+      // Past the end of the envelope → 0.
+      created[0].currentTime = 10;
+      expect(handle.amplitude()).toBe(0);
+    } finally {
+      (window as unknown as { AudioContext?: unknown }).AudioContext = prevCtx;
+    }
+  });
+
+  it('amplitude() stays 0 when audio decoding fails (#4077)', async () => {
+    const created = installAudio(url => new FakeAudio(url));
+    class FailingAudioContext {
+      decodeAudioData(): Promise<AudioBuffer> {
+        return Promise.reject(new Error('decode boom'));
+      }
+      close(): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+    const prevCtx = (window as unknown as { AudioContext?: unknown }).AudioContext;
+    (window as unknown as { AudioContext: unknown }).AudioContext = FailingAudioContext;
+    try {
+      const handle = await playBase64Audio('AAA=');
+      await new Promise(resolve => setTimeout(resolve, 0));
+      created[0].currentTime = 0.05;
+      expect(handle.amplitude()).toBe(0);
+    } finally {
+      (window as unknown as { AudioContext?: unknown }).AudioContext = prevCtx;
+    }
+  });
 });
 
 describe('isAudioStopped / swallowAudioStop', () => {

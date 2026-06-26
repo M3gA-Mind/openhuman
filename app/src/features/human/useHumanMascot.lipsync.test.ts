@@ -68,11 +68,15 @@ interface FakePlayback {
     ended: Promise<void>;
   };
   setMs(ms: number): void;
+  setAmp(amp: number): void;
   finish(): void;
 }
 
 function makePlayback(durationMs: number): FakePlayback {
   let ms = 0;
+  // Raw RMS the fake reports for the current frame. Defaults to 0 so the
+  // amplitude floor is a no-op and the viseme-only tests are unaffected (#4077).
+  let amp = 0;
   let stopped = false;
   let resolveEnded!: () => void;
   const ended = new Promise<void>(res => {
@@ -81,9 +85,7 @@ function makePlayback(durationMs: number): FakePlayback {
   return {
     handle: {
       currentMs: () => (stopped ? -1 : ms),
-      // No amplitude envelope in these tests — the mouth is driven purely by
-      // the viseme scheduler, so the amplitude floor is a no-op (#4077).
-      amplitude: () => 0,
+      amplitude: () => (stopped ? 0 : amp),
       durationMs: () => durationMs,
       metadataReady: Promise.resolve(),
       stop: () => {
@@ -93,6 +95,9 @@ function makePlayback(durationMs: number): FakePlayback {
     },
     setMs(next: number) {
       ms = next;
+    },
+    setAmp(next: number) {
+      amp = next;
     },
     finish() {
       stopped = true;
@@ -332,5 +337,37 @@ describe('useHumanMascot — audio-driven lipsync end-to-end', () => {
     // Ghosty rather than via `viseme`, so we just assert the lifecycle moved
     // off speaking.
     expect(result.current.face).not.toBe('speaking');
+  });
+
+  it('amplitude opens the mouth as a floor over a quiet viseme frame (#4077)', async () => {
+    const fake = makePlayback(1000);
+    (synthesizeSpeech as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      audio_base64: 'AAA=',
+      audio_mime: 'audio/mpeg',
+      // A low-openness consonant frame ('FF' → VISEMES.F, openness 0.15) that
+      // still produces motion, so it isn't dropped to the procedural path.
+      visemes: [{ viseme: 'FF', start_ms: 0, end_ms: 1000 }],
+    });
+    (playBase64Audio as ReturnType<typeof vi.fn>).mockResolvedValueOnce(fake.handle);
+
+    const { result } = renderHook(() => useHumanMascot({ speakReplies: true }));
+    await act(async () => {
+      capturedListeners?.onDone?.(fakeDone('hello'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(result.current.face).toBe('speaking');
+
+    // Loud audio (raw RMS above the open ceiling) → the amplitude floor opens
+    // the mouth well past the quiet 'FF' frame and promotes the Rive code to an
+    // open vowel bucket.
+    act(() => {
+      fake.setMs(50);
+      fake.setAmp(0.3);
+      tickRaf();
+    });
+    expect(result.current.viseme.openness).toBeGreaterThan(VISEMES.F.openness);
+    expect(result.current.visemeCode).not.toBe('sil');
   });
 });

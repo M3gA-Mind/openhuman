@@ -6,6 +6,7 @@ import { type ChatSubagentDoneEvent, subscribeChatEvents } from '../../services/
 import { selectEffectiveMascotVoiceId } from '../../store/mascotSlice';
 import type { MascotFace } from './Mascot';
 import { lerpViseme, VISEMES, type VisemeShape } from './Mascot/visemes';
+import { amplitudeToVisemeCode, normalizeAmplitude, smoothAmplitude } from './voice/amplitudeMouth';
 import {
   type PlaybackHandle,
   type PlaybackOptions,
@@ -18,11 +19,6 @@ import {
   type VisemeFrame,
   visemesFromAlignment,
 } from './voice/ttsClient';
-import {
-  amplitudeToVisemeCode,
-  normalizeAmplitude,
-  smoothAmplitude,
-} from './voice/amplitudeMouth';
 import { findActiveFrame, oculusVisemeToShape } from './voice/visemeMap';
 
 const mascotLog = debug('human:mascot');

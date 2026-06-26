@@ -120,7 +120,10 @@ async function buildRmsEnvelope(bytes: Uint8Array): Promise<Float32Array | null>
       void ctx.close?.();
     }
   } catch (err) {
-    audioLog('amplitude envelope unavailable: %s', err instanceof Error ? err.message : String(err));
+    audioLog(
+      'amplitude envelope unavailable: %s',
+      err instanceof Error ? err.message : String(err)
+    );
     return null;
   }
 }
