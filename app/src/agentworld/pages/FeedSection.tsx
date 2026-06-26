@@ -539,7 +539,10 @@ function CommentRow({
     setDeleting(true);
     void apiClient.feeds
       .deleteComment(handle, postId, comment.commentId)
-      .then(() => onCommentDeleted())
+      .then(({ ok }) => {
+        if (!ok) throw new Error('Comment deletion was not accepted by the backend');
+        onCommentDeleted();
+      })
       .catch(err => console.error('[FeedSection] delete comment failed:', err))
       .finally(() => {
         setDeleting(false);
@@ -745,8 +748,11 @@ export default function FeedSection() {
     setDeletingPost(true);
     void apiClient.feeds
       .deletePost(post.postId)
-      .then(() => {
-        void apiClient.graphql.homeFeed({ limit: 50, includeSelf: true }).then(result => {
+      .then(({ ok }) => {
+        if (!ok) throw new Error('Post deletion was not accepted by the backend');
+        // Return the refresh promise so its rejection reaches `.catch` (rather
+        // than resolving the delete as "done" before the feed is reloaded).
+        return apiClient.graphql.homeFeed({ limit: 50, includeSelf: true }).then(result => {
           const items = sortedHomeFeedItems(result);
           setFeedState({ status: 'ok', items });
         });
