@@ -134,9 +134,7 @@ fn add_column_idempotent(conn: &Connection, ddl: &str, what: &str) -> Result<()>
         Err(rusqlite::Error::SqliteFailure(_, Some(msg)))
             if msg.contains("duplicate column name") =>
         {
-            log::debug!(
-                "[mcp_registry] {what} already present (concurrent migration) — skipping"
-            );
+            log::debug!("[mcp_registry] {what} already present (concurrent migration) — skipping");
             Ok(())
         }
         Err(e) => Err(anyhow::Error::new(e).context(format!("Failed to add {what}"))),
@@ -792,7 +790,8 @@ mod tests {
         )
         .unwrap_err();
         assert!(
-            err.to_string().contains("Failed to add bogus column to mcp_servers"),
+            err.to_string()
+                .contains("Failed to add bogus column to mcp_servers"),
             "unexpected error: {err}"
         );
     }
