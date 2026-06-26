@@ -688,16 +688,19 @@ async fn wallet_usdc_balance(address: &str) -> (Option<Value>, String) {
     // returns immediately.
     let mut accounts: Option<Vec<Value>> = None;
     for rpc_url in &endpoints {
+        // A settlement endpoint may embed a private provider token in its
+        // path/query; redact to scheme+host before it reaches the logs.
+        let safe_url = crate::openhuman::wallet::redact_rpc_url(rpc_url);
         let json: Value = match client.post(rpc_url).json(&body).send().await {
             Ok(resp) => match resp.json().await {
                 Ok(j) => j,
                 Err(e) => {
-                    log::warn!("{LOG_PREFIX} usdc balance: rpc parse failed at {rpc_url}: {e}");
+                    log::warn!("{LOG_PREFIX} usdc balance: rpc parse failed at {safe_url}: {e}");
                     continue;
                 }
             },
             Err(e) => {
-                log::warn!("{LOG_PREFIX} usdc balance: rpc send failed at {rpc_url}: {e}");
+                log::warn!("{LOG_PREFIX} usdc balance: rpc send failed at {safe_url}: {e}");
                 continue;
             }
         };
@@ -707,7 +710,7 @@ async fn wallet_usdc_balance(address: &str) -> (Option<Value>, String) {
                 break;
             }
             None => {
-                log::warn!("{LOG_PREFIX} usdc balance: unexpected rpc shape at {rpc_url}");
+                log::warn!("{LOG_PREFIX} usdc balance: unexpected rpc shape at {safe_url}");
                 continue;
             }
         }
