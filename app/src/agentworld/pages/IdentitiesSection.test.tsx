@@ -1071,6 +1071,29 @@ describe('Trading tab — buy identity (x402)', () => {
     expect(screen.getByRole('button', { name: 'Buy' })).toBeEnabled();
   });
 
+  test('a failed purchase shows the error banner and Dismiss resets it (#4196)', async () => {
+    vi.mocked(apiClient.marketplace.buyIdentity)
+      .mockResolvedValueOnce({
+        challenge: { amount: '20000000', asset: 'USDC', network: 'solana-devnet' },
+        walletBalance: { raw: '50000000', formatted: '50', decimals: 6, assetSymbol: 'USDC' },
+        walletAddress: 'WalletXyz12345678',
+      })
+      .mockRejectedValueOnce(new Error('settlement boom'));
+    render(<IdentitiesSection />);
+    await gotoTab('Trading');
+    await userEvent.click(await screen.findByRole('button', { name: 'Buy' }));
+    await userEvent.click(await screen.findByTestId('x402-confirm'));
+
+    const errorBanner = await screen.findByTestId('buy-identity-error');
+    expect(errorBanner).toHaveTextContent('Purchase failed.');
+
+    // Buy must re-enable after a failed attempt, and Dismiss clears the banner.
+    expect(screen.getByRole('button', { name: 'Buy' })).toBeEnabled();
+    await userEvent.click(screen.getByTestId('buy-identity-dismiss'));
+    expect(screen.queryByTestId('buy-identity-error')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Buy' })).toBeEnabled();
+  });
+
   test('auction listings do not show a Buy button', async () => {
     vi.mocked(apiClient.marketplace.listIdentities).mockResolvedValue({
       identities: [{ ...fixedListing, listingType: 'auction' as const }],
