@@ -34,9 +34,25 @@ export function swallowAudioStop(err: unknown): void {
   throw err;
 }
 
+/**
+ * Frames-per-second of the precomputed RMS amplitude envelope. ~60 Hz (≈16ms
+ * per window) keeps the mouth within the <100ms audio-offset budget while
+ * staying cheap to compute. Used both when building the envelope and when
+ * sampling it by playback time.
+ */
+const ENVELOPE_HZ = 60;
+
 export interface PlaybackHandle {
   /** ms elapsed since audio started. Returns -1 after playback ends. */
   currentMs(): number;
+  /**
+   * Raw RMS amplitude (0..1) of the audio at the current playback position,
+   * read from a precomputed energy envelope (see {@link buildRmsEnvelope}).
+   * Returns 0 before the envelope is ready, after playback ends, or when Web
+   * Audio decoding was unavailable — callers normalise/smooth this into a
+   * mouth-open value. Best-effort: never throws, never affects playback. (#4077)
+   */
+  amplitude(): number;
   /**
    * Total audio duration in ms. Returns 0 if `loadedmetadata` has not fired
    * yet — call again after a tick or wait on `metadataReady`. A function (not
@@ -65,6 +81,50 @@ export interface PlaybackOptions {
   maxDurationMs?: number;
 }
 
+/**
+ * Decode `bytes` into a mono RMS energy envelope sampled at {@link ENVELOPE_HZ},
+ * for amplitude-driven lip-sync (#4077). Best-effort and side-effect-free with
+ * respect to playback: it decodes a SEPARATE copy of the audio in a throwaway
+ * `AudioContext` (closed immediately after) and never touches the playing
+ * `HTMLAudioElement`, so there is zero risk of muting or perturbing TTS output
+ * — if Web Audio is unavailable or decoding fails, it simply resolves to null
+ * and the mouth falls back to the viseme scheduler.
+ */
+async function buildRmsEnvelope(bytes: Uint8Array): Promise<Float32Array | null> {
+  try {
+    const Ctor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return null;
+    const ctx = new Ctor();
+    try {
+      // `decodeAudioData` detaches the backing buffer, so hand it a fresh copy.
+      const copy = bytes.slice().buffer as ArrayBuffer;
+      const buffer = await ctx.decodeAudioData(copy);
+      const channel = buffer.getChannelData(0);
+      const windowSize = Math.max(1, Math.round(buffer.sampleRate / ENVELOPE_HZ));
+      const frameCount = Math.max(1, Math.ceil(channel.length / windowSize));
+      const envelope = new Float32Array(frameCount);
+      for (let f = 0; f < frameCount; f++) {
+        const start = f * windowSize;
+        const end = Math.min(start + windowSize, channel.length);
+        let sumSquares = 0;
+        for (let i = start; i < end; i++) {
+          const sample = channel[i];
+          sumSquares += sample * sample;
+        }
+        envelope[f] = Math.sqrt(sumSquares / Math.max(1, end - start));
+      }
+      return envelope;
+    } finally {
+      void ctx.close?.();
+    }
+  } catch (err) {
+    audioLog('amplitude envelope unavailable: %s', err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}
+
 export async function playBase64Audio(
   base64: string,
   mime: string = 'audio/mpeg',
@@ -76,6 +136,15 @@ export async function playBase64Audio(
   const url = URL.createObjectURL(blob);
   const audio = new window.Audio(url);
   audio.preload = 'auto';
+
+  // Kick off amplitude-envelope decoding in parallel — do NOT await before
+  // `audio.play()` below, since any await between the originating user gesture
+  // and play() can trip CEF/Chromium's autoplay policy. The envelope simply
+  // becomes available a few ms into playback; `amplitude()` returns 0 until then.
+  let amplitudeEnvelope: Float32Array | null = null;
+  void buildRmsEnvelope(bytes).then(env => {
+    amplitudeEnvelope = env;
+  });
 
   let stopped = false;
   let endedNaturally = false;
@@ -169,6 +238,12 @@ export async function playBase64Audio(
 
   return {
     currentMs: () => (endedNaturally || stopped ? -1 : audio.currentTime * 1000),
+    amplitude: () => {
+      if (endedNaturally || stopped || amplitudeEnvelope === null) return 0;
+      const idx = Math.floor((audio.currentTime * 1000) / (1000 / ENVELOPE_HZ));
+      if (idx < 0 || idx >= amplitudeEnvelope.length) return 0;
+      return amplitudeEnvelope[idx];
+    },
     durationMs: () => (Number.isFinite(audio.duration) ? audio.duration * 1000 : 0),
     metadataReady,
     stop,

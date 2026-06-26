@@ -61,6 +61,7 @@ let capturedListeners: ChatEventListeners | null = null;
 interface FakePlayback {
   handle: {
     currentMs: () => number;
+    amplitude: () => number;
     durationMs: () => number;
     metadataReady: Promise<void>;
     stop: () => void;
@@ -80,6 +81,9 @@ function makePlayback(durationMs: number): FakePlayback {
   return {
     handle: {
       currentMs: () => (stopped ? -1 : ms),
+      // No amplitude envelope in these tests — the mouth is driven purely by
+      // the viseme scheduler, so the amplitude floor is a no-op (#4077).
+      amplitude: () => 0,
       durationMs: () => durationMs,
       metadataReady: Promise.resolve(),
       stop: () => {

@@ -18,6 +18,11 @@ import {
   type VisemeFrame,
   visemesFromAlignment,
 } from './voice/ttsClient';
+import {
+  amplitudeToVisemeCode,
+  normalizeAmplitude,
+  smoothAmplitude,
+} from './voice/amplitudeMouth';
 import { findActiveFrame, oculusVisemeToShape } from './voice/visemeMap';
 
 const mascotLog = debug('human:mascot');
@@ -310,6 +315,9 @@ export function useHumanMascot(options: UseHumanMascotOptions = {}): UseHumanMas
   const visemeFramesRef = useRef<{ viseme: string; start_ms: number; end_ms: number }[]>([]);
   const visemeCursorRef = useRef(0);
   const playbackSeqRef = useRef(0);
+  // Smoothed, normalised amplitude-driven mouth-open value (0..1) for Option A
+  // lip-sync (#4077). Persists across animation frames so the mouth eases.
+  const mouthAmpRef = useRef(0);
 
   const [, force] = useState(0);
 
@@ -478,6 +486,7 @@ export function useHumanMascot(options: UseHumanMascotOptions = {}): UseHumanMas
     }
     visemeFramesRef.current = [];
     visemeCursorRef.current = 0;
+    mouthAmpRef.current = 0;
     clearAckTimer();
     const seq = ++playbackSeqRef.current;
     const isStillCurrent = () => playbackSeqRef.current === seq;
@@ -579,8 +588,29 @@ export function useHumanMascot(options: UseHumanMascotOptions = {}): UseHumanMas
       visemeCursorRef.current = cursor;
       viseme = frame ? oculusVisemeToShape(frame.viseme) : VISEMES.REST;
       visemeCode = frame ? frame.viseme : 'sil';
+
+      // Option A lip-sync (#4077): drive the mouth open/close from the real
+      // audio energy at this instant. Used as a FLOOR over the viseme stream —
+      // amplitude opens the mouth in time with loudness even when the viseme
+      // track is flat or text-estimated (procedural), and reinforces real
+      // visemes on loud syllables, but never clamps the mouth shut on a louder
+      // frame. `amplitude()` is 0 when Web Audio decoding was unavailable, so
+      // this is a no-op fallback to the existing viseme behaviour.
+      const targetOpen = normalizeAmplitude(playback.amplitude());
+      mouthAmpRef.current = smoothAmplitude(mouthAmpRef.current, targetOpen);
+      const amp = mouthAmpRef.current;
+      if (amp > viseme.openness) {
+        viseme = { ...viseme, openness: amp };
+        // Rive speaks viseme enums, not a continuous openness — promote the
+        // (quieter) frame code to an amplitude-bucketed open code so the Rive
+        // mouth visibly opens with the audio.
+        visemeCode = amplitudeToVisemeCode(amp);
+      }
+    } else {
+      mouthAmpRef.current = 0;
     }
   } else if (face === 'speaking') {
+    mouthAmpRef.current = 0;
     const since = window.performance.now() - lastDeltaAtRef.current;
     const decay = Math.max(0, Math.min(1, since / VISEME_DECAY_MS));
     viseme = lerpViseme(targetRef.current, VISEMES.REST, decay);

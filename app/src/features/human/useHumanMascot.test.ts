@@ -86,6 +86,7 @@ function makeFakePlayback(durationMs = 100) {
   return {
     handle: {
       currentMs: () => (stopped ? -1 : 0),
+      amplitude: () => 0,
       durationMs: () => durationMs,
       metadataReady: Promise.resolve(),
       stop: () => {
