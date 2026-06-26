@@ -5060,7 +5060,7 @@ mod tests {
                                 "decimals": 6,
                                 "uiAmount": 12.5,
                                 "uiAmountString": "12.5"
-                            }}}}}}
+                            }}}}}
                         }]
                     }
                 }))
@@ -5081,8 +5081,14 @@ mod tests {
 
         assert_eq!(address, "OwnerAddr1111111111");
         let balance = balance.expect("balance must resolve from the tiny.place settlement RPC");
-        assert_eq!(balance.get("formatted").and_then(Value::as_str), Some("12.5"));
-        assert_eq!(balance.get("assetSymbol").and_then(Value::as_str), Some("USDC"));
+        assert_eq!(
+            balance.get("formatted").and_then(Value::as_str),
+            Some("12.5")
+        );
+        assert_eq!(
+            balance.get("assetSymbol").and_then(Value::as_str),
+            Some("USDC")
+        );
         assert_eq!(balance.get("decimals").and_then(Value::as_u64), Some(6));
     }
 
