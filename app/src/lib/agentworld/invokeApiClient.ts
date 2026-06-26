@@ -306,6 +306,12 @@ export interface RegistrationResult {
   [key: string]: unknown;
 }
 
+/** Result of `registry.assignPrimary` — the handle now flagged primary. */
+export interface AssignPrimaryResult {
+  identity?: Identity;
+  [key: string]: unknown;
+}
+
 // -- Registry export types ------------------------------------------------
 
 export interface LedgerReference {
@@ -1763,6 +1769,15 @@ export function createInvokeApiClient() {
       /** Export an identity with its ledger history and cryptographic proofs. */
       export: (name: string) =>
         call<IdentityExport>('openhuman.tinyplace_registry_export', { name }),
+      /**
+       * Make one of the wallet's purchased handles its primary (active) identity.
+       * The backend clears the primary flag on the wallet's other handles, so
+       * this is how a user with multiple identities switches the active handle
+       * reflected across feed / profile / directory (#4198). The owning wallet
+       * is proven by the signer-attached signature, not by params.
+       */
+      assignPrimary: (name: string) =>
+        call<AssignPrimaryResult>('openhuman.tinyplace_registry_assign_primary', { name }),
     },
     directoryIdentities: {
       /** List identity listings from the directory. */

@@ -437,6 +437,20 @@ describe('registry.export', () => {
   });
 });
 
+describe('registry.assignPrimary', () => {
+  test('calls openhuman.tinyplace_registry_assign_primary with name (#4198)', async () => {
+    mockCallCoreRpc.mockResolvedValueOnce({ identity: { username: '@second', primary: true } });
+    const client = createInvokeApiClient();
+    const result = await client.registry.assignPrimary('@second');
+
+    expect(mockCallCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.tinyplace_registry_assign_primary',
+      params: { name: '@second' },
+    });
+    expect(result.identity?.primary).toBe(true);
+  });
+});
+
 describe('registry.get', () => {
   test('calls openhuman.tinyplace_registry_get with name', async () => {
     mockCallCoreRpc.mockResolvedValueOnce({ available: true, name: '@atlas' });

@@ -2396,6 +2396,35 @@ pub(crate) fn handle_tinyplace_registry_export(params: Map<String, Value>) -> Co
     })
 }
 
+/// Assign one of the wallet's purchased handles as its **primary** (active)
+/// identity. The backend clears the primary flag on the wallet's other names
+/// (one primary per wallet), so this is how a user who owns multiple identities
+/// switches which handle is shown as active across feed / profile / directory
+/// (#4198). ANTI-SPOOF: the owning wallet is proven by the request signature the
+/// SDK attaches from the unlocked signer, never from params — so a caller can
+/// only re-point their *own* wallet's primary.
+pub(crate) fn handle_tinyplace_registry_assign_primary(
+    params: Map<String, Value>,
+) -> ControllerFuture {
+    Box::pin(async move {
+        let name = req_str(&params, "name")?
+            .trim()
+            .trim_start_matches('@')
+            .to_string();
+        if name.is_empty() {
+            return Err("missing required param 'name'".to_string());
+        }
+        log::debug!("{LOG_PREFIX} registry_assign_primary name={name}");
+        let client = global_state().client().await?;
+        let identity = client
+            .registry
+            .assign_primary(&name)
+            .await
+            .map_err(map_err)?;
+        to_value(serde_json::json!({ "identity": identity }))
+    })
+}
+
 // ── Users email verification ────────────────────────────────────────────────
 
 pub(crate) fn handle_tinyplace_users_start_email_verification(
@@ -5919,6 +5948,21 @@ mod tests {
         assert!(
             result.unwrap_err().contains("amount"),
             "expected 'amount' in error"
+        );
+    }
+
+    /// registry_assign_primary rejects a blank/@-only name before any client
+    /// work (#4198) — the trim + strip-@ must not leave an empty handle that
+    /// would hit the backend.
+    #[test]
+    fn registry_assign_primary_rejects_blank_name() {
+        let mut params = Map::new();
+        params.insert("name".to_string(), Value::String("  @ ".to_string()));
+        let result = block_on(handle_tinyplace_registry_assign_primary(params));
+        assert!(result.is_err());
+        assert!(
+            result.unwrap_err().contains("name"),
+            "expected 'name' in error"
         );
     }
 
