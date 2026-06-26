@@ -626,6 +626,14 @@ impl Agent {
                     )
                 }
                 Ok(result) => {
+                    // No usable bundle: leave `agent_context_prepared_sources`
+                    // untouched. Recording a marker here would (a) make
+                    // `render_agent_context_status_note` tell the model to "use
+                    // the prepared context below" when none was injected, and
+                    // (b) suppress `agent_prepare_context` for the rest of the
+                    // turn — blocking a legitimate retry by any path that still
+                    // exposes the tool. The dedup only needs to hold once a
+                    // bundle was actually injected (the success arm above).
                     log::warn!(
                         "[agent_loop] super_context scout returned an error — proceeding without bundle: {}",
                         result.output()
