@@ -4491,7 +4491,8 @@ fn extract_usage_defaults_cached_tokens_to_zero_when_absent() {
 
 /// Minimal valid Responses SSE body so the Codex OAuth streamed-aggregate
 /// path returns `Ok("hi")`.
-const CODEX_RESPONSES_SSE_OK: &str = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n\
+const CODEX_RESPONSES_SSE_OK: &str =
+    "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n\
      data: {\"type\":\"response.completed\",\"response\":{\"output_text\":\"hi\"}}\n\n\
      data: [DONE]\n";
 

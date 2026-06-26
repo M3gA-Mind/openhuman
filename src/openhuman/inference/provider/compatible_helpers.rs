@@ -76,7 +76,7 @@ impl OpenAiCompatibleProvider {
         // (drop `max_output_tokens`) adjustments above. Every other endpoint keeps
         // `model` untouched.
         let effective_model = if is_codex_oauth_responses && model.eq_ignore_ascii_case("auto") {
-            let remapped = super::openai_codex::OPENAI_CODEX_MODEL_HINTS
+            let remapped = super::super::openai_codex::OPENAI_CODEX_MODEL_HINTS
                 .first()
                 .copied()
                 .unwrap_or("gpt-5.5");
