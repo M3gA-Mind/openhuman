@@ -452,7 +452,9 @@ describe('graphql-enriched profile card', () => {
           ],
         })
       );
-    assignPrimary.mockResolvedValueOnce({ identity: { username: 'spare2', primary: true } });
+    assignPrimary.mockResolvedValueOnce({
+      identity: { username: 'spare2', cryptoId: SOLANA_ADDR, primary: true, ...minimalIdentity },
+    });
     render(<ProfilesSection />);
 
     const makeActive = await screen.findByRole('button', { name: /Make active/i });

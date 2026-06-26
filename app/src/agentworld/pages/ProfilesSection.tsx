@@ -77,8 +77,10 @@ type ProfileState =
 
 // ── Data hook ─────────────────────────────────────────────────────────────────
 
-/** Pick the primary handle, else the first, from a reverse-lookup result. */
-function pickPrimary(identities: OwnedIdentity[]): OwnedIdentity | undefined {
+/** Pick the primary handle, else the first, from a reverse-lookup result.
+ *  Generic over the identity shape so it accepts both the bare directory
+ *  `OwnedIdentity` and the richer GraphQL `Identity` (it only reads `primary`). */
+function pickPrimary<T extends { primary?: boolean }>(identities: T[]): T | undefined {
   return identities.find(i => i.primary) ?? identities[0];
 }
 
