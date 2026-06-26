@@ -2930,7 +2930,12 @@ mod tests {
             );
         }
         // Full demotion path (classifier -> report arm) must not panic.
-        report_error_or_expected(&bare.to_string(), "rpc", "openhuman.mcp_clients_connect", &[]);
+        report_error_or_expected(
+            &bare.to_string(),
+            "rpc",
+            "openhuman.mcp_clients_connect",
+            &[],
+        );
     }
 
     /// Guard against over-suppression: an MCP transport failure that is NOT the
