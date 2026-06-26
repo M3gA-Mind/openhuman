@@ -826,6 +826,21 @@ impl Provider for OpenAiCompatibleProvider {
                     status,
                 );
                 message = super::super::ollama_cloud_internal_500_user_message(Some(model), status);
+            } else if super::super::is_provider_moderation_rejection_http_400(status, &error) {
+                // External content-moderation proxy ("Ombudsman") refused the
+                // prompt with a 400 + verdict
+                // (`{"error":"Message rejected by Ombudsman","score":80}`).
+                // Well-formed request, external safety guard, no local lever —
+                // the triage agent re-issues the same prompt every turn and
+                // floods report_error (400 ∉ the transient set). Demote to info
+                // while the error still propagates so retry/fallback runs
+                // unchanged (TAURI-RUST-ECR).
+                super::super::log_provider_moderation_rejection(
+                    "native_chat",
+                    self.name.as_str(),
+                    Some(model),
+                    status,
+                );
             } else if super::super::should_report_provider_http_failure(status) {
                 crate::core::observability::report_error(
                     message.as_str(),
