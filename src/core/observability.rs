@@ -294,6 +294,24 @@ pub enum ExpectedErrorKind {
     /// couldn't parse, and the FE *does* page for it, F8). See
     /// [`crate::openhuman::inference::provider::backend_error_code_skips_sentry`].
     BackendErrorCodeOwned,
+    /// `approval_decide` (`src/openhuman/approval/rpc.rs`) resolved a request_id
+    /// whose pending row was **already decided, lazily expired, or superseded**
+    /// — `store::decide` updated 0 rows because `decided_at` was already set,
+    /// and `store::get_decision` confirms a persisted decision exists. The
+    /// inline-approvals design spec
+    /// (`docs/superpowers/specs/2026-05-23-telegram-inline-approvals-design.md`)
+    /// classifies "no pending approval found" as a **benign** outcome: the
+    /// frontend `ApprovalRequestCard.decide` and the Telegram callback both call
+    /// `approval_decide` without server-confirmed dedupe, so double-taps, two
+    /// operators racing, and expiry-while-live all land here harmlessly.
+    ///
+    /// Drops the benign half of Sentry TAURI-RUST-5EH (~1,995 events / 8 users
+    /// on `openhuman@0.57.53`). Anchored to the benign `"no pending approval
+    /// found"` wording emitted ONLY when `get_decision` confirms the row was
+    /// resolved; a genuine **never-registered** id raises the distinct
+    /// `"no pending approval ever registered"` string (no anchor) so a real
+    /// lost-registration defect still reaches Sentry.
+    ApprovalNoPendingRace,
 }
 
 pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
@@ -335,6 +353,17 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     // so a real defect in the import still falls through to capture.
     if lower.contains("codex cli auth") || lower.contains(".codex/auth.json") {
         return Some(ExpectedErrorKind::CodexCliAuthUnavailable);
+    }
+    // TAURI-RUST-5EH — `approval_decide` resolved a request_id whose row was
+    // already decided / lazily expired / superseded (benign race per the
+    // inline-approvals design spec). `rpc::approval_decide` emits this exact
+    // `"no pending approval found"` wording ONLY after `store::get_decision`
+    // confirms a persisted decision exists; the genuine never-registered case
+    // raises `"no pending approval ever registered"` (matched by neither this
+    // arm nor any below), so a real lost-registration defect still reaches
+    // Sentry. See `ExpectedErrorKind::ApprovalNoPendingRace`.
+    if lower.contains("no pending approval found") {
+        return Some(ExpectedErrorKind::ApprovalNoPendingRace);
     }
     if lower.contains("local ai is disabled") {
         return Some(ExpectedErrorKind::LocalAiDisabled);
@@ -1986,6 +2015,22 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 "[observability] {domain}.{operation} skipped backend-owned errorCode={code} error: {message}"
             );
         }
+        ExpectedErrorKind::ApprovalNoPendingRace => {
+            // Benign approval race (TAURI-RUST-5EH): the request_id was already
+            // decided / lazily expired / superseded — `store::get_decision`
+            // confirmed a persisted decision exists, so this is a double-tap,
+            // two-operator, or expiry-while-live race classified benign by the
+            // inline-approvals design spec, not a lost registration. Demote at
+            // `warn!` so a sustained spike still shows in operator dashboards
+            // without paging. The genuine never-registered case takes the
+            // capture path (distinct wording) and stays a Sentry signal.
+            tracing::warn!(
+                domain = domain,
+                operation = operation,
+                kind = "approval_no_pending_race",
+                "[observability] {domain}.{operation} skipped benign already-decided/expired approval race: {message}"
+            );
+        }
     }
 }
 
@@ -2772,6 +2817,43 @@ mod tests {
         let inner = std::io::Error::other("inner cause");
         let wrapped = anyhow::Error::from(inner).context("outer ctx");
         assert_eq!(format!("{wrapped:#}"), "outer ctx: inner cause");
+    }
+
+    /// Sentry TAURI-RUST-5EH: the benign already-decided/expired approval race
+    /// (`rpc::approval_decide` after `get_decision` confirms a persisted
+    /// decision) must classify as `ApprovalNoPendingRace` so the ~1,995-event
+    /// flood is demoted — while a genuine never-registered id (distinct
+    /// "ever registered" wording) must stay reportable (`None`).
+    #[test]
+    fn classifies_benign_approval_race_but_keeps_genuine_loss() {
+        assert_eq!(
+            expected_error_kind(
+                "rpc.invoke_method failed: no pending approval found for request_id \
+                 '4f1c…' (already decided or expired)"
+            ),
+            Some(ExpectedErrorKind::ApprovalNoPendingRace),
+            "benign already-decided/expired race must be demoted"
+        );
+        assert_eq!(
+            expected_error_kind(
+                "rpc.invoke_method failed: no pending approval ever registered \
+                 for request_id '4f1c…'"
+            ),
+            None,
+            "a genuine lost registration must remain a Sentry signal"
+        );
+    }
+
+    /// Exercise the full demotion path (classifier -> report arm) for a benign
+    /// approval race: it must take the expected branch and not panic.
+    #[test]
+    fn report_error_or_expected_demotes_benign_approval_race() {
+        report_error_or_expected(
+            "no pending approval found for request_id 'abc' (already decided or expired)",
+            "rpc",
+            "invoke_method",
+            &[],
+        );
     }
 
     #[test]
