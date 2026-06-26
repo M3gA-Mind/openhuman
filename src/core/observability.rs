@@ -1296,9 +1296,8 @@ fn is_upstream_edge_block_message(lower: &str) -> bool {
         return false;
     }
     let has_403 = lower.contains("(403 ") || lower.contains("403 forbidden");
-    let has_html_marker = lower.contains("<!doctype html")
-        || lower.contains("<html")
-        || lower.contains("<title>403");
+    let has_html_marker =
+        lower.contains("<!doctype html") || lower.contains("<html") || lower.contains("<title>403");
     has_403 && has_html_marker
 }
 
