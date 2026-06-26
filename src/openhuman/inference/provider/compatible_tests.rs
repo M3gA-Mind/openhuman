@@ -3204,6 +3204,52 @@ fn reasoning_and_reasoning_content_both_present_in_stream_delta_does_not_error()
     );
 }
 
+/// Regression for Sentry TAURI-RUST-85R: NVIDIA's OpenAI-compat endpoint returns
+/// `reasoning_content` TWICE in the same message object for some thinking models
+/// (e.g. `stepfun-ai/step-3.7-flash`). The derived `Shadow` struct strict-rejected
+/// the repeated key with `duplicate field \`reasoning_content\``, dropping the
+/// whole completion (2,037 events). The map-fold deserializer tolerates it —
+/// the last non-null copy wins.
+#[test]
+fn duplicate_reasoning_content_key_does_not_error() {
+    let json = r#"{"choices":[{"message":{"content":null,"reasoning_content":"first cot","reasoning_content":"second cot"}}]}"#;
+    let resp: ApiChatResponse = serde_json::from_str(json)
+        .expect("a repeated reasoning_content key must parse without a duplicate-field error");
+    assert_eq!(
+        resp.choices[0].message.reasoning_content.as_deref(),
+        Some("second cot"),
+        "the last non-null reasoning_content copy wins"
+    );
+}
+
+/// A repeated `reasoning_content` whose second copy is `null` must not clobber
+/// the real first value — the CoT has to survive to be replayed verbatim.
+#[test]
+fn duplicate_reasoning_content_key_null_second_copy_keeps_value() {
+    let json = r#"{"choices":[{"message":{"content":null,"reasoning_content":"real cot","reasoning_content":null}}]}"#;
+    let resp: ApiChatResponse = serde_json::from_str(json)
+        .expect("a repeated reasoning_content key must parse without a duplicate-field error");
+    assert_eq!(
+        resp.choices[0].message.reasoning_content.as_deref(),
+        Some("real cot"),
+        "a null second copy must not clobber the real value"
+    );
+}
+
+/// Same duplicate-key regression on the streaming delta path (TAURI-RUST-85R
+/// also hits the native stream parser at `compatible_stream_native.rs`).
+#[test]
+fn duplicate_reasoning_content_key_in_stream_delta_does_not_error() {
+    let json = r#"{"choices":[{"delta":{"reasoning_content":"first cot","reasoning_content":"second cot"},"finish_reason":null}]}"#;
+    let chunk: StreamChunkResponse = serde_json::from_str(json)
+        .expect("a repeated reasoning_content key must parse without a duplicate-field error");
+    assert_eq!(
+        chunk.choices[0].delta.reasoning_content.as_deref(),
+        Some("second cot"),
+        "the last non-null reasoning_content copy wins"
+    );
+}
+
 /// End-to-end: a tool-call turn whose reasoning arrived under the `reasoning`
 /// alias must still be surfaced by `parse_native_response` so the agent loop
 /// can replay it on the follow-up request (the issue #3094 failure path).
