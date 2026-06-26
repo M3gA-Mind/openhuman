@@ -294,6 +294,23 @@ pub enum ExpectedErrorKind {
     /// couldn't parse, and the FE *does* page for it, F8). See
     /// [`crate::openhuman::inference::provider::backend_error_code_skips_sentry`].
     BackendErrorCodeOwned,
+    /// A remote MCP server answered the connect handshake with HTTP 401 — it
+    /// needs OAuth sign-in, not a code fix. `McpHttpClient::read_response`
+    /// (`src/openhuman/mcp_client/client.rs`) raises the typed
+    /// [`crate::openhuman::mcp_client::McpUnauthorizedError`], and
+    /// `mcp_registry::connections::connect` already classifies it and stores a
+    /// `needs_auth` flag so the UI prompts the user to authenticate (the
+    /// `needs_auth` UX shipped in #3733 / #3719). But `mcp_clients_connect`
+    /// still returns `Err(e.to_string())`, which propagates to the RPC
+    /// dispatcher (`jsonrpc` → `report_error_or_expected`) where no arm matched
+    /// it — so the same user-state condition the UI already handles was being
+    /// captured as a full Sentry error (TAURI-RUST-CGP: ~1.2k events / 79 users
+    /// on `openhuman@0.57.53`). This arm closes that ship gap: the connect-time
+    /// 401 is preventable user-state with no Sentry-actionable signal, so demote
+    /// it to info. Anchored on the canonical `McpUnauthorizedError` Display body
+    /// (`"MCP unauthorized for "` + `"(HTTP 401"`) so an unrelated MCP transport
+    /// failure still reaches Sentry.
+    McpServerNeedsAuth,
 }
 
 pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
@@ -335,6 +352,16 @@ pub fn expected_error_kind(message: &str) -> Option<ExpectedErrorKind> {
     // so a real defect in the import still falls through to capture.
     if lower.contains("codex cli auth") || lower.contains(".codex/auth.json") {
         return Some(ExpectedErrorKind::CodexCliAuthUnavailable);
+    }
+    // TAURI-RUST-CGP — a remote MCP server answered the connect handshake with
+    // HTTP 401 (`McpUnauthorizedError`). `connections::connect` already stores a
+    // `needs_auth` flag so the UI prompts for OAuth sign-in (#3733 / #3719), but
+    // the `mcp_clients_connect` RPC still re-raises the stringified error here.
+    // It is preventable user-state (the server needs sign-in) with no
+    // Sentry-actionable signal — demote it. Highly specific anchor; no overlap
+    // with the generic matchers below. See `is_mcp_server_needs_auth_message`.
+    if is_mcp_server_needs_auth_message(&lower) {
+        return Some(ExpectedErrorKind::McpServerNeedsAuth);
     }
     if lower.contains("local ai is disabled") {
         return Some(ExpectedErrorKind::LocalAiDisabled);
@@ -903,6 +930,27 @@ pub fn is_session_expired_message(msg: &str) -> bool {
         // `does_not_classify_streaming_byo_key_401_as_session_expired`.
         || (msg.contains("OpenHuman streaming API error (401")
             && msg.contains("\"error\":\"Invalid token\""))
+}
+
+/// Detect a remote MCP server's connect-time 401 — the user must sign in to
+/// that server (OAuth), not a code defect. Anchored on the canonical
+/// [`crate::openhuman::mcp_client::McpUnauthorizedError`] `Display`
+/// body, which renders as `"MCP unauthorized for \`<endpoint>\` (HTTP 401…)"`.
+///
+/// Conjunctive match — both anchors must hit (input already lower-cased):
+///
+/// 1. `"mcp unauthorized for "` — the typed-error prefix. Scopes the match to
+///    the MCP transport's own 401 so an unrelated "unauthorized" / "401" from
+///    another domain cannot borrow this demotion.
+/// 2. `"(http 401"` — the parenthesised status the `Display` impl always emits
+///    (with or without the trailing `resource metadata:` discovery hint).
+///
+/// `connections::connect` already classifies this and stores a `needs_auth`
+/// flag so the UI prompts for sign-in; this predicate keeps the parallel
+/// `mcp_clients_connect` RPC re-report out of Sentry. See
+/// [`ExpectedErrorKind::McpServerNeedsAuth`].
+fn is_mcp_server_needs_auth_message(lower: &str) -> bool {
+    lower.contains("mcp unauthorized for ") && lower.contains("(http 401")
 }
 
 /// Detect the in-process-core boot-window shape: a sibling component
@@ -1689,6 +1737,23 @@ fn report_expected_message(kind: ExpectedErrorKind, message: &str, domain: &str,
                 kind = "provider_user_state",
                 error = %message,
                 "[observability] {domain}.{operation} skipped expected provider-user-state error: {message}"
+            );
+        }
+        ExpectedErrorKind::McpServerNeedsAuth => {
+            // A remote MCP server rejected the connect handshake with HTTP 401:
+            // it needs OAuth sign-in. `mcp_registry::connections::connect`
+            // already stores a `needs_auth` flag and the UI prompts the user to
+            // authenticate (#3733 / #3719) — but `mcp_clients_connect` re-raises
+            // the stringified error to the RPC dispatcher, where it was being
+            // captured as a full Sentry error (TAURI-RUST-CGP: ~1.2k events / 79
+            // users). Preventable user-state with no Sentry-actionable signal;
+            // demote to info so the breadcrumb survives but no error event fires.
+            tracing::info!(
+                domain = domain,
+                operation = operation,
+                kind = "mcp_server_needs_auth",
+                error = %message,
+                "[observability] {domain}.{operation} skipped expected MCP needs-auth (401) error: {message}"
             );
         }
         ExpectedErrorKind::ProviderConfigRejection => {
@@ -2827,6 +2892,63 @@ mod tests {
             "openai_oauth_import_codex_cli",
             &[],
         );
+    }
+
+    /// Sentry TAURI-RUST-CGP: a remote MCP server's connect-time 401 is
+    /// preventable user-state (the server needs OAuth sign-in), already handled
+    /// by the `needs_auth` UX (#3733 / #3719), so it must classify as
+    /// `McpServerNeedsAuth` and stay out of Sentry. The canonical body comes
+    /// straight from the typed `McpUnauthorizedError` `Display` impl (both the
+    /// bare and `resource metadata:` variants), plus the
+    /// `mcp_clients_connect`-prefixed RPC re-report shape that actually reaches
+    /// the dispatcher.
+    #[test]
+    fn classifies_mcp_connect_401_as_needs_auth() {
+        use crate::openhuman::mcp_client::McpUnauthorizedError;
+
+        let bare = McpUnauthorizedError {
+            endpoint: "https://youtube.run.tools".to_string(),
+            resource_metadata: None,
+        };
+        let with_meta = McpUnauthorizedError {
+            endpoint: "https://youtube.run.tools".to_string(),
+            resource_metadata: Some(
+                "https://youtube.run.tools/.well-known/oauth-protected-resource".to_string(),
+            ),
+        };
+        for msg in [
+            bare.to_string(),
+            with_meta.to_string(),
+            // The stringified RPC re-report shape that propagates from
+            // `mcp_clients_connect` to `report_error_or_expected`.
+            format!("openhuman.mcp_clients_connect failed: {with_meta}"),
+        ] {
+            assert_eq!(
+                expected_error_kind(&msg),
+                Some(ExpectedErrorKind::McpServerNeedsAuth),
+                "must classify MCP connect 401 as McpServerNeedsAuth: {msg}"
+            );
+        }
+        // Full demotion path (classifier -> report arm) must not panic.
+        report_error_or_expected(&bare.to_string(), "rpc", "openhuman.mcp_clients_connect", &[]);
+    }
+
+    /// Guard against over-suppression: an MCP transport failure that is NOT the
+    /// typed 401 (a 500, or a generic "unauthorized" with no MCP anchor) MUST
+    /// still reach Sentry (stay `None`) so a real defect isn't blinded.
+    #[test]
+    fn does_not_classify_other_mcp_or_401_errors_as_needs_auth() {
+        for msg in [
+            "MCP server `https://youtube.run.tools` returned HTTP 500: internal error",
+            "openhuman.mcp_clients_connect failed: connection refused",
+            "Unauthorized (HTTP 401) from some unrelated provider",
+        ] {
+            assert_ne!(
+                expected_error_kind(msg),
+                Some(ExpectedErrorKind::McpServerNeedsAuth),
+                "must NOT classify as McpServerNeedsAuth: {msg}"
+            );
+        }
     }
 
     /// Guard against over-suppression on the import path: a genuine
