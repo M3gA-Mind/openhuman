@@ -222,6 +222,20 @@ impl OpenAiCompatibleProvider {
                 Some(model),
                 status,
             );
+        } else if super::super::is_provider_quota_exhausted(&error) {
+            // Codex/ChatGPT OAuth `/responses` plan cap hit
+            // (`usage_limit_reached` / "The usage limit has been reached"): a
+            // third-party plan limit with no local lever. The subconscious loop
+            // retries until `resets_at`, so a single capped Plus user emits
+            // hundreds of identical events — demote to info instead of paging on
+            // every retry (TAURI-RUST-AFE, extends the #4076/C9A quota machinery
+            // to the Responses path).
+            super::super::log_provider_quota_exhausted(
+                "responses_api",
+                self.name.as_str(),
+                Some(model),
+                status,
+            );
         } else if super::super::should_report_provider_http_failure(status) {
             crate::core::observability::report_error(
                 message.as_str(),

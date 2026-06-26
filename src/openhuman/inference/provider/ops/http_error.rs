@@ -255,6 +255,13 @@ pub fn body_indicates_quota_exhausted(body: &str) -> bool {
         || lower.contains("monthly quota")
         || lower.contains("quota exceeded")
         || lower.contains("usage limit exceeded")
+        // Codex/ChatGPT OAuth `/responses` plan-cap body (TAURI-RUST-AFE):
+        // `usage_limit_reached` / "The usage limit has been reached" — a plan
+        // quota with no "monthly"/"quota" co-marker, so the phrases above miss
+        // it. Both are quota-specific enough to match on their own (the loop
+        // retries until `resets_at`, flooding from a single capped Plus user).
+        || lower.contains("usage_limit_reached")
+        || lower.contains("usage limit has been reached")
         // "reached the limit" alone is ambiguous (rate-limit, token-limit), so
         // require a quota/plan/request/monthly co-marker to keep the blast
         // radius on plan-quota exhaustion only.
@@ -1051,12 +1058,35 @@ mod tests {
         reached the limit.\\\",\\\"reason\\\":\\\"MONTHLY_REQUEST_COUNT\\\"}\",\
         \"type\":\"server_error\"}}";
 
+    /// Verbatim TAURI-RUST-AFE Responses-API body — the Codex/ChatGPT OAuth
+    /// `/responses` endpoint refuses with `usage_limit_reached` once the Plus
+    /// plan cap is hit. It carries no "monthly"/"quota" co-marker, so the C9A
+    /// phrase set missed it; couple the test to the exact string so a wording
+    /// drift fails CI rather than silently leaking events back to Sentry.
+    const AFE_BODY: &str = "openai Responses API error: {\"error\":{\"type\":\
+        \"usage_limit_reached\",\"message\":\"The usage limit has been reached\",\
+        \"plan_type\":\"plus\",\"resets_at\":1750000000}}";
+
     #[test]
     fn quota_exhausted_matches_verbatim_c9a_body() {
         // Status-agnostic: the verbatim 500-wrapped body must match even though
         // the transport status is 500, not 402.
         assert!(is_provider_quota_exhausted(C9A_BODY));
         assert!(body_indicates_quota_exhausted(C9A_BODY));
+    }
+
+    #[test]
+    fn quota_exhausted_matches_verbatim_afe_body() {
+        // Coverage gap closed (TAURI-RUST-AFE): the Responses `usage_limit_reached`
+        // body must demote through the same #4076 quota machinery even though it
+        // lacks a "monthly"/"quota" co-marker.
+        assert!(is_provider_quota_exhausted(AFE_BODY));
+        assert!(body_indicates_quota_exhausted(AFE_BODY));
+        // Bare phrasings (no surrounding envelope) must also match.
+        assert!(body_indicates_quota_exhausted("usage_limit_reached"));
+        assert!(body_indicates_quota_exhausted(
+            "The usage limit has been reached"
+        ));
     }
 
     #[test]
