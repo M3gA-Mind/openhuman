@@ -4488,3 +4488,99 @@ fn extract_usage_defaults_cached_tokens_to_zero_when_absent() {
     assert_eq!(usage.cached_input_tokens, 0);
     assert_eq!(usage.input_tokens, 500);
 }
+
+/// Minimal valid Responses SSE body so the Codex OAuth streamed-aggregate
+/// path returns `Ok("hi")`.
+const CODEX_RESPONSES_SSE_OK: &str = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n\
+     data: {\"type\":\"response.completed\",\"response\":{\"output_text\":\"hi\"}}\n\n\
+     data: [DONE]\n";
+
+/// TAURI-RUST-AHX: the ChatGPT-OAuth Codex Responses endpoint
+/// (`chatgpt.com/backend-api/codex/responses`) rejects the `auto` model
+/// sentinel with a 400 (`The 'auto' model is not supported when using Codex
+/// with a ChatGPT account.`). `chat_via_responses` must remap `auto` to a
+/// concrete Codex-class model before the request leaves, so the provider
+/// never sees `auto`.
+#[tokio::test]
+async fn codex_oauth_responses_remaps_auto_model() {
+    let mock_server = MockServer::start().await;
+
+    // Codex OAuth base-URL shape: the path carries `backend-api/codex`, so
+    // `is_codex_oauth_responses` fires and `responses_url()` resolves to
+    // `<base>/responses`.
+    let base_url = format!("{}/backend-api/codex", mock_server.uri());
+
+    Mock::given(method("POST"))
+        .and(path("/backend-api/codex/responses"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(CODEX_RESPONSES_SSE_OK))
+        .mount(&mock_server)
+        .await;
+
+    let provider = make_provider("openai", &base_url, Some("oauth-access-token"));
+    let messages = vec![ChatMessage {
+        id: None,
+        role: "user".to_string(),
+        content: "hello".to_string(),
+        extra_metadata: None,
+    }];
+
+    let out = provider
+        .chat_via_responses(Some("oauth-access-token"), &messages, "auto", None)
+        .await
+        .expect("codex oauth responses call should succeed");
+    assert_eq!(out, "hi");
+
+    // The model on the wire must be a concrete Codex-class model, never `auto`.
+    let requests = mock_server.received_requests().await.unwrap();
+    assert_eq!(requests.len(), 1, "expected exactly one responses request");
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let sent_model = body
+        .get("model")
+        .and_then(|m| m.as_str())
+        .unwrap_or_default();
+    assert_ne!(
+        sent_model, "auto",
+        "auto sentinel must not leak to the Codex OAuth endpoint"
+    );
+    assert_eq!(
+        sent_model,
+        super::openai_codex::OPENAI_CODEX_MODEL_HINTS[0],
+        "auto must be remapped to the preferred concrete Codex model"
+    );
+}
+
+/// Scope guard for TAURI-RUST-AHX: only the `auto` sentinel is remapped — a
+/// concrete model the user pinned must pass through to the Codex OAuth
+/// endpoint untouched.
+#[tokio::test]
+async fn codex_oauth_responses_preserves_concrete_model() {
+    let mock_server = MockServer::start().await;
+    let base_url = format!("{}/backend-api/codex", mock_server.uri());
+
+    Mock::given(method("POST"))
+        .and(path("/backend-api/codex/responses"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(CODEX_RESPONSES_SSE_OK))
+        .mount(&mock_server)
+        .await;
+
+    let provider = make_provider("openai", &base_url, Some("oauth-access-token"));
+    let messages = vec![ChatMessage {
+        id: None,
+        role: "user".to_string(),
+        content: "hello".to_string(),
+        extra_metadata: None,
+    }];
+
+    provider
+        .chat_via_responses(Some("oauth-access-token"), &messages, "gpt-5.3-codex", None)
+        .await
+        .expect("codex oauth responses call should succeed");
+
+    let requests = mock_server.received_requests().await.unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    assert_eq!(
+        body.get("model").and_then(|m| m.as_str()),
+        Some("gpt-5.3-codex"),
+        "a concrete pinned model must not be remapped"
+    );
+}

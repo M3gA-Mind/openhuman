@@ -66,8 +66,31 @@ impl OpenAiCompatibleProvider {
                 max_output_tokens,
             );
         }
+
+        // TAURI-RUST-AHX: the ChatGPT-OAuth Codex Responses endpoint rejects the
+        // `auto` model sentinel with a 400 (`The 'auto' model is not supported
+        // when using Codex with a ChatGPT account.`). `auto` is a Codex-CLI alias
+        // valid only for API-key Codex; here it would otherwise leak unchanged to
+        // the provider. Remap it to a concrete Codex-class model proactively for
+        // this endpoint only, mirroring the #3201 (drop `stream:false`) and EWD
+        // (drop `max_output_tokens`) adjustments above. Every other endpoint keeps
+        // `model` untouched.
+        let effective_model = if is_codex_oauth_responses && model.eq_ignore_ascii_case("auto") {
+            let remapped = super::openai_codex::OPENAI_CODEX_MODEL_HINTS
+                .first()
+                .copied()
+                .unwrap_or("gpt-5.5");
+            log::info!(
+                "[provider] {} remapping model=auto -> {remapped} for Codex OAuth responses endpoint (auto unsupported on ChatGPT account)",
+                self.name,
+            );
+            remapped.to_string()
+        } else {
+            model.to_string()
+        };
+
         let mut request = ResponsesRequest {
-            model: model.to_string(),
+            model: effective_model,
             input,
             instructions,
             stream: Some(is_codex_oauth_responses),
