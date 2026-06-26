@@ -418,6 +418,48 @@ describe('PaymentRequiredError propagation', () => {
   });
 });
 
+describe('bounties.create', () => {
+  const bountyParams = {
+    title: 'Build a widget',
+    description: 'Need a widget',
+    amount: '5',
+    asset: 'USDC',
+  };
+
+  test('marshals params and passes the x402 spend timeout (#4201)', async () => {
+    mockCallCoreRpc.mockResolvedValueOnce({ bounty: { id: 'b1' } });
+    const client = createInvokeApiClient();
+    await client.bounties.create(bountyParams, { confirmed: true });
+
+    expect(mockCallCoreRpc).toHaveBeenCalledWith({
+      method: 'openhuman.tinyplace_bounties_create',
+      params: {
+        title: 'Build a widget',
+        description: 'Need a widget',
+        amount: '5',
+        asset: 'USDC',
+        deadline: null,
+        durationDays: null,
+        confirmed: true,
+      },
+      // On-chain escrow funding + settle polling exceeds the 30s default, so
+      // the renderer must grant a longer per-call budget or the call aborts at
+      // 30s with a spurious timeout even while settlement is in flight.
+      timeoutMs: 120_000,
+    });
+  });
+
+  test('the unconfirmed probe also gets the longer timeout', async () => {
+    mockCallCoreRpc.mockResolvedValueOnce({ challenge: {} });
+    const client = createInvokeApiClient();
+    await client.bounties.create(bountyParams);
+
+    const callArgs = mockCallCoreRpc.mock.calls[0][0];
+    expect(callArgs.params.confirmed).toBe(false);
+    expect(callArgs.timeoutMs).toBe(120_000);
+  });
+});
+
 describe('registry.export', () => {
   test('calls openhuman.tinyplace_registry_export with name', async () => {
     mockCallCoreRpc.mockResolvedValueOnce({

@@ -47,9 +47,33 @@ function safeParseJson(s: string): unknown {
  * function throws a {@link PaymentRequiredError} with the decoded challenge.
  * All other errors propagate as-is.
  */
-async function call<T>(method: string, params?: Record<string, unknown>): Promise<T> {
+/**
+ * Per-call timeout (ms) for x402 confirm-before-spend RPCs (bounty creation,
+ * registration, marketplace buys).
+ *
+ * These fund a reward / registration into escrow on-chain at the moment of the
+ * call: the core probes for the 402 challenge, signs and submits the payment,
+ * then polls `settle_retry` until the backend confirms settlement. That whole
+ * round-trip routinely exceeds the global 30s `CORE_RPC_TIMEOUT_MS`, so the
+ * renderer aborted `tinyplace_bounties_create` at 30s and surfaced a spurious
+ * `timed out after 30000ms` even though the chain settlement was still in
+ * flight — bounty creation appeared completely broken (#4201). Give the spend
+ * path a longer-but-still-bounded budget; the core clamps it to the
+ * `[1s, 10min]` per-call window.
+ */
+const X402_SPEND_TIMEOUT_MS = 120_000;
+
+async function call<T>(
+  method: string,
+  params?: Record<string, unknown>,
+  timeoutMs?: number
+): Promise<T> {
   try {
-    return await callCoreRpc<T>({ method, params });
+    return await callCoreRpc<T>({
+      method,
+      params,
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+    });
   } catch (err) {
     // Core serialises 402 errors as a plain string "PAYMENT_REQUIRED:<json>".
     const msg = String(err);
@@ -1911,15 +1935,22 @@ export function createInvokeApiClient() {
        *  escrow at creation). confirmed:false returns the challenge (no spend);
        *  confirmed:true pays and creates. */
       create: (params: BountyCreateParams, opts?: { confirmed?: boolean }) =>
-        call<X402BuyResult>('openhuman.tinyplace_bounties_create', {
-          title: params.title,
-          description: params.description,
-          amount: params.amount,
-          asset: params.asset ?? null,
-          deadline: params.deadline ?? null,
-          durationDays: params.durationDays ?? null,
-          confirmed: opts?.confirmed ?? false,
-        }),
+        call<X402BuyResult>(
+          'openhuman.tinyplace_bounties_create',
+          {
+            title: params.title,
+            description: params.description,
+            amount: params.amount,
+            asset: params.asset ?? null,
+            deadline: params.deadline ?? null,
+            durationDays: params.durationDays ?? null,
+            confirmed: opts?.confirmed ?? false,
+          },
+          // On-chain escrow funding + settle polling exceeds the 30s default
+          // (#4201). Both legs need the longer budget: the unconfirmed probe
+          // also waits on a network round-trip + wallet-balance lookup.
+          X402_SPEND_TIMEOUT_MS
+        ),
       cancel: (bountyId: string) =>
         call<Bounty>('openhuman.tinyplace_bounties_cancel', { bountyId }),
       submit: (bountyId: string, url: string, title?: string, note?: string) =>
