@@ -4545,7 +4545,7 @@ async fn codex_oauth_responses_remaps_auto_model() {
     );
     assert_eq!(
         sent_model,
-        super::openai_codex::OPENAI_CODEX_MODEL_HINTS[0],
+        super::super::openai_codex::OPENAI_CODEX_MODEL_HINTS[0],
         "auto must be remapped to the preferred concrete Codex model"
     );
 }
