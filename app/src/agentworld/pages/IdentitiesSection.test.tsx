@@ -217,9 +217,11 @@ describe('Register tab — handle availability', () => {
   test('renders the pricing tiers', () => {
     render(<IdentitiesSection />);
     expect(screen.getByText('Pricing tiers')).toBeInTheDocument();
-    expect(screen.getByText('$250/yr')).toBeInTheDocument();
-    expect(screen.getByText('$50/yr')).toBeInTheDocument();
-    expect(screen.getByText('$10/yr')).toBeInTheDocument();
+    // Authoritative tiny.place per-character USDC tiers (#3825), replacing the
+    // old incorrect "$250 / $50 / $10 per year" labels.
+    expect(screen.getByText('2,000 USDC')).toBeInTheDocument();
+    expect(screen.getByText('500 USDC')).toBeInTheDocument();
+    expect(screen.getByText('1 USDC')).toBeInTheDocument();
   });
 
   test('shows a Register button only when the handle is available', async () => {
