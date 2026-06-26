@@ -55,7 +55,8 @@ describe('joinMeetingViaMascotBot', () => {
     // frontend's friendly constant. Mocking the real wire string is what makes
     // this test catch the prior exact-equality mismatch that leaked the generic
     // "…try again later." text to users.
-    const BACKEND_CAPACITY_MESSAGE = 'Mascot streaming capacity is exhausted. Please try again later.';
+    const BACKEND_CAPACITY_MESSAGE =
+      'Mascot streaming capacity is exhausted. Please try again later.';
     postMock.mockRejectedValueOnce({ success: false, error: BACKEND_CAPACITY_MESSAGE });
     let caught: MascotJoinMeetingError | undefined;
     try {
