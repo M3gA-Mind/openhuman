@@ -24,7 +24,9 @@ const OPEN_CEILING = 0.18;
  * flap the mouth) and a ceiling (so normal speech reaches a fully-open mouth).
  */
 export function normalizeAmplitude(rms: number): number {
-  if (!Number.isFinite(rms) || rms <= SILENCE_FLOOR) return 0;
+  // NaN is meaningless energy → closed mouth. (+Infinity falls through to the
+  // ceiling clamp below, mapping an off-the-scale-loud sample to fully open.)
+  if (Number.isNaN(rms) || rms <= SILENCE_FLOOR) return 0;
   if (rms >= OPEN_CEILING) return 1;
   return (rms - SILENCE_FLOOR) / (OPEN_CEILING - SILENCE_FLOOR);
 }
@@ -43,8 +45,10 @@ export function smoothAmplitude(
 ): number {
   const k = target > prev ? attack : release;
   const next = prev + (target - prev) * k;
-  // Snap tiny residuals to 0 so the mouth fully closes on silence.
-  return next < 0.01 ? 0 : next;
+  // Snap tiny residuals to 0 so the mouth fully closes on silence. The release
+  // step from a near-floor value (e.g. 0.02 → 0) leaves a ~0.015 residual; this
+  // threshold collapses that to a fully-closed mouth instead of a lingering gap.
+  return next < 0.02 ? 0 : next;
 }
 
 /**
