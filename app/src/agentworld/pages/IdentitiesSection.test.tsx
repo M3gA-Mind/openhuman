@@ -1096,6 +1096,27 @@ describe('Trading tab — buy identity (x402)', () => {
     expect(screen.getByRole('button', { name: 'Buy' })).toBeEnabled();
   });
 
+  test('a post-payment failure surfaces the broadcast tx in the buy error banner (#4196)', async () => {
+    // The settlement broadcast went out but the purchase did not finalize: the
+    // error carries an `onChainTx=`, so the banner must report "Payment sent…"
+    // (the truthy branch of the buy error message) and re-enable Buy.
+    vi.mocked(apiClient.marketplace.buyIdentity)
+      .mockResolvedValueOnce({
+        challenge: { amount: '20000000', asset: 'USDC', network: 'solana-devnet' },
+        walletBalance: { raw: '50000000', formatted: '50', decimals: 6, assetSymbol: 'USDC' },
+        walletAddress: 'WalletXyz12345678',
+      })
+      .mockRejectedValueOnce(new Error('paid but not confirmed (onChainTx=BuyTx99)'));
+    render(<IdentitiesSection />);
+    await gotoTab('Trading');
+    await userEvent.click(await screen.findByRole('button', { name: 'Buy' }));
+    await userEvent.click(await screen.findByTestId('x402-confirm'));
+
+    const errorBanner = await screen.findByTestId('buy-identity-error');
+    expect(errorBanner).toHaveTextContent('Payment sent but purchase did not complete.');
+    expect(screen.getByRole('button', { name: 'Buy' })).toBeEnabled();
+  });
+
   test('auction listings do not show a Buy button', async () => {
     vi.mocked(apiClient.marketplace.listIdentities).mockResolvedValue({
       identities: [{ ...fixedListing, listingType: 'auction' as const }],
