@@ -982,6 +982,76 @@ fn ensure_test_rpc_auth() {
 }
 
 #[tokio::test]
+async fn json_rpc_config_update_browser_settings_persists_backend() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let tmp = tempdir().expect("tempdir");
+    let home = tmp.path();
+    let openhuman_home = home.join(".openhuman");
+
+    let _home_guard = EnvVarGuard::set_to_path("HOME", home);
+    let _workspace_guard = EnvVarGuard::unset("OPENHUMAN_WORKSPACE");
+    let _backend_url_guard = EnvVarGuard::unset("BACKEND_URL");
+    let _vite_backend_guard = EnvVarGuard::unset("VITE_BACKEND_URL");
+
+    write_min_config(&openhuman_home, "http://127.0.0.1:9");
+
+    let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;
+    let rpc_base = format!("http://{rpc_addr}");
+
+    let updated = post_json_rpc(
+        &rpc_base,
+        4124_1,
+        "openhuman.config_update_browser_settings",
+        json!({
+            "enabled": true,
+            "backend": "playwright"
+        }),
+    )
+    .await;
+    let updated_result =
+        assert_no_jsonrpc_error(&updated, "config_update_browser_settings backend");
+    let updated_snapshot = peel_logs_envelope(updated_result);
+    assert_eq!(
+        updated_snapshot
+            .pointer("/config/browser/enabled")
+            .and_then(Value::as_bool),
+        Some(true),
+        "browser enabled flag should persist in update response: {updated_snapshot}"
+    );
+    assert_eq!(
+        updated_snapshot
+            .pointer("/config/browser/backend")
+            .and_then(Value::as_str),
+        Some("playwright"),
+        "browser backend should persist in update response: {updated_snapshot}"
+    );
+
+    let get = post_json_rpc(&rpc_base, 4124_2, "openhuman.config_get", json!({})).await;
+    let get_result = assert_no_jsonrpc_error(&get, "config_get");
+    let snapshot = peel_logs_envelope(get_result);
+    assert_eq!(
+        snapshot
+            .pointer("/config/browser/backend")
+            .and_then(Value::as_str),
+        Some("playwright"),
+        "browser backend should persist in config_get response: {snapshot}"
+    );
+
+    let invalid = post_json_rpc(
+        &rpc_base,
+        4124_3,
+        "openhuman.config_update_browser_settings",
+        json!({
+            "backend": "netscape"
+        }),
+    )
+    .await;
+    assert_jsonrpc_error(&invalid, "invalid browser backend");
+
+    rpc_join.abort();
+}
+
+#[tokio::test]
 async fn json_rpc_tokenjuice_detect_and_cache_stats() {
     let _env_lock = json_rpc_e2e_env_lock();
     let (rpc_addr, rpc_join) = serve_on_ephemeral(build_core_http_router(false)).await;

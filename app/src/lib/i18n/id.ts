@@ -6275,7 +6275,11 @@ const messages: TranslationMap = {
   'userErrors.insufficientCredits.title': 'Kredit penyedia diperlukan',
   'userErrors.insufficientCredits.body':
     'Penyedia AI Anda kehabisan kredit. Isi ulang atau perbarui kunci API-nya.',
+  'userErrors.apiKeyMissing.title': 'Kunci API diperlukan',
+  'userErrors.apiKeyMissing.body':
+    'Penyedia AI Anda belum memiliki kunci API. Tambahkan satu di pengaturan penyedia untuk melanjutkan.',
   'userErrors.scope.chat': 'Obrolan',
+  'userErrors.scope.cron': 'Tugas terjadwal',
   // Agent World — Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Jumlah',
   'agentWorld.trading.networkLabel': 'Jaringan',
@@ -6308,6 +6312,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'Jumlah ini memiliki terlalu banyak angka desimal.',
   'agentWorld.trading.amountMustBePositive': 'Masukkan jumlah lebih besar dari nol.',
   'agentWorld.trading.amountInvalid': 'Masukkan jumlah yang valid.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Salin',
+  'codeBlock.copied': 'Disalin!',
 };
 
 export default messages;

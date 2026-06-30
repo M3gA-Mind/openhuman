@@ -6422,7 +6422,11 @@ const messages: TranslationMap = {
   'userErrors.insufficientCredits.title': 'Anbieter-Guthaben erforderlich',
   'userErrors.insufficientCredits.body':
     'Deinem KI-Anbieter ist das Guthaben ausgegangen. Lade es auf oder aktualisiere den Schlüssel.',
+  'userErrors.apiKeyMissing.title': 'API-Schlüssel erforderlich',
+  'userErrors.apiKeyMissing.body':
+    'Für deinen KI-Anbieter ist kein API-Schlüssel hinterlegt. Füge in den Anbietereinstellungen einen hinzu, um fortzufahren.',
   'userErrors.scope.chat': 'Chat',
+  'userErrors.scope.cron': 'Geplante Aufgabe',
   // Agent World — Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Betrag',
   'agentWorld.trading.networkLabel': 'Netzwerk',
@@ -6455,6 +6459,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'Dieser Betrag hat zu viele Nachkommastellen.',
   'agentWorld.trading.amountMustBePositive': 'Gib einen Betrag größer als null ein.',
   'agentWorld.trading.amountInvalid': 'Gib einen gültigen Betrag ein.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Kopieren',
+  'codeBlock.copied': 'Kopiert!',
 };
 
 export default messages;
