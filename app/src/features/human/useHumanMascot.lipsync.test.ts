@@ -115,6 +115,7 @@ function makePlaybackWithDeferredMetadata(
 ): FakePlayback & { resolveMetadata(): void } {
   let durationMs = 0;
   let ms = 0;
+  let amp = 0;
   let stopped = false;
   let resolveEnded!: () => void;
   let rejectEnded!: (err: unknown) => void;
@@ -132,7 +133,7 @@ function makePlaybackWithDeferredMetadata(
   return {
     handle: {
       currentMs: () => (stopped ? -1 : ms),
-      amplitude: () => 0,
+      amplitude: () => (stopped ? 0 : amp),
       durationMs: () => durationMs,
       metadataReady,
       stop: () => {
@@ -144,6 +145,9 @@ function makePlaybackWithDeferredMetadata(
     },
     setMs(next: number) {
       ms = next;
+    },
+    setAmp(next: number) {
+      amp = next;
     },
     finish() {
       stopped = true;
