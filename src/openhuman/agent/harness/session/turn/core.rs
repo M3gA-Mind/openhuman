@@ -15,7 +15,9 @@ use crate::openhuman::agent::progress::AgentProgress;
 use crate::openhuman::agent_experience::{
     prepend_experience_block, render_experience_hits, AgentExperienceStore, ExperienceQuery,
 };
-use crate::openhuman::inference::provider::{ChatMessage, ConversationMessage};
+use crate::openhuman::inference::provider::{
+    ChatMessage, ConversationMessage, AGENT_TURN_MAX_OUTPUT_TOKENS,
+};
 use crate::openhuman::memory::MemoryCategory;
 use crate::openhuman::util::truncate_with_ellipsis;
 
@@ -626,6 +628,14 @@ impl Agent {
                     )
                 }
                 Ok(result) => {
+                    // No usable bundle: leave `agent_context_prepared_sources`
+                    // untouched. Recording a marker here would (a) make
+                    // `render_agent_context_status_note` tell the model to "use
+                    // the prepared context below" when none was injected, and
+                    // (b) suppress `agent_prepare_context` for the rest of the
+                    // turn — blocking a legitimate retry by any path that still
+                    // exposes the tool. The dedup only needs to hold once a
+                    // bundle was actually injected (the success arm above).
                     log::warn!(
                         "[agent_loop] super_context scout returned an error — proceeding without bundle: {}",
                         result.output()
@@ -825,6 +835,7 @@ impl Agent {
                     &multimodal,
                     &multimodal_files,
                     max_iterations,
+                    AGENT_TURN_MAX_OUTPUT_TOKENS,
                     None, // the web bridge streams via on_progress deltas, not on_delta
                     &[],
                     turn_run_queue,
