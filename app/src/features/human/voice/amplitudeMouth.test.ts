@@ -20,8 +20,11 @@ describe('normalizeAmplitude', () => {
   });
 
   it('is defensive against non-finite input', () => {
+    // All non-finite input maps to a closed mouth — corrupt energy must not
+    // jam the mouth wide open (NaN and ±Infinity are handled uniformly).
     expect(normalizeAmplitude(Number.NaN)).toBe(0);
-    expect(normalizeAmplitude(Number.POSITIVE_INFINITY)).toBe(1);
+    expect(normalizeAmplitude(Number.POSITIVE_INFINITY)).toBe(0);
+    expect(normalizeAmplitude(Number.NEGATIVE_INFINITY)).toBe(0);
   });
 });
 

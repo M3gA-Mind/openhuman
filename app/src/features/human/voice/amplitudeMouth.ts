@@ -24,9 +24,12 @@ const OPEN_CEILING = 0.18;
  * flap the mouth) and a ceiling (so normal speech reaches a fully-open mouth).
  */
 export function normalizeAmplitude(rms: number): number {
-  // NaN is meaningless energy → closed mouth. (+Infinity falls through to the
-  // ceiling clamp below, mapping an off-the-scale-loud sample to fully open.)
-  if (Number.isNaN(rms) || rms <= SILENCE_FLOOR) return 0;
+  // Non-finite energy (NaN / ±Infinity from corrupt input) is meaningless →
+  // closed mouth. Real decoded-PCM RMS is always finite in [0, 1], so this is
+  // purely defensive; treat every non-finite value uniformly rather than
+  // letting +Infinity fall through to the fully-open ceiling clamp (a jammed-
+  // wide-open mouth is a worse failure mode than a closed one).
+  if (!Number.isFinite(rms) || rms <= SILENCE_FLOOR) return 0;
   if (rms >= OPEN_CEILING) return 1;
   return (rms - SILENCE_FLOOR) / (OPEN_CEILING - SILENCE_FLOOR);
 }
