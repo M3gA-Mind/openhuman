@@ -1680,3 +1680,62 @@ async fn deliver_if_configured_empty_success_skips_chat_and_alert() {
     assert!(deliver_if_configured(&config, &job, "", true).await.is_ok());
     assert_eq!(cron_alerts(&config).await, 0);
 }
+
+/// Receive the next `user_error` broadcast on `rx` carrying `kind`, skipping any
+/// unrelated events. The web-channel bus is a process-global broadcast, so a
+/// sibling test running concurrently may interleave its own `user_error` (a
+/// different kind) onto the same channel — filtering on `kind` keeps each test
+/// deterministic regardless of ordering.
+///
+/// A concurrent flood can also push our event past the channel capacity before
+/// we read it, surfacing as `Lagged` (the receiver fell behind, not a real
+/// absence). We treat `Lagged` as recoverable and keep scanning (CodeRabbit
+/// #4169); only a terminal `Empty`/`Closed` — the matching event genuinely was
+/// not published — panics.
+fn next_user_error(
+    rx: &mut tokio::sync::broadcast::Receiver<crate::core::socketio::WebChannelEvent>,
+    kind: &str,
+) -> crate::core::socketio::WebChannelEvent {
+    use tokio::sync::broadcast::error::TryRecvError;
+    loop {
+        match rx.try_recv() {
+            Ok(ev) if ev.event == "user_error" && ev.error_type.as_deref() == Some(kind) => {
+                break ev
+            }
+            Ok(_) => continue,
+            // Receiver fell behind a concurrent flood — the dropped slots can't
+            // have held *our* just-published event before this point, so skip
+            // ahead and keep scanning rather than failing spuriously.
+            Err(TryRecvError::Lagged(_)) => continue,
+            Err(e) => panic!("expected a user_error broadcast for kind={kind}, bus said: {e:?}"),
+        }
+    }
+}
+
+#[test]
+fn publish_cron_user_error_broadcasts_metadata_only_for_each_kind() {
+    use crate::openhuman::channels::providers::web::subscribe_web_channel_events;
+
+    // Folded from two tests that both published `api_key_missing` to the
+    // process-global bus and could false-pass off each other's broadcast under
+    // parallel execution (CodeRabbit #4169). One subscription + serialized
+    // publishes means each assertion can only be satisfied by THIS test's own
+    // emission, so a regression in `publish_cron_user_error` actually fails.
+    // The three tokens are exactly the `UserErrorKind` values classify.ts accepts.
+    let mut rx = subscribe_web_channel_events();
+    for kind in ["insufficient_credits", "budget_exceeded", "api_key_missing"] {
+        publish_cron_user_error(kind);
+        let ev = next_user_error(&mut rx, kind);
+        // Broadcast to the "system" room every connected socket auto-joins.
+        assert_eq!(ev.client_id, "system");
+        // Stable kind token mirrors the frontend `UserErrorKind` discriminator.
+        assert_eq!(ev.error_type.as_deref(), Some(kind));
+        assert_eq!(ev.error_source.as_deref(), Some("cron"));
+        // Metadata-only: a `user_error` NEVER carries the raw provider body
+        // (CLAUDE.md) and is thread-less (no chat context).
+        assert!(ev.message.is_none(), "user_error must not carry a raw body");
+        assert!(ev.full_response.is_none());
+        assert!(ev.thread_id.is_empty(), "cron user_error is thread-less");
+        assert!(ev.request_id.is_empty());
+    }
+}

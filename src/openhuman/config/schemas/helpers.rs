@@ -125,6 +125,11 @@ pub(super) struct MeetSettingsUpdate {
     pub(super) auto_summarize_policy: Option<String>,
     pub(super) listen_only_default: Option<bool>,
     pub(super) ingest_backend_transcripts: Option<bool>,
+    /// Per-platform policy overrides. Keys: "gmeet", "zoom", "teams", "webex".
+    /// Values: `ask_each_time` | `always` | `never`.
+    pub(super) platform_auto_join_policies: Option<std::collections::HashMap<String, String>>,
+    /// Master switch for calendar-driven auto-join / ask-to-join.
+    pub(super) watch_calendar: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
