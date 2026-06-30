@@ -132,6 +132,7 @@ function makePlaybackWithDeferredMetadata(
   return {
     handle: {
       currentMs: () => (stopped ? -1 : ms),
+      amplitude: () => 0,
       durationMs: () => durationMs,
       metadataReady,
       stop: () => {
