@@ -6316,7 +6316,11 @@ const messages: TranslationMap = {
   'userErrors.budgetExceeded.body': 'Управляемый бюджет ИИ исчерпан. Измените план.',
   'userErrors.insufficientCredits.title': 'Требуются кредиты провайдера',
   'userErrors.insufficientCredits.body': 'У провайдера закончились кредиты. Пополните их.',
+  'userErrors.apiKeyMissing.title': 'Требуется ключ API',
+  'userErrors.apiKeyMissing.body':
+    'У провайдера ИИ не задан ключ API. Добавьте его в настройках провайдера.',
   'userErrors.scope.chat': 'Чат',
+  'userErrors.scope.cron': 'Запланированная задача',
   // Agent World — Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Сумма',
   'agentWorld.trading.networkLabel': 'Сеть',
@@ -6348,6 +6352,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'В этой сумме слишком много знаков после запятой.',
   'agentWorld.trading.amountMustBePositive': 'Введите сумму больше нуля.',
   'agentWorld.trading.amountInvalid': 'Введите корректную сумму.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Копировать',
+  'codeBlock.copied': 'Скопировано!',
 };
 
 export default messages;

@@ -303,6 +303,9 @@ whatsapp-web = ["dep:whatsapp-rust", "dep:whatsapp-rust-tokio-transport", "dep:w
 # this feature so the wipe RPC isn't even registered, let alone reachable.
 e2e-test-support = []
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }
+
 # Fix whisper-rs-sys CRT mismatch on Windows MSVC (LNK2038).
 # Upstream cmake build defaults to /MD but Rust uses /MT.
 # This fork adds config.static_crt(true) to the build script.

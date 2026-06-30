@@ -6121,7 +6121,11 @@ const messages: TranslationMap = {
   'userErrors.budgetExceeded.body': 'نفدت الميزانية المُدارة. أضف ميزانية أو غيّر خطتك.',
   'userErrors.insufficientCredits.title': 'مطلوب رصيد المزود',
   'userErrors.insufficientCredits.body': 'نفد رصيد المزود. أعد الشحن أو حدّث مفتاح API.',
+  'userErrors.apiKeyMissing.title': 'مطلوب مفتاح API',
+  'userErrors.apiKeyMissing.body':
+    'لا يوجد مفتاح API لمزوّد الذكاء الاصطناعي. أضِفه في إعدادات المزوّد للمتابعة.',
   'userErrors.scope.chat': 'الدردشة',
+  'userErrors.scope.cron': 'مهمة مجدوَلة',
   // Agent World — Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'المبلغ',
   'agentWorld.trading.networkLabel': 'الشبكة',
@@ -6153,6 +6157,10 @@ const messages: TranslationMap = {
     'يحتوي هذا المبلغ على عدد كبير جدًا من المنازل العشرية.',
   'agentWorld.trading.amountMustBePositive': 'أدخل مبلغًا أكبر من صفر.',
   'agentWorld.trading.amountInvalid': 'أدخل مبلغًا صالحًا.',
+
+  // Code block chrome
+  'codeBlock.copy': 'نسخ',
+  'codeBlock.copied': 'تم النسخ!',
 };
 
 export default messages;

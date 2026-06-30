@@ -39,7 +39,7 @@ use openhuman_core::openhuman::agent::harness::definition::{
 };
 use openhuman_core::openhuman::agent::harness::subagent_runner::{
     autonomous_iter_cap, with_autonomous_iter_cap, SubagentMode, SubagentRunError,
-    SubagentRunOptions, SubagentRunOutcome, SubagentRunStatus,
+    SubagentRunOptions, SubagentRunOutcome, SubagentRunStatus, SubagentUsage,
 };
 use openhuman_core::openhuman::agent::harness::{
     check_interrupt, current_sandbox_mode, with_current_sandbox_mode, InterruptFence,
@@ -4704,7 +4704,7 @@ async fn agent_subagent_public_types_cover_task_local_and_error_display_paths() 
         mode: SubagentMode::Typed,
         status: SubagentRunStatus::Completed,
         final_history: Vec::new(),
-        usage: Default::default(),
+        usage: SubagentUsage::default(),
     };
     assert_eq!(outcome.mode.as_str(), "typed");
     assert_eq!(outcome.elapsed.as_millis(), 12);

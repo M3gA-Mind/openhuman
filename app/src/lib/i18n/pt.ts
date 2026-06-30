@@ -6360,7 +6360,11 @@ const messages: TranslationMap = {
   'userErrors.insufficientCredits.title': 'Créditos do provedor necessários',
   'userErrors.insufficientCredits.body':
     'Seu provedor de IA ficou sem créditos. Recarregue-o ou atualize a chave de API.',
+  'userErrors.apiKeyMissing.title': 'Chave de API necessária',
+  'userErrors.apiKeyMissing.body':
+    'Seu provedor de IA não tem uma chave de API definida. Adicione uma nas configurações do provedor para continuar.',
   'userErrors.scope.chat': 'Chat',
+  'userErrors.scope.cron': 'Tarefa agendada',
   // Agent World — Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': 'Valor',
   'agentWorld.trading.networkLabel': 'Rede',
@@ -6393,6 +6397,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': 'Este valor tem casas decimais em excesso.',
   'agentWorld.trading.amountMustBePositive': 'Insira um valor maior que zero.',
   'agentWorld.trading.amountInvalid': 'Insira um valor válido.',
+
+  // Code block chrome
+  'codeBlock.copy': 'Copiar',
+  'codeBlock.copied': 'Copiado!',
 };
 
 export default messages;

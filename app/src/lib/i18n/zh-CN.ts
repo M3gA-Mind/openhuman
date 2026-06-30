@@ -5931,7 +5931,10 @@ const messages: TranslationMap = {
   'userErrors.budgetExceeded.body': '托管 AI 预算已用尽，请增加预算或更改套餐。',
   'userErrors.insufficientCredits.title': '需要提供商额度',
   'userErrors.insufficientCredits.body': '提供商额度已用完，请充值或更新 API 密钥。',
+  'userErrors.apiKeyMissing.title': '需要 API 密钥',
+  'userErrors.apiKeyMissing.body': '您的 AI 提供商未设置 API 密钥，请在提供商设置中添加以继续。',
   'userErrors.scope.chat': '聊天',
+  'userErrors.scope.cron': '定时任务',
   // Agent World — Identity trading (confirm-before-spend + balance gate)
   'agentWorld.trading.amountLabel': '金额',
   'agentWorld.trading.networkLabel': '网络',
@@ -5962,6 +5965,10 @@ const messages: TranslationMap = {
   'agentWorld.trading.amountTooManyDecimals': '该金额的小数位数过多。',
   'agentWorld.trading.amountMustBePositive': '请输入大于零的金额。',
   'agentWorld.trading.amountInvalid': '请输入有效的金额。',
+
+  // Code block chrome
+  'codeBlock.copy': '复制',
+  'codeBlock.copied': '已复制！',
 };
 
 export default messages;

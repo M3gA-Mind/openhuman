@@ -6544,6 +6544,10 @@ const en: TranslationMap = {
   'agentworld.messaging.missingSignalBundle':
     "This user hasn't enabled encrypted messaging yet. Ask them to open Agent World and enable secure DMs before sending a message.",
 
+  // Code block chrome
+  'codeBlock.copy': 'Copy',
+  'codeBlock.copied': 'Copied!',
+
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Action needed',
   'userErrors.dismiss': 'Dismiss',
@@ -6555,7 +6559,11 @@ const en: TranslationMap = {
   'userErrors.insufficientCredits.title': 'Provider credits required',
   'userErrors.insufficientCredits.body':
     'Your AI provider is out of credits. Top it up or update its API key to continue.',
+  'userErrors.apiKeyMissing.title': 'API key required',
+  'userErrors.apiKeyMissing.body':
+    'Your AI provider has no API key set. Add one in provider settings to continue.',
   'userErrors.scope.chat': 'Chat',
+  'userErrors.scope.cron': 'Scheduled job',
 };
 
 export default en;
