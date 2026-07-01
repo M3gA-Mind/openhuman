@@ -1849,10 +1849,8 @@ mod tests {
     #[tokio::test]
     async fn second_write_without_an_update_flags_index_drift() {
         let mw = MemoryProtocolMiddleware::new();
-        for _ in 0..1 {
-            let mut read = tool_result("memory_recall", "checked");
-            mw.after_tool(&mut ctx(), &(), &mut read).await.unwrap();
-        }
+        let mut read = tool_result("memory_recall", "checked");
+        mw.after_tool(&mut ctx(), &(), &mut read).await.unwrap();
         let mut first = tool_result("memory_store", "a");
         mw.after_tool(&mut ctx(), &(), &mut first).await.unwrap();
         assert!(!first.content.contains("drifting"));
