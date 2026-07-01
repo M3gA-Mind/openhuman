@@ -841,7 +841,9 @@ async fn turn_synthesizes_required_output_when_reprompt_also_omits() {
     let config = crate::openhuman::config::AgentConfig {
         max_tool_iterations: 3,
         max_history_messages: 10,
-        required_output: Some(crate::openhuman::config::RequiredOutputContract::new("thoughts")),
+        required_output: Some(crate::openhuman::config::RequiredOutputContract::new(
+            "thoughts",
+        )),
         ..crate::openhuman::config::AgentConfig::default()
     };
 

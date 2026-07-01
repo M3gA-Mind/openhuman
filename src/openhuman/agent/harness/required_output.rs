@@ -103,7 +103,10 @@ mod tests {
     #[test]
     fn prose_only_reply_fails_validation() {
         let contract = thoughts_contract();
-        assert!(!output_satisfies_contract("Sure, I'll handle that.", &contract));
+        assert!(!output_satisfies_contract(
+            "Sure, I'll handle that.",
+            &contract
+        ));
     }
 
     #[test]
@@ -117,7 +120,10 @@ mod tests {
     #[test]
     fn null_valued_required_key_fails() {
         let contract = RequiredOutputContract::new("thoughts");
-        assert!(!output_satisfies_contract("{\"thoughts\": null}", &contract));
+        assert!(!output_satisfies_contract(
+            "{\"thoughts\": null}",
+            &contract
+        ));
     }
 
     #[test]

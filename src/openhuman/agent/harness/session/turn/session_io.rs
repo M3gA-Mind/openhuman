@@ -203,9 +203,9 @@ impl Agent {
         // current history already holds the omitting assistant reply, so the
         // model sees exactly what it left out.
         let mut base = self.tool_dispatcher.to_provider_messages(&self.history);
-        base.push(ChatMessage::user(harness::required_output::repair_instruction(
-            contract,
-        )));
+        base.push(ChatMessage::user(
+            harness::required_output::repair_instruction(contract),
+        ));
         let (repair_text, usage) = self
             .reprompt_for_required_block(&base, effective_model)
             .await;
