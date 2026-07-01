@@ -1540,7 +1540,9 @@ mod tests {
     }
 
     /// Kinds of the steering commands currently queued on `handle`, drained.
-    fn drained_kinds(handle: &SteeringHandle) -> Vec<tinyagents::harness::steering::SteeringCommandKind> {
+    fn drained_kinds(
+        handle: &SteeringHandle,
+    ) -> Vec<tinyagents::harness::steering::SteeringCommandKind> {
         handle.drain().iter().map(|c| c.kind()).collect()
     }
 
@@ -1556,7 +1558,11 @@ mod tests {
         // First identical failure: nothing yet.
         let mut r = failing_result("flaky", "boom");
         mw.after_tool(&mut ctx(), &(), &mut r).await.unwrap();
-        assert_eq!(drained_kinds(&handle), Vec::new(), "no signal on the first failure");
+        assert_eq!(
+            drained_kinds(&handle),
+            Vec::new(),
+            "no signal on the first failure"
+        );
         // Second: a "no progress" nudge feeds back into the loop — not a pause.
         let mut r = failing_result("flaky", "boom");
         mw.after_tool(&mut ctx(), &(), &mut r).await.unwrap();

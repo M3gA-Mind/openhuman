@@ -285,7 +285,10 @@ mod tests {
     fn identical_failure_nudges_then_halts() {
         let t = NoProgressTracker::new(DEFAULT_IDENTICAL_HALT_THRESHOLD);
         // First identical failure: not enough repetition yet.
-        assert_eq!(t.record(1, &fail("read_file", "a", "not found")), NoProgress::Continue);
+        assert_eq!(
+            t.record(1, &fail("read_file", "a", "not found")),
+            NoProgress::Continue
+        );
         // Second: nudge the model to change strategy before the retry cap.
         match t.record(2, &fail("read_file", "a", "not found")) {
             NoProgress::Nudge(msg) => {
@@ -322,8 +325,14 @@ mod tests {
         let _ = t.record(1, &fail("read_file", "a", "not found"));
         // The model heeded the nudge and changed args: a new signature, so the
         // identical-repeat counter starts over and never reaches the halt.
-        assert_eq!(t.record(2, &fail("read_file", "b", "not found")), NoProgress::Continue);
-        assert_eq!(t.record(3, &fail("list_dir", "c", "denied")), NoProgress::Continue);
+        assert_eq!(
+            t.record(2, &fail("read_file", "b", "not found")),
+            NoProgress::Continue
+        );
+        assert_eq!(
+            t.record(3, &fail("list_dir", "c", "denied")),
+            NoProgress::Continue
+        );
     }
 
     #[test]
@@ -334,7 +343,9 @@ mod tests {
         assert_eq!(t.record(1, &a), NoProgress::Continue);
         let mut b = fail("send_email", "a", "[policy-blocked] denied");
         b.hard_reject = true;
-        assert!(matches!(t.record(2, &b), NoProgress::Halt(msg) if msg.contains("security policy")));
+        assert!(
+            matches!(t.record(2, &b), NoProgress::Halt(msg) if msg.contains("security policy"))
+        );
     }
 
     #[test]
@@ -347,7 +358,10 @@ mod tests {
             assert_eq!(t.record(i, &fail("t", &fp, &err)), NoProgress::Continue);
         }
         // Fourth consecutive varied failure → nudge to step back.
-        assert!(matches!(t.record(4, &fail("t", "fp4", "err4")), NoProgress::Nudge(_)));
+        assert!(matches!(
+            t.record(4, &fail("t", "fp4", "err4")),
+            NoProgress::Nudge(_)
+        ));
         assert_eq!(t.record(5, &fail("t", "fp5", "err5")), NoProgress::Continue);
         // Sixth → the no-progress backstop halts.
         assert!(matches!(
@@ -375,7 +389,13 @@ mod tests {
         // before the halt (the nudge lands at 2, so the halt must be >= 3).
         let t = NoProgressTracker::new(1);
         assert_eq!(t.record(1, &fail("t", "a", "boom")), NoProgress::Continue);
-        assert!(matches!(t.record(2, &fail("t", "a", "boom")), NoProgress::Nudge(_)));
-        assert!(matches!(t.record(3, &fail("t", "a", "boom")), NoProgress::Halt(_)));
+        assert!(matches!(
+            t.record(2, &fail("t", "a", "boom")),
+            NoProgress::Nudge(_)
+        ));
+        assert!(matches!(
+            t.record(3, &fail("t", "a", "boom")),
+            NoProgress::Halt(_)
+        ));
     }
 }
