@@ -119,13 +119,19 @@ impl PolicyDenial<'_> {
             ),
         };
 
-        format!("Blocked: {blocked}. Reason: {reason}. Workaround: {workaround} {RELAY_INSTRUCTION}")
+        format!(
+            "Blocked: {blocked}. Reason: {reason}. Workaround: {workaround} {RELAY_INSTRUCTION}"
+        )
     }
 }
 
 /// Workaround shared by the permission-tier denials: raise the channel's
 /// agent-access tier, or fall back to a lower-permission tool.
-fn raise_tier_workaround(required: Option<&str>, allowed: PermissionLevel, channel: &str) -> String {
+fn raise_tier_workaround(
+    required: Option<&str>,
+    allowed: PermissionLevel,
+    channel: &str,
+) -> String {
     match required {
         Some(required) => format!(
             "Raise the '{channel}' channel's agent-access tier to at least {required} \
