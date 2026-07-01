@@ -32,6 +32,7 @@ pub(crate) mod graph;
 mod instructions;
 pub(crate) mod memory_context;
 pub(crate) mod memory_context_safety;
+pub(crate) mod memory_protocol;
 pub(crate) mod parse;
 pub(crate) mod payload_summarizer;
 pub mod run_queue;

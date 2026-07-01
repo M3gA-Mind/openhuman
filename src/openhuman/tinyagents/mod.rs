@@ -389,6 +389,16 @@ pub async fn run_turn_via_tinyagents_shared(
     // `before_model` hooks run cache-align → microcompact → compress → trim.
     // Capture the autocompaction opt-out before `install` consumes `context_mw`.
     let autocompact_enabled = context_mw.autocompact_enabled;
+
+    // Memory-protocol enforcement (issue #4116): observe the read → dedupe →
+    // write → update-index cycle across this run's memory tool calls and surface
+    // a corrective note back to the model on a write that skipped the dedupe read
+    // or left the MEMORY.md index unsynced. Registered FIRST (outermost) so its
+    // `after_tool` runs LAST — after the byte-cap (`ToolOutputMiddleware`, pushed
+    // by `install` below) truncates — and its guidance survives into the tool
+    // result the model reads. A no-op on turns that never touch memory.
+    harness.push_middleware(Arc::new(middleware::MemoryProtocolMiddleware::new()));
+
     context_mw.install(&mut harness, &tool_sets);
 
     // Pre-call cost budget gate (issue #4249, Phase 5): fail before a model call

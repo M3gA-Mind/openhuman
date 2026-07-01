@@ -29,7 +29,7 @@ use tinyagents::error::Result as TaResult;
 use tinyagents::harness::context::RunContext;
 use tinyagents::harness::message::{ContentBlock, Message as TaMessage};
 use tinyagents::harness::middleware::{
-    Middleware, MiddlewareToolOutcome, ToolHandler, ToolMiddleware,
+    AgentRun, Middleware, MiddlewareToolOutcome, ToolHandler, ToolMiddleware,
 };
 use tinyagents::harness::model::ModelRequest;
 use tinyagents::harness::runtime::AgentHarness;
@@ -990,6 +990,102 @@ impl Middleware<()> for ArgRecoveryMiddleware {
     }
 }
 
+/// `after_tool` + `after_agent`: enforce the memory protocol (issue #4116).
+///
+/// Agents are told to follow a **read-index → dedupe → write → update-index**
+/// cycle around durable memory, but the contract was never enforced, so it was
+/// followed inconsistently: writes landed without a dedupe read (duplicating
+/// entries) and `update_memory_md` was skipped (so `MEMORY.md` drifted from the
+/// store). This middleware observes the ordered sequence of *successful* memory
+/// tool calls via [`MemoryProtocolTracker`] and, on each memory write, appends a
+/// corrective note to the tool result so the model is nudged back onto the
+/// protocol — the same "structured correction surfaced to the model" pattern the
+/// unknown-tool recovery (#4118) uses. At run end it warns when a write was never
+/// followed by an index update (the index is left stale).
+///
+/// Only *successful* ops advance the state machine — a failed `memory_store`
+/// neither creates an entry nor obliges an index update. Non-memory tools are
+/// ignored, so this is a no-op on turns that never touch memory.
+pub struct MemoryProtocolMiddleware {
+    tracker: std::sync::Mutex<crate::openhuman::agent::harness::memory_protocol::MemoryProtocolTracker>,
+}
+
+impl MemoryProtocolMiddleware {
+    pub fn new() -> Self {
+        Self {
+            tracker: std::sync::Mutex::new(
+                crate::openhuman::agent::harness::memory_protocol::MemoryProtocolTracker::new(),
+            ),
+        }
+    }
+}
+
+impl Default for MemoryProtocolMiddleware {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl Middleware<()> for MemoryProtocolMiddleware {
+    fn name(&self) -> &str {
+        "memory_protocol"
+    }
+
+    async fn after_tool(
+        &self,
+        _ctx: &mut RunContext<()>,
+        _state: &(),
+        result: &mut TaToolResult,
+    ) -> TaResult<()> {
+        // Only successful memory ops advance the protocol — a failed write did
+        // not mutate memory and must not demand an index update.
+        if result.error.is_some() {
+            return Ok(());
+        }
+        let observation = {
+            let mut tracker = match self.tracker.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            tracker.observe_tool(&result.name)
+        };
+        if let Some(note) = observation.guidance(&result.name) {
+            tracing::debug!(
+                tool = result.name.as_str(),
+                missing_index_read = observation.missing_index_read,
+                index_drift = observation.index_drift,
+                "[tinyagents::mw] memory-protocol guidance appended to tool result"
+            );
+            if !result.content.is_empty() {
+                result.content.push_str("\n\n");
+            }
+            result.content.push_str(&note);
+        }
+        Ok(())
+    }
+
+    async fn after_agent(
+        &self,
+        _ctx: &mut RunContext<()>,
+        _state: &(),
+        _run: &mut AgentRun,
+    ) -> TaResult<()> {
+        let pending = self
+            .tracker
+            .lock()
+            .map(|tracker| tracker.pending_index_update())
+            .unwrap_or(false);
+        if pending {
+            tracing::warn!(
+                "[tinyagents::mw] memory-protocol: run ended with a memory write that was never \
+                 followed by update_memory_md — the MEMORY.md index is left stale"
+            );
+        }
+        Ok(())
+    }
+}
+
 /// `before_model`: enforce OpenHuman's daily/monthly cost budgets **before** a
 /// model call spends (issue #4249, Phase 5). Reads the global
 /// [`CostTracker`](crate::openhuman::cost) and, when cost budgets are configured
@@ -1684,5 +1780,85 @@ mod tests {
         assert!(!mw.has_external_effect("read_file", &json!({})));
         // Unknown tool defaults to no external effect (nothing to gate).
         assert!(!mw.has_external_effect("missing", &json!({})));
+    }
+
+    // ── MemoryProtocolMiddleware (issue #4116) ──────────────────────────────
+
+    use crate::openhuman::agent::harness::memory_protocol::MEMORY_PROTOCOL_MARKER;
+
+    #[tokio::test]
+    async fn memory_write_without_index_read_gets_a_corrective_note() {
+        let mw = MemoryProtocolMiddleware::new();
+        let mut result = tool_result("memory_store", "stored entry 42");
+        mw.after_tool(&mut ctx(), &(), &mut result).await.unwrap();
+        assert!(
+            result.content.contains(MEMORY_PROTOCOL_MARKER),
+            "a write with no preceding dedupe read should be annotated: {}",
+            result.content
+        );
+        assert!(result.content.contains("without first reading the memory index"));
+        assert!(result.content.contains("update_memory_md"));
+        // The original tool output is preserved, guidance is appended.
+        assert!(result.content.starts_with("stored entry 42"));
+    }
+
+    #[tokio::test]
+    async fn full_cycle_read_then_write_then_update_only_reminds_on_the_write() {
+        let mw = MemoryProtocolMiddleware::new();
+
+        let mut read = tool_result("memory_recall", "no near-duplicates found");
+        mw.after_tool(&mut ctx(), &(), &mut read).await.unwrap();
+        assert!(
+            !read.content.contains(MEMORY_PROTOCOL_MARKER),
+            "a read is not annotated"
+        );
+
+        let mut write = tool_result("memory_store", "stored");
+        mw.after_tool(&mut ctx(), &(), &mut write).await.unwrap();
+        assert!(write.content.contains(MEMORY_PROTOCOL_MARKER));
+        // The read preceded the write, so no missing-read complaint — just the
+        // forward "sync the index" reminder.
+        assert!(!write.content.contains("without first reading the memory index"));
+
+        let mut update = tool_result("update_memory_md", "index updated");
+        mw.after_tool(&mut ctx(), &(), &mut update).await.unwrap();
+        assert!(
+            !update.content.contains(MEMORY_PROTOCOL_MARKER),
+            "closing the cycle needs no guidance"
+        );
+    }
+
+    #[tokio::test]
+    async fn failed_memory_write_does_not_advance_the_protocol() {
+        let mw = MemoryProtocolMiddleware::new();
+        let mut failed = failing_result("memory_store", "disk full");
+        mw.after_tool(&mut ctx(), &(), &mut failed).await.unwrap();
+        // A failed write is not annotated and leaves nothing pending, so a later
+        // run-end sweep must not warn about a stale index.
+        assert!(!failed.content.contains(MEMORY_PROTOCOL_MARKER));
+        let mut run = AgentRun::new();
+        // after_agent is a no-op warn path; it must not error.
+        mw.after_agent(&mut ctx(), &(), &mut run).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn second_write_without_an_update_flags_index_drift() {
+        let mw = MemoryProtocolMiddleware::new();
+        for _ in 0..1 {
+            let mut read = tool_result("memory_recall", "checked");
+            mw.after_tool(&mut ctx(), &(), &mut read).await.unwrap();
+        }
+        let mut first = tool_result("memory_store", "a");
+        mw.after_tool(&mut ctx(), &(), &mut first).await.unwrap();
+        assert!(!first.content.contains("drifting"));
+
+        // No update_memory_md between the two writes → the index is drifting.
+        let mut second = tool_result("memory_store", "b");
+        mw.after_tool(&mut ctx(), &(), &mut second).await.unwrap();
+        assert!(
+            second.content.contains("drifting"),
+            "a second unsynced write should flag index drift: {}",
+            second.content
+        );
     }
 }
