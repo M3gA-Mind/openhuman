@@ -196,7 +196,10 @@ mod tests {
 
     #[test]
     fn classifies_the_memory_tool_surface() {
-        assert_eq!(classify_memory_op("update_memory_md"), MemoryOp::IndexUpdate);
+        assert_eq!(
+            classify_memory_op("update_memory_md"),
+            MemoryOp::IndexUpdate
+        );
         assert_eq!(classify_memory_op("memory_store"), MemoryOp::Write);
         assert_eq!(classify_memory_op("memory_forget"), MemoryOp::Write);
         assert_eq!(
@@ -280,7 +283,10 @@ mod tests {
 
         // Next cycle: a write with no fresh read is flagged again.
         let obs = t.observe_tool("memory_store");
-        assert!(obs.missing_index_read, "each cycle needs its own dedupe read");
+        assert!(
+            obs.missing_index_read,
+            "each cycle needs its own dedupe read"
+        );
     }
 
     #[test]
@@ -288,6 +294,9 @@ mod tests {
         let mut t = MemoryProtocolTracker::new();
         assert!(!t.observe_tool("memory_recall").needs_guidance());
         assert!(!t.observe_tool("send_message").needs_guidance());
-        assert!(t.observe_tool("memory_recall").guidance("memory_recall").is_none());
+        assert!(t
+            .observe_tool("memory_recall")
+            .guidance("memory_recall")
+            .is_none());
     }
 }

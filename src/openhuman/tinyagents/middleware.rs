@@ -1007,7 +1007,8 @@ impl Middleware<()> for ArgRecoveryMiddleware {
 /// neither creates an entry nor obliges an index update. Non-memory tools are
 /// ignored, so this is a no-op on turns that never touch memory.
 pub struct MemoryProtocolMiddleware {
-    tracker: std::sync::Mutex<crate::openhuman::agent::harness::memory_protocol::MemoryProtocolTracker>,
+    tracker:
+        std::sync::Mutex<crate::openhuman::agent::harness::memory_protocol::MemoryProtocolTracker>,
 }
 
 impl MemoryProtocolMiddleware {
@@ -1796,7 +1797,9 @@ mod tests {
             "a write with no preceding dedupe read should be annotated: {}",
             result.content
         );
-        assert!(result.content.contains("without first reading the memory index"));
+        assert!(result
+            .content
+            .contains("without first reading the memory index"));
         assert!(result.content.contains("update_memory_md"));
         // The original tool output is preserved, guidance is appended.
         assert!(result.content.starts_with("stored entry 42"));
@@ -1818,7 +1821,9 @@ mod tests {
         assert!(write.content.contains(MEMORY_PROTOCOL_MARKER));
         // The read preceded the write, so no missing-read complaint — just the
         // forward "sync the index" reminder.
-        assert!(!write.content.contains("without first reading the memory index"));
+        assert!(!write
+            .content
+            .contains("without first reading the memory index"));
 
         let mut update = tool_result("update_memory_md", "index updated");
         mw.after_tool(&mut ctx(), &(), &mut update).await.unwrap();
