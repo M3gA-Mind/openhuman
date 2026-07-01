@@ -14,6 +14,7 @@ use crate::core::event_bus::{publish_global, DomainEvent};
 use crate::openhuman::agent::dispatcher::{ParsedToolCall, ToolExecutionResult};
 use crate::openhuman::agent::harness::engine::ProgressReporter;
 use crate::openhuman::agent::harness::payload_summarizer::PayloadSummarizer;
+use crate::openhuman::agent::harness::session::policy_denial::PolicyDenial;
 use crate::openhuman::agent::harness::tool_result_artifacts::{
     apply_per_result_persistence, ToolResultArtifactStore,
 };
@@ -105,15 +106,14 @@ pub(super) async fn run_agent_tool_call(
     } else if let Some(tool) = ctx.tools.iter().find(|t| t.name() == call.name) {
         let session_decision = ctx.tool_policy_session.decision_for(&call.name);
         if session_decision.is_denied() {
-            let required = session_decision
-                .required_permission
-                .map(|permission| permission.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
             (
-                format!(
-                    "Tool '{}' blocked by tool policy: requires {}, channel '{}' allows {}",
-                    call.name, required, ctx.event_channel, session_decision.allowed_permission
-                ),
+                PolicyDenial::SessionForbidden {
+                    tool: &call.name,
+                    required: session_decision.required_permission,
+                    allowed: session_decision.allowed_permission,
+                    channel: ctx.event_channel,
+                }
+                .render(),
                 false,
             )
         } else {
@@ -126,13 +126,13 @@ pub(super) async fn run_agent_tool_call(
                     "[agent_loop] tool action blocked by per-call permission check"
                 );
                 (
-                    format!(
-                        "Tool '{}' action requires {} permission, channel '{}' allows {}",
-                        call.name,
-                        call_required,
-                        ctx.event_channel,
-                        session_decision.allowed_permission
-                    ),
+                    PolicyDenial::PermissionTooLow {
+                        tool: &call.name,
+                        required: call_required,
+                        allowed: session_decision.allowed_permission,
+                        channel: ctx.event_channel,
+                    }
+                    .render(),
                     false,
                 )
             } else {
@@ -168,14 +168,21 @@ pub(super) async fn run_agent_tool_call(
                         reason = %reason,
                         "[agent_loop] tool blocked by policy"
                     );
-                    (
-                        format!(
-                            "Tool '{}' {blocked_action} by policy '{}': {reason}",
-                            call.name,
-                            ctx.tool_policy.name()
-                        ),
-                        false,
-                    )
+                    let denial = match &policy_decision {
+                        ToolPolicyDecision::RequireApproval { .. } => {
+                            PolicyDenial::ApprovalRequired {
+                                tool: &call.name,
+                                policy: ctx.tool_policy.name(),
+                                reason,
+                            }
+                        }
+                        _ => PolicyDenial::PolicyDenied {
+                            tool: &call.name,
+                            policy: ctx.tool_policy.name(),
+                            reason,
+                        },
+                    };
+                    (denial.render(), false)
                 } else {
                     let options = ToolCallOptions {
                         prefer_markdown: ctx.prefer_markdown,
@@ -501,5 +508,184 @@ mod tests {
         assert!(!record.success);
         assert_eq!(progress.completed.load(Ordering::Relaxed), 1);
         assert_eq!(progress.timeout_completions.load(Ordering::Relaxed), 1);
+    }
+
+    /// A tool whose required permission is configurable, used to trip the
+    /// session / per-call permission gates.
+    struct PermissionedTool {
+        name: &'static str,
+        permission: crate::openhuman::tools::PermissionLevel,
+    }
+
+    #[async_trait]
+    impl Tool for PermissionedTool {
+        fn name(&self) -> &str {
+            self.name
+        }
+
+        fn description(&self) -> &str {
+            "test tool with a fixed permission level"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({ "type": "object", "properties": {} })
+        }
+
+        async fn execute(&self, _args: serde_json::Value) -> anyhow::Result<ToolResult> {
+            Ok(ToolResult::success("ran"))
+        }
+
+        fn permission_level(&self) -> crate::openhuman::tools::PermissionLevel {
+            self.permission
+        }
+    }
+
+    /// A pluggable policy that denies every call with a fixed reason, standing
+    /// in for a sandbox / permission-boundary block.
+    struct DenyingToolPolicy;
+
+    #[async_trait]
+    impl ToolPolicy for DenyingToolPolicy {
+        fn name(&self) -> &str {
+            "sandbox"
+        }
+
+        async fn check(&self, _request: &ToolPolicyRequest) -> ToolPolicyDecision {
+            ToolPolicyDecision::deny("sandbox restriction")
+        }
+    }
+
+    /// Progress reporter that captures the last completion so tests can assert
+    /// the block was surfaced (not silently dropped).
+    struct CapturingProgress {
+        completed: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl ProgressReporter for CapturingProgress {
+        async fn tool_completed(
+            &self,
+            _call_id: &str,
+            _tool_name: &str,
+            _success: bool,
+            _output: &str,
+            _elapsed_ms: u64,
+            _iteration: u32,
+        ) {
+            self.completed.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn session_policy_denial_returns_structured_message_with_workaround() {
+        // Channel capped at read-only; an Execute tool is denied by the session
+        // policy rather than allowed to run.
+        let tools: Vec<Box<dyn Tool>> = vec![Box::new(PermissionedTool {
+            name: "run_script",
+            permission: crate::openhuman::tools::PermissionLevel::Execute,
+        })];
+        let visible_tool_names = HashSet::new();
+        let mut channel_permissions = HashMap::new();
+        channel_permissions.insert("web".to_string(), "read_only".to_string());
+        let policy_session = ToolPolicyEngine::build_session(
+            "context_scout",
+            "web",
+            "test",
+            &channel_permissions,
+            &tools,
+            &visible_tool_names,
+        );
+        assert!(policy_session.decision_for("run_script").is_denied());
+
+        let tool_policy = AllowAllToolPolicy;
+        let ctx = AgentToolExecCtx {
+            tools: &tools,
+            visible_tool_names: &visible_tool_names,
+            tool_policy_session: &policy_session,
+            tool_policy: &tool_policy,
+            payload_summarizer: None,
+            event_session_id: "session-1",
+            event_channel: "web",
+            agent_definition_id: "context_scout",
+            prefer_markdown: false,
+            budget_bytes: 4096,
+            compaction_enabled: false,
+            tokenjuice_compression: crate::openhuman::tokenjuice::AgentTokenjuiceCompression::Off,
+            artifact_store: None,
+        };
+        let call = ParsedToolCall {
+            name: "run_script".to_string(),
+            arguments: json!({}),
+            tool_call_id: Some("call-1".to_string()),
+        };
+        let progress = CapturingProgress {
+            completed: AtomicUsize::new(0),
+        };
+
+        let (result, record) = run_agent_tool_call(&ctx, &progress, &call, 0).await;
+
+        assert!(!result.success);
+        assert!(!record.success);
+        // Structured: what was blocked, why, and a concrete workaround.
+        assert!(result.output.contains("Blocked: Tool 'run_script'"));
+        assert!(result.output.contains("requires Execute permission"));
+        assert!(result.output.contains("Workaround:"));
+        assert!(result.output.contains("agent-access tier"));
+        // The agent is told to relay rather than halt silently — and the block
+        // was surfaced through progress, not dropped.
+        assert!(result.output.contains("Relay this to the user"));
+        assert_eq!(progress.completed.load(Ordering::Relaxed), 1);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn pluggable_policy_denial_returns_structured_message_with_alternative() {
+        // Tool passes the session/permission gates but a pluggable policy denies
+        // it — matching the issue's `run_script → blocked by sandbox` example.
+        let tools: Vec<Box<dyn Tool>> = vec![Box::new(PermissionedTool {
+            name: "run_script",
+            permission: crate::openhuman::tools::PermissionLevel::ReadOnly,
+        })];
+        let visible_tool_names = HashSet::new();
+        let policy_session = ToolPolicyEngine::build_session(
+            "context_scout",
+            "web",
+            "test",
+            &HashMap::new(),
+            &tools,
+            &visible_tool_names,
+        );
+        let tool_policy = DenyingToolPolicy;
+        let ctx = AgentToolExecCtx {
+            tools: &tools,
+            visible_tool_names: &visible_tool_names,
+            tool_policy_session: &policy_session,
+            tool_policy: &tool_policy,
+            payload_summarizer: None,
+            event_session_id: "session-1",
+            event_channel: "web",
+            agent_definition_id: "context_scout",
+            prefer_markdown: false,
+            budget_bytes: 4096,
+            compaction_enabled: false,
+            tokenjuice_compression: crate::openhuman::tokenjuice::AgentTokenjuiceCompression::Off,
+            artifact_store: None,
+        };
+        let call = ParsedToolCall {
+            name: "run_script".to_string(),
+            arguments: json!({}),
+            tool_call_id: Some("call-1".to_string()),
+        };
+        let progress = CapturingProgress {
+            completed: AtomicUsize::new(0),
+        };
+
+        let (result, _record) = run_agent_tool_call(&ctx, &progress, &call, 0).await;
+
+        assert!(!result.success);
+        assert!(result.output.contains("denied by policy 'sandbox'"));
+        assert!(result.output.contains("sandbox restriction"));
+        assert!(result.output.contains("permitted alternative"));
+        assert!(result.output.contains("Relay this to the user"));
+        assert_eq!(progress.completed.load(Ordering::Relaxed), 1);
     }
 }
