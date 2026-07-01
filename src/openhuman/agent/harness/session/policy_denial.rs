@@ -13,7 +13,7 @@ use crate::openhuman::tools::PermissionLevel;
 
 /// The boundary that blocked a tool call, with the context needed to explain it
 /// and suggest a way forward.
-pub(super) enum PolicyDenial<'a> {
+pub(crate) enum PolicyDenial<'a> {
     /// The session tool policy forbids this tool for the channel's permission
     /// tier (it is not in the allowed set).
     SessionForbidden {
@@ -55,7 +55,7 @@ const RELAY_INSTRUCTION: &str = "Relay this to the user: explain what was \
 impl PolicyDenial<'_> {
     /// Render the denial as a structured `Blocked / Reason / Workaround / relay`
     /// message for the model.
-    pub(super) fn render(&self) -> String {
+    pub(crate) fn render(&self) -> String {
         let (blocked, reason, workaround) = match self {
             PolicyDenial::SessionForbidden {
                 tool,
@@ -75,11 +75,7 @@ impl PolicyDenial<'_> {
                 (
                     format!("Tool '{tool}' is blocked by the session tool policy"),
                     reason,
-                    raise_tier_workaround(
-                        required.map(|p| p.to_string()).as_deref(),
-                        *allowed,
-                        channel,
-                    ),
+                    raise_ceiling_workaround(*required, *allowed, channel),
                 )
             }
             PolicyDenial::PermissionTooLow {
@@ -93,7 +89,7 @@ impl PolicyDenial<'_> {
                     "this call needs {required} permission, but the '{channel}' channel only \
                      grants {allowed} access"
                 ),
-                raise_tier_workaround(Some(&required.to_string()), *allowed, channel),
+                raise_ceiling_workaround(Some(*required), *allowed, channel),
             ),
             PolicyDenial::PolicyDenied {
                 tool,
@@ -125,25 +121,40 @@ impl PolicyDenial<'_> {
     }
 }
 
-/// Workaround shared by the permission-tier denials: raise the channel's
-/// agent-access tier, or fall back to a lower-permission tool.
-fn raise_tier_workaround(
-    required: Option<&str>,
+/// Workaround shared by the permission-ceiling denials. The blocked `allowed`
+/// level is the channel's cap from `[agent].channel_permissions` (see
+/// `ToolPolicyEngine::build_session`), so the fix is to raise *that* channel's
+/// entry — not the autonomy tier, which is a separate `readonly|supervised|full`
+/// knob. Alternatively, fall back to a tool that fits the current ceiling.
+fn raise_ceiling_workaround(
+    required: Option<PermissionLevel>,
     allowed: PermissionLevel,
     channel: &str,
 ) -> String {
     match required {
         Some(required) => format!(
-            "Raise the '{channel}' channel's agent-access tier to at least {required} \
-             (Settings → Agent access, or the `config.update_autonomy_settings` RPC / \
-             `[autonomy]` config), or accomplish the goal with a tool that needs only \
-             {allowed} access."
+            "Raise the '{channel}' channel's permission ceiling in the `[agent].channel_permissions` \
+             config to at least `{}` (levels: read_only, write, execute, dangerous), or accomplish \
+             the goal with a tool that needs only {allowed} access.",
+            permission_config_token(required)
         ),
         None => format!(
-            "Raise the '{channel}' channel's agent-access tier (Settings → Agent access, or the \
-             `config.update_autonomy_settings` RPC / `[autonomy]` config), or accomplish the goal \
-             with a tool that needs only {allowed} access."
+            "Raise the '{channel}' channel's permission ceiling in the `[agent].channel_permissions` \
+             config (levels: read_only, write, execute, dangerous), or accomplish the goal with a \
+             tool that needs only {allowed} access."
         ),
+    }
+}
+
+/// The lowercase token `[agent].channel_permissions` accepts for a level
+/// (mirrors `agent_tool_policy::engine::parse_permission_level`).
+fn permission_config_token(level: PermissionLevel) -> &'static str {
+    match level {
+        PermissionLevel::None => "none",
+        PermissionLevel::ReadOnly => "read_only",
+        PermissionLevel::Write => "write",
+        PermissionLevel::Execute => "execute",
+        PermissionLevel::Dangerous => "dangerous",
     }
 }
 
@@ -165,7 +176,9 @@ mod tests {
         assert!(msg.contains("Reason:"));
         assert!(msg.contains("requires Execute permission"));
         assert!(msg.contains("Workaround:"));
-        assert!(msg.contains("agent-access tier"));
+        // Points at the channel-permission ceiling (not the autonomy tier).
+        assert!(msg.contains("channel_permissions"));
+        assert!(msg.contains("`execute`"));
         // The relay instruction is what keeps the agent from halting silently.
         assert!(msg.contains("Relay this to the user"));
     }

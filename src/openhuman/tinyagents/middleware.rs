@@ -38,6 +38,7 @@ use tinyagents::harness::tool::{ToolCall as TaToolCall, ToolResult as TaToolResu
 
 use super::tools::UNKNOWN_TOOL_SENTINEL;
 use crate::openhuman::agent::harness::payload_summarizer::PayloadSummarizer;
+use crate::openhuman::agent::harness::session::policy_denial::PolicyDenial;
 use crate::openhuman::approval::{
     redact_args, summarize_action, ApprovalGate, ExecutionOutcome, GateOutcome,
 };
@@ -662,9 +663,11 @@ impl ToolMiddleware<()> for CliRpcOnlyMiddleware {
 /// `agent_tool_exec` (`ctx.tool_policy.check(...)`); the tinyagents path bypassed
 /// it, so a `.tool_policy()` deny/require-approval silently no-opped and the tool
 /// executed anyway — a security regression. This middleware restores it: a
-/// blocking decision short-circuits with a model-consumable result carrying the
-/// same `"Tool '<name>' <denied|requires approval> by policy '<policy>': <reason>"`
-/// wording the engine produced.
+/// blocking decision short-circuits with a model-consumable result. The message
+/// is rendered by [`PolicyDenial`] — a structured `Blocked / Reason / Workaround`
+/// line with an explicit instruction to relay it to the user (issue #4094) —
+/// shared with the engine's `agent_tool_exec` path so both surface the same
+/// wording.
 pub struct ToolPolicyMiddleware {
     policy: Arc<dyn crate::openhuman::agent::tool_policy::ToolPolicy>,
     /// The session's channel-permission snapshot — enforces the per-channel deny
@@ -718,22 +721,28 @@ impl ToolPolicyMiddleware {
     fn channel_permission_block(&self, call: &TaToolCall) -> Option<String> {
         let decision = self.session.decision_for(&call.name);
         if decision.is_denied() {
-            let required = decision
-                .required_permission
-                .map(|permission| permission.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            return Some(format!(
-                "Tool '{}' blocked by tool policy: requires {}, channel '{}' allows {}",
-                call.name, required, self.channel, decision.allowed_permission
-            ));
+            return Some(
+                PolicyDenial::SessionForbidden {
+                    tool: &call.name,
+                    required: decision.required_permission,
+                    allowed: decision.allowed_permission,
+                    channel: &self.channel,
+                }
+                .render(),
+            );
         }
         let tool = self.resolve_tool(&call.name)?;
         let call_required = tool.permission_level_with_args(&call.arguments);
         if call_required > decision.allowed_permission {
-            return Some(format!(
-                "Tool '{}' action requires {} permission, channel '{}' allows {}",
-                call.name, call_required, self.channel, decision.allowed_permission
-            ));
+            return Some(
+                PolicyDenial::PermissionTooLow {
+                    tool: &call.name,
+                    required: call_required,
+                    allowed: decision.allowed_permission,
+                    channel: &self.channel,
+                }
+                .render(),
+            );
         }
         None
     }
@@ -849,11 +858,19 @@ impl ToolMiddleware<()> for ToolPolicyMiddleware {
                 reason = %reason,
                 "[tinyagents::mw] tool blocked by policy"
             );
-            let content = format!(
-                "Tool '{}' {blocked_action} by policy '{}': {reason}",
-                call.name,
-                self.policy.name()
-            );
+            let content = match &decision {
+                ToolPolicyDecision::RequireApproval { .. } => PolicyDenial::ApprovalRequired {
+                    tool: &call.name,
+                    policy: self.policy.name(),
+                    reason,
+                },
+                _ => PolicyDenial::PolicyDenied {
+                    tool: &call.name,
+                    policy: self.policy.name(),
+                    reason,
+                },
+            }
+            .render();
             return Ok(MiddlewareToolOutcome::Result(TaToolResult {
                 call_id: call.id,
                 name: call.name,
@@ -1575,6 +1592,82 @@ mod tests {
         };
         mw.before_tool(&mut ctx(), &(), &mut call).await.unwrap();
         assert_eq!(call.name, UNKNOWN_TOOL_SENTINEL);
+    }
+
+    // ── ToolPolicyMiddleware (real turn path) ───────────────────────────────
+
+    /// A tool with a configurable required permission, to trip the channel
+    /// permission ceiling the middleware enforces on the tinyagents turn path.
+    struct PermTool {
+        name: &'static str,
+        permission: crate::openhuman::tools::PermissionLevel,
+    }
+
+    #[async_trait]
+    impl Tool for PermTool {
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn description(&self) -> &str {
+            "perm"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({ "type": "object" })
+        }
+        async fn execute(
+            &self,
+            _args: serde_json::Value,
+        ) -> anyhow::Result<crate::openhuman::tools::ToolResult> {
+            Ok(crate::openhuman::tools::ToolResult::success("ok"))
+        }
+        fn permission_level(&self) -> crate::openhuman::tools::PermissionLevel {
+            self.permission
+        }
+    }
+
+    /// The real turn path (tinyagents middleware) must surface the structured
+    /// denial with a workaround, not the old bare string — otherwise the #4094
+    /// fix never reaches production turns (only direct `execute_tool_call`).
+    #[test]
+    fn channel_permission_block_returns_structured_denial() {
+        let tools: Arc<Vec<Box<dyn Tool>>> = Arc::new(vec![Box::new(PermTool {
+            name: "run_script",
+            permission: crate::openhuman::tools::PermissionLevel::Execute,
+        })]);
+        let visible = HashSet::new();
+        let mut channel_permissions = std::collections::HashMap::new();
+        channel_permissions.insert("web".to_string(), "read_only".to_string());
+        let session = crate::openhuman::agent_tool_policy::ToolPolicyEngine::build_session(
+            "context_scout",
+            "web",
+            "test",
+            &channel_permissions,
+            tools.as_ref(),
+            &visible,
+        );
+        let mw = ToolPolicyMiddleware::new(
+            Arc::new(crate::openhuman::agent::tool_policy::AllowAllToolPolicy),
+            session,
+            vec![tools],
+            visible,
+            "session-1".to_string(),
+            "web".to_string(),
+            "context_scout".to_string(),
+        );
+        let call = TaToolCall {
+            id: "1".into(),
+            name: "run_script".into(),
+            arguments: json!({}),
+        };
+
+        let msg = mw
+            .channel_permission_block(&call)
+            .expect("execute tool must be blocked at the read_only channel ceiling");
+        assert!(msg.contains("Blocked: Tool 'run_script'"));
+        assert!(msg.contains("requires Execute permission"));
+        assert!(msg.contains("Workaround:"));
+        assert!(msg.contains("channel_permissions"));
+        assert!(msg.contains("Relay this to the user"));
     }
 
     // ── CostBudgetMiddleware ────────────────────────────────────────────────

@@ -630,7 +630,7 @@ mod tests {
         assert!(result.output.contains("Blocked: Tool 'run_script'"));
         assert!(result.output.contains("requires Execute permission"));
         assert!(result.output.contains("Workaround:"));
-        assert!(result.output.contains("agent-access tier"));
+        assert!(result.output.contains("channel_permissions"));
         // The agent is told to relay rather than halt silently — and the block
         // was surfaced through progress, not dropped.
         assert!(result.output.contains("Relay this to the user"));
