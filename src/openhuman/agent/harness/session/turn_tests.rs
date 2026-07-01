@@ -1039,6 +1039,142 @@ async fn turn_checkpoint_falls_back_to_deterministic_summary_when_model_summary_
 }
 
 #[tokio::test]
+async fn turn_synthesizes_final_answer_when_tool_turn_yields_no_text() {
+    // #4093: the model runs a tool and then yields a terminating response with
+    // NO text and NO further tool calls — the turn did work but would end
+    // silently. Because the cap was not hit, this is not a checkpoint case; the
+    // harness must enforce the "must produce a final response" terminal step by
+    // re-prompting the model (tools disabled) for a closing summary and
+    // returning that instead of a blank reply.
+    let provider: Arc<dyn Provider> = Arc::new(SequenceProvider {
+        responses: AsyncMutex::new(vec![
+            // Tool iteration (well under the cap).
+            Ok(ChatResponse {
+                text: Some("<tool_call>{\"name\":\"echo\",\"arguments\":{}}</tool_call>".into()),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+            // Terminal response with no text and no tool calls — the silent end.
+            Ok(ChatResponse {
+                text: Some(String::new()),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+            // The harness's forced final-answer re-prompt (tools disabled).
+            Ok(ChatResponse {
+                text: Some("All done — I ran echo and it succeeded.".into()),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+        ]),
+        requests: AsyncMutex::new(Vec::new()),
+    });
+    let mut agent = make_agent_with_builder(
+        provider,
+        vec![Box::new(EchoTool)],
+        Box::new(FixedMemoryLoader {
+            context: String::new(),
+        }),
+        vec![],
+        crate::openhuman::config::AgentConfig {
+            max_tool_iterations: 5,
+            ..crate::openhuman::config::AgentConfig::default()
+        },
+        crate::openhuman::config::ContextConfig::default(),
+    );
+
+    let reply = agent
+        .turn("hello")
+        .await
+        .expect("a tool-only turn with no final text should synthesize one, not error");
+    assert!(
+        !reply.trim().is_empty(),
+        "turn must never end with an empty final message (#4093), got: {reply:?}"
+    );
+    assert!(
+        reply.contains("I ran echo"),
+        "the synthesized final message should be the model's wrap-up, got: {reply}"
+    );
+    // The transcript must end on the assistant's final message, not a dangling
+    // tool cycle.
+    assert!(
+        matches!(
+            agent.history.last(),
+            Some(ConversationMessage::Chat(msg))
+                if msg.role == "assistant" && !msg.content.trim().is_empty()
+        ),
+        "history should end on a non-empty assistant message, got: {:?}",
+        agent.history.last()
+    );
+}
+
+#[tokio::test]
+async fn turn_final_answer_falls_back_to_deterministic_summary_when_reprompt_empty() {
+    // #4093 safety net: the tool ran, the model yielded no final text, and the
+    // forced final-answer re-prompt ALSO came back empty. The harness must fall
+    // back to a deterministic summary of the tool calls so the turn is never
+    // blank — and, unlike the cap path, it must read as a completed summary
+    // rather than a paused "tool-call limit" checkpoint.
+    let provider: Arc<dyn Provider> = Arc::new(SequenceProvider {
+        responses: AsyncMutex::new(vec![
+            Ok(ChatResponse {
+                text: Some("<tool_call>{\"name\":\"echo\",\"arguments\":{}}</tool_call>".into()),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+            Ok(ChatResponse {
+                text: Some(String::new()),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+            // Re-prompt for a final answer also returns empty.
+            Ok(ChatResponse {
+                text: Some(String::new()),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+        ]),
+        requests: AsyncMutex::new(Vec::new()),
+    });
+    let mut agent = make_agent_with_builder(
+        provider,
+        vec![Box::new(EchoTool)],
+        Box::new(FixedMemoryLoader {
+            context: String::new(),
+        }),
+        vec![],
+        crate::openhuman::config::AgentConfig {
+            max_tool_iterations: 5,
+            ..crate::openhuman::config::AgentConfig::default()
+        },
+        crate::openhuman::config::ContextConfig::default(),
+    );
+
+    let reply = agent
+        .turn("hello")
+        .await
+        .expect("empty final re-prompt should fall back deterministically, not error");
+    assert!(
+        !reply.trim().is_empty(),
+        "deterministic fallback must be non-empty (#4093), got: {reply:?}"
+    );
+    assert!(
+        reply.contains("echo"),
+        "fallback should list the tool that ran, got: {reply}"
+    );
+    assert!(
+        !reply.contains("tool-call limit"),
+        "a non-capped turn must not claim it hit the tool-call limit, got: {reply}"
+    );
+}
+
+#[tokio::test]
 async fn turn_checkpoint_usage_is_folded_into_transcript_accounting() {
     // The extra checkpoint provider call costs tokens; those must land in
     // the persisted transcript's cumulative accounting rather than being

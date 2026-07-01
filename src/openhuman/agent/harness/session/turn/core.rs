@@ -957,10 +957,11 @@ impl Agent {
             // cycle. Fold the extra call's usage into the turn accounting.
             let base = self.tool_dispatcher.to_provider_messages(&self.history);
             let (summary, summary_usage) = self
-                .summarize_iteration_checkpoint(
+                .summarize_turn_wrapup(
                     &base,
                     effective_model,
                     outcome.model_calls as u32 + 1,
+                    super::super::turn_checkpoint::MAX_ITER_CHECKPOINT_INSTRUCTION,
                 )
                 .await;
             if let Some(u) = summary_usage {
@@ -991,6 +992,48 @@ impl Agent {
                     iteration: outcome.model_calls,
                 },
             ));
+        } else if outcome.text.trim().is_empty() {
+            // #4093: the loop ran tool calls (tool_calls > 0, so the branch
+            // above did not fire) and then yielded a terminating response with
+            // no final text — the turn did work but would otherwise end
+            // silently, leaving the user with nothing. Enforce the
+            // "must produce a final response" terminal step: re-prompt the
+            // model (tools disabled) for a closing summary of what it did,
+            // falling back to a deterministic summary of the tool calls so the
+            // synthesized message is never itself empty. Fold the extra call's
+            // usage into the turn accounting, exactly like the cap path above.
+            let base = self.tool_dispatcher.to_provider_messages(&self.history);
+            let (summary, summary_usage) = self
+                .summarize_turn_wrapup(
+                    &base,
+                    effective_model,
+                    outcome.model_calls as u32 + 1,
+                    super::super::turn_checkpoint::FINAL_ANSWER_INSTRUCTION,
+                )
+                .await;
+            if let Some(u) = summary_usage {
+                input_tokens += u.input_tokens;
+                output_tokens += u.output_tokens;
+                cached_input_tokens += u.cached_input_tokens;
+                charged_amount_usd += u.charged_amount_usd;
+            }
+            let final_answer = if summary.trim().is_empty() {
+                super::super::turn_checkpoint::build_deterministic_final_summary(
+                    &tool_records_from_conversation(&outcome.conversation, &outcome.tool_outcomes),
+                )
+            } else {
+                summary
+            };
+            log::info!(
+                "[agent_loop] turn produced no final text after {} tool call(s); synthesized a closing summary ({} chars) — #4093",
+                outcome.tool_calls,
+                final_answer.chars().count()
+            );
+            self.history
+                .push(ConversationMessage::Chat(ChatMessage::assistant(
+                    final_answer.clone(),
+                )));
+            final_answer
         } else {
             outcome.text.clone()
         };

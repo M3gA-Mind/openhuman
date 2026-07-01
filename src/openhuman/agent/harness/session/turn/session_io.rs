@@ -1,7 +1,6 @@
 //! Session persistence: transcript loading, checkpointing, and background tasks.
 
 use super::super::transcript;
-use super::super::turn_checkpoint::MAX_ITER_CHECKPOINT_INSTRUCTION;
 use super::super::types::Agent;
 use crate::openhuman::agent::harness;
 use crate::openhuman::agent::progress::AgentProgress;
@@ -63,27 +62,30 @@ impl Agent {
         }
     }
 
-    /// Ask the provider for a resumable checkpoint summary when a turn
-    /// hits the tool-call iteration cap, with native tools **disabled** so
-    /// the model returns prose rather than another tool call. Streams text
-    /// deltas to the progress sink (when attached) so the checkpoint
+    /// Ask the provider for a short wrap-up message with native tools
+    /// **disabled** so the model returns prose rather than another tool call.
+    /// Streams text deltas to the progress sink (when attached) so the summary
     /// appears in the UI like any other reply.
     ///
+    /// `instruction` is the synthetic user turn that steers the wrap-up — the
+    /// tool-call-cap checkpoint (`MAX_ITER_CHECKPOINT_INSTRUCTION`) or the
+    /// no-final-answer close (`FINAL_ANSWER_INSTRUCTION`, issue #4093).
+    ///
     /// Returns the summary text (empty when the provider call fails or
-    /// yields nothing — the caller then falls back to
-    /// [`build_deterministic_checkpoint`] so the thread is never left on an
-    /// unterminated tool cycle, bug-report-2026-05-26 A1) **paired with the
-    /// provider usage** for this extra call, so the caller can fold it into
-    /// the turn's cumulative token/cost accounting instead of silently
-    /// dropping it.
-    pub(super) async fn summarize_iteration_checkpoint(
+    /// yields nothing — the caller then falls back to a deterministic builder
+    /// so the turn is never left without a well-formed assistant message,
+    /// bug-report-2026-05-26 A1 / issue #4093) **paired with the provider
+    /// usage** for this extra call, so the caller can fold it into the turn's
+    /// cumulative token/cost accounting instead of silently dropping it.
+    pub(super) async fn summarize_turn_wrapup(
         &self,
         base_messages: &[ChatMessage],
         effective_model: &str,
         iteration_for_stream: u32,
+        instruction: &str,
     ) -> (String, Option<UsageInfo>) {
         let mut messages = base_messages.to_vec();
-        messages.push(ChatMessage::user(MAX_ITER_CHECKPOINT_INSTRUCTION));
+        messages.push(ChatMessage::user(instruction));
 
         // Mirror the main loop's streaming sink so the checkpoint renders
         // incrementally. Only text deltas are relevant here (tools are
