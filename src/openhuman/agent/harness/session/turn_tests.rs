@@ -746,6 +746,130 @@ async fn turn_runs_full_tool_cycle_with_context_and_hooks() {
         .any(|msg| msg.role == "user" && msg.content.contains("[Tool results]")));
 }
 
+/// Issue #4117 — when a required structured-output contract is set and the model
+/// emits prose without the mandated JSON block, the turn engine re-prompts and
+/// the recovered block-bearing reply is what the turn returns.
+#[tokio::test]
+async fn turn_repairs_missing_required_output_via_reprompt() {
+    let provider_impl = Arc::new(SequenceProvider {
+        responses: AsyncMutex::new(vec![
+            // Turn 1 final reply: prose only, no `thoughts` block.
+            Ok(ChatResponse {
+                text: Some("Sure, I'll handle that.".into()),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+            // Corrective re-prompt: the model now emits a valid block.
+            Ok(ChatResponse {
+                text: Some(
+                    "{\"thoughts\": \"planning the work\", \"next_action\": \"answer\"}".into(),
+                ),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+        ]),
+        requests: AsyncMutex::new(Vec::new()),
+    });
+    let provider: Arc<dyn Provider> = provider_impl.clone();
+
+    let config = crate::openhuman::config::AgentConfig {
+        max_tool_iterations: 3,
+        max_history_messages: 10,
+        required_output: Some(crate::openhuman::config::RequiredOutputContract {
+            block_key: "thoughts".into(),
+            required_keys: vec!["next_action".into()],
+        }),
+        ..crate::openhuman::config::AgentConfig::default()
+    };
+
+    let mut agent = make_agent_with_builder(
+        provider,
+        vec![],
+        Box::new(FixedMemoryLoader {
+            context: String::new(),
+        }),
+        vec![],
+        config,
+        crate::openhuman::config::ContextConfig::default(),
+    );
+
+    let response = agent.turn("hello").await.expect("turn should succeed");
+
+    // The returned reply carries the recovered block.
+    assert!(
+        response.contains("thoughts") && response.contains("next_action"),
+        "repaired reply must contain the required block, got: {response}"
+    );
+    // The omitting prose reply was re-prompted (2 provider calls total).
+    assert_eq!(provider_impl.requests.lock().await.len(), 2);
+    // History's trailing assistant message was rewritten to match.
+    assert!(agent.history.iter().rev().any(|message| matches!(
+        message,
+        ConversationMessage::Chat(chat)
+            if chat.role == "assistant" && chat.content.contains("next_action")
+    )));
+}
+
+/// Issue #4117 — when the corrective re-prompt *also* omits the block, the turn
+/// engine synthesizes a minimal valid block so the accepted turn is never left
+/// without one.
+#[tokio::test]
+async fn turn_synthesizes_required_output_when_reprompt_also_omits() {
+    let provider_impl = Arc::new(SequenceProvider {
+        responses: AsyncMutex::new(vec![
+            // Turn 1 final reply: prose only.
+            Ok(ChatResponse {
+                text: Some("Working on it.".into()),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+            // Re-prompt: still no block.
+            Ok(ChatResponse {
+                text: Some("Still just prose, sorry.".into()),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+        ]),
+        requests: AsyncMutex::new(Vec::new()),
+    });
+    let provider: Arc<dyn Provider> = provider_impl.clone();
+
+    let config = crate::openhuman::config::AgentConfig {
+        max_tool_iterations: 3,
+        max_history_messages: 10,
+        required_output: Some(crate::openhuman::config::RequiredOutputContract::new("thoughts")),
+        ..crate::openhuman::config::AgentConfig::default()
+    };
+
+    let mut agent = make_agent_with_builder(
+        provider,
+        vec![],
+        Box::new(FixedMemoryLoader {
+            context: String::new(),
+        }),
+        vec![],
+        config,
+        crate::openhuman::config::ContextConfig::default(),
+    );
+
+    let response = agent.turn("hello").await.expect("turn should succeed");
+
+    // A synthesized block was prepended, and the model's prose is preserved.
+    let block = crate::openhuman::agent::harness::parse::extract_json_values(&response)
+        .into_iter()
+        .find(|v| v.get("thoughts").is_some());
+    assert!(
+        block.is_some(),
+        "synthesized reply must carry a `thoughts` block, got: {response}"
+    );
+    assert!(response.contains("Still just prose"));
+    assert_eq!(provider_impl.requests.lock().await.len(), 2);
+}
+
 #[tokio::test]
 async fn turn_triggers_configured_memory_agent_before_parent_prompt() {
     crate::openhuman::agent::harness::definition::AgentDefinitionRegistry::init_global_builtins()

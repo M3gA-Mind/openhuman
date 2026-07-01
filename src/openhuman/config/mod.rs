@@ -41,6 +41,7 @@ pub use schema::{
     McpClientIdentityConfig, McpServerConfig, MeetConfig, MemoryConfig, MemoryTreeConfig,
     ModelRouteConfig, MultimodalConfig, MultimodalFileConfig, ObservabilityConfig,
     OrchestratorModelConfig, PolymarketClobCredentials, PolymarketConfig, ProxyConfig, ProxyScope,
+    RequiredOutputContract,
     ReflectionSource, ReliabilityConfig, ResourceLimitsConfig, RuntimeConfig, SandboxBackend,
     SandboxConfig, SchedulerConfig, SchedulerGateConfig, SchedulerGateMode,
     ScreenIntelligenceConfig, SearchConfig, SearchEngine, SearchEngineCredentials, SearxngConfig,

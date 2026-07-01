@@ -159,6 +159,62 @@ fn default_max_depth() -> u32 {
     3
 }
 
+/// A per-agent contract requiring a structured JSON block in every turn's final
+/// reply (issue #4117).
+///
+/// Some agents are consumed by downstream parsing/routing that expects a
+/// mandated JSON block — e.g. a `thoughts` block like
+/// `{"thoughts": "…", "next_action": "…"}` — on **every** turn. Models
+/// frequently omit it, leaving those consumers with nothing. When this contract
+/// is set on [`AgentConfig::required_output`], the turn engine validates the
+/// reply and repairs an omitted block before the turn is accepted (see
+/// `crate::openhuman::agent::harness::required_output`), so consumers always get
+/// a well-formed block.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub struct RequiredOutputContract {
+    /// The JSON key that identifies the required block (e.g. `"thoughts"`). The
+    /// contract is satisfied when the reply contains a JSON object carrying this
+    /// key — plus every key in [`required_keys`](Self::required_keys) — with a
+    /// non-null value.
+    pub block_key: String,
+    /// Additional sibling keys that must also be present and non-null in the
+    /// same block (e.g. `["next_action"]`). The `block_key` is always required
+    /// and need not be repeated here.
+    pub required_keys: Vec<String>,
+}
+
+impl RequiredOutputContract {
+    /// Construct a contract from a block key with no extra required siblings.
+    pub fn new(block_key: impl Into<String>) -> Self {
+        Self {
+            block_key: block_key.into(),
+            required_keys: Vec::new(),
+        }
+    }
+
+    /// Every key that must be present — the block key followed by any declared
+    /// siblings — order-preserving, trimmed, and de-duplicated. Empty when the
+    /// contract carries no non-blank keys, in which case it is inert and the
+    /// turn engine skips enforcement.
+    pub fn all_keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = Vec::new();
+        for key in std::iter::once(&self.block_key).chain(self.required_keys.iter()) {
+            let trimmed = key.trim();
+            if !trimmed.is_empty() && !keys.iter().any(|k| k == trimmed) {
+                keys.push(trimmed.to_string());
+            }
+        }
+        keys
+    }
+
+    /// Whether this contract actually constrains output. A contract with no
+    /// non-blank keys is inert and enforcement is skipped.
+    pub fn is_active(&self) -> bool {
+        !self.all_keys().is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct AgentConfig {
@@ -243,6 +299,14 @@ pub struct AgentConfig {
     /// `OPENHUMAN_TOOL_TIMEOUT_SECS` env var still overrides it when set.
     #[serde(default = "default_agent_timeout_secs")]
     pub agent_timeout_secs: u64,
+
+    /// Optional required structured-output contract. When set to an active
+    /// contract, every turn's final reply must contain the mandated JSON block;
+    /// the turn engine validates and repairs an omitted block before the turn is
+    /// accepted (issue #4117). `None` (the default) disables enforcement so
+    /// existing agents are unaffected.
+    #[serde(default)]
+    pub required_output: Option<RequiredOutputContract>,
 }
 
 fn default_tool_result_budget_bytes() -> usize {
@@ -374,6 +438,7 @@ impl Default for AgentConfig {
             channel_permissions: std::collections::HashMap::new(),
             tool_result_budget_bytes: default_tool_result_budget_bytes(),
             agent_timeout_secs: default_agent_timeout_secs(),
+            required_output: None,
         }
     }
 }

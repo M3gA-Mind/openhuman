@@ -93,6 +93,25 @@ fn tool_records_from_conversation(
     records
 }
 
+/// Rewrite the most recent assistant `Chat` message in `history` to `text`,
+/// keeping the persisted transcript and the next turn's KV-cache prefix
+/// consistent with a repaired required-output reply (issue #4117). Falls back to
+/// appending a fresh assistant message when the turn left no trailing assistant
+/// `Chat` (defensive — a clean finish always ends on one).
+fn replace_last_assistant_reply(history: &mut Vec<ConversationMessage>, text: &str) {
+    for message in history.iter_mut().rev() {
+        if let ConversationMessage::Chat(chat) = message {
+            if chat.role == "assistant" {
+                chat.content = text.to_string();
+                return;
+            }
+        }
+    }
+    history.push(ConversationMessage::Chat(ChatMessage::assistant(
+        text.to_string(),
+    )));
+}
+
 fn render_agent_context_status_note(sources: &[harness::AgentContextPreparedSource]) -> String {
     let sources = if sources.is_empty() {
         "the OpenHuman harness".to_string()
@@ -992,7 +1011,30 @@ impl Agent {
                 },
             ));
         } else {
-            outcome.text.clone()
+            // Enforce the required structured-output contract (issue #4117):
+            // when this agent must emit a JSON block every turn and the final
+            // reply omitted it, validate-and-repair (one corrective re-prompt,
+            // else a synthesized minimal block) before the turn is accepted, so
+            // downstream parsing/routing never receives an omitted block. The
+            // trailing assistant message is rewritten to match, and the repair
+            // call's usage is folded into the turn accounting.
+            let mut reply = outcome.text.clone();
+            if let Some(contract) = self.config.required_output.clone() {
+                if let Some((repaired, repair_usage)) = self
+                    .enforce_required_output(&reply, &contract, effective_model)
+                    .await
+                {
+                    if let Some(u) = repair_usage {
+                        input_tokens += u.input_tokens;
+                        output_tokens += u.output_tokens;
+                        cached_input_tokens += u.cached_input_tokens;
+                        charged_amount_usd += u.charged_amount_usd;
+                    }
+                    replace_last_assistant_reply(&mut self.history, &repaired);
+                    reply = repaired;
+                }
+            }
+            reply
         };
         self.trim_history();
 

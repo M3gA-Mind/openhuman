@@ -163,6 +163,122 @@ impl Agent {
         }
     }
 
+    /// Enforce this agent's required structured-output contract on a clean final
+    /// reply (issue #4117).
+    ///
+    /// When the contract is active and `reply` already carries a well-formed
+    /// block, returns `None` (the caller keeps `reply` unchanged). When the block
+    /// is omitted, the turn is **repaired** so downstream parsing/routing always
+    /// receives one:
+    ///
+    /// 1. one corrective re-prompt (tools disabled), seeded with the current
+    ///    history — which already carries the omitting assistant reply — plus
+    ///    [`repair_instruction`]; if it recovers a valid block, that becomes the
+    ///    reply; otherwise
+    /// 2. a minimal [`synthesize_block`] is prepended to the model's prose so the
+    ///    accepted turn is guaranteed to contain a valid block.
+    ///
+    /// Returns `Some((repaired_text, usage))` when a repair occurred so the caller
+    /// can fold the extra call's usage into the turn accounting and rewrite the
+    /// trailing assistant message. `usage` is `None` when the re-prompt call made
+    /// no request or failed.
+    ///
+    /// [`repair_instruction`]: harness::required_output::repair_instruction
+    /// [`synthesize_block`]: harness::required_output::synthesize_block
+    pub(in super::super) async fn enforce_required_output(
+        &self,
+        reply: &str,
+        contract: &crate::openhuman::config::RequiredOutputContract,
+        effective_model: &str,
+    ) -> Option<(String, Option<UsageInfo>)> {
+        if harness::required_output::output_satisfies_contract(reply, contract) {
+            return None;
+        }
+        log::warn!(
+            "[agent_loop] required output block `{}` omitted from turn reply — repairing",
+            contract.block_key
+        );
+
+        // Tier 1 — one corrective re-prompt with native tools disabled. The
+        // current history already holds the omitting assistant reply, so the
+        // model sees exactly what it left out.
+        let mut base = self.tool_dispatcher.to_provider_messages(&self.history);
+        base.push(ChatMessage::user(harness::required_output::repair_instruction(
+            contract,
+        )));
+        let (repair_text, usage) = self
+            .reprompt_for_required_block(&base, effective_model)
+            .await;
+        if harness::required_output::output_satisfies_contract(&repair_text, contract) {
+            log::info!(
+                "[agent_loop] required output block `{}` recovered via re-prompt",
+                contract.block_key
+            );
+            return Some((repair_text, usage));
+        }
+
+        // Tier 2 — deterministic fallback: prepend a minimal valid block to the
+        // model's original prose so the accepted turn always carries one. Fold
+        // in the (failed) re-prompt's usage so the extra call is still accounted.
+        log::warn!(
+            "[agent_loop] required output block `{}` still missing after re-prompt — synthesizing a minimal block",
+            contract.block_key
+        );
+        let synthesized = format!(
+            "{}\n\n{}",
+            harness::required_output::synthesize_block(contract),
+            reply
+        );
+        Some((synthesized, usage))
+    }
+
+    /// Ask the provider once for a reply that includes the required
+    /// structured-output block, with native tools **disabled** so the model
+    /// returns text rather than another tool call. Returns the parsed prose
+    /// paired with the call's usage (empty text + `None` usage when the call
+    /// fails or yields only tool-call markup), mirroring
+    /// [`summarize_iteration_checkpoint`](Self::summarize_iteration_checkpoint).
+    async fn reprompt_for_required_block(
+        &self,
+        messages: &[ChatMessage],
+        effective_model: &str,
+    ) -> (String, Option<UsageInfo>) {
+        let result = self
+            .provider
+            .chat(
+                ChatRequest {
+                    messages,
+                    tools: None,
+                    stream: None,
+                    max_tokens: Some(AGENT_TURN_MAX_OUTPUT_TOKENS),
+                },
+                effective_model,
+                self.temperature,
+            )
+            .await;
+        match result {
+            Ok(resp) => {
+                let usage = resp.usage.clone();
+                // Strip any stray tool-call markup a text-mode model may emit;
+                // keep only the prose (which should now carry the JSON block).
+                let (text, calls) = self.tool_dispatcher.parse_response(&resp);
+                let out = if !text.trim().is_empty() {
+                    text
+                } else if calls.is_empty() {
+                    resp.text.unwrap_or_default()
+                } else {
+                    // Only tool-call markup was present — no usable prose.
+                    String::new()
+                };
+                (out, usage)
+            }
+            Err(e) => {
+                log::warn!("[agent_loop] required-output re-prompt call failed: {e:#}");
+                (String::new(), None)
+            }
+        }
+    }
+
     /// Persist the exact provider messages as a session transcript.
     ///
     /// Writes JSONL as source of truth and re-renders the companion `.md`
