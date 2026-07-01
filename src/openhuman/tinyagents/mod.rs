@@ -23,6 +23,7 @@ mod convert;
 pub mod delegation;
 pub mod middleware;
 mod model;
+pub mod no_progress;
 pub mod observability;
 pub mod orchestration;
 pub mod stop_hooks;
@@ -121,8 +122,10 @@ fn run_policy_for(max_iterations: usize) -> RunPolicy {
 
 /// Consecutive identical tool failures that trip the repeated-failure circuit
 /// breaker (see `middleware::RepeatedToolFailureMiddleware`). Three matches the
-/// legacy progress-guard's tolerance before it halted a stuck loop.
-const REPEATED_TOOL_FAILURE_THRESHOLD: usize = 3;
+/// legacy progress-guard's tolerance before it halted a stuck loop; the breaker
+/// nudges the model to change strategy one step earlier (see
+/// [`no_progress::NoProgressTracker`]).
+const REPEATED_TOOL_FAILURE_THRESHOLD: usize = no_progress::DEFAULT_IDENTICAL_HALT_THRESHOLD;
 
 /// Legacy default model-call cap used when a caller passes `max_iterations == 0`
 /// to request "unset" (native-bus / test callers relied on the old loop treating
@@ -450,10 +453,14 @@ pub async fn run_turn_via_tinyagents_shared(
     // handle is a no-op — the loop just drains an empty steering channel.
     let handle = Some(SteeringHandle::allow_all());
 
-    // Repeated-failure circuit breaker: pause the run when a tool returns the same
-    // error `REPEATED_TOOL_FAILURE_THRESHOLD` times in a row, so a deterministic
-    // security/approval denial or terminal tool error surfaces its root cause
-    // instead of burning the whole iteration budget (legacy ProgressGuard parity).
+    // Repeated-failure circuit breaker (issue #4089): on a repeated identical
+    // failure it first injects a structured "no progress since step X" nudge so
+    // the model changes strategy, and only pauses the run once same-strategy
+    // retries are exhausted (`REPEATED_TOOL_FAILURE_THRESHOLD`) — so a
+    // deterministic security/approval denial or terminal tool error surfaces its
+    // root cause instead of burning the whole iteration budget (legacy
+    // ProgressGuard parity). The escalation ladder lives in
+    // `no_progress::NoProgressTracker`.
     let halt_summary: HaltSummarySlot = std::sync::Arc::new(std::sync::Mutex::new(None));
     if let Some(handle) = &handle {
         harness.push_middleware(Arc::new(middleware::RepeatedToolFailureMiddleware::new(
