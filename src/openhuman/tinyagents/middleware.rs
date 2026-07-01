@@ -1009,6 +1009,16 @@ impl Middleware<()> for ArgRecoveryMiddleware {
 pub struct MemoryProtocolMiddleware {
     tracker:
         std::sync::Mutex<crate::openhuman::agent::harness::memory_protocol::MemoryProtocolTracker>,
+    /// call_id → classified op, captured in `before_tool` (the tool result carries
+    /// no arguments, yet `update_memory_md` and `memory_tree` can only be
+    /// classified from their `file` / `mode` argument). Correlated back by
+    /// `result.call_id` in `after_tool`.
+    pending_ops: std::sync::Mutex<
+        std::collections::HashMap<
+            String,
+            crate::openhuman::agent::harness::memory_protocol::MemoryOp,
+        >,
+    >,
 }
 
 impl MemoryProtocolMiddleware {
@@ -1017,6 +1027,7 @@ impl MemoryProtocolMiddleware {
             tracker: std::sync::Mutex::new(
                 crate::openhuman::agent::harness::memory_protocol::MemoryProtocolTracker::new(),
             ),
+            pending_ops: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 }
@@ -1033,12 +1044,43 @@ impl Middleware<()> for MemoryProtocolMiddleware {
         "memory_protocol"
     }
 
+    async fn before_tool(
+        &self,
+        _ctx: &mut RunContext<()>,
+        _state: &(),
+        call: &mut TaToolCall,
+    ) -> TaResult<()> {
+        // Classify with the arguments in hand (the result won't carry them) and
+        // stash the op keyed by call id. Only memory-relevant ops are stored, so
+        // the map stays empty on turns that never touch memory.
+        let op = crate::openhuman::agent::harness::memory_protocol::classify_memory_op(
+            &call.name,
+            &call.arguments,
+        );
+        if op != crate::openhuman::agent::harness::memory_protocol::MemoryOp::Other {
+            if let Ok(mut ops) = self.pending_ops.lock() {
+                ops.insert(call.id.clone(), op);
+            }
+        }
+        Ok(())
+    }
+
     async fn after_tool(
         &self,
         _ctx: &mut RunContext<()>,
         _state: &(),
         result: &mut TaToolResult,
     ) -> TaResult<()> {
+        // Consume the op captured for this call (removing it so the map can't
+        // grow unbounded). Absent → a non-memory tool: nothing to enforce.
+        let op = self
+            .pending_ops
+            .lock()
+            .ok()
+            .and_then(|mut ops| ops.remove(&result.call_id));
+        let Some(op) = op else {
+            return Ok(());
+        };
         // Only successful memory ops advance the protocol — a failed write did
         // not mutate memory and must not demand an index update.
         if result.error.is_some() {
@@ -1049,7 +1091,7 @@ impl Middleware<()> for MemoryProtocolMiddleware {
                 Ok(guard) => guard,
                 Err(poisoned) => poisoned.into_inner(),
             };
-            tracker.observe_tool(&result.name)
+            tracker.observe(op)
         };
         if let Some(note) = observation.guidance(&result.name) {
             tracing::debug!(
@@ -1787,11 +1829,32 @@ mod tests {
 
     use crate::openhuman::agent::harness::memory_protocol::MEMORY_PROTOCOL_MARKER;
 
+    /// Drive one full tool cycle through the middleware: `before_tool` (captures
+    /// the arguments the result won't carry) then `after_tool`, correlated by a
+    /// shared call id. Returns the (possibly annotated) result.
+    async fn run_cycle(
+        mw: &MemoryProtocolMiddleware,
+        name: &str,
+        args: serde_json::Value,
+        content: &str,
+        error: Option<&str>,
+    ) -> TaToolResult {
+        let mut call = TaToolCall {
+            id: "c1".into(),
+            name: name.into(),
+            arguments: args,
+        };
+        mw.before_tool(&mut ctx(), &(), &mut call).await.unwrap();
+        let mut result = tool_result(name, content); // call_id "c1" matches
+        result.error = error.map(|e| e.to_string());
+        mw.after_tool(&mut ctx(), &(), &mut result).await.unwrap();
+        result
+    }
+
     #[tokio::test]
     async fn memory_write_without_index_read_gets_a_corrective_note() {
         let mw = MemoryProtocolMiddleware::new();
-        let mut result = tool_result("memory_store", "stored entry 42");
-        mw.after_tool(&mut ctx(), &(), &mut result).await.unwrap();
+        let result = run_cycle(&mw, "memory_store", json!({}), "stored entry 42", None).await;
         assert!(
             result.content.contains(MEMORY_PROTOCOL_MARKER),
             "a write with no preceding dedupe read should be annotated: {}",
@@ -1809,15 +1872,13 @@ mod tests {
     async fn full_cycle_read_then_write_then_update_only_reminds_on_the_write() {
         let mw = MemoryProtocolMiddleware::new();
 
-        let mut read = tool_result("memory_recall", "no near-duplicates found");
-        mw.after_tool(&mut ctx(), &(), &mut read).await.unwrap();
+        let read = run_cycle(&mw, "memory_recall", json!({}), "no dupes", None).await;
         assert!(
             !read.content.contains(MEMORY_PROTOCOL_MARKER),
             "a read is not annotated"
         );
 
-        let mut write = tool_result("memory_store", "stored");
-        mw.after_tool(&mut ctx(), &(), &mut write).await.unwrap();
+        let write = run_cycle(&mw, "memory_store", json!({}), "stored", None).await;
         assert!(write.content.contains(MEMORY_PROTOCOL_MARKER));
         // The read preceded the write, so no missing-read complaint — just the
         // forward "sync the index" reminder.
@@ -1825,8 +1886,14 @@ mod tests {
             .content
             .contains("without first reading the memory index"));
 
-        let mut update = tool_result("update_memory_md", "index updated");
-        mw.after_tool(&mut ctx(), &(), &mut update).await.unwrap();
+        let update = run_cycle(
+            &mw,
+            "update_memory_md",
+            json!({ "file": "MEMORY.md" }),
+            "index updated",
+            None,
+        )
+        .await;
         assert!(
             !update.content.contains(MEMORY_PROTOCOL_MARKER),
             "closing the cycle needs no guidance"
@@ -1834,10 +1901,61 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn skill_md_update_does_not_close_the_memory_cycle() {
+        let mw = MemoryProtocolMiddleware::new();
+        run_cycle(&mw, "memory_recall", json!({}), "checked", None).await;
+        run_cycle(&mw, "memory_store", json!({}), "stored", None).await;
+        // update_memory_md targeting SKILL.md must NOT reconcile the MEMORY.md
+        // index, so the stale-index warning is still owed at run end.
+        run_cycle(
+            &mw,
+            "update_memory_md",
+            json!({ "file": "SKILL.md" }),
+            "skill updated",
+            None,
+        )
+        .await;
+        let mut run = AgentRun::new();
+        // Still pending → after_agent takes its warn path without erroring.
+        mw.after_agent(&mut ctx(), &(), &mut run).await.unwrap();
+        // A following write reports drift, proving pending was not cleared.
+        let next = run_cycle(&mw, "memory_store", json!({}), "again", None).await;
+        assert!(
+            next.content.contains("drifting"),
+            "SKILL.md update must not mask the stale MEMORY.md index: {}",
+            next.content
+        );
+    }
+
+    #[tokio::test]
+    async fn consolidated_memory_tree_ingest_is_treated_as_a_write() {
+        let mw = MemoryProtocolMiddleware::new();
+        let ingest = run_cycle(
+            &mw,
+            "memory_tree",
+            json!({ "mode": "ingest_document" }),
+            "ingested",
+            None,
+        )
+        .await;
+        assert!(
+            ingest.content.contains(MEMORY_PROTOCOL_MARKER),
+            "memory_tree ingest_document is a write and must be annotated: {}",
+            ingest.content
+        );
+    }
+
+    #[tokio::test]
     async fn failed_memory_write_does_not_advance_the_protocol() {
         let mw = MemoryProtocolMiddleware::new();
-        let mut failed = failing_result("memory_store", "disk full");
-        mw.after_tool(&mut ctx(), &(), &mut failed).await.unwrap();
+        let failed = run_cycle(
+            &mw,
+            "memory_store",
+            json!({}),
+            "disk full",
+            Some("disk full"),
+        )
+        .await;
         // A failed write is not annotated and leaves nothing pending, so a later
         // run-end sweep must not warn about a stale index.
         assert!(!failed.content.contains(MEMORY_PROTOCOL_MARKER));
@@ -1849,15 +1967,12 @@ mod tests {
     #[tokio::test]
     async fn second_write_without_an_update_flags_index_drift() {
         let mw = MemoryProtocolMiddleware::new();
-        let mut read = tool_result("memory_recall", "checked");
-        mw.after_tool(&mut ctx(), &(), &mut read).await.unwrap();
-        let mut first = tool_result("memory_store", "a");
-        mw.after_tool(&mut ctx(), &(), &mut first).await.unwrap();
+        run_cycle(&mw, "memory_recall", json!({}), "checked", None).await;
+        let first = run_cycle(&mw, "memory_store", json!({}), "a", None).await;
         assert!(!first.content.contains("drifting"));
 
         // No update_memory_md between the two writes → the index is drifting.
-        let mut second = tool_result("memory_store", "b");
-        mw.after_tool(&mut ctx(), &(), &mut second).await.unwrap();
+        let second = run_cycle(&mw, "memory_store", json!({}), "b", None).await;
         assert!(
             second.content.contains("drifting"),
             "a second unsynced write should flag index drift: {}",

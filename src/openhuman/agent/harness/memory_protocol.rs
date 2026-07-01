@@ -3,12 +3,13 @@
 //! Agents are instructed to follow a **read-index → dedupe → write →
 //! update-index** cycle when they mutate durable memory:
 //!
-//! 1. Read the memory index (`memory_recall` / a `memory_tree_*` query, or
+//! 1. Read the memory index (`memory_recall` / a `memory_tree` query, or
 //!    equivalently the `MEMORY.md` index) to check for near-duplicates *before*
 //!    creating an entry.
-//! 2. Write the entry (`memory_store`, `memory_forget`, `memory_tree_ingest_document`).
-//! 3. Call `update_memory_md` afterward so the `MEMORY.md` index stays in sync
-//!    with the underlying store.
+//! 2. Write the entry (`memory_store`, `memory_forget`, or a document ingest via
+//!    `memory_tree_ingest_document` / `memory_tree` with `mode: "ingest_document"`).
+//! 3. Call `update_memory_md` (targeting `MEMORY.md`) afterward so the index
+//!    stays in sync with the underlying store.
 //!
 //! The protocol was previously described to the model but never enforced, so it
 //! was followed inconsistently — agents wrote entries without a dedupe read
@@ -49,23 +50,44 @@ pub enum MemoryOp {
     Other,
 }
 
-/// Classify a tool by name into a [`MemoryOp`].
+/// Classify a tool call into a [`MemoryOp`], keyed by name and — for the two
+/// multi-purpose tools — the arguments.
 ///
-/// Name-based (the classifier runs before arguments matter): the memory tool
-/// surface is a small, stable set of `memory_*` / `update_memory_md` names.
-pub fn classify_memory_op(tool_name: &str) -> MemoryOp {
+/// Two tools are polymorphic and cannot be classified by name alone:
+/// - `update_memory_md` edits either `MEMORY.md` **or** `SKILL.md`
+///   (`src/openhuman/tools/impl/filesystem/update_memory_md.rs`); only a
+///   `MEMORY.md` edit reconciles the memory index, so a `SKILL.md` edit is not
+///   an [`MemoryOp::IndexUpdate`] and must not close the cycle.
+/// - the consolidated `memory_tree` tool (`src/openhuman/memory/query/mod.rs`)
+///   is a read in every `mode` except `ingest_document`, which writes a document
+///   into the tree — a durable mutation.
+///
+/// The arguments are captured at `before_tool` time and correlated to the result
+/// by call id (the tool result itself carries no arguments).
+pub fn classify_memory_op(tool_name: &str, arguments: &serde_json::Value) -> MemoryOp {
+    let arg_str = |key: &str| arguments.get(key).and_then(|v| v.as_str());
     match tool_name {
-        // The index-sync step.
-        "update_memory_md" => MemoryOp::IndexUpdate,
+        // The index-sync step — but only for the MEMORY.md index. The same tool
+        // can edit SKILL.md, which does not reconcile the memory index and so is
+        // a no-op for this protocol.
+        "update_memory_md" => match arg_str("file") {
+            Some("MEMORY.md") => MemoryOp::IndexUpdate,
+            _ => MemoryOp::Other,
+        },
         // Durable mutations: create an entry, delete an entry, or ingest a
-        // document into the memory tree.
+        // document into the memory tree (the split-out ingest tool).
         "memory_store" | "memory_forget" | "memory_tree_ingest_document" => MemoryOp::Write,
-        // Dedupe reads: recall/search over stored memory, or any read-only walk
-        // of the memory tree. These let the agent check for near-duplicates
-        // before writing.
+        // Consolidated memory_tree tool: `ingest_document` writes; every other
+        // mode is a read-only retrieval.
+        "memory_tree" => match arg_str("mode") {
+            Some("ingest_document") => MemoryOp::Write,
+            _ => MemoryOp::IndexRead,
+        },
+        // Dedupe reads: recall/search over stored memory, or a read-only walk of
+        // the memory tree. These let the agent check for near-duplicates before
+        // writing.
         "memory_recall"
         | "memory_search"
-        | "memory_tree"
         | "memory_tree_query_source"
         | "memory_tree_search_entities"
         | "memory_tree_fetch_leaves"
@@ -178,9 +200,14 @@ impl MemoryProtocolTracker {
         }
     }
 
-    /// Classify `tool_name` and [`observe`](Self::observe) it in one step.
-    pub fn observe_tool(&mut self, tool_name: &str) -> MemoryProtocolObservation {
-        self.observe(classify_memory_op(tool_name))
+    /// Classify a tool call (name + arguments) and [`observe`](Self::observe) it
+    /// in one step.
+    pub fn observe_tool(
+        &mut self,
+        tool_name: &str,
+        arguments: &serde_json::Value,
+    ) -> MemoryProtocolObservation {
+        self.observe(classify_memory_op(tool_name, arguments))
     }
 
     /// Whether a memory write is still awaiting `update_memory_md`. Checked at
@@ -193,49 +220,101 @@ impl MemoryProtocolTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    /// Empty arguments — for the name-only tools where arguments are irrelevant.
+    fn no_args() -> serde_json::Value {
+        json!({})
+    }
 
     #[test]
     fn classifies_the_memory_tool_surface() {
+        let a = no_args();
+        assert_eq!(classify_memory_op("memory_store", &a), MemoryOp::Write);
+        assert_eq!(classify_memory_op("memory_forget", &a), MemoryOp::Write);
         assert_eq!(
-            classify_memory_op("update_memory_md"),
-            MemoryOp::IndexUpdate
-        );
-        assert_eq!(classify_memory_op("memory_store"), MemoryOp::Write);
-        assert_eq!(classify_memory_op("memory_forget"), MemoryOp::Write);
-        assert_eq!(
-            classify_memory_op("memory_tree_ingest_document"),
+            classify_memory_op("memory_tree_ingest_document", &a),
             MemoryOp::Write
         );
-        assert_eq!(classify_memory_op("memory_recall"), MemoryOp::IndexRead);
-        assert_eq!(classify_memory_op("memory_search"), MemoryOp::IndexRead);
+        assert_eq!(classify_memory_op("memory_recall", &a), MemoryOp::IndexRead);
+        assert_eq!(classify_memory_op("memory_search", &a), MemoryOp::IndexRead);
         assert_eq!(
-            classify_memory_op("memory_tree_search_entities"),
+            classify_memory_op("memory_tree_search_entities", &a),
             MemoryOp::IndexRead
         );
-        assert_eq!(classify_memory_op("send_message"), MemoryOp::Other);
-        assert_eq!(classify_memory_op("file_write"), MemoryOp::Other);
+        assert_eq!(classify_memory_op("send_message", &a), MemoryOp::Other);
+        assert_eq!(classify_memory_op("file_write", &a), MemoryOp::Other);
+    }
+
+    #[test]
+    fn update_memory_md_only_closes_the_cycle_for_the_memory_index() {
+        // A MEMORY.md edit reconciles the index; a SKILL.md edit does not and so
+        // must not close the cycle or clear a pending write.
+        assert_eq!(
+            classify_memory_op("update_memory_md", &json!({ "file": "MEMORY.md" })),
+            MemoryOp::IndexUpdate
+        );
+        assert_eq!(
+            classify_memory_op("update_memory_md", &json!({ "file": "SKILL.md" })),
+            MemoryOp::Other
+        );
+
+        // A SKILL.md update after a memory write leaves the index still owed.
+        let mut t = MemoryProtocolTracker::new();
+        t.observe_tool("memory_recall", &no_args());
+        t.observe_tool("memory_store", &no_args());
+        t.observe_tool("update_memory_md", &json!({ "file": "SKILL.md" }));
+        assert!(
+            t.pending_index_update(),
+            "a SKILL.md edit must not mask the stale MEMORY.md index"
+        );
+    }
+
+    #[test]
+    fn consolidated_memory_tree_ingest_is_a_write() {
+        // Every mode is a read except `ingest_document`, which writes.
+        assert_eq!(
+            classify_memory_op("memory_tree", &json!({ "mode": "ingest_document" })),
+            MemoryOp::Write
+        );
+        assert_eq!(
+            classify_memory_op("memory_tree", &json!({ "mode": "search_entities" })),
+            MemoryOp::IndexRead
+        );
+
+        // An ingest via the consolidated tool obliges an index update.
+        let mut t = MemoryProtocolTracker::new();
+        let obs = t.observe_tool("memory_tree", &json!({ "mode": "ingest_document" }));
+        assert!(obs.was_write, "ingest_document mode is a durable write");
+        assert!(t.pending_index_update());
     }
 
     #[test]
     fn full_cycle_reports_no_violation() {
         let mut t = MemoryProtocolTracker::new();
-        assert_eq!(t.observe_tool("memory_recall"), Default::default());
+        assert_eq!(
+            t.observe_tool("memory_recall", &no_args()),
+            Default::default()
+        );
 
-        let write = t.observe_tool("memory_store");
+        let write = t.observe_tool("memory_store", &no_args());
         assert!(write.was_write);
         assert!(!write.missing_index_read, "read preceded the write");
         assert!(!write.index_drift);
         assert!(t.pending_index_update());
 
         // Closing the cycle clears the pending index update.
-        assert_eq!(t.observe_tool("update_memory_md"), Default::default());
+        assert_eq!(
+            t.observe_tool("update_memory_md", &json!({ "file": "MEMORY.md" })),
+            Default::default()
+        );
         assert!(!t.pending_index_update());
     }
 
     #[test]
     fn write_without_index_read_is_flagged() {
         let mut t = MemoryProtocolTracker::new();
-        let obs = t.observe_tool("memory_store");
+        let obs = t.observe_tool("memory_store", &no_args());
         assert!(obs.was_write);
         assert!(obs.missing_index_read, "no dedupe read preceded the write");
         assert!(obs.needs_guidance());
@@ -248,14 +327,14 @@ mod tests {
     #[test]
     fn write_not_followed_by_update_is_detected_at_next_write() {
         let mut t = MemoryProtocolTracker::new();
-        t.observe_tool("memory_recall");
-        let first = t.observe_tool("memory_store");
+        t.observe_tool("memory_recall", &no_args());
+        let first = t.observe_tool("memory_store", &no_args());
         assert!(!first.index_drift);
         assert!(t.pending_index_update());
 
         // A second write with no intervening update_memory_md: the index is
         // drifting from the store.
-        let second = t.observe_tool("memory_store");
+        let second = t.observe_tool("memory_store", &no_args());
         assert!(second.index_drift, "prior write never synced the index");
         let note = second.guidance("memory_store").unwrap();
         assert!(note.contains("drifting"));
@@ -264,10 +343,10 @@ mod tests {
     #[test]
     fn pending_index_update_survives_until_update_at_run_end() {
         let mut t = MemoryProtocolTracker::new();
-        t.observe_tool("memory_recall");
-        t.observe_tool("memory_store");
+        t.observe_tool("memory_recall", &no_args());
+        t.observe_tool("memory_store", &no_args());
         // Intervening non-memory tool calls don't clear the obligation.
-        t.observe_tool("send_message");
+        t.observe_tool("send_message", &no_args());
         assert!(
             t.pending_index_update(),
             "index update still owed at run end"
@@ -277,12 +356,12 @@ mod tests {
     #[test]
     fn update_arms_a_fresh_cycle_that_expects_a_new_read() {
         let mut t = MemoryProtocolTracker::new();
-        t.observe_tool("memory_recall");
-        t.observe_tool("memory_store");
-        t.observe_tool("update_memory_md");
+        t.observe_tool("memory_recall", &no_args());
+        t.observe_tool("memory_store", &no_args());
+        t.observe_tool("update_memory_md", &json!({ "file": "MEMORY.md" }));
 
         // Next cycle: a write with no fresh read is flagged again.
-        let obs = t.observe_tool("memory_store");
+        let obs = t.observe_tool("memory_store", &no_args());
         assert!(
             obs.missing_index_read,
             "each cycle needs its own dedupe read"
@@ -292,10 +371,10 @@ mod tests {
     #[test]
     fn reads_and_other_ops_need_no_guidance() {
         let mut t = MemoryProtocolTracker::new();
-        assert!(!t.observe_tool("memory_recall").needs_guidance());
-        assert!(!t.observe_tool("send_message").needs_guidance());
+        assert!(!t.observe_tool("memory_recall", &no_args()).needs_guidance());
+        assert!(!t.observe_tool("send_message", &no_args()).needs_guidance());
         assert!(t
-            .observe_tool("memory_recall")
+            .observe_tool("memory_recall", &no_args())
             .guidance("memory_recall")
             .is_none());
     }

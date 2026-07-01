@@ -230,6 +230,10 @@ pub async fn run_turn_via_tinyagents(
     harness
         .register_model(model, Arc::new(provider_model))
         .set_default_model(model);
+    // Memory-protocol enforcement (issue #4116) — installed on this entrypoint
+    // too so both harness-build paths enforce the read → dedupe → write →
+    // update-index cycle consistently. No-op unless memory tools are called.
+    harness.push_middleware(Arc::new(middleware::MemoryProtocolMiddleware::new()));
     let tool_count = resolved_tools.len();
     for tool in resolved_tools {
         harness.register_tool(Arc::new(ToolAdapter::new(tool)));
