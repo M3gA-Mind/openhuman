@@ -198,8 +198,16 @@ impl RequiredOutputContract {
     /// contract carries no non-blank keys, in which case it is inert and the
     /// turn engine skips enforcement.
     pub fn all_keys(&self) -> Vec<String> {
-        let mut keys: Vec<String> = Vec::new();
-        for key in std::iter::once(&self.block_key).chain(self.required_keys.iter()) {
+        // The block key is the contract's defining key — a blank one makes the
+        // whole contract inert, even if `required_keys` lists siblings, so the
+        // feature never accepts or synthesizes a block missing that key.
+        let block_key = self.block_key.trim();
+        if block_key.is_empty() {
+            return Vec::new();
+        }
+
+        let mut keys: Vec<String> = vec![block_key.to_string()];
+        for key in &self.required_keys {
             let trimmed = key.trim();
             if !trimmed.is_empty() && !keys.iter().any(|k| k == trimmed) {
                 keys.push(trimmed.to_string());

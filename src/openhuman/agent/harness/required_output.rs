@@ -31,9 +31,16 @@ pub(crate) fn output_satisfies_contract(text: &str, contract: &RequiredOutputCon
     find_required_block(text, contract).is_some()
 }
 
-/// The first JSON object in `text` that carries every required key with a
-/// non-null value, or `None`. Reuses the harness JSON extractor so fenced,
-/// inline, and whole-object replies are all recognised.
+/// The required block when it appears in the expected **leading position** —
+/// the *first* JSON value in `text` must be an object carrying every required
+/// key with a non-null value — else `None`.
+///
+/// Issue #4117 mandates the block in a predictable position so downstream
+/// parsing/routing can rely on it. Prose before the block is fine (prose is not
+/// JSON, so the block is still the first extracted value), but a block buried
+/// after *another* JSON object is rejected and gets repaired rather than
+/// silently accepted. Reuses the harness JSON extractor so fenced, inline, and
+/// whole-object replies are all recognised.
 pub(crate) fn find_required_block(
     text: &str,
     contract: &RequiredOutputContract,
@@ -42,17 +49,16 @@ pub(crate) fn find_required_block(
     if keys.is_empty() {
         return None;
     }
-    for value in super::parse::extract_json_values(text) {
-        if let Some(obj) = value.as_object() {
-            let has_all = keys
-                .iter()
-                .all(|key| obj.get(key).is_some_and(|v| !v.is_null()));
-            if has_all {
-                return Some(value);
-            }
-        }
+    let first = super::parse::extract_json_values(text).into_iter().next()?;
+    let obj = first.as_object()?;
+    let has_all = keys
+        .iter()
+        .all(|key| obj.get(key).is_some_and(|v| !v.is_null()));
+    if has_all {
+        Some(first)
+    } else {
+        None
     }
-    None
 }
 
 /// A minimal, schema-valid block synthesised when the model omits the block and
@@ -134,6 +140,40 @@ mod tests {
             output_satisfies_contract(&synthesized, &contract),
             "synthesized fallback must satisfy the contract it was built from: {synthesized}"
         );
+    }
+
+    #[test]
+    fn leading_block_after_prose_is_accepted() {
+        let contract = thoughts_contract();
+        // Prose before the block is fine — prose is not JSON, so the block is
+        // still the first extracted value.
+        let text = "Here is my plan.\n{\"thoughts\": \"x\", \"next_action\": \"y\"}";
+        assert!(output_satisfies_contract(text, &contract));
+    }
+
+    #[test]
+    fn block_buried_after_another_json_object_is_rejected() {
+        let contract = thoughts_contract();
+        // A different JSON object leads; the required block is second → rejected
+        // so it gets repaired rather than silently accepted (issue #4117).
+        let text = "{\"foo\": 1}\n{\"thoughts\": \"x\", \"next_action\": \"y\"}";
+        assert!(!output_satisfies_contract(text, &contract));
+    }
+
+    #[test]
+    fn blank_block_key_makes_contract_inert() {
+        // A blank block key is inert even when sibling keys are listed — the
+        // contract's defining key can never be enforced, so enforcement is
+        // skipped instead of accepting a block missing that key.
+        let contract = RequiredOutputContract {
+            block_key: "   ".into(),
+            required_keys: vec!["next_action".into()],
+        };
+        assert!(!contract.is_active());
+        assert!(output_satisfies_contract(
+            "{\"next_action\": \"y\"}",
+            &contract
+        ));
     }
 
     #[test]

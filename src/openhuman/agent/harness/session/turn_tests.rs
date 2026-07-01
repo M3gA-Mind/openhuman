@@ -860,15 +860,19 @@ async fn turn_synthesizes_required_output_when_reprompt_also_omits() {
 
     let response = agent.turn("hello").await.expect("turn should succeed");
 
-    // A synthesized block was prepended, and the model's prose is preserved.
-    let block = crate::openhuman::agent::harness::parse::extract_json_values(&response)
+    // The synthesized block is prepended to the ORIGINAL turn reply
+    // ("Working on it."), not the failed corrective re-prompt — so the leading
+    // JSON object carries the block and the original prose is preserved.
+    let first_block = crate::openhuman::agent::harness::parse::extract_json_values(&response)
         .into_iter()
-        .find(|v| v.get("thoughts").is_some());
+        .next();
     assert!(
-        block.is_some(),
-        "synthesized reply must carry a `thoughts` block, got: {response}"
+        first_block
+            .as_ref()
+            .is_some_and(|v| v.get("thoughts").is_some()),
+        "synthesized reply must lead with a `thoughts` block, got: {response}"
     );
-    assert!(response.contains("Still just prose"));
+    assert!(response.contains("Working on it."));
     assert_eq!(provider_impl.requests.lock().await.len(), 2);
 }
 
