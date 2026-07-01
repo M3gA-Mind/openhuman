@@ -1029,6 +1029,19 @@ impl Agent {
                 outcome.tool_calls,
                 final_answer.chars().count()
             );
+            // The empty terminal assistant response was already folded into
+            // `self.history` via `outcome.conversation` above (an empty
+            // `Chat(assistant(""))` — see `messages_to_conversation`). Drop that
+            // blank turn before appending the synthesized answer so the
+            // transcript and the next prompt don't carry a dangling empty
+            // assistant message immediately before the real reply (Codex review).
+            if matches!(
+                self.history.last(),
+                Some(ConversationMessage::Chat(msg))
+                    if msg.role == "assistant" && msg.content.trim().is_empty()
+            ) {
+                self.history.pop();
+            }
             self.history
                 .push(ConversationMessage::Chat(ChatMessage::assistant(
                     final_answer.clone(),

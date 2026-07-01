@@ -1109,6 +1109,18 @@ async fn turn_synthesizes_final_answer_when_tool_turn_yields_no_text() {
         "history should end on a non-empty assistant message, got: {:?}",
         agent.history.last()
     );
+    // ...and the blank terminal assistant response (folded in from the turn
+    // outcome) must have been dropped, not left dangling before the synthesized
+    // answer (Codex review).
+    assert!(
+        !agent.history.iter().any(|m| matches!(
+            m,
+            ConversationMessage::Chat(msg)
+                if msg.role == "assistant" && msg.content.trim().is_empty()
+        )),
+        "no blank assistant turn should remain in history, got: {:?}",
+        agent.history
+    );
 }
 
 #[tokio::test]
@@ -1171,6 +1183,17 @@ async fn turn_final_answer_falls_back_to_deterministic_summary_when_reprompt_emp
     assert!(
         !reply.contains("tool-call limit"),
         "a non-capped turn must not claim it hit the tool-call limit, got: {reply}"
+    );
+    // The blank terminal assistant response must not linger before the
+    // deterministic summary (Codex review).
+    assert!(
+        !agent.history.iter().any(|m| matches!(
+            m,
+            ConversationMessage::Chat(msg)
+                if msg.role == "assistant" && msg.content.trim().is_empty()
+        )),
+        "no blank assistant turn should remain in history, got: {:?}",
+        agent.history
     );
 }
 
