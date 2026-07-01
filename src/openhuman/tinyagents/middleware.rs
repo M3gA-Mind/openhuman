@@ -1174,11 +1174,18 @@ impl Middleware<()> for RepeatedToolFailureMiddleware {
                     step,
                     "[tinyagents::mw] no progress — nudging the model to change strategy"
                 );
-                // Feed the corrective back into the loop as a user turn; the
-                // harness applies it at the next steering checkpoint (before the
-                // next model call), so the model sees it before it acts again.
+                // Feed the corrective back into the loop as a *system* (scaffold)
+                // message — not a user turn. The harness applies it at the next
+                // steering checkpoint (before the next model call), so the model
+                // sees it before it acts again. A system role keeps the original
+                // user message as the turn's persistence boundary: `outcome`
+                // extraction slices the turn suffix after the last *user* message
+                // (`convert::messages_since_last_user`), so injecting a user turn
+                // here would drop every assistant/tool cycle before the nudge from
+                // the persisted conversation + post-turn tool records on a run that
+                // nudges and then recovers instead of halting.
                 self.handle
-                    .send(SteeringCommand::InjectMessage(TaMessage::user(signal)));
+                    .send(SteeringCommand::InjectMessage(TaMessage::system(signal)));
             }
             super::no_progress::NoProgress::Halt(summary) => {
                 tracing::warn!(
@@ -1579,6 +1586,38 @@ mod tests {
             vec![SteeringCommandKind::Pause],
             "the third identical failure should pause the run"
         );
+    }
+
+    #[tokio::test]
+    async fn the_nudge_is_a_system_message_so_it_does_not_move_the_user_boundary() {
+        // The nudge must inject a *system* (scaffold) message, not a user turn:
+        // `convert::messages_since_last_user` slices the persisted turn suffix
+        // after the last user message, so a user-role nudge would drop every
+        // assistant/tool cycle before it on a run that nudges then recovers.
+        let handle = SteeringHandle::allow_all();
+        let mw = RepeatedToolFailureMiddleware::new(
+            handle.clone(),
+            3,
+            std::sync::Arc::new(std::sync::Mutex::new(None)),
+        );
+        for _ in 0..2 {
+            let mut r = failing_result("read_file", "not found");
+            mw.after_tool(&mut ctx(), &(), &mut r).await.unwrap();
+        }
+        let cmds = handle.drain();
+        match cmds.as_slice() {
+            [SteeringCommand::InjectMessage(msg)] => {
+                assert!(
+                    matches!(msg, TaMessage::System(_)),
+                    "the nudge must be a system (scaffold) message, not a user turn"
+                );
+                assert!(
+                    msg.text().contains("no progress since step"),
+                    "the nudge should carry the structured no-progress corrective"
+                );
+            }
+            other => panic!("expected a single injected system nudge, got {other:?}"),
+        }
     }
 
     #[tokio::test]
