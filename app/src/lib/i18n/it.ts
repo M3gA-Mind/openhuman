@@ -6,6 +6,19 @@ const messages: TranslationMap = {
   'skills.recallCalendar.title': 'Google Calendar',
   'skills.recallCalendar.description':
     'Partecipa automaticamente alle chiamate Google Meet tramite Recall.ai',
+  // Core connection panel (GH-4396)
+  'settings.core.title': 'Connessione al core',
+  'settings.core.menuDesc': 'Usa il core locale integrato o connettiti a un core remoto.',
+  'settings.core.useRemoteToggle': 'Usa core remoto',
+  'settings.core.useRemoteToggleDesc': 'Connettiti a un core remoto via HTTP invece del core locale integrato.',
+  'settings.core.statusConnectedRemote': 'Connesso al core remoto',
+  'settings.core.statusConnectedLocal': 'Connesso al core locale',
+  'settings.core.statusChecking': 'Verifica della connessione…',
+  'settings.core.statusAuthFailed': 'Raggiungibile, ma il token è stato rifiutato',
+  'settings.core.statusUnreachable': 'Impossibile raggiungere il core',
+  'settings.core.recheck': 'Ricontrolla',
+  'settings.core.save': 'Salva e riavvia',
+  'settings.core.applyRestartNote': 'Il salvataggio riavvia OpenHuman per riconnettersi.',
   // Cross-host vault (#4278)
   'crossHostVault.title': "Il vault è sull'host del core.",
   'crossHostVault.message':

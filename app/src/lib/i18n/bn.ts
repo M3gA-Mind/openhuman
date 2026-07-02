@@ -6,6 +6,19 @@ const messages: TranslationMap = {
   'skills.recallCalendar.title': 'Google Calendar',
   'skills.recallCalendar.description':
     'Recall.ai-এর মাধ্যমে Google Meet কলে স্বয়ংক্রিয়ভাবে যোগ দিন',
+  // Core connection panel (GH-4396)
+  'settings.core.title': 'কোর সংযোগ',
+  'settings.core.menuDesc': 'অন্তর্নির্মিত স্থানীয় কোর ব্যবহার করুন বা একটি রিমোট কোরে সংযোগ করুন।',
+  'settings.core.useRemoteToggle': 'রিমোট কোর ব্যবহার করুন',
+  'settings.core.useRemoteToggleDesc': 'অন্তর্নির্মিত স্থানীয় কোরের পরিবর্তে HTTP-এর মাধ্যমে একটি রিমোট কোরে সংযোগ করুন।',
+  'settings.core.statusConnectedRemote': 'রিমোট কোরে সংযুক্ত',
+  'settings.core.statusConnectedLocal': 'স্থানীয় কোরে সংযুক্ত',
+  'settings.core.statusChecking': 'সংযোগ পরীক্ষা করা হচ্ছে…',
+  'settings.core.statusAuthFailed': 'পৌঁছানো যায়, তবে টোকেন প্রত্যাখ্যাত হয়েছে',
+  'settings.core.statusUnreachable': 'কোরে পৌঁছানো যাচ্ছে না',
+  'settings.core.recheck': 'পুনরায় পরীক্ষা করুন',
+  'settings.core.save': 'সংরক্ষণ করে পুনরায় চালু করুন',
+  'settings.core.applyRestartNote': 'সংরক্ষণ করলে পুনরায় সংযোগের জন্য OpenHuman পুনরায় চালু হয়।',
   // Cross-host vault (#4278)
   'crossHostVault.title': 'ভল্টটি কোর হোস্টে রয়েছে।',
   'crossHostVault.message':

@@ -6,6 +6,19 @@ const messages: TranslationMap = {
   'skills.recallCalendar.title': 'Google Kalender',
   'skills.recallCalendar.description':
     'Bergabung otomatis ke panggilan Google Meet melalui Recall.ai',
+  // Core connection panel (GH-4396)
+  'settings.core.title': 'Koneksi core',
+  'settings.core.menuDesc': 'Gunakan core lokal bawaan atau hubungkan ke core jarak jauh.',
+  'settings.core.useRemoteToggle': 'Gunakan core jarak jauh',
+  'settings.core.useRemoteToggleDesc': 'Hubungkan ke core jarak jauh melalui HTTP alih-alih core lokal bawaan.',
+  'settings.core.statusConnectedRemote': 'Terhubung ke core jarak jauh',
+  'settings.core.statusConnectedLocal': 'Terhubung ke core lokal',
+  'settings.core.statusChecking': 'Memeriksa koneksi…',
+  'settings.core.statusAuthFailed': 'Dapat dijangkau, tetapi token ditolak',
+  'settings.core.statusUnreachable': 'Tidak dapat menjangkau core',
+  'settings.core.recheck': 'Periksa ulang',
+  'settings.core.save': 'Simpan & mulai ulang',
+  'settings.core.applyRestartNote': 'Menyimpan akan memulai ulang OpenHuman untuk menyambung kembali.',
   // Cross-host vault (#4278)
   'crossHostVault.title': 'Vault berada di host core.',
   'crossHostVault.message':

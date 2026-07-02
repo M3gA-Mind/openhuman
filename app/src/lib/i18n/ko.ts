@@ -5,6 +5,19 @@ import type { TranslationMap } from './types';
 const messages: TranslationMap = {
   'skills.recallCalendar.title': 'Google 캘린더',
   'skills.recallCalendar.description': 'Recall.ai를 통해 Google Meet 통화에 자동 참여',
+  // Core connection panel (GH-4396)
+  'settings.core.title': '코어 연결',
+  'settings.core.menuDesc': '내장 로컬 코어를 사용하거나 원격 코어에 연결하세요.',
+  'settings.core.useRemoteToggle': '원격 코어 사용',
+  'settings.core.useRemoteToggleDesc': '내장 로컬 코어 대신 HTTP를 통해 원격 코어에 연결합니다.',
+  'settings.core.statusConnectedRemote': '원격 코어에 연결됨',
+  'settings.core.statusConnectedLocal': '로컬 코어에 연결됨',
+  'settings.core.statusChecking': '연결 확인 중…',
+  'settings.core.statusAuthFailed': '접근 가능하지만 토큰이 거부되었습니다',
+  'settings.core.statusUnreachable': '코어에 연결할 수 없습니다',
+  'settings.core.recheck': '다시 확인',
+  'settings.core.save': '저장 후 재시작',
+  'settings.core.applyRestartNote': '저장하면 다시 연결하기 위해 OpenHuman이 재시작됩니다.',
   // Cross-host vault (#4278)
   'crossHostVault.title': '보관소가 코어 호스트에 있습니다.',
   'crossHostVault.message':

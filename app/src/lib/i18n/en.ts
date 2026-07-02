@@ -1481,6 +1481,20 @@ const en: TranslationMap = {
     'Spawned in-process by the Tauri shell on app launch. The port is chosen at startup, so this URL changes between launches.',
   'settings.about.connectionHelperCloud':
     'Connected to a remote core. Change this in BootCheck or the cloud mode picker.',
+  // Core connection panel (GH-4396)
+  'settings.core.title': 'Core connection',
+  'settings.core.menuDesc': 'Use the built-in local core or connect to a remote core.',
+  'settings.core.useRemoteToggle': 'Use remote core',
+  'settings.core.useRemoteToggleDesc':
+    'Connect to a remote core over HTTP instead of the built-in local core.',
+  'settings.core.statusConnectedRemote': 'Connected to remote core',
+  'settings.core.statusConnectedLocal': 'Connected to local core',
+  'settings.core.statusChecking': 'Checking connection…',
+  'settings.core.statusAuthFailed': 'Reachable, but the token was rejected',
+  'settings.core.statusUnreachable': 'Cannot reach the core',
+  'settings.core.recheck': 'Recheck',
+  'settings.core.save': 'Save & restart',
+  'settings.core.applyRestartNote': 'Saving restarts OpenHuman to reconnect.',
   'settings.heartbeat.title': 'Heartbeat & loops',
   'settings.usage.title': 'Usage & Limits',
   'settings.usage.menuDesc': 'Costs, token usage, budgets, and background activity',

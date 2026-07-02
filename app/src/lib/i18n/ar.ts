@@ -5,6 +5,19 @@ import type { TranslationMap } from './types';
 const messages: TranslationMap = {
   'skills.recallCalendar.title': 'تقويم Google',
   'skills.recallCalendar.description': 'الانضمام تلقائيًا إلى مكالمات Google Meet عبر Recall.ai',
+  // Core connection panel (GH-4396)
+  'settings.core.title': 'اتصال النواة',
+  'settings.core.menuDesc': 'استخدم النواة المحلية المدمجة أو اتصل بنواة بعيدة.',
+  'settings.core.useRemoteToggle': 'استخدام نواة بعيدة',
+  'settings.core.useRemoteToggleDesc': 'الاتصال بنواة بعيدة عبر HTTP بدلاً من النواة المحلية المدمجة.',
+  'settings.core.statusConnectedRemote': 'متصل بالنواة البعيدة',
+  'settings.core.statusConnectedLocal': 'متصل بالنواة المحلية',
+  'settings.core.statusChecking': 'جارٍ التحقق من الاتصال…',
+  'settings.core.statusAuthFailed': 'يمكن الوصول إليه، لكن تم رفض الرمز',
+  'settings.core.statusUnreachable': 'تعذّر الوصول إلى النواة',
+  'settings.core.recheck': 'إعادة التحقق',
+  'settings.core.save': 'حفظ وإعادة التشغيل',
+  'settings.core.applyRestartNote': 'يؤدي الحفظ إلى إعادة تشغيل OpenHuman لإعادة الاتصال.',
   // Cross-host vault (#4278)
   'crossHostVault.title': 'الخزنة موجودة على مضيف النواة.',
   'crossHostVault.message':

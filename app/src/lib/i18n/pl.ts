@@ -6,6 +6,19 @@ const messages: TranslationMap = {
   'skills.recallCalendar.title': 'Kalendarz Google',
   'skills.recallCalendar.description':
     'Automatyczne dołączanie do połączeń Google Meet przez Recall.ai',
+  // Core connection panel (GH-4396)
+  'settings.core.title': 'Połączenie z core',
+  'settings.core.menuDesc': 'Użyj wbudowanego lokalnego core lub połącz się ze zdalnym core.',
+  'settings.core.useRemoteToggle': 'Użyj zdalnego core',
+  'settings.core.useRemoteToggleDesc': 'Połącz się ze zdalnym core przez HTTP zamiast wbudowanego lokalnego core.',
+  'settings.core.statusConnectedRemote': 'Połączono ze zdalnym core',
+  'settings.core.statusConnectedLocal': 'Połączono z lokalnym core',
+  'settings.core.statusChecking': 'Sprawdzanie połączenia…',
+  'settings.core.statusAuthFailed': 'Osiągalny, ale token został odrzucony',
+  'settings.core.statusUnreachable': 'Nie można połączyć się z core',
+  'settings.core.recheck': 'Sprawdź ponownie',
+  'settings.core.save': 'Zapisz i uruchom ponownie',
+  'settings.core.applyRestartNote': 'Zapisanie uruchamia ponownie OpenHuman, aby połączyć się ponownie.',
   // Cross-host vault (#4278)
   'crossHostVault.title': 'Skarbiec znajduje się na hoście rdzenia.',
   'crossHostVault.message':

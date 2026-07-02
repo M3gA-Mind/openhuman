@@ -5,6 +5,19 @@ import type { TranslationMap } from './types';
 const messages: TranslationMap = {
   'skills.recallCalendar.title': 'Google 日历',
   'skills.recallCalendar.description': '通过 Recall.ai 自动加入 Google Meet 通话',
+  // Core connection panel (GH-4396)
+  'settings.core.title': '核心连接',
+  'settings.core.menuDesc': '使用内置的本地核心，或连接到远程核心。',
+  'settings.core.useRemoteToggle': '使用远程核心',
+  'settings.core.useRemoteToggleDesc': '通过 HTTP 连接到远程核心，而不是使用内置的本地核心。',
+  'settings.core.statusConnectedRemote': '已连接到远程核心',
+  'settings.core.statusConnectedLocal': '已连接到本地核心',
+  'settings.core.statusChecking': '正在检查连接…',
+  'settings.core.statusAuthFailed': '可访问，但令牌被拒绝',
+  'settings.core.statusUnreachable': '无法连接到核心',
+  'settings.core.recheck': '重新检查',
+  'settings.core.save': '保存并重启',
+  'settings.core.applyRestartNote': '保存后 OpenHuman 将重启以重新连接。',
   // Cross-host vault (#4278)
   'crossHostVault.title': '记忆库位于核心主机上。',
   'crossHostVault.message':

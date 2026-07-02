@@ -6,6 +6,19 @@ const messages: TranslationMap = {
   'skills.recallCalendar.title': 'Google Календарь',
   'skills.recallCalendar.description':
     'Автоматически подключаться к звонкам Google Meet через Recall.ai',
+  // Core connection panel (GH-4396)
+  'settings.core.title': 'Подключение к ядру',
+  'settings.core.menuDesc': 'Используйте встроенное локальное ядро или подключитесь к удалённому ядру.',
+  'settings.core.useRemoteToggle': 'Использовать удалённое ядро',
+  'settings.core.useRemoteToggleDesc': 'Подключиться к удалённому ядру по HTTP вместо встроенного локального ядра.',
+  'settings.core.statusConnectedRemote': 'Подключено к удалённому ядру',
+  'settings.core.statusConnectedLocal': 'Подключено к локальному ядру',
+  'settings.core.statusChecking': 'Проверка подключения…',
+  'settings.core.statusAuthFailed': 'Доступно, но токен отклонён',
+  'settings.core.statusUnreachable': 'Не удаётся подключиться к ядру',
+  'settings.core.recheck': 'Проверить снова',
+  'settings.core.save': 'Сохранить и перезапустить',
+  'settings.core.applyRestartNote': 'После сохранения OpenHuman перезапустится для повторного подключения.',
   // Cross-host vault (#4278)
   'crossHostVault.title': 'Хранилище находится на хосте ядра.',
   'crossHostVault.message':
