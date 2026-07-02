@@ -9,7 +9,8 @@ const messages: TranslationMap = {
   'settings.core.title': 'اتصال النواة',
   'settings.core.menuDesc': 'استخدم النواة المحلية المدمجة أو اتصل بنواة بعيدة.',
   'settings.core.useRemoteToggle': 'استخدام نواة بعيدة',
-  'settings.core.useRemoteToggleDesc': 'الاتصال بنواة بعيدة عبر HTTP بدلاً من النواة المحلية المدمجة.',
+  'settings.core.useRemoteToggleDesc':
+    'الاتصال بنواة بعيدة عبر HTTP بدلاً من النواة المحلية المدمجة.',
   'settings.core.statusConnectedRemote': 'متصل بالنواة البعيدة',
   'settings.core.statusConnectedLocal': 'متصل بالنواة المحلية',
   'settings.core.statusChecking': 'جارٍ التحقق من الاتصال…',

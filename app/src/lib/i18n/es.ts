@@ -10,7 +10,8 @@ const messages: TranslationMap = {
   'settings.core.title': 'Conexión del core',
   'settings.core.menuDesc': 'Usa el core local integrado o conéctate a un core remoto.',
   'settings.core.useRemoteToggle': 'Usar core remoto',
-  'settings.core.useRemoteToggleDesc': 'Conéctate a un core remoto por HTTP en lugar del core local integrado.',
+  'settings.core.useRemoteToggleDesc':
+    'Conéctate a un core remoto por HTTP en lugar del core local integrado.',
   'settings.core.statusConnectedRemote': 'Conectado al core remoto',
   'settings.core.statusConnectedLocal': 'Conectado al core local',
   'settings.core.statusChecking': 'Comprobando la conexión…',

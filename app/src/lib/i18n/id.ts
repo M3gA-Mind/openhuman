@@ -10,7 +10,8 @@ const messages: TranslationMap = {
   'settings.core.title': 'Koneksi core',
   'settings.core.menuDesc': 'Gunakan core lokal bawaan atau hubungkan ke core jarak jauh.',
   'settings.core.useRemoteToggle': 'Gunakan core jarak jauh',
-  'settings.core.useRemoteToggleDesc': 'Hubungkan ke core jarak jauh melalui HTTP alih-alih core lokal bawaan.',
+  'settings.core.useRemoteToggleDesc':
+    'Hubungkan ke core jarak jauh melalui HTTP alih-alih core lokal bawaan.',
   'settings.core.statusConnectedRemote': 'Terhubung ke core jarak jauh',
   'settings.core.statusConnectedLocal': 'Terhubung ke core lokal',
   'settings.core.statusChecking': 'Memeriksa koneksi…',
@@ -18,7 +19,8 @@ const messages: TranslationMap = {
   'settings.core.statusUnreachable': 'Tidak dapat menjangkau core',
   'settings.core.recheck': 'Periksa ulang',
   'settings.core.save': 'Simpan & mulai ulang',
-  'settings.core.applyRestartNote': 'Menyimpan akan memulai ulang OpenHuman untuk menyambung kembali.',
+  'settings.core.applyRestartNote':
+    'Menyimpan akan memulai ulang OpenHuman untuk menyambung kembali.',
   // Cross-host vault (#4278)
   'crossHostVault.title': 'Vault berada di host core.',
   'crossHostVault.message':

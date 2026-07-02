@@ -8,9 +8,11 @@ const messages: TranslationMap = {
     'Recall.ai-এর মাধ্যমে Google Meet কলে স্বয়ংক্রিয়ভাবে যোগ দিন',
   // Core connection panel (GH-4396)
   'settings.core.title': 'কোর সংযোগ',
-  'settings.core.menuDesc': 'অন্তর্নির্মিত স্থানীয় কোর ব্যবহার করুন বা একটি রিমোট কোরে সংযোগ করুন।',
+  'settings.core.menuDesc':
+    'অন্তর্নির্মিত স্থানীয় কোর ব্যবহার করুন বা একটি রিমোট কোরে সংযোগ করুন।',
   'settings.core.useRemoteToggle': 'রিমোট কোর ব্যবহার করুন',
-  'settings.core.useRemoteToggleDesc': 'অন্তর্নির্মিত স্থানীয় কোরের পরিবর্তে HTTP-এর মাধ্যমে একটি রিমোট কোরে সংযোগ করুন।',
+  'settings.core.useRemoteToggleDesc':
+    'অন্তর্নির্মিত স্থানীয় কোরের পরিবর্তে HTTP-এর মাধ্যমে একটি রিমোট কোরে সংযোগ করুন।',
   'settings.core.statusConnectedRemote': 'রিমোট কোরে সংযুক্ত',
   'settings.core.statusConnectedLocal': 'স্থানীয় কোরে সংযুক্ত',
   'settings.core.statusChecking': 'সংযোগ পরীক্ষা করা হচ্ছে…',

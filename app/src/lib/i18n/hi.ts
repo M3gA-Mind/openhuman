@@ -7,9 +7,11 @@ const messages: TranslationMap = {
   'skills.recallCalendar.description': 'Recall.ai के ज़रिए Google Meet कॉल में अपने-आप शामिल हों',
   // Core connection panel (GH-4396)
   'settings.core.title': 'कोर कनेक्शन',
-  'settings.core.menuDesc': 'अंतर्निहित स्थानीय कोर का उपयोग करें या किसी रिमोट कोर से कनेक्ट करें।',
+  'settings.core.menuDesc':
+    'अंतर्निहित स्थानीय कोर का उपयोग करें या किसी रिमोट कोर से कनेक्ट करें।',
   'settings.core.useRemoteToggle': 'रिमोट कोर का उपयोग करें',
-  'settings.core.useRemoteToggleDesc': 'अंतर्निहित स्थानीय कोर के बजाय HTTP के माध्यम से किसी रिमोट कोर से कनेक्ट करें।',
+  'settings.core.useRemoteToggleDesc':
+    'अंतर्निहित स्थानीय कोर के बजाय HTTP के माध्यम से किसी रिमोट कोर से कनेक्ट करें।',
   'settings.core.statusConnectedRemote': 'रिमोट कोर से कनेक्ट हो गया',
   'settings.core.statusConnectedLocal': 'स्थानीय कोर से कनेक्ट हो गया',
   'settings.core.statusChecking': 'कनेक्शन जाँचा जा रहा है…',
@@ -17,7 +19,8 @@ const messages: TranslationMap = {
   'settings.core.statusUnreachable': 'कोर तक नहीं पहुँचा जा सकता',
   'settings.core.recheck': 'फिर से जाँचें',
   'settings.core.save': 'सहेजें और पुनरारंभ करें',
-  'settings.core.applyRestartNote': 'सहेजने पर OpenHuman फिर से कनेक्ट होने के लिए पुनरारंभ होता है।',
+  'settings.core.applyRestartNote':
+    'सहेजने पर OpenHuman फिर से कनेक्ट होने के लिए पुनरारंभ होता है।',
   // Cross-host vault (#4278)
   'crossHostVault.title': 'वॉल्ट कोर होस्ट पर है।',
   'crossHostVault.message':

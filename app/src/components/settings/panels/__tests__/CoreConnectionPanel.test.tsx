@@ -23,13 +23,20 @@ vi.mock('../../../../services/coreRpcClient', () => ({
   clearCoreRpcTokenCache: hoisted.clearCoreRpcTokenCache,
 }));
 
-vi.mock('../../../../utils/tauriCommands/core', () => ({
-  restartApp: hoisted.restartApp,
-}));
+vi.mock('../../../../utils/tauriCommands/core', () => ({ restartApp: hoisted.restartApp }));
 
 function okResponse() {
   return { ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }) };
 }
+
+/** A Response-shaped stub for an arbitrary HTTP status. */
+function statusResponse(status: number) {
+  return { ok: status >= 200 && status < 300, status, json: async () => ({}) };
+}
+
+const CLOUD_STATE = {
+  coreMode: { mode: { kind: 'cloud', url: 'https://core.example.com/rpc', token: 'tok-123456' } },
+};
 
 async function importPanel() {
   const mod = await import('../CoreConnectionPanel');
@@ -68,9 +75,7 @@ describe('CoreConnectionPanel', () => {
       },
     });
 
-    await waitFor(() =>
-      expect(screen.getByText('Connected to remote core')).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText('Connected to remote core')).toBeInTheDocument());
     // Toggle on → the URL field is pre-filled with the persisted value.
     expect(screen.getByDisplayValue('https://core.example.com/rpc')).toBeInTheDocument();
   });
@@ -80,9 +85,7 @@ describe('CoreConnectionPanel', () => {
     const Panel = await importPanel();
     renderWithProviders(<Panel />, { preloadedState: { coreMode: { mode: { kind: 'local' } } } });
 
-    await waitFor(() =>
-      expect(screen.getByText(/Cannot reach the core/i)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/Cannot reach the core/i)).toBeInTheDocument());
   });
 
   test('switching to remote core persists, dispatches, and restarts', async () => {
@@ -109,11 +112,7 @@ describe('CoreConnectionPanel', () => {
     await waitFor(() => expect(hoisted.restartApp).toHaveBeenCalledTimes(1));
 
     // Redux is now in cloud mode with the typed URL + token.
-    const mode = store.getState().coreMode.mode as {
-      kind: string;
-      url?: string;
-      token?: string;
-    };
+    const mode = store.getState().coreMode.mode as { kind: string; url?: string; token?: string };
     expect(mode.kind).toBe('cloud');
     expect(mode.url).toBe('https://core.example.com/rpc');
     expect(mode.token).toBe('remote-token-xyz');
@@ -126,5 +125,106 @@ describe('CoreConnectionPanel', () => {
     // Caches cleared so the new endpoint takes effect on restart.
     expect(hoisted.clearCoreRpcUrlCache).toHaveBeenCalled();
     expect(hoisted.clearCoreRpcTokenCache).toHaveBeenCalled();
+  });
+
+  test('a rejected token surfaces the token-rejected live status', async () => {
+    hoisted.testCoreRpcConnection.mockResolvedValue(statusResponse(401));
+    const Panel = await importPanel();
+    renderWithProviders(<Panel />, { preloadedState: CLOUD_STATE });
+
+    await waitFor(() => expect(screen.getByText(/the token was rejected/i)).toBeInTheDocument());
+  });
+
+  test('a non-ok response surfaces the unreachable live status with the HTTP code', async () => {
+    hoisted.testCoreRpcConnection.mockResolvedValue(statusResponse(503));
+    const Panel = await importPanel();
+    renderWithProviders(<Panel />, { preloadedState: CLOUD_STATE });
+
+    await waitFor(() =>
+      expect(screen.getByText(/Cannot reach the core — HTTP 503/i)).toBeInTheDocument()
+    );
+  });
+
+  test('Test connection reports success for the typed remote inputs', async () => {
+    hoisted.testCoreRpcConnection.mockResolvedValue(okResponse());
+    const Panel = await importPanel();
+    renderWithProviders(<Panel />, { preloadedState: CLOUD_STATE });
+
+    // Wait for the mount live-check to settle first.
+    await waitFor(() => expect(screen.getByText('Connected to remote core')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Test Connection'));
+    await waitFor(() => expect(screen.getByTestId('core-test-ok')).toBeInTheDocument());
+  });
+
+  test('Test connection reports an auth failure', async () => {
+    hoisted.testCoreRpcConnection.mockResolvedValue(statusResponse(403));
+    const Panel = await importPanel();
+    renderWithProviders(<Panel />, { preloadedState: CLOUD_STATE });
+
+    fireEvent.click(screen.getByText('Test Connection'));
+    await waitFor(() => expect(screen.getByTestId('core-test-auth')).toBeInTheDocument());
+  });
+
+  test('Test connection reports an unreachable endpoint', async () => {
+    hoisted.testCoreRpcConnection.mockRejectedValue(new Error('network down'));
+    const Panel = await importPanel();
+    renderWithProviders(<Panel />, { preloadedState: CLOUD_STATE });
+
+    fireEvent.click(screen.getByText('Test Connection'));
+    await waitFor(() => expect(screen.getByTestId('core-test-unreachable')).toBeInTheDocument());
+  });
+
+  test('validation blocks the form when the URL is empty and when the token is missing', async () => {
+    hoisted.testCoreRpcConnection.mockResolvedValue(okResponse());
+    const Panel = await importPanel();
+    renderWithProviders(<Panel />, { preloadedState: { coreMode: { mode: { kind: 'local' } } } });
+
+    await waitFor(() => expect(screen.getByText('Connected to local core')).toBeInTheDocument());
+    // Reveal the empty remote form.
+    fireEvent.click(screen.getByTestId('core-use-remote-toggle'));
+
+    // Empty URL → invalid-URL error.
+    fireEvent.click(screen.getByText('Test Connection'));
+    await waitFor(() => expect(screen.getByText(/enter a runtime URL/i)).toBeInTheDocument());
+
+    // Valid URL but empty token → token-required error.
+    fireEvent.change(screen.getByLabelText(/Runtime URL/i), {
+      target: { value: 'https://core.example.com/rpc' },
+    });
+    fireEvent.click(screen.getByText('Test Connection'));
+    await waitFor(() =>
+      expect(screen.getByText(/need an auth token to connect/i)).toBeInTheDocument()
+    );
+
+    // The typed connection was never attempted (validation short-circuits).
+    expect(hoisted.testCoreRpcConnection).not.toHaveBeenCalledWith(
+      'https://core.example.com/rpc',
+      ''
+    );
+  });
+
+  test('switching from remote back to local clears persistence, dispatches, and restarts', async () => {
+    hoisted.testCoreRpcConnection.mockResolvedValue(okResponse());
+    // Seed persisted cloud values so we can assert they are cleared.
+    localStorage.setItem('openhuman_core_mode', 'cloud');
+    localStorage.setItem('openhuman_core_rpc_url', 'https://core.example.com/rpc');
+    localStorage.setItem('openhuman_core_rpc_token', 'tok-123456');
+
+    const Panel = await importPanel();
+    const { store } = renderWithProviders(<Panel />, { preloadedState: CLOUD_STATE });
+
+    await waitFor(() => expect(screen.getByText('Connected to remote core')).toBeInTheDocument());
+
+    // Flip remote off → local, then save.
+    fireEvent.click(screen.getByTestId('core-use-remote-toggle'));
+    fireEvent.click(screen.getByTestId('core-save-btn'));
+
+    await waitFor(() => expect(hoisted.restartApp).toHaveBeenCalledTimes(1));
+
+    expect(store.getState().coreMode.mode.kind).toBe('local');
+    expect(localStorage.getItem('openhuman_core_mode')).toBe('local');
+    expect(localStorage.getItem('openhuman_core_rpc_url')).toBeNull();
+    expect(localStorage.getItem('openhuman_core_rpc_token')).toBeNull();
   });
 });

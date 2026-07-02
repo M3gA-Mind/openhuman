@@ -23,7 +23,6 @@ import debug from 'debug';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
-import { CORE_RPC_URL } from '../../../utils/config';
 import {
   clearCoreRpcTokenCache,
   clearCoreRpcUrlCache,
@@ -31,6 +30,7 @@ import {
 } from '../../../services/coreRpcClient';
 import { type CoreMode, setCoreMode } from '../../../store/coreModeSlice';
 import { useAppDispatch, useAppSelector } from '../../../store/hooks';
+import { CORE_RPC_URL } from '../../../utils/config';
 import {
   clearStoredCoreToken,
   isLocalOrPrivateNetworkHost,
@@ -140,6 +140,10 @@ const CoreConnectionPanel = () => {
   }, [coreMode, t]);
 
   useEffect(() => {
+    // runLiveCheck flips the status to `checking` synchronously; that is the
+    // intended entry transition for the live probe (also used by Recheck), not
+    // a cascading render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void runLiveCheck();
   }, [runLiveCheck]);
 
@@ -217,7 +221,9 @@ const CoreConnectionPanel = () => {
   const isDirty = (() => {
     if (!useRemote) return coreMode.kind !== 'local';
     if (coreMode.kind !== 'cloud') return true;
-    return normalizeRpcUrl(url.trim() || '') !== coreMode.url || token.trim() !== (coreMode.token ?? '');
+    return (
+      normalizeRpcUrl(url.trim() || '') !== coreMode.url || token.trim() !== (coreMode.token ?? '')
+    );
   })();
 
   const handleSave = async () => {
@@ -225,7 +231,11 @@ const CoreConnectionPanel = () => {
     if (useRemote) {
       const validated = validate();
       if (!validated) return;
-      log('handleSave: switching to remote core url=%s tokenLen=%d', validated.url, validated.token.length);
+      log(
+        'handleSave: switching to remote core url=%s tokenLen=%d',
+        validated.url,
+        validated.token.length
+      );
       setSaving(true);
       // NOTE: the bearer is persisted in plain localStorage via storeCoreToken,
       // matching the existing cloud-mode picker. A renderer XSS could read it
@@ -336,7 +346,9 @@ const CoreConnectionPanel = () => {
         {useRemote && (
           <div className="flex flex-col gap-3 px-4 py-4">
             <div className="flex flex-col gap-1">
-              <label htmlFor="core-remote-url" className="text-xs font-medium text-content-secondary">
+              <label
+                htmlFor="core-remote-url"
+                className="text-xs font-medium text-content-secondary">
                 {t('bootCheck.coreRpcUrl')}
               </label>
               <SettingsTextField
@@ -356,8 +368,11 @@ const CoreConnectionPanel = () => {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label htmlFor="core-remote-token" className="text-xs font-medium text-content-secondary">
-                {t('bootCheck.authToken')} (<code className="text-[10px]">OPENHUMAN_CORE_TOKEN</code>)
+              <label
+                htmlFor="core-remote-token"
+                className="text-xs font-medium text-content-secondary">
+                {t('bootCheck.authToken')} (
+                <code className="text-[10px]">OPENHUMAN_CORE_TOKEN</code>)
               </label>
               <SettingsTextField
                 id="core-remote-token"
@@ -416,10 +431,7 @@ const CoreConnectionPanel = () => {
           <p className="text-[11px] text-content-muted leading-snug">
             {t('settings.core.applyRestartNote')}
           </p>
-          <Button
-            onClick={handleSave}
-            disabled={!isDirty || saving}
-            data-testid="core-save-btn">
+          <Button onClick={handleSave} disabled={!isDirty || saving} data-testid="core-save-btn">
             {t('settings.core.save')}
           </Button>
         </div>
