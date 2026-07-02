@@ -135,7 +135,7 @@ fn runtime_context(workspace_dir: PathBuf) -> ChannelRuntimeContext {
         channels_by_name: Arc::new(HashMap::new()),
         provider: Arc::new(DummyProvider),
         default_provider: Arc::new("openai".into()),
-        memory: Arc::new(DummyMemory),
+        memory_handle: Arc::new(std::sync::RwLock::new(Arc::new(DummyMemory))),
         tools_registry: Arc::new(vec![Box::new(DummyTool) as Box<dyn Tool>]),
         system_prompt: Arc::new("prompt".into()),
         model: Arc::new("reasoning-v1".into()),
@@ -151,7 +151,7 @@ fn runtime_context(workspace_dir: PathBuf) -> ChannelRuntimeContext {
         reliability: Arc::new(crate::openhuman::config::ReliabilityConfig::default()),
         provider_runtime_options:
             crate::openhuman::inference::provider::ProviderRuntimeOptions::default(),
-        workspace_dir: Arc::new(workspace_dir),
+        workspace_handle: Arc::new(std::sync::RwLock::new(workspace_dir)),
         message_timeout_secs: 60,
         multimodal: crate::openhuman::config::MultimodalConfig::default(),
         multimodal_files: crate::openhuman::config::MultimodalFileConfig::default(),

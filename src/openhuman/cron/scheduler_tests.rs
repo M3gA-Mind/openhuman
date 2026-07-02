@@ -6,7 +6,7 @@ use crate::openhuman::security::SecurityPolicy;
 use chrono::{Duration as ChronoDuration, Timelike, Utc};
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tempfile::TempDir;
 
 async fn test_config(tmp: &TempDir) -> Config {
@@ -132,6 +132,53 @@ async fn deliver_if_configured_alerts_no_delivery_failure() {
         items[0].body.contains("API key not set"),
         "alert body must carry the actionable missing-key wording"
     );
+}
+
+// Issue #4398 — the scheduler is started once with a pre-login `Config`
+// snapshot (workspace = `users/local/`). After a sign-in, `store_session`
+// calls `scheduler::rebind(effective_config)`; the poll loop re-resolves the
+// active config each tick, so `due_jobs` must then read the cron store under
+// the activated user's workspace instead of the pre-login one. This drives the
+// re-bind seam through a test-local slot (the `memory::global` pattern) so it's
+// deterministic under parallel execution.
+#[tokio::test]
+async fn rebind_reresolves_scheduler_workspace_after_store_session() {
+    let pre_login = TempDir::new().unwrap();
+    let active_user = TempDir::new().unwrap();
+    let pre_login_config = test_config(&pre_login).await;
+    let active_user_config = test_config(&active_user).await;
+
+    // A scheduled job created only under the activated user's workspace.
+    let job = cron::add_job(&active_user_config, "* * * * *", "echo active-user").unwrap();
+    let far_future = job.next_run + ChronoDuration::minutes(1);
+
+    let slot: ActiveConfigSlot = RwLock::new(None);
+
+    // Boot: bound to the pre-login (users/local) workspace. Its store is empty,
+    // so the scheduler would run nothing for the signed-in user.
+    seed_in(&slot, pre_login_config.clone());
+    let before = current_in(&slot).expect("seeded config");
+    assert_eq!(before.workspace_dir, pre_login_config.workspace_dir);
+    assert!(
+        cron::due_jobs(&before, far_future).unwrap().is_empty(),
+        "pre-login workspace has no jobs for the signed-in user"
+    );
+
+    // Login: store_session re-binds to the activated user's workspace.
+    rebind_in(&slot, active_user_config.clone());
+
+    let after = current_in(&slot).expect("rebound config");
+    assert_eq!(
+        after.workspace_dir, active_user_config.workspace_dir,
+        "scheduler must re-resolve to the activated user's workspace"
+    );
+    let due = cron::due_jobs(&after, far_future).unwrap();
+    assert_eq!(
+        due.len(),
+        1,
+        "after rebind the poll loop must read jobs from users/<user_id>/"
+    );
+    assert_eq!(due[0].command, "echo active-user");
 }
 
 // Negative guard: a successful no-delivery run with no output must NOT alert —

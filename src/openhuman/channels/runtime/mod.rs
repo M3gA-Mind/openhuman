@@ -1,10 +1,14 @@
 //! Channel runtime entry points.
 
 mod dispatch;
+mod memory_rebind;
 mod startup;
 mod supervision;
+mod workspace;
 
+pub use memory_rebind::rebind_memory;
 pub use startup::start_channels;
+pub use workspace::rebind_workspace;
 
 #[cfg(any(test, debug_assertions))]
 pub mod test_support;

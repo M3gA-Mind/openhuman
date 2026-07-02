@@ -96,7 +96,7 @@ fn make_test_context(
         channels_by_name: Arc::new(channels),
         provider,
         default_provider: Arc::new("test-provider".to_string()),
-        memory: Arc::new(NoopMemory),
+        memory_handle: Arc::new(std::sync::RwLock::new(Arc::new(NoopMemory))),
         tools_registry: Arc::new(vec![]),
         system_prompt: Arc::new("test-system-prompt".to_string()),
         model: Arc::new("test-model".to_string()),
@@ -112,7 +112,7 @@ fn make_test_context(
         reliability: Arc::new(crate::openhuman::config::ReliabilityConfig::default()),
         provider_runtime_options:
             crate::openhuman::inference::provider::ProviderRuntimeOptions::default(),
-        workspace_dir: Arc::new(std::env::temp_dir()),
+        workspace_handle: Arc::new(std::sync::RwLock::new(std::env::temp_dir())),
         message_timeout_secs: CHANNEL_MESSAGE_TIMEOUT_SECS,
         multimodal: crate::openhuman::config::MultimodalConfig::default(),
         multimodal_files: crate::openhuman::config::MultimodalFileConfig::default(),

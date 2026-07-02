@@ -35,7 +35,7 @@
 //! thread pool.
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 
@@ -93,16 +93,28 @@ const BLOCK_SPECS: &[BlockSpec] = &[
 /// managed blocks of `PROFILE.md`.
 pub struct ProfileMdRenderer {
     cache: Arc<FacetCache>,
-    workspace_dir: PathBuf,
+    /// Re-bindable workspace handle (issue #4398). Shared with the channel
+    /// runtime context so a post-login `rebind_workspace` re-points PROFILE.md
+    /// writes at the activated user's workspace without re-subscribing.
+    workspace_handle: Arc<RwLock<PathBuf>>,
 }
 
 impl ProfileMdRenderer {
     /// Create a new renderer backed by `cache`, writing to
-    /// `workspace_dir/PROFILE.md`.
-    pub fn new(cache: Arc<FacetCache>, workspace_dir: PathBuf) -> Self {
+    /// `<workspace>/PROFILE.md` where `<workspace>` is re-resolved through the
+    /// shared `workspace_handle` on every render.
+    pub fn new(cache: Arc<FacetCache>, workspace_handle: Arc<RwLock<PathBuf>>) -> Self {
         Self {
             cache,
-            workspace_dir,
+            workspace_handle,
+        }
+    }
+
+    /// Current workspace directory, re-resolved through the shared handle.
+    fn workspace_dir(&self) -> PathBuf {
+        match self.workspace_handle.read() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
         }
     }
 
@@ -150,7 +162,7 @@ impl ProfileMdRenderer {
                 lines.join("\n")
             };
 
-            replace_managed_block(&self.workspace_dir, spec.block_name, spec.heading, body)
+            replace_managed_block(&self.workspace_dir(), spec.block_name, spec.heading, body)
                 .map_err(|e| {
                     anyhow::anyhow!(
                         "[learning::profile_md_renderer] failed to write block '{}': {e}",
@@ -260,7 +272,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(PROFILE_INIT_SQL).unwrap();
         let cache = make_cache(Arc::new(Mutex::new(conn)));
-        let renderer = ProfileMdRenderer::new(Arc::clone(&cache), tmp.path().to_path_buf());
+        let renderer = ProfileMdRenderer::new(Arc::clone(&cache), Arc::new(RwLock::new(tmp.path().to_path_buf())));
         (cache, renderer, tmp)
     }
 
@@ -502,7 +514,7 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(PROFILE_INIT_SQL).unwrap();
         let cache = make_cache(Arc::new(Mutex::new(conn)));
-        let renderer = Arc::new(ProfileMdRenderer::new(cache, tmp.path().to_path_buf()));
+        let renderer = Arc::new(ProfileMdRenderer::new(cache, Arc::new(RwLock::new(tmp.path().to_path_buf()))));
         // subscribe_global requires a running runtime; just verify the type works.
         let _renderer_ref = Arc::clone(&renderer);
         // We can't call subscribe_global in a unit test without a tokio runtime,

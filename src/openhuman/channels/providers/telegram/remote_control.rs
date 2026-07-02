@@ -101,7 +101,7 @@ async fn build_status_response(ctx: &ChannelRuntimeContext, msg: &ChannelMessage
         .map(|h| h.len())
         .unwrap_or(0);
 
-    let workspace = ctx.workspace_dir.clone();
+    let workspace = ctx.workspace_dir();
     let reply_target = msg.reply_target.clone();
     // Use with_store_read (no disk write) and spawn_blocking to keep the async
     // executor thread unblocked during mutex acquisition + file I/O.
@@ -154,7 +154,7 @@ async fn build_status_response(ctx: &ChannelRuntimeContext, msg: &ChannelMessage
 }
 
 async fn build_sessions_response(ctx: &ChannelRuntimeContext, msg: &ChannelMessage) -> String {
-    let workspace = ctx.workspace_dir.clone();
+    let workspace = ctx.workspace_dir();
     let reply_target = msg.reply_target.clone();
     // Read-only lookup — use with_store_read (no save) wrapped in spawn_blocking.
     let active_thread_id = tokio::task::spawn_blocking(move || {
@@ -166,7 +166,7 @@ async fn build_sessions_response(ctx: &ChannelRuntimeContext, msg: &ChannelMessa
     .ok()
     .and_then(|res| res.ok())
     .flatten();
-    let workspace = ctx.workspace_dir.as_path();
+    let workspace = ctx.workspace_dir();
 
     let threads = match conversations::list_threads(workspace.to_path_buf()) {
         Ok(list) => list,
@@ -215,7 +215,7 @@ fn format_session_line(thread: &ConversationThread, active_id: Option<&str>) -> 
 }
 
 async fn build_new_session_response(ctx: &ChannelRuntimeContext, msg: &ChannelMessage) -> String {
-    let workspace = ctx.workspace_dir.as_path();
+    let workspace = ctx.workspace_dir();
     let sender_key = conversation_history_key(msg);
     let thread_id = format!("thread-{}", uuid::Uuid::new_v4());
     let now = chrono::Utc::now();
@@ -243,7 +243,7 @@ async fn build_new_session_response(ctx: &ChannelRuntimeContext, msg: &ChannelMe
 
     clear_sender_history(ctx, &sender_key);
 
-    let workspace_dir = ctx.workspace_dir.clone();
+    let workspace_dir = ctx.workspace_dir();
     let reply_target_owned = msg.reply_target.clone();
     let thread_id_owned = thread_id.clone();
     let sender_key_owned = sender_key.clone();

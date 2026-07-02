@@ -6,7 +6,7 @@ use crate::openhuman::tools::Tool;
 use crate::openhuman::util::truncate_with_ellipsis;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 /// Per-sender conversation history for channel messages.
 pub(crate) type ConversationHistoryMap = Arc<Mutex<HashMap<String, Vec<ChatMessage>>>>;
@@ -47,7 +47,10 @@ pub(crate) struct ChannelRuntimeContext {
     pub(crate) channels_by_name: Arc<HashMap<String, Arc<dyn super::Channel>>>,
     pub(crate) provider: Arc<dyn Provider>,
     pub(crate) default_provider: Arc<String>,
-    pub(crate) memory: Arc<dyn Memory>,
+    /// Re-bindable channel memory store (issue #4398). Held behind a lock so a
+    /// post-login `channels::rebind_memory` swaps it for the activated user's
+    /// workspace store. Read via [`ChannelRuntimeContext::memory`].
+    pub(crate) memory_handle: Arc<RwLock<Arc<dyn Memory>>>,
     pub(crate) tools_registry: Arc<Vec<Box<dyn Tool>>>,
     pub(crate) system_prompt: Arc<String>,
     pub(crate) model: Arc<String>,
@@ -63,10 +66,40 @@ pub(crate) struct ChannelRuntimeContext {
     pub(crate) reliability: Arc<crate::openhuman::config::ReliabilityConfig>,
     pub(crate) provider_runtime_options:
         crate::openhuman::inference::provider::ProviderRuntimeOptions,
-    pub(crate) workspace_dir: Arc<PathBuf>,
+    /// Re-bindable workspace handle. Started from the pre-login `Config`
+    /// snapshot, then re-pointed at the activated user's workspace on login
+    /// via `channels::runtime::rebind_workspace` (issue #4398). Read through
+    /// [`ChannelRuntimeContext::workspace_dir`] so every turn re-resolves.
+    pub(crate) workspace_handle: Arc<RwLock<PathBuf>>,
     pub(crate) message_timeout_secs: u64,
     pub(crate) multimodal: crate::openhuman::config::MultimodalConfig,
     pub(crate) multimodal_files: crate::openhuman::config::MultimodalFileConfig,
+}
+
+impl ChannelRuntimeContext {
+    /// Current workspace directory, re-resolved through the re-bindable handle.
+    ///
+    /// After a post-login `rebind_workspace`, this returns the activated
+    /// user's `users/<user_id>/` workspace instead of the pre-login
+    /// `users/local/` snapshot the runtime was started with (issue #4398).
+    pub(crate) fn workspace_dir(&self) -> PathBuf {
+        match self.workspace_handle.read() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
+    }
+
+    /// Current channel memory store, re-resolved through the re-bindable handle.
+    ///
+    /// After a post-login `rebind_memory`, this returns a store rooted at the
+    /// activated user's workspace instead of the pre-login `users/local/` store
+    /// the runtime was started with (issue #4398).
+    pub(crate) fn memory(&self) -> Arc<dyn Memory> {
+        match self.memory_handle.read() {
+            Ok(guard) => Arc::clone(&guard),
+            Err(poisoned) => Arc::clone(&poisoned.into_inner()),
+        }
+    }
 }
 
 pub(crate) fn conversation_memory_key(msg: &super::traits::ChannelMessage) -> String {
@@ -331,9 +364,9 @@ mod tests {
             channels_by_name: Arc::new(HashMap::new()),
             provider: Arc::new(DummyProvider),
             default_provider: Arc::new("default".into()),
-            memory: Arc::new(MockMemory {
+            memory_handle: Arc::new(RwLock::new(Arc::new(MockMemory {
                 entries: Vec::new(),
-            }),
+            }))),
             tools_registry: Arc::new(vec![Box::new(DummyTool) as Box<dyn Tool>]),
             system_prompt: Arc::new("prompt".into()),
             model: Arc::new("model".into()),
@@ -349,7 +382,7 @@ mod tests {
             reliability: Arc::new(crate::openhuman::config::ReliabilityConfig::default()),
             provider_runtime_options:
                 crate::openhuman::inference::provider::ProviderRuntimeOptions::default(),
-            workspace_dir: Arc::new(PathBuf::from("/tmp")),
+            workspace_handle: Arc::new(RwLock::new(PathBuf::from("/tmp"))),
             message_timeout_secs: CHANNEL_MESSAGE_TIMEOUT_SECS,
             multimodal: crate::openhuman::config::MultimodalConfig::default(),
             multimodal_files: crate::openhuman::config::MultimodalFileConfig::default(),

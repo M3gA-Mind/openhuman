@@ -117,6 +117,56 @@ pub fn update_action_dir(new_action_dir: PathBuf) -> Result<u64, String> {
     Ok(gen)
 }
 
+/// Swap the workspace root on the process-global live policy after a
+/// post-login active-user switch (issue #4398).
+///
+/// The agent sandbox confines writes to `workspace_dir` (memory DBs, sessions,
+/// tokens). When the core started pre-login, that root was
+/// `~/.openhuman/users/local/`; after sign-in the agent's writes must be
+/// confined to `users/<user_id>/`. Updates the stored `workspace_dir` (so a
+/// later [`reload_from`] keeps the new root) and rebuilds the current policy
+/// via [`SecurityPolicy::from_config`] against the new workspace + the stored
+/// action root — using `from_config` (not a field poke) so the policy's
+/// lazily-cached canonical workspace path is rebuilt fresh rather than left
+/// pointing at the old root. No-op if nothing has been [`install`]ed yet
+/// (e.g. a CLI invocation that never started a session runtime), mirroring
+/// [`set_action_dir`]. Tools read [`current`] at call time, so the next tool
+/// call sees the new sandbox root.
+pub fn set_workspace_dir(
+    new_workspace: PathBuf,
+    autonomy_config: &crate::openhuman::config::AutonomyConfig,
+) {
+    let Some(state) = STATE.get() else {
+        tracing::debug!(
+            "[security:live_policy] set_workspace_dir called before install; no live policy to swap"
+        );
+        return;
+    };
+
+    if let Ok(mut guard) = state.workspace_dir.write() {
+        *guard = new_workspace.clone();
+    }
+    let action = state
+        .action_dir
+        .read()
+        .map(|g| g.clone())
+        .unwrap_or_default();
+    let rebuilt = Arc::new(SecurityPolicy::from_config(
+        autonomy_config,
+        &new_workspace,
+        &action,
+    ));
+    if let Ok(mut guard) = state.policy.write() {
+        *guard = rebuilt;
+    }
+    let gen = state.generation.fetch_add(1, Ordering::Relaxed) + 1;
+    tracing::info!(
+        generation = gen,
+        workspace_dir = %new_workspace.display(),
+        "[security:live_policy] SecurityPolicy workspace_dir swapped after active-user switch"
+    );
+}
+
 /// Rebuild the policy from `autonomy_config` against the stored workspace dir
 /// and swap it in, bumping the generation counter. No-op if nothing has been
 /// installed yet (e.g. a CLI invocation that never started a session runtime).
@@ -303,6 +353,67 @@ mod tests {
             current().expect("policy still installed").action_dir,
             new_action,
             "reload after set_action_dir must keep the swapped root"
+        );
+    }
+
+    // Issue #4398 — after a post-login active-user switch, the agent sandbox
+    // root must move from the pre-login `users/local/` workspace to the
+    // activated user's workspace, so file-writing tools (which read `current()`
+    // at call time) stay confined to the right place. Preserves autonomy and
+    // action_dir, bumps the generation, and survives a later reload.
+    #[test]
+    fn set_workspace_dir_swaps_root_and_preserves_other_access() {
+        let _env = crate::openhuman::config::TEST_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let pre_login = std::env::temp_dir().join("openhuman_set_ws_test_local");
+        let action = std::env::temp_dir().join("openhuman_set_ws_test_action");
+        let initial = Arc::new(SecurityPolicy {
+            autonomy: AutonomyLevel::Full,
+            workspace_dir: pre_login.clone(),
+            action_dir: action.clone(),
+            ..SecurityPolicy::default()
+        });
+        install(initial, pre_login.clone(), action.clone());
+        assert_eq!(
+            current().expect("policy installed").workspace_dir,
+            pre_login,
+            "precondition: workspace starts at the pre-login root"
+        );
+
+        let before = generation();
+        let active_user = std::env::temp_dir().join("openhuman_set_ws_test_user_42");
+        let cfg = AutonomyConfig {
+            level: AutonomyLevel::Full,
+            ..AutonomyConfig::default()
+        };
+        set_workspace_dir(active_user.clone(), &cfg);
+
+        assert!(
+            generation() > before,
+            "generation must increase on workspace_dir swap"
+        );
+        let now = current().expect("policy still installed");
+        assert_eq!(
+            now.workspace_dir, active_user,
+            "live policy must reflect the activated user's workspace"
+        );
+        assert_eq!(
+            now.action_dir, action,
+            "action_dir must survive a workspace_dir swap"
+        );
+        assert_eq!(
+            now.autonomy,
+            AutonomyLevel::Full,
+            "autonomy level must survive a workspace_dir swap"
+        );
+
+        // The stored workspace is updated, so a later reload keeps the new root.
+        reload_from(&cfg);
+        assert_eq!(
+            current().expect("policy still installed").workspace_dir,
+            active_user,
+            "reload after set_workspace_dir must keep the swapped workspace"
         );
     }
 }

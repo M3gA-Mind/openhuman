@@ -39,7 +39,7 @@ use crate::openhuman::security::SecurityPolicy;
 use crate::openhuman::tools;
 use anyhow::Result;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 /// How the channels runtime should construct its default chat provider.
 ///
@@ -83,6 +83,15 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
     let bus = event_bus::init_global(DEFAULT_CAPACITY);
     let _tracing_handle = bus.subscribe(Arc::new(TracingSubscriber));
     crate::openhuman::health::bus::register_health_subscriber();
+    // Re-bindable workspace handle (issue #4398). The runtime may have started
+    // pre-login against `users/local/`; register the handle so a later
+    // `store_session` can re-point it at the activated user's workspace without
+    // a restart. Created up-front so the workspace-scoped subscribers below
+    // (ProfileMdRenderer, TelegramRemoteSubscriber) and the runtime context all
+    // share the SAME `RwLock<PathBuf>` — one `rebind_workspace` re-points them
+    // all at once. The context and the global slot hold clones of this handle.
+    let workspace_handle = Arc::new(RwLock::new(config.workspace_dir.clone()));
+    super::workspace::register_workspace_handle(Arc::clone(&workspace_handle));
     crate::openhuman::workflows::bus::register_workflow_cleanup_subscriber();
     crate::openhuman::memory_conversations::register_conversation_persistence_subscriber(
         config.workspace_dir.clone(),
@@ -182,7 +191,7 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
                 use std::sync::Arc;
                 let cache = Arc::new(FacetCache::new(client.profile_conn()));
                 let renderer =
-                    Arc::new(ProfileMdRenderer::new(cache, config.workspace_dir.clone()));
+                    Arc::new(ProfileMdRenderer::new(cache, Arc::clone(&workspace_handle)));
                 ProfileMdRenderer::subscribe(renderer)
             } else {
                 tracing::debug!(
@@ -296,44 +305,17 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
         config.workspace_dir.clone(),
     )?;
     let temperature = config.default_temperature;
-    let local_embedding = config.workload_local_model("embeddings");
-    let embedding_api_key =
-        crate::openhuman::embeddings::resolve_api_key(&config, &config.memory.embedding_provider);
-    // Build the memory store. A misconfigured/removed embedding provider (e.g. a
-    // stale `embedding_provider = "fastembed"` that the factory no longer knows)
-    // makes the embedder build fail — but that must NOT take every messaging
-    // channel offline (issue #3712). Fall back to keyword-only memory
-    // (`embedding_provider = "none"` → NoopEmbedding) so the channel listeners
-    // still start; semantic memory degrades gracefully instead of the whole
-    // runtime aborting.
-    let mem: Arc<dyn Memory> = match memory_store::create_memory_with_local_ai(
-        &config.memory,
-        local_embedding.as_deref(),
-        &embedding_api_key,
-        &[],
-        Some(&config.storage.provider.config),
-        &config.workspace_dir,
-    ) {
-        Ok(mem) => Arc::from(mem),
-        Err(e) => {
-            tracing::error!(
-                error = %format!("{e:#}"),
-                provider = %config.memory.embedding_provider,
-                "[channels] memory embedder build failed — falling back to keyword-only \
-                 memory so channels still start"
-            );
-            let mut fallback_memory = config.memory.clone();
-            fallback_memory.embedding_provider = "none".to_string();
-            Arc::from(memory_store::create_memory_with_local_ai(
-                &fallback_memory,
-                local_embedding.as_deref(),
-                &embedding_api_key,
-                &[],
-                Some(&config.storage.provider.config),
-                &config.workspace_dir,
-            )?)
-        }
-    };
+    // Build the channel-runtime memory store (with the #3712 keyword-only
+    // fallback). Extracted into `memory_rebind::build_channel_memory` so the
+    // post-login re-bind (#4398) rebuilds it identically.
+    let mem: Arc<dyn Memory> = super::memory_rebind::build_channel_memory(&config)?;
+    // Register a re-bindable handle to this store so a later `store_session` can
+    // swap it for the activated user's workspace without a restart. The context
+    // holds the same `RwLock`; a turn that already cloned the old store keeps
+    // using it, new turns pick up the swap.
+    let memory_handle: std::sync::Arc<RwLock<Arc<dyn Memory>>> =
+        Arc::new(RwLock::new(Arc::clone(&mem)));
+    super::memory_rebind::register_memory_handle(Arc::clone(&memory_handle));
     // Build system prompt from workspace identity files + skills
     let workspace = config.workspace_dir.clone();
     let tools_registry = Arc::new(tools::all_tools_with_runtime(
@@ -733,7 +715,7 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
     let _telegram_remote_handle = if channels_by_name.contains_key("telegram") {
         let handle = bus.subscribe(Arc::new(
             crate::openhuman::channels::providers::telegram::TelegramRemoteSubscriber::new(
-                config.workspace_dir.clone(),
+                Arc::clone(&workspace_handle),
             ),
         ));
         tracing::debug!("[telegram-remote] registered TelegramRemoteSubscriber");
@@ -776,7 +758,7 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
         channels_by_name,
         provider: Arc::clone(&provider),
         default_provider: Arc::new(provider_name),
-        memory: Arc::clone(&mem),
+        memory_handle,
         tools_registry: Arc::clone(&tools_registry),
         system_prompt: Arc::new(system_prompt),
         model: Arc::new(model.clone()),
@@ -791,7 +773,7 @@ pub async fn start_channels(mut config: Config) -> Result<()> {
         inference_url: config.inference_url.clone(),
         reliability: Arc::new(config.reliability.clone()),
         provider_runtime_options,
-        workspace_dir: Arc::new(config.workspace_dir.clone()),
+        workspace_handle,
         message_timeout_secs,
         multimodal: config.multimodal.clone(),
         multimodal_files: config.multimodal_files.clone(),

@@ -129,7 +129,7 @@ pub(crate) async fn process_channel_message(
         reply_target: msg.reply_target.clone(),
         content: msg.content.clone(),
         thread_ts: msg.thread_ts.clone(),
-        workspace_dir: ctx.workspace_dir.as_ref().clone(),
+        workspace_dir: ctx.workspace_dir(),
     });
 
     let target_channel = ctx.channels_by_name.get(&msg.channel).cloned();
@@ -214,13 +214,16 @@ pub(crate) async fn process_channel_message(
         }
     };
 
+    // Re-resolve the memory store through the re-bindable handle so a
+    // post-login active-user switch routes channel memory to the activated
+    // user's workspace (issue #4398).
+    let memory = ctx.memory();
     let memory_context =
-        build_memory_context(ctx.memory.as_ref(), &msg.content, ctx.min_relevance_score).await;
+        build_memory_context(memory.as_ref(), &msg.content, ctx.min_relevance_score).await;
 
     if ctx.auto_save_memory {
         let autosave_key = conversation_memory_key(&msg);
-        let _ = ctx
-            .memory
+        let _ = memory
             .store(
                 "",
                 &autosave_key,
@@ -619,7 +622,7 @@ pub(crate) async fn process_channel_message(
                     model: route.model.clone(),
                     elapsed_ms: started_at.elapsed().as_millis() as u64,
                     success: false,
-                    workspace_dir: ctx.workspace_dir.as_ref().clone(),
+                    workspace_dir: ctx.workspace_dir(),
                 });
                 return;
             }
@@ -760,7 +763,7 @@ pub(crate) async fn process_channel_message(
         model: response_model,
         elapsed_ms: started_at.elapsed().as_millis() as u64,
         success,
-        workspace_dir: ctx.workspace_dir.as_ref().clone(),
+        workspace_dir: ctx.workspace_dir(),
     });
 }
 

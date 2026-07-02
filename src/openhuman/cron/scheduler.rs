@@ -11,11 +11,83 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use futures_util::{stream, StreamExt};
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock, RwLock};
 use tokio::process::Command;
 use tokio::time::{self, Duration};
 
 const MIN_POLL_SECONDS: u64 = 5;
+
+/// Process-global holder for the scheduler's *active* config.
+///
+/// The cron scheduler is started once (`run`) with a `Config` snapshot,
+/// frequently *before* any user has signed in — so `config.workspace_dir`
+/// resolves to `~/.openhuman/users/local/` and every `due_jobs` poll reads the
+/// cron store there. After a sign-in, `credentials::ops::store_session` calls
+/// [`rebind`] with the activated user's config; the poll loop reads this holder
+/// each tick, so the next poll resolves the cron store under
+/// `users/<user_id>/` without a process restart (issue #4398). Mirrors the
+/// re-bind precedents in `memory::global::init` and
+/// `channels::runtime::rebind_workspace`.
+type ActiveConfigSlot = RwLock<Option<Config>>;
+
+static ACTIVE_CONFIG: OnceLock<ActiveConfigSlot> = OnceLock::new();
+
+fn active_config_slot() -> &'static ActiveConfigSlot {
+    ACTIVE_CONFIG.get_or_init(ActiveConfigSlot::default)
+}
+
+/// Seed the holder with the scheduler's startup config, but only if nothing is
+/// bound yet — a live [`rebind`] that happened before the loop reached its
+/// first tick must not be clobbered by the boot snapshot.
+fn seed_in(slot: &ActiveConfigSlot, config: Config) {
+    if let Ok(mut guard) = slot.write() {
+        if guard.is_none() {
+            *guard = Some(config);
+        }
+    }
+}
+
+fn rebind_in(slot: &ActiveConfigSlot, config: Config) {
+    match slot.write() {
+        Ok(mut guard) => {
+            let changed = guard
+                .as_ref()
+                .map(|c| c.workspace_dir != config.workspace_dir)
+                .unwrap_or(true);
+            if changed {
+                log::info!(
+                    "[cron:scheduler] re-binding scheduler workspace -> {}",
+                    config.workspace_dir.display()
+                );
+            }
+            *guard = Some(config);
+        }
+        Err(e) => log::warn!("[cron:scheduler] rebind: active-config lock poisoned: {e}"),
+    }
+}
+
+fn current_in(slot: &ActiveConfigSlot) -> Option<Config> {
+    slot.read().ok().and_then(|guard| guard.clone())
+}
+
+/// Seed the scheduler's active-config holder from its startup config.
+fn seed_active_config(config: Config) {
+    seed_in(active_config_slot(), config);
+}
+
+/// Re-bind the scheduler's active config after a post-login active-user switch.
+///
+/// Invoked from `credentials::ops::store_session` against `effective_config`.
+/// The poll loop picks this up on its next tick.
+pub fn rebind(config: Config) {
+    rebind_in(active_config_slot(), config);
+}
+
+/// The scheduler's current active config, if the loop has started (or a
+/// [`rebind`] has landed).
+fn current_active_config() -> Option<Config> {
+    current_in(active_config_slot())
+}
 const SHELL_JOB_TIMEOUT_SECS: u64 = 120;
 const AGENT_JOB_USER_FAILURE_MESSAGE: &str = "Something went wrong. Please try again.\nThis error has been reported. You can also report it on Discord.\n<openhuman-link path=\"community/discord-report\">Report on Discord</openhuman-link>";
 // Actionable, static failure copy for the three permanent cron halt states
@@ -167,13 +239,12 @@ pub async fn run(config: Config) -> Result<()> {
     crate::core::event_bus::init_global(crate::core::event_bus::DEFAULT_CAPACITY);
     crate::openhuman::health::bus::register_health_subscriber();
 
+    // Seed the re-bindable active-config holder so `store_session` can later
+    // re-point the poll loop at the activated user's workspace (issue #4398).
+    seed_active_config(config.clone());
+
     let poll_secs = config.reliability.scheduler_poll_secs.max(MIN_POLL_SECONDS);
     let mut interval = time::interval(Duration::from_secs(poll_secs));
-    let security = Arc::new(SecurityPolicy::from_config(
-        &config.autonomy,
-        &config.workspace_dir,
-        &config.action_dir,
-    ));
 
     publish_global(DomainEvent::SystemStartup {
         component: "scheduler".to_string(),
@@ -190,7 +261,19 @@ pub async fn run(config: Config) -> Result<()> {
 
     loop {
         interval.tick().await;
-        tick_once(&config, &security, &mut last_emitted_health).await;
+        // Re-resolve the active config every tick. After a post-login
+        // `rebind`, `current` (and its `workspace_dir`) points at the
+        // activated user's workspace, so `due_jobs`/security below read the
+        // cron store under `users/<user_id>/` instead of the pre-login
+        // `users/local/` snapshot. Falls back to the startup snapshot if the
+        // holder is somehow unset.
+        let current = current_active_config().unwrap_or_else(|| config.clone());
+        let security = Arc::new(SecurityPolicy::from_config(
+            &current.autonomy,
+            &current.workspace_dir,
+            &current.action_dir,
+        ));
+        tick_once(&current, &security, &mut last_emitted_health).await;
     }
 }
 

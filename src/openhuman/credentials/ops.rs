@@ -438,6 +438,34 @@ async fn store_session_inner(
     );
     logs.push("conversation persistence bound to active workspace".to_string());
 
+    // Re-resolve the two long-lived subsystems that started from a pre-login
+    // Config snapshot and would otherwise keep writing under users/local/ until
+    // a process restart (issue #4398, the #2437-E follow-up). Mirrors the
+    // memory/conversation rebind above:
+    //   * channel runtime — re-point its shared workspace handle so every
+    //     channel turn re-resolves to the activated user's workspace.
+    //   * cron scheduler — re-bind its active config so the next poll reads the
+    //     cron store under users/<user_id>/.
+    // Both are no-ops when the subsystem isn't running in this process.
+    crate::openhuman::channels::rebind_workspace(effective_config.workspace_dir.clone());
+    crate::openhuman::cron::scheduler::rebind(effective_config.clone());
+    // Re-point the remaining workspace-baked channel-runtime state (issue
+    // #4398 follow-up): the agent sandbox root (so file-writing tools stay
+    // confined to the activated user's workspace) and the channel memory store
+    // (conversation auto-save + memory-context retrieval). The Telegram
+    // busy-state subscriber and the PROFILE.md writer share the workspace
+    // handle re-bound above, so they re-resolve without a separate call. Both
+    // calls are no-ops when the channel runtime / live policy aren't installed.
+    crate::openhuman::security::live_policy::set_workspace_dir(
+        effective_config.workspace_dir.clone(),
+        &effective_config.autonomy,
+    );
+    crate::openhuman::channels::rebind_memory(&effective_config);
+    logs.push(format!(
+        "channel runtime + scheduler + security + memory re-bound to workspace {}",
+        effective_config.workspace_dir.display()
+    ));
+
     // Now that active_user.toml exists and config.workspace_dir resolves to
     // the per-user path, seed the subconscious defaults and spawn the
     // heartbeat loop. Idempotent — no-op on subsequent logins of the same

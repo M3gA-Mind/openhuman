@@ -66,7 +66,7 @@ fn compact_sender_history_keeps_recent_truncated_messages() {
         channels_by_name: Arc::new(HashMap::new()),
         provider: Arc::new(DummyProvider),
         default_provider: Arc::new("test-provider".to_string()),
-        memory: Arc::new(super::common::NoopMemory),
+        memory_handle: Arc::new(std::sync::RwLock::new(Arc::new(super::common::NoopMemory))),
         tools_registry: Arc::new(vec![]),
         system_prompt: Arc::new("system".to_string()),
         model: Arc::new("test-model".to_string()),
@@ -83,7 +83,7 @@ fn compact_sender_history_keeps_recent_truncated_messages() {
         multimodal: crate::openhuman::config::MultimodalConfig::default(),
         multimodal_files: crate::openhuman::config::MultimodalFileConfig::default(),
         provider_runtime_options: crate::openhuman::inference::provider::ProviderRuntimeOptions::default(),
-        workspace_dir: Arc::new(std::env::temp_dir()),
+        workspace_handle: Arc::new(std::sync::RwLock::new(std::env::temp_dir())),
         message_timeout_secs: CHANNEL_MESSAGE_TIMEOUT_SECS,
     };
 
