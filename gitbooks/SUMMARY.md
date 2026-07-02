@@ -6,6 +6,19 @@
 * [Getting Started](overview/getting-started.md)
 * [Troubleshooting Sign-In](overview/troubleshooting-sign-in.md)
 
+## Guides
+
+* [Guides](guides/README.md)
+  * [Create my personal AI assistant](guides/personal-assistant.md)
+  * [Use OpenHuman with a local model](guides/local-model.md)
+  * [Keep sensitive data private](guides/privacy-sensitive-data.md)
+  * [Recover from a failed installation](guides/recover-failed-installation.md)
+  * [Move OpenHuman to a new PC](guides/move-to-new-pc.md)
+  * [Connect OpenHuman to Obsidian](guides/connect-obsidian.md)
+  * [Organize my project folders](guides/organize-project-folders.md)
+  * [Create a doctor-specific assistant](guides/doctor-assistant.md)
+  * [Create a safe companion for a child](guides/child-safe-companion.md)
+
 ## Features
 
 * [Realtime Mascot](features/mascot/README.md)
