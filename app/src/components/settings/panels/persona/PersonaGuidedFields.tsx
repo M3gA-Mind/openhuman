@@ -2,6 +2,7 @@ import { useT } from '../../../../lib/i18n/I18nContext';
 import { SettingsRow, SettingsTextArea } from '../../controls';
 import { useSettingsNavigation } from '../../hooks/useSettingsNavigation';
 import { applyPersonaField, parsePersonaFields, type PersonaFieldKey } from './personaSections';
+import PersonaTemplatePicker from './PersonaTemplatePicker';
 
 interface PersonaGuidedFieldsProps {
   /** The raw SOUL.md text — the single source of truth this view edits. */
@@ -55,6 +56,8 @@ const PersonaGuidedFields = ({ value, onChange, disabled = false }: PersonaGuide
       <p className="text-xs text-content-muted leading-relaxed">
         {t('settings.persona.builder.intro')}
       </p>
+
+      <PersonaTemplatePicker value={value} onChange={onChange} disabled={disabled} />
 
       {FIELDS.map(field => (
         <SettingsRow

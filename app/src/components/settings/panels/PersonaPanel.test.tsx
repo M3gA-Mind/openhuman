@@ -97,6 +97,24 @@ describe('PersonaPanel', () => {
     });
   });
 
+  it('applies a role template and saves the seeded persona over RPC', async () => {
+    readPersonaFileMock.mockResolvedValue(
+      soulFile({ contents: '## Personality\n\nOld.\n', is_default: false })
+    );
+    renderWithProviders(<PersonaPanel />);
+    await awaitLoaded();
+
+    fireEvent.click(screen.getByTestId('persona-template-doctor'));
+    fireEvent.click(screen.getByTestId('persona-soul-save'));
+
+    await waitFor(() => {
+      const lastCall = writePersonaFileMock.mock.calls.at(-1);
+      expect(lastCall?.[0]).toBe('SOUL.md');
+      expect(lastCall?.[1]).toContain('Careful and precise');
+      expect(lastCall?.[1]).toContain('## Voice');
+    });
+  });
+
   it('persists the display name to the store on save', async () => {
     const { store } = renderWithProviders(<PersonaPanel />);
     await awaitLoaded();

@@ -5099,6 +5099,21 @@ const messages: TranslationMap = {
   'settings.persona.builder.securityNote':
     'Vous voulez choisir ce que l’assistant est autorisé à faire ?',
   'settings.persona.builder.securityLink': 'Ouvrir Accès de l’agent',
+  'settings.persona.templates.heading': 'Partir d’un modèle',
+  'settings.persona.templates.desc':
+    'Choisissez un point de départ : il remplit Personnalité et Style de communication. Vous pourrez tout modifier ensuite.',
+  'settings.persona.templates.doctor.label': 'Assistant clinique',
+  'settings.persona.templates.doctor.desc': 'Prudent, cite ses sources, signale l’incertitude',
+  'settings.persona.templates.researcher.label': 'Assistant de recherche',
+  'settings.persona.templates.researcher.desc': 'Rigoureux, structuré, fondé sur des preuves',
+  'settings.persona.templates.executive.label': 'Assistant de direction',
+  'settings.persona.templates.executive.desc': 'Concis, décisif, orienté action',
+  'settings.persona.templates.teacher.label': 'Enseignant',
+  'settings.persona.templates.teacher.desc': 'Patient, explique étape par étape',
+  'settings.persona.templates.student.label': 'Partenaire d’étude',
+  'settings.persona.templates.student.desc': 'Encourageant, pose des questions, langage simple',
+  'settings.persona.templates.family.label': 'Assistant familial',
+  'settings.persona.templates.family.desc': 'Chaleureux, amical, adapté à tous les âges',
   'settings.persona.appearanceHeading': 'Avatar et Voix',
   'settings.persona.appearanceDesc':
     "La couleur de la mascotte, l'avatar personnalisé GIF et la voix de réponse sont configurés dans les paramètres de la mascotte.",
