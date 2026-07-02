@@ -224,7 +224,7 @@ async fn process_channel_message_uses_autosaved_memory_after_history_is_cleared(
         channels_by_name: Arc::new(channels_by_name),
         provider: provider_impl.clone(),
         default_provider: Arc::new("test-provider".to_string()),
-        memory,
+        memory_handle: Arc::new(std::sync::RwLock::new(memory)),
         tools_registry: Arc::new(vec![]),
         system_prompt: Arc::new("test-system-prompt".to_string()),
         model: Arc::new("test-model".to_string()),

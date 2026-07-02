@@ -517,7 +517,9 @@ async fn handle_runtime_command_telegram_new_status_and_sessions_round_trip() {
         },
     );
 
-    let subscriber = TelegramRemoteSubscriber::new(tempdir.path().to_path_buf());
+    let subscriber = TelegramRemoteSubscriber::new(Arc::new(std::sync::RwLock::new(
+        tempdir.path().to_path_buf(),
+    )));
     subscriber
         .handle(&DomainEvent::ChannelMessageReceived {
             channel: "telegram".into(),

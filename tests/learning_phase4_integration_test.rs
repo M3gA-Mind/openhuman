@@ -77,7 +77,7 @@ impl TestHarness {
         let workspace = TempDir::new().unwrap();
         let renderer = Arc::new(ProfileMdRenderer::new(
             Arc::clone(&cache),
-            workspace.path().to_path_buf(),
+            Arc::new(std::sync::RwLock::new(workspace.path().to_path_buf())),
         ));
 
         // Drain any stale candidates from prior tests so they don't affect
