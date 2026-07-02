@@ -67,6 +67,6 @@ pub use controllers::{ChannelAuthMode, ChannelDefinition};
 // the prompt-building code. Re-exported here for callers that used the
 // old `channels::build_system_prompt` path.
 pub use crate::openhuman::context::channels_prompt::build_system_prompt;
-pub use runtime::start_channels;
-pub use runtime::rebind_workspace;
 pub use runtime::rebind_memory;
+pub use runtime::rebind_workspace;
+pub use runtime::start_channels;

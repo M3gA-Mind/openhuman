@@ -5,7 +5,9 @@ use tempfile::tempdir;
 #[tokio::test]
 async fn subscriber_marks_busy_on_received_and_clears_on_processed() {
     let dir = tempdir().expect("tempdir");
-    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(dir.path().to_path_buf())));
+    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(
+        dir.path().to_path_buf(),
+    )));
     assert_eq!(subscriber.name(), "telegram::remote_control");
     assert_eq!(subscriber.domains(), Some(&["channel"][..]));
 
@@ -50,7 +52,9 @@ async fn subscriber_marks_busy_on_received_and_clears_on_processed() {
 #[tokio::test]
 async fn subscriber_ignores_non_telegram_channel_events() {
     let dir = tempdir().expect("tempdir");
-    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(dir.path().to_path_buf())));
+    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(
+        dir.path().to_path_buf(),
+    )));
 
     subscriber
         .handle(&DomainEvent::ChannelMessageReceived {
@@ -75,7 +79,9 @@ async fn subscriber_ignores_non_telegram_channel_events() {
 #[tokio::test]
 async fn telegram_received_matching_workspace_sets_busy() {
     let dir = tempdir().expect("tempdir");
-    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(dir.path().to_path_buf())));
+    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(
+        dir.path().to_path_buf(),
+    )));
 
     subscriber
         .handle(&DomainEvent::ChannelMessageReceived {
@@ -99,7 +105,9 @@ async fn telegram_received_matching_workspace_sets_busy() {
 async fn telegram_received_stale_workspace_does_not_set_busy() {
     let dir = tempdir().expect("tempdir");
     let stale = tempdir().expect("stale tempdir");
-    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(dir.path().to_path_buf())));
+    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(
+        dir.path().to_path_buf(),
+    )));
 
     subscriber
         .handle(&DomainEvent::ChannelMessageReceived {
@@ -122,7 +130,9 @@ async fn telegram_received_stale_workspace_does_not_set_busy() {
 #[tokio::test]
 async fn telegram_processed_matching_workspace_clears_busy() {
     let dir = tempdir().expect("tempdir");
-    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(dir.path().to_path_buf())));
+    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(
+        dir.path().to_path_buf(),
+    )));
 
     // First mark as busy via a matching received event.
     subscriber
@@ -169,7 +179,9 @@ async fn telegram_processed_matching_workspace_clears_busy() {
 async fn telegram_processed_stale_workspace_does_not_clear_busy() {
     let dir = tempdir().expect("tempdir");
     let stale = tempdir().expect("stale tempdir");
-    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(dir.path().to_path_buf())));
+    let subscriber = TelegramRemoteSubscriber::new(std::sync::Arc::new(std::sync::RwLock::new(
+        dir.path().to_path_buf(),
+    )));
 
     // Mark as busy via a matching received event.
     subscriber

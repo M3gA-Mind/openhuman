@@ -71,7 +71,7 @@ fn rebind_in(slot: &HandleSlot, workspace_dir: PathBuf) {
             }
         }
         Err(e) => log::warn!("[channels:runtime] rebind_workspace: handle poisoned: {e}"),
-    }
+    };
 }
 
 /// Register the live runtime's workspace handle so [`rebind_workspace`] can

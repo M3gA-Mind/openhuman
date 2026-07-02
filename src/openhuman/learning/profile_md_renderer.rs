@@ -272,7 +272,10 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(PROFILE_INIT_SQL).unwrap();
         let cache = make_cache(Arc::new(Mutex::new(conn)));
-        let renderer = ProfileMdRenderer::new(Arc::clone(&cache), Arc::new(RwLock::new(tmp.path().to_path_buf())));
+        let renderer = ProfileMdRenderer::new(
+            Arc::clone(&cache),
+            Arc::new(RwLock::new(tmp.path().to_path_buf())),
+        );
         (cache, renderer, tmp)
     }
 
@@ -514,7 +517,10 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(PROFILE_INIT_SQL).unwrap();
         let cache = make_cache(Arc::new(Mutex::new(conn)));
-        let renderer = Arc::new(ProfileMdRenderer::new(cache, Arc::new(RwLock::new(tmp.path().to_path_buf()))));
+        let renderer = Arc::new(ProfileMdRenderer::new(
+            cache,
+            Arc::new(RwLock::new(tmp.path().to_path_buf())),
+        ));
         // subscribe_global requires a running runtime; just verify the type works.
         let _renderer_ref = Arc::clone(&renderer);
         // We can't call subscribe_global in a unit test without a tokio runtime,
