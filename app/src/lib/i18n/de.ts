@@ -5099,14 +5099,19 @@ const messages: TranslationMap = {
   'settings.persona.builder.modeLabel': 'Persona-Editor-Modus',
   'settings.persona.builder.modeGuided': 'Geführt',
   'settings.persona.builder.modeAdvanced': 'Erweitert',
-  'settings.persona.builder.intro': 'Füllen Sie ein paar Felder aus und wir schreiben sie für Sie in Ihre Persona. Kein Markdown nötig.',
+  'settings.persona.builder.intro':
+    'Füllen Sie ein paar Felder aus und wir schreiben sie für Sie in Ihre Persona. Kein Markdown nötig.',
   'settings.persona.builder.personalityLabel': 'Persönlichkeit',
-  'settings.persona.builder.personalityPlaceholder': 'z. B. Warmherzig, neugierig und direkt. Ehrlich bei Unsicherheit.',
+  'settings.persona.builder.personalityPlaceholder':
+    'z. B. Warmherzig, neugierig und direkt. Ehrlich bei Unsicherheit.',
   'settings.persona.builder.voiceLabel': 'Kommunikationsstil',
-  'settings.persona.builder.voicePlaceholder': 'z. B. Zuerst die Antwort, kurz halten und meinen Ton treffen.',
+  'settings.persona.builder.voicePlaceholder':
+    'z. B. Zuerst die Antwort, kurz halten und meinen Ton treffen.',
   'settings.persona.builder.aboutLabel': 'Über Sie',
-  'settings.persona.builder.aboutPlaceholder': 'z. B. Ich leite ein kleines Designstudio und bevorzuge klare Sprache.',
-  'settings.persona.builder.preservedNote': 'Alle anderen von Hand geschriebenen Abschnitte bleiben erhalten — wechseln Sie zu „Erweitert“, um die vollständige Persona zu sehen.',
+  'settings.persona.builder.aboutPlaceholder':
+    'z. B. Ich leite ein kleines Designstudio und bevorzuge klare Sprache.',
+  'settings.persona.builder.preservedNote':
+    'Alle anderen von Hand geschriebenen Abschnitte bleiben erhalten — wechseln Sie zu „Erweitert“, um die vollständige Persona zu sehen.',
   'settings.persona.builder.securityNote': 'Möchten Sie festlegen, was der Assistent tun darf?',
   'settings.persona.builder.securityLink': 'Agentenzugriff öffnen',
   'settings.persona.appearanceHeading': 'Avatar und Stimme',

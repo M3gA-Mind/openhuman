@@ -5055,14 +5055,19 @@ const messages: TranslationMap = {
   'settings.persona.builder.modeLabel': 'Modalità editor della persona',
   'settings.persona.builder.modeGuided': 'Guidata',
   'settings.persona.builder.modeAdvanced': 'Avanzata',
-  'settings.persona.builder.intro': 'Compila alcuni campi e li scriviamo noi nella tua persona. Nessun markdown richiesto.',
+  'settings.persona.builder.intro':
+    'Compila alcuni campi e li scriviamo noi nella tua persona. Nessun markdown richiesto.',
   'settings.persona.builder.personalityLabel': 'Personalità',
-  'settings.persona.builder.personalityPlaceholder': 'es. Cordiale, curioso e diretto. Onesto sull’incertezza.',
+  'settings.persona.builder.personalityPlaceholder':
+    'es. Cordiale, curioso e diretto. Onesto sull’incertezza.',
   'settings.persona.builder.voiceLabel': 'Stile di comunicazione',
-  'settings.persona.builder.voicePlaceholder': 'es. Inizia dalla risposta, sii breve e adatta il mio tono.',
+  'settings.persona.builder.voicePlaceholder':
+    'es. Inizia dalla risposta, sii breve e adatta il mio tono.',
   'settings.persona.builder.aboutLabel': 'Su di te',
-  'settings.persona.builder.aboutPlaceholder': 'es. Gestisco un piccolo studio di design e preferisco un linguaggio semplice.',
-  'settings.persona.builder.preservedNote': 'Le altre sezioni che hai scritto a mano vengono mantenute: passa ad Avanzata per vedere la persona completa.',
+  'settings.persona.builder.aboutPlaceholder':
+    'es. Gestisco un piccolo studio di design e preferisco un linguaggio semplice.',
+  'settings.persona.builder.preservedNote':
+    'Le altre sezioni che hai scritto a mano vengono mantenute: passa ad Avanzata per vedere la persona completa.',
   'settings.persona.builder.securityNote': 'Vuoi scegliere cosa può fare l’assistente?',
   'settings.persona.builder.securityLink': 'Apri Accesso agente',
   'settings.persona.appearanceHeading': 'Avatar e Voce',

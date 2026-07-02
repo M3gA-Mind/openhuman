@@ -5083,15 +5083,21 @@ const messages: TranslationMap = {
   'settings.persona.builder.modeLabel': 'Mode de l’éditeur de persona',
   'settings.persona.builder.modeGuided': 'Guidé',
   'settings.persona.builder.modeAdvanced': 'Avancé',
-  'settings.persona.builder.intro': 'Remplissez quelques champs et nous les écrivons dans votre persona. Aucun markdown requis.',
+  'settings.persona.builder.intro':
+    'Remplissez quelques champs et nous les écrivons dans votre persona. Aucun markdown requis.',
   'settings.persona.builder.personalityLabel': 'Personnalité',
-  'settings.persona.builder.personalityPlaceholder': 'p. ex. Chaleureux, curieux et direct. Honnête face à l’incertitude.',
+  'settings.persona.builder.personalityPlaceholder':
+    'p. ex. Chaleureux, curieux et direct. Honnête face à l’incertitude.',
   'settings.persona.builder.voiceLabel': 'Style de communication',
-  'settings.persona.builder.voicePlaceholder': 'p. ex. Commencez par la réponse, restez bref et adaptez mon ton.',
+  'settings.persona.builder.voicePlaceholder':
+    'p. ex. Commencez par la réponse, restez bref et adaptez mon ton.',
   'settings.persona.builder.aboutLabel': 'À propos de vous',
-  'settings.persona.builder.aboutPlaceholder': 'p. ex. Je dirige un petit studio de design et je préfère un langage simple.',
-  'settings.persona.builder.preservedNote': 'Toutes les autres sections que vous avez écrites à la main sont conservées — passez en mode Avancé pour voir la persona complète.',
-  'settings.persona.builder.securityNote': 'Vous voulez choisir ce que l’assistant est autorisé à faire ?',
+  'settings.persona.builder.aboutPlaceholder':
+    'p. ex. Je dirige un petit studio de design et je préfère un langage simple.',
+  'settings.persona.builder.preservedNote':
+    'Toutes les autres sections que vous avez écrites à la main sont conservées — passez en mode Avancé pour voir la persona complète.',
+  'settings.persona.builder.securityNote':
+    'Vous voulez choisir ce que l’assistant est autorisé à faire ?',
   'settings.persona.builder.securityLink': 'Ouvrir Accès de l’agent',
   'settings.persona.appearanceHeading': 'Avatar et Voix',
   'settings.persona.appearanceDesc':

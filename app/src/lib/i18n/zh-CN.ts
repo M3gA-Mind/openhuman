@@ -4734,7 +4734,8 @@ const messages: TranslationMap = {
   'settings.persona.builder.voicePlaceholder': '例如：先给答案，简洁，并贴合我的语气。',
   'settings.persona.builder.aboutLabel': '关于你',
   'settings.persona.builder.aboutPlaceholder': '例如：我经营一家小型设计工作室，喜欢通俗的表达。',
-  'settings.persona.builder.preservedNote': '你手写的其他部分都会保留——切换到「高级」可查看完整角色设定。',
+  'settings.persona.builder.preservedNote':
+    '你手写的其他部分都会保留——切换到「高级」可查看完整角色设定。',
   'settings.persona.builder.securityNote': '想选择助手可以做什么？',
   'settings.persona.builder.securityLink': '打开代理访问权限',
   'settings.persona.appearanceHeading': '头像和声音',

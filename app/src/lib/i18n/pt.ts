@@ -5057,14 +5057,19 @@ const messages: TranslationMap = {
   'settings.persona.builder.modeLabel': 'Modo do editor de persona',
   'settings.persona.builder.modeGuided': 'Guiado',
   'settings.persona.builder.modeAdvanced': 'Avançado',
-  'settings.persona.builder.intro': 'Preencha alguns campos e nós os escrevemos na sua persona. Não é preciso markdown.',
+  'settings.persona.builder.intro':
+    'Preencha alguns campos e nós os escrevemos na sua persona. Não é preciso markdown.',
   'settings.persona.builder.personalityLabel': 'Personalidade',
-  'settings.persona.builder.personalityPlaceholder': 'ex.: Acolhedor, curioso e direto. Honesto quanto à incerteza.',
+  'settings.persona.builder.personalityPlaceholder':
+    'ex.: Acolhedor, curioso e direto. Honesto quanto à incerteza.',
   'settings.persona.builder.voiceLabel': 'Estilo de comunicação',
-  'settings.persona.builder.voicePlaceholder': 'ex.: Comece pela resposta, seja breve e acompanhe o meu tom.',
+  'settings.persona.builder.voicePlaceholder':
+    'ex.: Comece pela resposta, seja breve e acompanhe o meu tom.',
   'settings.persona.builder.aboutLabel': 'Sobre você',
-  'settings.persona.builder.aboutPlaceholder': 'ex.: Tenho um pequeno estúdio de design e prefiro linguagem simples.',
-  'settings.persona.builder.preservedNote': 'Quaisquer outras seções que você escreveu à mão são mantidas — mude para Avançado para ver a persona completa.',
+  'settings.persona.builder.aboutPlaceholder':
+    'ex.: Tenho um pequeno estúdio de design e prefiro linguagem simples.',
+  'settings.persona.builder.preservedNote':
+    'Quaisquer outras seções que você escreveu à mão são mantidas — mude para Avançado para ver a persona completa.',
   'settings.persona.builder.securityNote': 'Quer escolher o que o assistente pode fazer?',
   'settings.persona.builder.securityLink': 'Abrir Acesso do agente',
   'settings.persona.appearanceHeading': 'Avatar e Voz',

@@ -5041,14 +5041,19 @@ const messages: TranslationMap = {
   'settings.persona.builder.modeLabel': 'Tryb edytora persony',
   'settings.persona.builder.modeGuided': 'Prowadzony',
   'settings.persona.builder.modeAdvanced': 'Zaawansowany',
-  'settings.persona.builder.intro': 'Wypełnij kilka pól, a my zapiszemy je w Twojej personie. Markdown nie jest potrzebny.',
+  'settings.persona.builder.intro':
+    'Wypełnij kilka pól, a my zapiszemy je w Twojej personie. Markdown nie jest potrzebny.',
   'settings.persona.builder.personalityLabel': 'Osobowość',
-  'settings.persona.builder.personalityPlaceholder': 'np. Ciepły, ciekawy i bezpośredni. Szczery wobec niepewności.',
+  'settings.persona.builder.personalityPlaceholder':
+    'np. Ciepły, ciekawy i bezpośredni. Szczery wobec niepewności.',
   'settings.persona.builder.voiceLabel': 'Styl komunikacji',
-  'settings.persona.builder.voicePlaceholder': 'np. Zacznij od odpowiedzi, pisz zwięźle i dopasuj mój ton.',
+  'settings.persona.builder.voicePlaceholder':
+    'np. Zacznij od odpowiedzi, pisz zwięźle i dopasuj mój ton.',
   'settings.persona.builder.aboutLabel': 'O Tobie',
-  'settings.persona.builder.aboutPlaceholder': 'np. Prowadzę małe studio projektowe i wolę prosty język.',
-  'settings.persona.builder.preservedNote': 'Wszelkie inne sekcje napisane ręcznie zostają zachowane — przełącz na Zaawansowany, aby zobaczyć pełną personę.',
+  'settings.persona.builder.aboutPlaceholder':
+    'np. Prowadzę małe studio projektowe i wolę prosty język.',
+  'settings.persona.builder.preservedNote':
+    'Wszelkie inne sekcje napisane ręcznie zostają zachowane — przełącz na Zaawansowany, aby zobaczyć pełną personę.',
   'settings.persona.builder.securityNote': 'Chcesz wybrać, co asystent może robić?',
   'settings.persona.builder.securityLink': 'Otwórz Dostęp agenta',
   'settings.persona.appearanceHeading': 'Awatar i głos',

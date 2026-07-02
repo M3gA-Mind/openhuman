@@ -4970,14 +4970,19 @@ const messages: TranslationMap = {
   'settings.persona.builder.modeLabel': 'পারসোনা এডিটর মোড',
   'settings.persona.builder.modeGuided': 'গাইডেড',
   'settings.persona.builder.modeAdvanced': 'অ্যাডভান্সড',
-  'settings.persona.builder.intro': 'কয়েকটি ঘর পূরণ করুন, আমরা সেগুলো আপনার পারসোনায় লিখে দেব। মার্কডাউন লাগবে না।',
+  'settings.persona.builder.intro':
+    'কয়েকটি ঘর পূরণ করুন, আমরা সেগুলো আপনার পারসোনায় লিখে দেব। মার্কডাউন লাগবে না।',
   'settings.persona.builder.personalityLabel': 'ব্যক্তিত্ব',
-  'settings.persona.builder.personalityPlaceholder': 'যেমন: উষ্ণ, কৌতূহলী ও স্পষ্টবাদী। অনিশ্চয়তায় সৎ।',
+  'settings.persona.builder.personalityPlaceholder':
+    'যেমন: উষ্ণ, কৌতূহলী ও স্পষ্টবাদী। অনিশ্চয়তায় সৎ।',
   'settings.persona.builder.voiceLabel': 'যোগাযোগের ধরন',
-  'settings.persona.builder.voicePlaceholder': 'যেমন: আগে উত্তর দিন, সংক্ষিপ্ত রাখুন এবং আমার সুরে মিলিয়ে নিন।',
+  'settings.persona.builder.voicePlaceholder':
+    'যেমন: আগে উত্তর দিন, সংক্ষিপ্ত রাখুন এবং আমার সুরে মিলিয়ে নিন।',
   'settings.persona.builder.aboutLabel': 'আপনার সম্পর্কে',
-  'settings.persona.builder.aboutPlaceholder': 'যেমন: আমি একটি ছোট ডিজাইন স্টুডিও চালাই এবং সহজ ভাষা পছন্দ করি।',
-  'settings.persona.builder.preservedNote': 'আপনার নিজের হাতে লেখা অন্যান্য অংশ সংরক্ষিত থাকে — সম্পূর্ণ পারসোনা দেখতে অ্যাডভান্সড-এ যান।',
+  'settings.persona.builder.aboutPlaceholder':
+    'যেমন: আমি একটি ছোট ডিজাইন স্টুডিও চালাই এবং সহজ ভাষা পছন্দ করি।',
+  'settings.persona.builder.preservedNote':
+    'আপনার নিজের হাতে লেখা অন্যান্য অংশ সংরক্ষিত থাকে — সম্পূর্ণ পারসোনা দেখতে অ্যাডভান্সড-এ যান।',
   'settings.persona.builder.securityNote': 'সহকারী কী করতে পারবে তা ঠিক করতে চান?',
   'settings.persona.builder.securityLink': 'এজেন্ট অ্যাক্সেস খুলুন',
   'settings.persona.appearanceHeading': 'অবতার & ভয়েস',

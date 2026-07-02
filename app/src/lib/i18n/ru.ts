@@ -5016,14 +5016,18 @@ const messages: TranslationMap = {
   'settings.persona.builder.modeLabel': 'Режим редактора персоны',
   'settings.persona.builder.modeGuided': 'С подсказками',
   'settings.persona.builder.modeAdvanced': 'Расширенный',
-  'settings.persona.builder.intro': 'Заполните несколько полей, и мы впишем их в вашу персону. Markdown не нужен.',
+  'settings.persona.builder.intro':
+    'Заполните несколько полей, и мы впишем их в вашу персону. Markdown не нужен.',
   'settings.persona.builder.personalityLabel': 'Характер',
-  'settings.persona.builder.personalityPlaceholder': 'напр. Тёплый, любознательный и прямой. Честен в неопределённости.',
+  'settings.persona.builder.personalityPlaceholder':
+    'напр. Тёплый, любознательный и прямой. Честен в неопределённости.',
   'settings.persona.builder.voiceLabel': 'Стиль общения',
   'settings.persona.builder.voicePlaceholder': 'напр. Сначала ответ, кратко и в моём тоне.',
   'settings.persona.builder.aboutLabel': 'О вас',
-  'settings.persona.builder.aboutPlaceholder': 'напр. У меня небольшая дизайн-студия, предпочитаю простой язык.',
-  'settings.persona.builder.preservedNote': 'Все другие разделы, написанные вручную, сохраняются — переключитесь на «Расширенный», чтобы увидеть персону целиком.',
+  'settings.persona.builder.aboutPlaceholder':
+    'напр. У меня небольшая дизайн-студия, предпочитаю простой язык.',
+  'settings.persona.builder.preservedNote':
+    'Все другие разделы, написанные вручную, сохраняются — переключитесь на «Расширенный», чтобы увидеть персону целиком.',
   'settings.persona.builder.securityNote': 'Хотите выбрать, что разрешено ассистенту?',
   'settings.persona.builder.securityLink': 'Открыть доступ агента',
   'settings.persona.appearanceHeading': 'Аватар и голос',

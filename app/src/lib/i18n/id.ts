@@ -4987,14 +4987,19 @@ const messages: TranslationMap = {
   'settings.persona.builder.modeLabel': 'Mode editor persona',
   'settings.persona.builder.modeGuided': 'Terpandu',
   'settings.persona.builder.modeAdvanced': 'Lanjutan',
-  'settings.persona.builder.intro': 'Isi beberapa kolom dan kami menuliskannya ke persona Anda. Tanpa markdown.',
+  'settings.persona.builder.intro':
+    'Isi beberapa kolom dan kami menuliskannya ke persona Anda. Tanpa markdown.',
   'settings.persona.builder.personalityLabel': 'Kepribadian',
-  'settings.persona.builder.personalityPlaceholder': 'mis. Hangat, ingin tahu, dan langsung. Jujur soal ketidakpastian.',
+  'settings.persona.builder.personalityPlaceholder':
+    'mis. Hangat, ingin tahu, dan langsung. Jujur soal ketidakpastian.',
   'settings.persona.builder.voiceLabel': 'Gaya komunikasi',
-  'settings.persona.builder.voicePlaceholder': 'mis. Mulai dari jawaban, singkat, dan sesuaikan dengan nada saya.',
+  'settings.persona.builder.voicePlaceholder':
+    'mis. Mulai dari jawaban, singkat, dan sesuaikan dengan nada saya.',
   'settings.persona.builder.aboutLabel': 'Tentang Anda',
-  'settings.persona.builder.aboutPlaceholder': 'mis. Saya menjalankan studio desain kecil dan lebih suka bahasa yang sederhana.',
-  'settings.persona.builder.preservedNote': 'Bagian lain yang Anda tulis sendiri tetap disimpan — beralih ke Lanjutan untuk melihat persona lengkap.',
+  'settings.persona.builder.aboutPlaceholder':
+    'mis. Saya menjalankan studio desain kecil dan lebih suka bahasa yang sederhana.',
+  'settings.persona.builder.preservedNote':
+    'Bagian lain yang Anda tulis sendiri tetap disimpan — beralih ke Lanjutan untuk melihat persona lengkap.',
   'settings.persona.builder.securityNote': 'Ingin memilih apa yang boleh dilakukan asisten?',
   'settings.persona.builder.securityLink': 'Buka Akses agen',
   'settings.persona.appearanceHeading': 'Avatar & Suara',

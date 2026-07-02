@@ -54,7 +54,9 @@ describe('PersonaPanel', () => {
     writePersonaFileMock.mockImplementation((_name: string, contents: string) =>
       Promise.resolve(soulFile({ contents, is_default: false }))
     );
-    resetPersonaFileMock.mockResolvedValue(soulFile({ contents: 'default soul', is_default: true }));
+    resetPersonaFileMock.mockResolvedValue(
+      soulFile({ contents: 'default soul', is_default: true })
+    );
   });
 
   it('defaults to the guided builder and hides raw markdown', async () => {

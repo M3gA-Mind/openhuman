@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  applyPersonaField,
-  applyPersonaFields,
-  parsePersonaFields,
-} from './personaSections';
+import { applyPersonaField, applyPersonaFields, parsePersonaFields } from './personaSections';
 
 const SOUL = `# OpenHuman
 

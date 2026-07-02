@@ -1,6 +1,6 @@
 import { useT } from '../../../../lib/i18n/I18nContext';
-import { useSettingsNavigation } from '../../hooks/useSettingsNavigation';
 import { SettingsRow, SettingsTextArea } from '../../controls';
+import { useSettingsNavigation } from '../../hooks/useSettingsNavigation';
 import { applyPersonaField, parsePersonaFields, type PersonaFieldKey } from './personaSections';
 
 interface PersonaGuidedFieldsProps {

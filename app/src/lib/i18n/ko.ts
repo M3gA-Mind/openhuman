@@ -4923,14 +4923,18 @@ const messages: TranslationMap = {
   'settings.persona.builder.modeLabel': '페르소나 편집기 모드',
   'settings.persona.builder.modeGuided': '가이드',
   'settings.persona.builder.modeAdvanced': '고급',
-  'settings.persona.builder.intro': '몇 가지 항목만 입력하면 페르소나에 대신 작성해 드립니다. 마크다운은 필요 없습니다.',
+  'settings.persona.builder.intro':
+    '몇 가지 항목만 입력하면 페르소나에 대신 작성해 드립니다. 마크다운은 필요 없습니다.',
   'settings.persona.builder.personalityLabel': '성격',
-  'settings.persona.builder.personalityPlaceholder': '예: 따뜻하고 호기심 많고 직설적. 불확실할 땐 솔직하게.',
+  'settings.persona.builder.personalityPlaceholder':
+    '예: 따뜻하고 호기심 많고 직설적. 불확실할 땐 솔직하게.',
   'settings.persona.builder.voiceLabel': '커뮤니케이션 스타일',
   'settings.persona.builder.voicePlaceholder': '예: 답부터 말하고, 간결하게, 내 말투에 맞춰서.',
   'settings.persona.builder.aboutLabel': '당신에 대해',
-  'settings.persona.builder.aboutPlaceholder': '예: 작은 디자인 스튜디오를 운영하며 쉬운 표현을 선호합니다.',
-  'settings.persona.builder.preservedNote': '직접 작성한 다른 섹션은 그대로 유지됩니다 — 전체 페르소나를 보려면 고급으로 전환하세요.',
+  'settings.persona.builder.aboutPlaceholder':
+    '예: 작은 디자인 스튜디오를 운영하며 쉬운 표현을 선호합니다.',
+  'settings.persona.builder.preservedNote':
+    '직접 작성한 다른 섹션은 그대로 유지됩니다 — 전체 페르소나를 보려면 고급으로 전환하세요.',
   'settings.persona.builder.securityNote': '어시스턴트가 할 수 있는 일을 정하시겠어요?',
   'settings.persona.builder.securityLink': '에이전트 액세스 열기',
   'settings.persona.appearanceHeading': '아바타 및 음성',
