@@ -69,6 +69,11 @@
         "desktopTemplate": "main.desktop"
       }
     },
+    "windows": {
+      "nsis": {
+        "installerHooks": "nsis-hooks.nsh"
+      }
+    },
     "createUpdaterArtifacts": false,
     "macOS": {
       "minimumSystemVersion": "10.15",

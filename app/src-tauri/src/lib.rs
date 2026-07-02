@@ -20,6 +20,13 @@ mod cef_profile;
 // logic is unit-tested on any host; the Win32 glue is windows-only.
 #[cfg(any(target_os = "windows", test))]
 mod cef_singleton_wait;
+// macOS/Linux pre-CEF reap of a wedged prior instance that still holds the CEF
+// SingletonLock after an update relaunch (issue #4395, follow-up to #3605).
+// Marker-gated so it never reaps a healthy running instance. Compiled under
+// `test` too so the pure decision logic is unit-tested on any host; the
+// filesystem/signal glue is macOS/Linux-only.
+#[cfg(any(target_os = "macos", target_os = "linux", test))]
+mod cef_stale_reap;
 mod claude_code;
 mod companion_commands;
 mod core_process;
@@ -601,6 +608,11 @@ async fn apply_app_update(
     log::info!("[app-update] install complete — relaunching");
     let _ = app.emit("app-update:status", "restarting");
 
+    // Drop a post-update relaunch marker so the freshly launched process can
+    // safely reap this instance if it wedges instead of exiting (issue #4395).
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    cef_stale_reap::write_update_relaunch_marker();
+
     log::info!("[app-update] starting early teardown before restart");
     perform_early_teardown_async(&app).await;
 
@@ -813,6 +825,11 @@ async fn install_app_update(
 
     log::info!("[app-update] install complete — relaunching");
     let _ = app.emit("app-update:status", "restarting");
+
+    // Drop a post-update relaunch marker so the freshly launched process can
+    // safely reap this instance if it wedges instead of exiting (issue #4395).
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    cef_stale_reap::write_update_relaunch_marker();
 
     log::info!("[app-update] starting early teardown before restart");
     perform_early_teardown_async(&app).await;
@@ -2711,6 +2728,19 @@ pub fn run() {
     // after the budget we exit cleanly (code 0). Stale locks (PID dead) are
     // removed so crashed processes don't block launches. macOS: issue #864.
     // Linux: OPENHUMAN-TAURI-K1. Sentry: TAURI-RUST-F.
+    //
+    // ── macOS/Linux pre-CEF stale-lock reap (issue #4395) ─────────────────
+    // Before the bounded wait above can only *time out* on a wedged prior
+    // instance (the #3605 symptom: the updated app silently refuses to start),
+    // proactively reap that instance — but ONLY when a recent post-update
+    // relaunch marker proves the CEF-lock holder is the pre-update process,
+    // never a healthy running one. This is the macOS/Linux analogue of the
+    // Windows pre-CEF reap, gated on a staleness signal because these targets
+    // have no early single-instance mutex. See `cef_stale_reap` for the safety
+    // rationale (and why the reverted #3793 SIGKILL is not reintroduced).
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    cef_stale_reap::reap_stale_cef_lock_holder();
+
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     cef_preflight::wait_for_cache_release();
 
