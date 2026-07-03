@@ -1360,11 +1360,18 @@ impl ToolMiddleware<()> for ToolPolicyMiddleware {
 /// chain so it records the final (summarized/capped) content the transcript keeps.
 pub(crate) struct ToolOutcomeCaptureMiddleware {
     sink: super::ToolOutcomeSink,
+    /// `call_id → (success, classified failure)` side-channel read by the event
+    /// bridge when projecting `ToolCallCompleted` (the crate event lacks the
+    /// success/error the failure UI needs).
+    failure_map: super::observability::ToolFailureMap,
 }
 
 impl ToolOutcomeCaptureMiddleware {
-    pub(crate) fn new(sink: super::ToolOutcomeSink) -> Self {
-        Self { sink }
+    pub(crate) fn new(
+        sink: super::ToolOutcomeSink,
+        failure_map: super::observability::ToolFailureMap,
+    ) -> Self {
+        Self { sink, failure_map }
     }
 }
 
@@ -1380,11 +1387,35 @@ impl Middleware<()> for ToolOutcomeCaptureMiddleware {
         _state: &(),
         result: &mut TaToolResult,
     ) -> TaResult<()> {
+        let success = result.error.is_none();
+        // Classify the failure so the live `ToolCallCompleted` event and the
+        // persisted timeline can explain it in plain language. A hard
+        // policy/permission denial is its own class; otherwise heuristics over
+        // the error text (`timed_out` detected from the timeout branch's phrase).
+        let failure = if success {
+            None
+        } else {
+            let text = result.error.as_deref().unwrap_or(result.content.as_str());
+            if result
+                .content
+                .contains(crate::openhuman::security::POLICY_BLOCKED_MARKER)
+            {
+                Some(crate::openhuman::tool_status::describe(
+                    crate::openhuman::tool_status::ToolFailureClass::BlockedByPolicy,
+                ))
+            } else {
+                let timed_out = result.content.contains("timed out");
+                Some(crate::openhuman::tool_status::classify(text, timed_out))
+            }
+        };
+        if let Ok(mut map) = self.failure_map.lock() {
+            map.insert(result.call_id.clone(), (success, failure));
+        }
         if let Ok(mut sink) = self.sink.lock() {
             sink.push(super::ToolCallOutcome {
                 call_id: result.call_id.clone(),
                 name: result.name.clone(),
-                success: result.error.is_none(),
+                success,
                 content: result.content.clone(),
             });
         }

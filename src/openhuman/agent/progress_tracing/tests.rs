@@ -89,6 +89,7 @@ fn tool_completed(
         output_chars: chars,
         elapsed_ms: elapsed,
         iteration: 1,
+        failure: None,
     }
 }
 

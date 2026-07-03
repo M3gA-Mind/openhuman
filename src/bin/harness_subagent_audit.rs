@@ -419,6 +419,7 @@ async fn drain_progress(
                 output_chars,
                 elapsed_ms,
                 iteration,
+                ..
             } => {
                 eprintln!(
                     "[harness_subagent_audit] progress turn={} parent_tool_completed tool={} call_id={} success={} output_chars={} elapsed_ms={} iteration={}",

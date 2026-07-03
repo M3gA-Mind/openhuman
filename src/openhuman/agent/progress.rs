@@ -57,6 +57,11 @@ pub enum AgentProgress {
         elapsed_ms: u64,
         /// 1-based iteration index.
         iteration: u32,
+        /// Present when `success` is false: a user-facing classification of the
+        /// failure (class, category, plain-language cause + next action) that
+        /// the chat "View processing" timeline renders. `None` on success and
+        /// on legacy snapshots. See `crate::openhuman::tool_status`.
+        failure: Option<crate::openhuman::tool_status::ClassifiedFailure>,
     },
 
     /// A sub-agent was spawned during tool execution.

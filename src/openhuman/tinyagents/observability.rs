@@ -49,6 +49,25 @@ pub(crate) type IterationCursor = Arc<AtomicU32>;
 /// `tool_name` contract without the forwarder emitting those fragments itself.
 pub(crate) type ToolNameMap = Arc<Mutex<std::collections::HashMap<String, String>>>;
 
+/// Shared `call_id → (success, classified failure)` side-channel. The crate's
+/// `AgentEvent::ToolCompleted` carries only `call_id` + `tool_name` (no
+/// success/error), so `ToolOutcomeCaptureMiddleware::after_tool` — which does
+/// see the `ToolResult` — classifies each outcome and writes it here; the bridge
+/// reads it when projecting the live `ToolCallCompleted` event, so a failed tool
+/// surfaces real `success: false` + a user-facing `failure`. Absent entry (event
+/// projected before the middleware ran) falls back to `(true, None)`.
+pub(crate) type ToolFailureMap = Arc<
+    Mutex<
+        std::collections::HashMap<
+            String,
+            (
+                bool,
+                Option<crate::openhuman::tool_status::ClassifiedFailure>,
+            ),
+        >,
+    >,
+>;
+
 /// An [`EventListener`] that pauses the run once `cap` model calls have
 /// completed, so the loop stops gracefully at the iteration budget (returning
 /// the partial transcript) instead of erroring with `LimitExceeded`. The harness
@@ -120,6 +139,9 @@ pub(crate) struct OpenhumanEventBridge {
     /// `ThinkingForwarder` on tool-call start; read here to label the
     /// incremental tool-argument fragments projected off the crate stream.
     tool_names: ToolNameMap,
+    /// Shared `call_id → (success, failure)` side-channel written by
+    /// `ToolOutcomeCaptureMiddleware`; read when projecting `ToolCallCompleted`.
+    failure_map: ToolFailureMap,
     state: Mutex<BridgeState>,
 }
 
@@ -137,6 +159,7 @@ impl OpenhumanEventBridge {
             None,
             Arc::default(),
             Arc::default(),
+            Arc::default(),
         )
     }
 
@@ -150,6 +173,7 @@ impl OpenhumanEventBridge {
         scope: Option<SubagentScope>,
         cursor: IterationCursor,
         tool_names: ToolNameMap,
+        failure_map: ToolFailureMap,
     ) -> Arc<Self> {
         Arc::new(Self {
             on_progress,
@@ -158,6 +182,7 @@ impl OpenhumanEventBridge {
             scope,
             cursor,
             tool_names,
+            failure_map,
             state: Mutex::new(BridgeState::default()),
         })
     }
@@ -489,21 +514,35 @@ impl EventListener for OpenhumanEventBridge {
             }
             AgentEvent::ToolCompleted { call_id, tool_name } => {
                 let iteration = self.iteration();
+                // The crate event carries no success/error, so read what the
+                // outcome-capture middleware classified for this call. Absent →
+                // the event was projected before the middleware ran; assume
+                // success (never worse than the previous hardcoded `true`).
+                let outcome = self
+                    .failure_map
+                    .lock()
+                    .ok()
+                    .and_then(|mut m| m.remove(call_id.as_str()));
+                let success = outcome.as_ref().map(|(ok, _)| *ok).unwrap_or(true);
                 match &self.scope {
-                    None => self.send(AgentProgress::ToolCallCompleted {
-                        call_id: call_id.as_str().to_string(),
-                        tool_name: tool_name.clone(),
-                        success: true,
-                        output_chars: 0,
-                        elapsed_ms: 0,
-                        iteration,
-                    }),
+                    None => {
+                        let failure = outcome.and_then(|(_, f)| f);
+                        self.send(AgentProgress::ToolCallCompleted {
+                            call_id: call_id.as_str().to_string(),
+                            tool_name: tool_name.clone(),
+                            success,
+                            output_chars: 0,
+                            elapsed_ms: 0,
+                            iteration,
+                            failure,
+                        })
+                    }
                     Some(s) => self.send(AgentProgress::SubagentToolCallCompleted {
                         agent_id: s.agent_id.clone(),
                         task_id: s.task_id.clone(),
                         call_id: call_id.as_str().to_string(),
                         tool_name: tool_name.clone(),
-                        success: true,
+                        success,
                         output_chars: 0,
                         output: String::new(),
                         elapsed_ms: 0,

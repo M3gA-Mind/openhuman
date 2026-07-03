@@ -178,6 +178,7 @@ impl ProgressReporter for TurnProgress {
                     output_chars: output.chars().count(),
                     elapsed_ms,
                     iteration,
+                    failure: None,
                 },
             );
         }

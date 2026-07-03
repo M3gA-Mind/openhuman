@@ -185,6 +185,12 @@ pub struct WebChannelEvent {
     /// `tool_result` events.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    /// Structured, user-facing classification of a failed tool call (class,
+    /// category, plain-language cause + next action). Present on `tool_result`
+    /// events when the tool failed; the chat "View processing" timeline renders
+    /// the "why / what to do next" pair. `None` on success.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure: Option<serde_json::Value>,
     /// Optional citations attached to `chat_done` payloads.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub citations: Option<serde_json::Value>,

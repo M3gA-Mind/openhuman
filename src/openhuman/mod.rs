@@ -130,6 +130,7 @@ pub mod tls;
 pub mod todos;
 pub mod tokenjuice;
 pub mod tool_registry;
+pub mod tool_status;
 pub mod tool_timeout;
 pub mod tools;
 pub mod update;

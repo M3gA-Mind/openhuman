@@ -210,6 +210,7 @@ impl EventHandler for ProactiveMessageSubscriber {
             delta: None,
             delta_kind: None,
             tool_call_id: None,
+            failure: None,
             citations: None,
             subagent: None,
             task_board: None,

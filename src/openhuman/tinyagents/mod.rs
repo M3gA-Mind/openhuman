@@ -71,7 +71,9 @@ pub(crate) use embeddings::ProviderEmbeddingModel;
 pub(crate) use middleware::{HandoffConfig, SuperContextConfig, TurnContextMiddleware};
 use model::ProviderModel;
 pub(crate) use observability::SubagentScope;
-use observability::{CapPauser, IterationCursor, OpenhumanEventBridge, ToolNameMap};
+use observability::{
+    CapPauser, IterationCursor, OpenhumanEventBridge, ToolFailureMap, ToolNameMap,
+};
 pub(crate) use run_cancellation_context::{current_run_cancellation, with_run_cancellation};
 #[cfg(test)]
 use tools::ToolAdapter;
@@ -396,6 +398,7 @@ pub(crate) async fn run_turn_via_tinyagents_shared(
         harness,
         cursor,
         tool_names,
+        failure_map,
         error_slot,
         halt_summary,
         tool_outcome_sink,
@@ -540,6 +543,7 @@ pub(crate) async fn run_turn_via_tinyagents_shared(
                 subagent_scope.clone(),
                 cursor.clone(),
                 tool_names.clone(),
+                failure_map.clone(),
             );
             events.subscribe(bridge.clone());
             Some(bridge)
@@ -858,6 +862,10 @@ struct AssembledTurnHarness {
     /// writes it on tool-call start; the event bridge reads it to label the
     /// tool-argument fragments it now projects off the crate stream.
     tool_names: ToolNameMap,
+    /// Shared `call_id → (success, failure)` side-channel: the tool-outcome
+    /// capture middleware classifies each outcome; the event bridge reads it to
+    /// project real success + a user-facing failure onto `ToolCallCompleted`.
+    failure_map: ToolFailureMap,
     /// Recovers the original (downcastable) provider error on run failure.
     error_slot: crate::openhuman::tinyagents::model::ProviderErrorSlot,
     /// Root-cause summary recorded by the repeated-tool-failure breaker.
@@ -1352,8 +1360,10 @@ fn assemble_turn_harness(
     // result into a `Message::tool` that drops the failure flag, so the turn can
     // build honest per-call `ToolCallRecord`s (post-turn hooks + cap checkpoint).
     let tool_outcome_sink: ToolOutcomeSink = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let failure_map: ToolFailureMap = Arc::default();
     harness.push_middleware(Arc::new(middleware::ToolOutcomeCaptureMiddleware::new(
         tool_outcome_sink.clone(),
+        failure_map.clone(),
     )));
 
     // Builder-configured tool policy (`.tool_policy()`), enforced at the tool
@@ -1382,6 +1392,7 @@ fn assemble_turn_harness(
         harness,
         cursor,
         tool_names,
+        failure_map,
         error_slot,
         halt_summary,
         tool_outcome_sink,
