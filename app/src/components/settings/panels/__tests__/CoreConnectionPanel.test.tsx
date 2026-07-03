@@ -15,6 +15,10 @@ const hoisted = vi.hoisted(() => ({
   clearCoreRpcUrlCache: vi.fn(),
   clearCoreRpcTokenCache: vi.fn(),
   restartApp: vi.fn(),
+  // Default to a desktop (Tauri) context so local mode is available; the
+  // web-build test flips this to false to assert the toggle is gated off.
+  isTauriEnvironment: vi.fn(() => true),
+  invoke: vi.fn(async () => 'http://127.0.0.1:7788/rpc'),
 }));
 
 vi.mock('../../../../services/coreRpcClient', () => ({
@@ -24,6 +28,15 @@ vi.mock('../../../../services/coreRpcClient', () => ({
 }));
 
 vi.mock('../../../../utils/tauriCommands/core', () => ({ restartApp: hoisted.restartApp }));
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: hoisted.invoke }));
+
+// Keep the real configPersistence (storeCoreMode/localStorage etc.) but control
+// isTauriEnvironment so the desktop-vs-web-build gating is testable.
+vi.mock('../../../../utils/configPersistence', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../utils/configPersistence')>();
+  return { ...actual, isTauriEnvironment: hoisted.isTauriEnvironment };
+});
 
 function okResponse() {
   return { ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id: 1, result: {} }) };
@@ -51,6 +64,10 @@ describe('CoreConnectionPanel', () => {
     hoisted.clearCoreRpcTokenCache.mockReset();
     hoisted.restartApp.mockReset();
     hoisted.restartApp.mockResolvedValue(undefined);
+    hoisted.isTauriEnvironment.mockReset();
+    hoisted.isTauriEnvironment.mockReturnValue(true);
+    hoisted.invoke.mockReset();
+    hoisted.invoke.mockResolvedValue('http://127.0.0.1:7788/rpc');
     localStorage.clear();
   });
 
@@ -202,6 +219,25 @@ describe('CoreConnectionPanel', () => {
       'https://core.example.com/rpc',
       ''
     );
+  });
+
+  test('web build (non-Tauri) forces remote and disables the local toggle', async () => {
+    hoisted.isTauriEnvironment.mockReturnValue(false);
+    hoisted.testCoreRpcConnection.mockResolvedValue(okResponse());
+    const Panel = await importPanel();
+    renderWithProviders(<Panel />, {
+      preloadedState: {
+        coreMode: {
+          mode: { kind: 'cloud', url: 'https://core.example.com/rpc', token: 'tok-123456' },
+        },
+      },
+    });
+
+    await waitFor(() => expect(screen.getByText('Connected to remote core')).toBeInTheDocument());
+    // A browser can't start a local core, so the toggle is forced on + disabled.
+    const toggle = screen.getByTestId('core-use-remote-toggle');
+    expect(toggle).toBeDisabled();
+    expect(screen.getByDisplayValue('https://core.example.com/rpc')).toBeInTheDocument();
   });
 
   test('switching from remote back to local clears persistence, dispatches, and restarts', async () => {

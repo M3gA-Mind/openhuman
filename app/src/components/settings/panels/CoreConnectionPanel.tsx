@@ -78,20 +78,44 @@ async function resolveActiveCoreUrl(coreMode: CoreMode): Promise<string | null> 
   }
 }
 
+const CONNECTION_TEST_TIMEOUT_MS = 10_000;
+
+/**
+ * `testCoreRpcConnection` with a bounded deadline. `testCoreRpcConnection`
+ * supports an `AbortSignal` but the callers didn't pass one, so a non-responsive
+ * endpoint left the live status / Test button stuck in `checking`/`testing`
+ * until the platform socket timeout (minutes). Abort after
+ * CONNECTION_TEST_TIMEOUT_MS so the UI resolves to "unreachable" promptly.
+ */
+async function testCoreRpcConnectionWithTimeout(url: string, token?: string): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CONNECTION_TEST_TIMEOUT_MS);
+  try {
+    return await testCoreRpcConnection(url, token, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const CoreConnectionPanel = () => {
   const { t } = useT();
   const dispatch = useAppDispatch();
   const coreMode = useAppSelector(state => state.coreMode.mode);
+  // A non-Tauri web build cannot start a local core (no `start_core_process`),
+  // so the boot picker forces cloud mode there; keep that invariant here so a
+  // web user can't persist `local` and brick the next boot.
+  const canUseLocal = isTauriEnvironment();
 
   // ── Editable form state ────────────────────────────────────────────────
   // Seeded from the persisted cloud-mode config so the panel reflects the
   // current setting on open.
-  const [useRemote, setUseRemote] = useState(coreMode.kind === 'cloud');
+  const [useRemote, setUseRemote] = useState(!canUseLocal || coreMode.kind === 'cloud');
   const [url, setUrl] = useState(coreMode.kind === 'cloud' ? coreMode.url : '');
   const [token, setToken] = useState(coreMode.kind === 'cloud' ? (coreMode.token ?? '') : '');
   const [formError, setFormError] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<TestStatus>({ kind: 'idle' });
   const [saving, setSaving] = useState(false);
+  const [showToken, setShowToken] = useState(false);
 
   // ── Live status indicator (against the currently-active core) ───────────
   const [liveStatus, setLiveStatus] = useState<LiveStatus>({ kind: 'checking' });
@@ -110,7 +134,7 @@ const CoreConnectionPanel = () => {
       return;
     }
     try {
-      const response = await testCoreRpcConnection(resolved);
+      const response = await testCoreRpcConnectionWithTimeout(resolved);
       if (seq !== checkSeq.current) return;
       if (response.status === 401 || response.status === 403) {
         log('runLiveCheck: auth failed (status=%d)', response.status);
@@ -161,6 +185,13 @@ const CoreConnectionPanel = () => {
         setFormError(t('bootCheck.urlMustStartWith'));
         return null;
       }
+      // The separate token field is the only credential path; a
+      // `user:pass@host` URL would be persisted and echoed back in the active-URL
+      // description, leaking a secret. Reject it.
+      if (parsed.username || parsed.password) {
+        setFormError(t('bootCheck.validUrlRequired'));
+        return null;
+      }
     } catch {
       setFormError(t('bootCheck.validUrlRequired'));
       return null;
@@ -195,7 +226,7 @@ const CoreConnectionPanel = () => {
     setTestStatus({ kind: 'testing' });
     log('handleTest: url=%s tokenLen=%d', validated.url, validated.token.length);
     try {
-      const response = await testCoreRpcConnection(validated.url, validated.token);
+      const response = await testCoreRpcConnectionWithTimeout(validated.url, validated.token);
       if (response.status === 401 || response.status === 403) {
         setTestStatus({ kind: 'auth' });
         return;
@@ -259,8 +290,16 @@ const CoreConnectionPanel = () => {
       dispatch(setCoreMode({ kind: 'local' }));
     }
     // Restart so BootCheckGate re-runs against the new mode (unchanged
-    // boot-gate semantics). In dev this is a renderer reload.
-    await restartApp();
+    // boot-gate semantics). In dev this is a renderer reload. The mode is
+    // already persisted + dispatched above, so on restart failure recover the
+    // button instead of wedging it in `saving` forever.
+    try {
+      await restartApp();
+    } catch (err) {
+      log('handleSave: restartApp failed: %o', err);
+      setSaving(false);
+      setFormError(t('common.error'));
+    }
   };
 
   // ── Live status rendering ───────────────────────────────────────────────
@@ -332,7 +371,10 @@ const CoreConnectionPanel = () => {
             <SettingsSwitch
               id="core-use-remote"
               checked={useRemote}
+              disabled={!canUseLocal}
               onCheckedChange={next => {
+                // Web builds can't run a local core — refuse to switch remote off.
+                if (!canUseLocal && !next) return;
                 setUseRemote(next);
                 setTestStatus({ kind: 'idle' });
                 setFormError(null);
@@ -368,15 +410,24 @@ const CoreConnectionPanel = () => {
             </div>
 
             <div className="flex flex-col gap-1">
-              <label
-                htmlFor="core-remote-token"
-                className="text-xs font-medium text-content-secondary">
-                {t('bootCheck.authToken')} (
-                <code className="text-[10px]">OPENHUMAN_CORE_TOKEN</code>)
-              </label>
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="core-remote-token"
+                  className="text-xs font-medium text-content-secondary">
+                  {t('bootCheck.authToken')} (
+                  <code className="text-[10px]">OPENHUMAN_CORE_TOKEN</code>)
+                </label>
+                <button
+                  type="button"
+                  className="text-[11px] text-content-muted hover:text-content-secondary"
+                  onClick={() => setShowToken(s => !s)}
+                  data-testid="core-token-reveal">
+                  {showToken ? t('settings.search.hide') : t('settings.search.show')}
+                </button>
+              </div>
               <SettingsTextField
                 id="core-remote-token"
-                type="text"
+                type={showToken ? 'text' : 'password'}
                 mono
                 autoComplete="off"
                 spellCheck={false}
