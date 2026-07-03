@@ -101,22 +101,33 @@ export function parsePersonaFields(soul: string): PersonaFields {
  */
 export function applyPersonaField(soul: string, key: PersonaFieldKey, value: string): string {
   const heading = HEADING_FOR[key];
-  const nextBody = value.trim();
+  // Normalize only for the no-op short-circuit; the value written back into the
+  // document is the raw `value`, so a trailing space/newline typed live in the
+  // guided textarea survives the round-trip (trimming is deferred to save).
+  const normalized = value.trim();
 
-  if (readSection(soul, heading) === nextBody) return soul;
+  if (readSection(soul, heading) === normalized) return soul;
 
   const span = findSectionSpan(soul, heading);
   if (span) {
     const raw = soul.slice(span.bodyStart, span.bodyEnd);
-    const lead = raw.match(/^\n*/)?.[0] ?? '';
-    const trail = raw.match(/\n*$/)?.[0] ?? '';
-    const spliced = nextBody ? `${lead}${nextBody}${trail || '\n'}` : `${lead}${trail}`;
+    // Capture the blank-line seams so they can be restored around the new body.
+    // When `raw` is all newlines (e.g. right after a clear splices lead+trail
+    // together), `^\n*` and `\n*$` both match the entire string and overlap, so a
+    // naive capture doubles the surrounding blank lines on every clear→refill
+    // cycle. Split such a body canonically — one leading blank, the remainder
+    // trailing — so the cycle converges to the same document a direct apply
+    // produces instead of growing.
+    const allNewlines = raw.length > 0 && !/[^\n]/.test(raw);
+    const lead = allNewlines ? raw.slice(0, 1) : (raw.match(/^\n*/)?.[0] ?? '');
+    const trail = allNewlines ? raw.slice(lead.length) : (raw.match(/\n*$/)?.[0] ?? '');
+    const spliced = value ? `${lead}${value}${trail || '\n'}` : `${lead}${trail}`;
     return soul.slice(0, span.bodyStart) + spliced + soul.slice(span.bodyEnd);
   }
 
-  if (!nextBody) return soul;
+  if (!value) return soul;
   const base = soul.replace(/\n*$/, '\n');
-  return `${base}\n## ${heading}\n\n${nextBody}\n`;
+  return `${base}\n## ${heading}\n\n${value}\n`;
 }
 
 /** Apply every managed field at once (used for save-all / tests). */

@@ -70,6 +70,19 @@ describe('applyPersonaField', () => {
     expect(next).toContain('## Voice');
     expect(next).toContain('## When things go wrong');
   });
+
+  it('does not grow surrounding whitespace across repeated clear → refill cycles', () => {
+    // After a clear the section body is pure newlines; refilling must not
+    // re-capture them as both lead *and* trail (which doubled the blank lines on
+    // every cycle, silently growing the document — the file's lossless/idempotent
+    // guarantee). One cycle and two cycles must produce the identical document.
+    const cycle = (doc: string) =>
+      applyPersonaField(applyPersonaField(doc, 'voice', ''), 'voice', 'Be terse.');
+    const once = cycle(SOUL);
+    const twice = cycle(once);
+    expect(twice).toBe(once);
+    expect(parsePersonaFields(once).voice).toBe('Be terse.');
+  });
 });
 
 describe('applyPersonaFields round-trip', () => {
