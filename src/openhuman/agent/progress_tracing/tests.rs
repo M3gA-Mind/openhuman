@@ -658,3 +658,61 @@ async fn export_run_trace_otel_backend_uses_local_sink() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+// ── Route A: content + grouping + span-id uniqueness ────────────────────────
+
+#[test]
+fn turn_content_attaches_input_output_to_turn_span() {
+    let c = collect(&[
+        (AgentProgress::TurnStarted, 1_000),
+        (
+            AgentProgress::TurnContent {
+                input: Some("what is your favorite color?".to_string()),
+                output: Some("i'm partial to teal".to_string()),
+            },
+            1_100,
+        ),
+    ]);
+    let turn = find(c.spans(), "agent.turn");
+    assert_eq!(
+        turn.input.as_ref().and_then(|v| v.as_str()),
+        Some("what is your favorite color?"),
+        "TurnContent input must land on the turn span"
+    );
+    assert_eq!(
+        turn.output.as_ref().and_then(|v| v.as_str()),
+        Some("i'm partial to teal")
+    );
+}
+
+#[test]
+fn turn_span_stamps_user_and_thread_grouping_attributes() {
+    let mut c = SpanCollector::new(
+        TraceContext::new("trace:req-1", Some("client-7".to_string()))
+            .with_session_group("thread-abc"),
+    );
+    c.record(&AgentProgress::TurnStarted, 1_000);
+    let turn = find(c.spans(), "agent.turn");
+    assert_eq!(
+        turn.attributes.get("user.id").and_then(|v| v.as_str()),
+        Some("client-7")
+    );
+    assert_eq!(
+        turn.attributes.get("thread.id").and_then(|v| v.as_str()),
+        Some("thread-abc"),
+        "session_group must be stamped as thread.id for the Langfuse sessionId"
+    );
+}
+
+#[test]
+fn span_ids_are_unique_across_turns() {
+    // Two separate collectors (two turns) must not reuse span ids, or Langfuse
+    // dedupes their observations onto whichever trace claimed the id first.
+    let a = collect(&[(AgentProgress::TurnStarted, 1)]);
+    let b = collect(&[(AgentProgress::TurnStarted, 1)]);
+    assert_ne!(
+        find(a.spans(), "agent.turn").span_id,
+        find(b.spans(), "agent.turn").span_id,
+        "span ids must be globally unique across turns"
+    );
+}

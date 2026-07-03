@@ -525,6 +525,25 @@ impl EnvLookup for HashMapEnv {
 }
 
 #[test]
+fn env_overlay_toggles_agent_tracing_capture_content() {
+    // Off by default; the opt-in env var enables prompt/reply export.
+    let mut cfg = Config::default();
+    assert!(!cfg.observability.agent_tracing.capture_content);
+    cfg.apply_env_overlay_with(
+        &HashMapEnv::new().with("OPENHUMAN_AGENT_TRACING_CAPTURE_CONTENT", "true"),
+    );
+    assert!(cfg.observability.agent_tracing.capture_content);
+
+    // An explicit falsy value turns it back off.
+    let mut cfg = Config::default();
+    cfg.observability.agent_tracing.capture_content = true;
+    cfg.apply_env_overlay_with(
+        &HashMapEnv::new().with("OPENHUMAN_AGENT_TRACING_CAPTURE_CONTENT", "off"),
+    );
+    assert!(!cfg.observability.agent_tracing.capture_content);
+}
+
+#[test]
 fn env_overlay_model_only_honours_namespaced_var() {
     // Both set → OPENHUMAN_MODEL wins; bare MODEL is ignored even when
     // OPENHUMAN_MODEL is absent.

@@ -443,6 +443,31 @@ mod tests {
         assert_eq!(obs["body"]["costDetails"]["total"], 0.0123);
     }
 
+    #[test]
+    fn trace_create_carries_user_and_session_grouping() {
+        // The turn span's user.id / thread.id attributes are promoted onto the
+        // trace-create as Langfuse userId / sessionId so per-turn traces group
+        // under one conversation and attribute to a user.
+        let mut turn = span(
+            "trace:req-1",
+            "root",
+            None,
+            "agent.turn",
+            SpanKind::Turn,
+            SpanStatus::Ok,
+            1_000,
+            Some(2_000),
+        );
+        turn.attributes.insert("user.id".into(), json!("client-7"));
+        turn.attributes
+            .insert("thread.id".into(), json!("thread-abc"));
+        let payload = spans_to_langfuse_batch(&[turn], false);
+        let trace = &payload["batch"][0];
+        assert_eq!(trace["type"], "trace-create");
+        assert_eq!(trace["body"]["userId"], "client-7");
+        assert_eq!(trace["body"]["sessionId"], "thread-abc");
+    }
+
     #[tokio::test]
     async fn empty_spans_push_is_ok_noop() {
         let config = Config::default();
