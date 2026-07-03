@@ -62,13 +62,15 @@ Copy the **entire** data folder from the old machine to the same location on the
 
 Copy the whole folder rather than cherry-picking — it keeps memory, persona, config, and history consistent with each other.
 
+The data folder holds config and memory but **not** the files the agent created or edited in its action sandbox. Also copy your **projects/action folder** — by default `~/OpenHuman/projects` (or wherever you pointed the action directory) — or those project files stay behind on the old PC.
+
 {% hint style="warning" %}
 Copy it somewhere secure. This folder contains your personal memory in readable form. Treat the transfer like moving personal documents.
 {% endhint %}
 
 ### 3. Install OpenHuman on the new machine
 
-Install the current build from [tinyhumans.ai/openhuman](http://tinyhumans.ai/openhuman). If the data folder is already in place, the app will find it on launch. (Order doesn't strictly matter — installing first and copying after works too, as long as the app isn't running while you copy.)
+Install the current build from [tinyhumans.ai/openhuman](https://tinyhumans.ai/openhuman). If the data folder is already in place, the app will find it on launch. (Order doesn't strictly matter — installing first and copying after works too, as long as the app isn't running while you copy.)
 
 ### 4. Launch and sign in
 

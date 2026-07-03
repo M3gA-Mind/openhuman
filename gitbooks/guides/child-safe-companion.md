@@ -54,7 +54,7 @@ The honest gap: **none of these filter the model's language or subject matter.**
 
 ### 2. Keep inference and data local
 
-* Turn on a [local model](local-model.md) so conversations stay on the machine.
+* Turn on a [local model](local-model.md), then **route chat and reasoning at the local provider** so conversations run on-device. Enabling Local AI alone keeps only embeddings/memory local — chat still uses the default cloud route until you point the chat/reasoning workloads at the local provider and confirm with a test message.
 * Connect **no** integrations. Don't sign the child's accounts in.
 
 ### 3. Write a protective persona

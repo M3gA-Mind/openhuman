@@ -56,7 +56,7 @@ Work top to bottom. **Stop as soon as it works** — each rung is more disruptiv
 
 Reinstalling the **application** does not delete your **data folder** — they're separate. This fixes a corrupted or partial install while preserving everything.
 
-* Download the current build from [tinyhumans.ai/openhuman](http://tinyhumans.ai/openhuman) and install over the top.
+* Download the current build from [tinyhumans.ai/openhuman](https://tinyhumans.ai/openhuman) and install over the top.
 * On macOS, install the real `.app` bundle (some features need the bundle, not a dev build).
 * Reopen. Your memory, personas, and settings are still there because they live in `~/.openhuman/`, which you didn't touch.
 

@@ -38,7 +38,7 @@ In **Settings → Agents → Agent access**:
 
 * Set autonomy to **Read-only** (pure Q&A/drafting) or **Supervised** (drafting plus approved actions). Avoid **Full** for clinical use.
 * Keep **workspace-only** on so the agent can't wander your disk.
-* Keep the [Approval Gate](../features/approval-gate.md) on — nothing gets sent or written without your yes.
+* Keep the [Approval Gate](../features/approval-gate.md) on — nothing gets *acted on* (files written, actions taken) without your yes. Note it gates **actions**, not network transport: prompts and attachments can still be sent upstream for inference.
 
 ### 2. Turn on local inference for sensitive work
 

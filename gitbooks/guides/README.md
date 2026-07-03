@@ -47,7 +47,7 @@ Every guide in this section follows the same shape, so you always know where to 
 
 ## The one thing worth knowing first
 
-OpenHuman keeps **the memory of your life on your machine** and uses the OpenHuman backend only for things that have to be brokered — sign-in, model routing, and integration access. That single fact is behind most of the privacy and recovery advice in this section. If you read only one background page, read [Privacy & Security](../features/privacy-and-security.md).
+OpenHuman keeps **the memory of your life on your machine**. The managed backend still brokers sign-in, model routing, integration access, web-search proxying, and some real-time integration triggers. That single fact is behind most of the privacy and recovery advice in this section. If you read only one background page, read [Privacy & Security](../features/privacy-and-security.md).
 
 Where your data physically lives on disk:
 

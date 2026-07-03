@@ -43,13 +43,9 @@ A JSON list of models (even an empty one) means the server is reachable. This is
 
 ### 2. Turn on Local AI in OpenHuman
 
-Open **Settings → AI & Skills → Local AI**. It's off until you opt in here. Pick a **preset** rather than hand-editing flags:
+Open **Settings → AI & Skills → Local AI**. It's off until you opt in here. Pick the **model tier** that matches your machine's memory (for example the `ram_2_4gb` tier on a typical laptop). OpenHuman selects sensible on-device models for you — for example `gemma3:1b-it-qat` for chat and `bge-m3` for embeddings.
 
-* **Embeddings only** — keep memory embeddings on-device; everything else stays cloud.
-* **Memory + reflection** — embeddings plus background summarization/reflection loops.
-* **Everything local** — route chat and reasoning on-device too (needs the most RAM).
-
-The preset sets the right combination of flags for you. OpenHuman picks sensible default models per your machine's memory — for example `gemma3:1b-it-qat` for chat and `bge-m3` for embeddings on a typical tier.
+By default the tier keeps **embeddings and memory** on-device while chat and reasoning stay on the cloud route. To move those workloads local too, use **custom routing** to point the chat and reasoning workloads at the local provider, then test that a message stays on the machine.
 
 ### 3. Let it pull the models
 
