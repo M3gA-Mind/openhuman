@@ -3159,6 +3159,7 @@ fn turn_state_mirror_persists_progress_edges_from_public_events() {
         output_chars: 0,
         elapsed_ms: 11,
         iteration: 2,
+        failure: None,
     }));
     assert!(!mirror.observe(&AgentProgress::TurnCostUpdated {
         model: "coverage-model".into(),
