@@ -51,6 +51,8 @@ use crate::openhuman::tinyagents::payload_summarizer::PayloadSummarizer;
 use crate::openhuman::tokenjuice::AgentTokenjuiceCompression;
 use crate::openhuman::tools::Tool;
 
+use super::policy_denial::PolicyDenial;
+
 /// Default per-tool-result byte cap for the channel / sub-agent paths, which do
 /// not carry a session `ContextManager` to source the configured budget from.
 /// Mirrors the `ContextConfig::tool_result_budget_bytes` default (16 KiB).
@@ -1232,22 +1234,28 @@ impl ToolPolicyMiddleware {
     fn channel_permission_block(&self, call: &TaToolCall) -> Option<String> {
         let decision = self.session.decision_for(&call.name);
         if decision.is_denied() {
-            let required = decision
-                .required_permission
-                .map(|permission| permission.to_string())
-                .unwrap_or_else(|| "unknown".to_string());
-            return Some(format!(
-                "Tool '{}' blocked by tool policy: requires {}, channel '{}' allows {}",
-                call.name, required, self.channel, decision.allowed_permission
-            ));
+            return Some(
+                PolicyDenial::SessionForbidden {
+                    tool: &call.name,
+                    required: decision.required_permission,
+                    allowed: decision.allowed_permission,
+                    channel: &self.channel,
+                }
+                .render(),
+            );
         }
         let tool = self.resolve_tool(&call.name)?;
         let call_required = tool.permission_level_with_args(&call.arguments);
         if call_required > decision.allowed_permission {
-            return Some(format!(
-                "Tool '{}' action requires {} permission, channel '{}' allows {}",
-                call.name, call_required, self.channel, decision.allowed_permission
-            ));
+            return Some(
+                PolicyDenial::PermissionTooLow {
+                    tool: &call.name,
+                    required: call_required,
+                    allowed: decision.allowed_permission,
+                    channel: &self.channel,
+                }
+                .render(),
+            );
         }
         None
     }
@@ -1333,11 +1341,19 @@ impl ToolMiddleware<()> for ToolPolicyMiddleware {
                 reason = %reason,
                 "[tinyagents::mw] tool blocked by policy"
             );
-            let content = format!(
-                "Tool '{}' {blocked_action} by policy '{}': {reason}",
-                call.name,
-                self.policy.name()
-            );
+            let content = match &decision {
+                ToolPolicyDecision::RequireApproval { .. } => PolicyDenial::ApprovalRequired {
+                    tool: &call.name,
+                    policy: self.policy.name(),
+                    reason,
+                },
+                _ => PolicyDenial::PolicyDenied {
+                    tool: &call.name,
+                    policy: self.policy.name(),
+                    reason,
+                },
+            }
+            .render();
             return Ok(MiddlewareToolOutcome::Result(TaToolResult {
                 call_id: call.id,
                 name: call.name,
