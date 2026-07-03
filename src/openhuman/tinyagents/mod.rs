@@ -1059,6 +1059,12 @@ fn assemble_turn_harness(
     };
     let handle = Some(orchestration::openhuman_steering_handle(steering_run_class));
 
+    // Memory protocol (issue #4116): observe the read → dedupe → write →
+    // update-index cycle and append a corrective note when a write skips the
+    // dedupe read or leaves the index stale. Pushed first / outermost so its
+    // `after_tool` runs *after* the byte-cap truncation, keeping the note.
+    harness.push_middleware(Arc::new(middleware::MemoryProtocolMiddleware::new()));
+
     // Repeated-failure circuit breaker: pause the run when a tool returns the same
     // error `REPEATED_TOOL_FAILURE_THRESHOLD` times in a row, so a deterministic
     // security/approval denial or terminal tool error surfaces its root cause
