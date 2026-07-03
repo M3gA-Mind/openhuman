@@ -636,7 +636,8 @@ async fn drain_progress(
             | AgentProgress::ToolCallArgsDelta { .. }
             | AgentProgress::TaskBoardUpdated { .. }
             | AgentProgress::TurnCostUpdated { .. }
-            | AgentProgress::TurnStarted => {}
+            | AgentProgress::TurnStarted
+            | AgentProgress::TurnContent { .. } => {}
         }
     }
 }
