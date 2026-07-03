@@ -52,11 +52,16 @@ pub(crate) mod langfuse;
 /// Trace-level correlation context, stamped onto the root span.
 #[derive(Debug, Clone)]
 pub struct TraceContext {
-    /// Trace id — the agent session id. All spans of a run share it.
+    /// Trace id — unique per turn. Every span of a single turn shares it, so
+    /// each turn becomes its own Langfuse trace.
     pub session_id: String,
     /// User attribution (e.g. the broadcast client id / "system" for
     /// autonomous runs). `None` when the caller is anonymous.
     pub user_id: Option<String>,
+    /// Grouping key (the thread/conversation id) exported as the Langfuse
+    /// `sessionId` so per-turn traces still group under one session. `None`
+    /// leaves the trace ungrouped.
+    pub session_group: Option<String>,
 }
 
 impl TraceContext {
@@ -64,7 +69,15 @@ impl TraceContext {
         Self {
             session_id: session_id.into(),
             user_id,
+            session_group: None,
         }
+    }
+
+    /// Set the grouping key (thread/conversation id) for the Langfuse
+    /// `sessionId`, so a conversation's per-turn traces group together.
+    pub fn with_session_group(mut self, group: impl Into<String>) -> Self {
+        self.session_group = Some(group.into());
+        self
     }
 }
 
@@ -129,6 +142,15 @@ pub struct TraceSpan {
     pub status: SpanStatus,
     /// Metadata-only attributes (no secrets/PII).
     pub attributes: BTreeMap<String, serde_json::Value>,
+    /// Optional prompt/input content. Populated only when content capture is on
+    /// (via `AgentProgress::TurnContent`); the exporter still gates transmission
+    /// behind `observability.agent_tracing.capture_content`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<serde_json::Value>,
+    /// Optional model-reply/output content. Same capture/gating rules as
+    /// [`Self::input`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<serde_json::Value>,
 }
 
 impl TraceSpan {
@@ -161,6 +183,12 @@ pub struct SpanCollector {
     ctx: TraceContext,
     spans: Vec<TraceSpan>,
     next_span_seq: u64,
+    /// Per-collector (per-turn) random prefix for minted span ids. Langfuse
+    /// dedupes observations by id **globally**, so a bare per-turn sequence
+    /// (`0000…0001`) collides across turns and silently binds later turns'
+    /// observations to whichever trace first claimed the id. Prefixing with a
+    /// fresh nonce makes every span id globally unique.
+    id_prefix: String,
 
     turn_span_id: Option<String>,
     turn_span_index: Option<usize>,
@@ -179,6 +207,7 @@ impl SpanCollector {
             ctx,
             spans: Vec::new(),
             next_span_seq: 0,
+            id_prefix: uuid::Uuid::new_v4().simple().to_string(),
             turn_span_id: None,
             turn_span_index: None,
             current_iteration_span_id: None,
@@ -208,7 +237,9 @@ impl SpanCollector {
     /// and deterministic within a run, which keeps the tests reproducible.
     fn mint_span_id(&mut self) -> String {
         self.next_span_seq += 1;
-        format!("{:016x}", self.next_span_seq)
+        // Nonce prefix keeps the id globally unique across turns (Langfuse
+        // dedupes observations by id project-wide).
+        format!("{}-{:016x}", self.id_prefix, self.next_span_seq)
     }
 
     fn open_span(
@@ -231,6 +262,8 @@ impl SpanCollector {
             end_unix_ms: None,
             status: SpanStatus::Unset,
             attributes,
+            input: None,
+            output: None,
         });
         (span_id, index)
     }
@@ -267,6 +300,12 @@ impl SpanCollector {
             attrs.insert(
                 "user.id".to_string(),
                 serde_json::Value::String(user.clone()),
+            );
+        }
+        if let Some(group) = &self.ctx.session_group {
+            attrs.insert(
+                "thread.id".to_string(),
+                serde_json::Value::String(group.clone()),
             );
         }
         let (id, index) = self.open_span(SpanKind::Turn, "agent.turn", None, start_unix_ms, attrs);
@@ -582,6 +621,26 @@ impl SpanCollector {
                     );
                     span.attributes
                         .insert("gen_ai.usage.cost_usd".to_string(), json_f64(*total_usd));
+                }
+            }
+
+            AgentProgress::TurnContent { input, output } => {
+                // Attach prompt/reply to the root turn span. Held in-memory only;
+                // the exporter decides whether to transmit it (opt-in gate).
+                let index = match self.turn_span_index {
+                    Some(idx) => idx,
+                    None => {
+                        self.ensure_turn_span(now_unix_ms);
+                        self.turn_span_index.expect("turn span just created")
+                    }
+                };
+                if let Some(span) = self.spans.get_mut(index) {
+                    if let Some(text) = input {
+                        span.input = Some(serde_json::Value::String(text.clone()));
+                    }
+                    if let Some(text) = output {
+                        span.output = Some(serde_json::Value::String(text.clone()));
+                    }
                 }
             }
 

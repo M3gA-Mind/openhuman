@@ -531,6 +531,21 @@ impl Config {
                 _ => {}
             }
         }
+
+        // Opt-in: export prompt/reply content on trace spans (default off — a
+        // deliberate PII reversal). Token/cost export is unaffected by this flag.
+        if let Some(flag) = env.get("OPENHUMAN_AGENT_TRACING_CAPTURE_CONTENT") {
+            let normalized = flag.trim().to_ascii_lowercase();
+            match normalized.as_str() {
+                "1" | "true" | "yes" | "on" => {
+                    self.observability.agent_tracing.capture_content = true
+                }
+                "0" | "false" | "no" | "off" => {
+                    self.observability.agent_tracing.capture_content = false
+                }
+                _ => {}
+            }
+        }
     }
 
     fn apply_learning_env<E: super::env::EnvLookup + ?Sized>(&mut self, env: &E) {

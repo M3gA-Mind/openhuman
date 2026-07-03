@@ -160,11 +160,15 @@ pub(crate) fn spawn_progress_bridge(
             use crate::openhuman::agent::progress_tracing::{
                 trace_session_id, SpanCollector, TraceContext,
             };
-            let session_id = trace_session_id(metadata.session_id, &thread_id);
-            Some(SpanCollector::new(TraceContext::new(
-                session_id,
-                Some(client_id.clone()),
-            )))
+            // One trace per turn: the trace id is unique per request, while the
+            // thread id rides along as the Langfuse `sessionId` so a
+            // conversation's per-turn traces still group under one session.
+            let base = trace_session_id(metadata.session_id, &thread_id);
+            let trace_id = format!("{base}:{request_id}");
+            Some(SpanCollector::new(
+                TraceContext::new(trace_id, Some(client_id.clone()))
+                    .with_session_group(thread_id.clone()),
+            ))
         } else {
             None
         };
@@ -1079,6 +1083,10 @@ pub(crate) fn spawn_progress_bridge(
                          in={input_tokens} out={output_tokens} cached_in={cached_input_tokens} \
                          total_usd={total_usd:.4} client_id={client_id} thread_id={thread_id}"
                     );
+                }
+                AgentProgress::TurnContent { .. } => {
+                    // Prompt/reply content is attached to the trace span by the
+                    // span collector above; the ledger/telemetry bridge ignores it.
                 }
             }
         }

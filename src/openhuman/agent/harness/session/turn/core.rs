@@ -1063,6 +1063,16 @@ impl Agent {
         )
         .await;
 
+        // Content (prompt + reply) rides its own event so a tracing consumer can
+        // attach it to the turn span. Transmission off-device stays gated by the
+        // exporter's opt-in `capture_content` flag; here it is only surfaced onto
+        // the in-memory span.
+        self.emit_progress(AgentProgress::TurnContent {
+            input: Some(user_message.to_string()),
+            output: Some(reply.clone()),
+        })
+        .await;
+
         self.emit_progress(AgentProgress::TurnCompleted {
             iterations: outcome.model_calls as u32,
         })

@@ -232,7 +232,8 @@ pub fn format_event(ev: &AgentProgress) -> Option<String> {
         | AgentProgress::TaskBoardUpdated { .. }
         | AgentProgress::SubagentTextDelta { .. }
         | AgentProgress::SubagentThinkingDelta { .. }
-        | AgentProgress::SubagentIterationStarted { .. } => return None,
+        | AgentProgress::SubagentIterationStarted { .. }
+        | AgentProgress::TurnContent { .. } => return None,
     };
     Some(format!(
         "{}  {}",

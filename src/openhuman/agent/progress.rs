@@ -283,4 +283,16 @@ pub enum AgentProgress {
         /// Total iterations used.
         iterations: u32,
     },
+
+    /// The turn's content: the user's prompt and the model's final reply.
+    /// Emitted just before [`Self::TurnCompleted`] so a tracing consumer can
+    /// attach `input`/`output` to the turn span. Carries prompt/reply text, so
+    /// exporters must honor the opt-in `observability.agent_tracing.capture_content`
+    /// gate before transmitting it off-device.
+    TurnContent {
+        /// The user's prompt for this turn.
+        input: Option<String>,
+        /// The model's final reply for this turn.
+        output: Option<String>,
+    },
 }

@@ -81,6 +81,13 @@ pub struct AgentTracingConfig {
     /// spans are emitted to the application log at `info` level instead, so
     /// the export still works on read-only or sandboxed deployments.
     pub export_path: Option<String>,
+
+    /// Opt-in: include the turn's prompt (`input`) and the model's reply
+    /// (`output`) on exported spans. Off by default — this reverses the
+    /// otherwise metadata-only, PII-free posture, so it must be enabled
+    /// deliberately. Token/cost figures are always exported (they carry no PII)
+    /// regardless of this flag.
+    pub capture_content: bool,
 }
 
 impl Default for AgentTracingConfig {
@@ -89,6 +96,7 @@ impl Default for AgentTracingConfig {
             enabled: false,
             backend: AgentTracingBackend::Otel,
             export_path: None,
+            capture_content: false,
         }
     }
 }

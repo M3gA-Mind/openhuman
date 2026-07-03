@@ -52,6 +52,7 @@ fn tracing_config_round_trips_through_json() {
         enabled: true,
         backend: AgentTracingBackend::Langfuse,
         export_path: Some("/tmp/spans.ndjson".to_string()),
+        capture_content: false,
     };
     let s = serde_json::to_string(&cfg).unwrap();
     let back: AgentTracingConfig = serde_json::from_str(&s).unwrap();
@@ -570,6 +571,7 @@ fn export_disabled_is_a_noop_and_writes_nothing() {
         enabled: false,
         backend: AgentTracingBackend::Otel,
         export_path: Some(path.to_string_lossy().to_string()),
+        capture_content: false,
     };
     export_spans(&cfg, &one_turn_spans());
     assert!(
@@ -588,6 +590,7 @@ fn export_appends_ndjson_to_the_configured_file() {
         enabled: true,
         backend: AgentTracingBackend::Otel,
         export_path: Some(path.to_string_lossy().to_string()),
+        capture_content: false,
     };
     let spans = one_turn_spans();
     export_spans(&cfg, &spans);
@@ -611,6 +614,7 @@ fn export_with_no_path_does_not_panic() {
         enabled: true,
         backend: AgentTracingBackend::Langfuse,
         export_path: None,
+        capture_content: false,
     };
     export_spans(&cfg, &one_turn_spans());
     export_spans(&cfg, &[]); // empty slice short-circuits.
@@ -643,6 +647,7 @@ async fn export_run_trace_otel_backend_uses_local_sink() {
         enabled: true,
         backend: AgentTracingBackend::Otel,
         export_path: Some(path.to_string_lossy().to_string()),
+        capture_content: false,
     };
     export_run_trace(&config, &one_turn_spans()).await;
 

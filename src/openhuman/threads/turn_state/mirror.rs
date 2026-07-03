@@ -425,6 +425,11 @@ impl TurnStateMirror {
                 // flush per LLM call — not worth it for telemetry.
                 false
             }
+            AgentProgress::TurnContent { .. } => {
+                // Prompt/reply content is consumed by the tracing exporter, not
+                // the turn-state snapshot; nothing to mirror, no flush.
+                false
+            }
         }
     }
 

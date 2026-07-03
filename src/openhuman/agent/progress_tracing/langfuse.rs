@@ -11,9 +11,12 @@
 //! never hold Langfuse keys and never hit `/api/public/ingestion` directly.
 //!
 //! Best-effort: any failure is logged and swallowed by the caller so tracing
-//! never breaks a turn. Spans carry only metadata (names, kinds, timings,
-//! counts) — never prompt text, tool arguments, or PII — honoring the project's
-//! "never log secrets or full PII" rule.
+//! never breaks a turn. By default spans carry only metadata (names, kinds,
+//! timings, and non-PII token/cost figures — the latter promoted into Langfuse's
+//! native `usageDetails`/`costDetails`). Prompt text and the model's reply are
+//! withheld unless the operator opts in via
+//! `observability.agent_tracing.capture_content`, preserving the project's
+//! "never log secrets or full PII" default.
 
 use std::time::Duration;
 
@@ -83,7 +86,7 @@ fn langfuse_metadata(span: &TraceSpan) -> Value {
 /// a single `trace-create` for the shared trace id followed by one
 /// `span-create` observation per span. Field names are Langfuse's camelCase
 /// (`traceId`, `startTime`, `parentObservationId`); timestamps are ISO strings.
-pub(crate) fn spans_to_langfuse_batch(spans: &[TraceSpan]) -> Value {
+pub(crate) fn spans_to_langfuse_batch(spans: &[TraceSpan], include_content: bool) -> Value {
     let mut batch: Vec<Value> = Vec::with_capacity(spans.len() + 1);
 
     // One trace-create for the run, keyed by the shared trace id. Prefer the
@@ -93,15 +96,25 @@ pub(crate) fn spans_to_langfuse_batch(spans: &[TraceSpan]) -> Value {
         .find(|s| s.parent_span_id.is_none())
         .or_else(|| spans.first())
     {
+        let mut trace_body = json!({
+            "id": root.trace_id,
+            "name": root.name,
+            "timestamp": iso_millis(root.start_unix_ms),
+        });
+        // Attribute the trace to the user and group per-turn traces under the
+        // conversation via Langfuse's native `userId`/`sessionId` (read from the
+        // turn span's stamped attributes).
+        if let Some(user) = root.attributes.get("user.id").and_then(Value::as_str) {
+            trace_body["userId"] = json!(user);
+        }
+        if let Some(group) = root.attributes.get("thread.id").and_then(Value::as_str) {
+            trace_body["sessionId"] = json!(group);
+        }
         batch.push(json!({
             "id": new_event_id(),
             "type": "trace-create",
             "timestamp": iso_millis(root.start_unix_ms),
-            "body": {
-                "id": root.trace_id,
-                "name": root.name,
-                "timestamp": iso_millis(root.start_unix_ms),
-            },
+            "body": trace_body,
         }));
     }
 
@@ -120,15 +133,75 @@ pub(crate) fn spans_to_langfuse_batch(spans: &[TraceSpan]) -> Value {
         if let Some(parent) = &span.parent_span_id {
             body["parentObservationId"] = json!(parent);
         }
+        // Prompt/reply content is transmitted only when the caller opted in
+        // (`observability.agent_tracing.capture_content`); otherwise it never
+        // leaves the device even though it may sit on the in-memory span.
+        if include_content {
+            if let Some(input) = &span.input {
+                body["input"] = input.clone();
+            }
+            if let Some(output) = &span.output {
+                body["output"] = output.clone();
+            }
+        }
+        // A span carrying `gen_ai.usage.*` attributes (today only the root turn
+        // span) is emitted as a Langfuse `generation` so the UI renders native
+        // token usage + cost instead of burying them in metadata. Token counts
+        // and cost are non-PII, so this promotion is unconditional.
+        let event_type = if apply_usage_fields(&mut body, span) {
+            "generation-create"
+        } else {
+            "span-create"
+        };
         batch.push(json!({
             "id": new_event_id(),
-            "type": "span-create",
+            "type": event_type,
             "timestamp": iso_millis(span.start_unix_ms),
             "body": body,
         }));
     }
 
     json!({ "batch": batch })
+}
+
+/// Promote a span's `gen_ai.usage.*` / `gen_ai.request.model` attributes into
+/// Langfuse's native `model` / `usageDetails` / `costDetails` fields so the
+/// trace surfaces real token counts and cost (Langfuse only renders these on
+/// `generation` observations). Returns `true` when usage was found, so the
+/// caller emits the span as a `generation-create`. Only token/cost figures are
+/// touched — never prompt text or PII.
+fn apply_usage_fields(body: &mut Value, span: &TraceSpan) -> bool {
+    let attrs = &span.attributes;
+    let input = attrs
+        .get("gen_ai.usage.input_tokens")
+        .and_then(Value::as_u64);
+    let output = attrs
+        .get("gen_ai.usage.output_tokens")
+        .and_then(Value::as_u64);
+    if input.is_none() && output.is_none() {
+        return false;
+    }
+    let input = input.unwrap_or(0);
+    let output = output.unwrap_or(0);
+    let mut usage = Map::new();
+    usage.insert("input".to_string(), json!(input));
+    usage.insert("output".to_string(), json!(output));
+    usage.insert("total".to_string(), json!(input.saturating_add(output)));
+    if let Some(cached) = attrs
+        .get("gen_ai.usage.cached_input_tokens")
+        .and_then(Value::as_u64)
+        .filter(|c| *c > 0)
+    {
+        usage.insert("cache_read_input_tokens".to_string(), json!(cached));
+    }
+    body["usageDetails"] = Value::Object(usage);
+    if let Some(model) = attrs.get("gen_ai.request.model").and_then(Value::as_str) {
+        body["model"] = json!(model);
+    }
+    if let Some(cost) = attrs.get("gen_ai.usage.cost_usd").and_then(Value::as_f64) {
+        body["costDetails"] = json!({ "total": cost });
+    }
+    true
 }
 
 /// Fresh per-event id. Langfuse dedupes ingestion events by this id, so it must
@@ -152,7 +225,8 @@ pub(crate) async fn push_spans(config: &Config, spans: &[TraceSpan]) -> Result<(
         ));
     }
     let token = require_live_session_token(config)?;
-    let batch = spans_to_langfuse_batch(spans);
+    let include_content = config.observability.agent_tracing.capture_content;
+    let batch = spans_to_langfuse_batch(spans, include_content);
     let span_count = spans.len();
 
     tracing::debug!(
@@ -173,19 +247,36 @@ pub(crate) async fn push_spans(config: &Config, spans: &[TraceSpan]) -> Result<(
         .map_err(|err| format!("POST {url} failed: {err}"))?;
 
     let status = response.status();
-    // Langfuse returns 207 Multi-Status on partial success; `is_success()`
-    // covers the whole 2xx range including that.
-    if status.is_success() {
+    let body = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        let excerpt: String = body.chars().take(200).collect();
+        return Err(format!("Langfuse ingestion returned {status}: {excerpt}"));
+    }
+    // Langfuse returns 207 Multi-Status even when individual events are rejected
+    // — the failures live in the response `errors` array, not the HTTP status.
+    // Surface them (a partial rejection is logged but never fails the turn).
+    let rejected = serde_json::from_str::<Value>(&body)
+        .ok()
+        .and_then(|v| v.get("errors").and_then(Value::as_array).cloned())
+        .filter(|errs| !errs.is_empty());
+    if let Some(errs) = rejected {
+        let excerpt: String = serde_json::to_string(&errs)
+            .unwrap_or_default()
+            .chars()
+            .take(400)
+            .collect();
+        tracing::warn!(
+            target: LOG_TARGET,
+            "[agent-tracing] Langfuse ({status}) rejected {} of {span_count} span event(s): {excerpt}",
+            errs.len()
+        );
+    } else {
         tracing::debug!(
             target: LOG_TARGET,
             "[agent-tracing] pushed {span_count} spans to Langfuse ({status})"
         );
-        Ok(())
-    } else {
-        let body = response.text().await.unwrap_or_default();
-        let excerpt: String = body.chars().take(200).collect();
-        Err(format!("Langfuse ingestion returned {status}: {excerpt}"))
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -217,6 +308,8 @@ mod tests {
             end_unix_ms: end,
             status,
             attributes,
+            input: None,
+            output: None,
         }
     }
 
@@ -273,7 +366,7 @@ mod tests {
                 Some(1_500),
             ),
         ];
-        let payload = spans_to_langfuse_batch(&spans);
+        let payload = spans_to_langfuse_batch(&spans, false);
         let batch = payload["batch"].as_array().expect("batch array");
         assert_eq!(batch.len(), 3, "one trace-create + two span-create");
 
@@ -298,6 +391,56 @@ mod tests {
         // Event ids are unique and distinct from the observation ids.
         assert_ne!(batch[1]["id"], batch[2]["id"]);
         assert_ne!(batch[1]["id"], batch[1]["body"]["id"]);
+    }
+
+    #[test]
+    fn usage_span_becomes_generation_and_content_is_gated() {
+        let mut turn = span(
+            "trace-1",
+            "root",
+            None,
+            "agent.turn",
+            SpanKind::Turn,
+            SpanStatus::Ok,
+            1_000,
+            Some(2_000),
+        );
+        turn.attributes.clear();
+        turn.attributes
+            .insert("gen_ai.request.model".into(), json!("claude-x"));
+        turn.attributes
+            .insert("gen_ai.usage.input_tokens".into(), json!(100));
+        turn.attributes
+            .insert("gen_ai.usage.output_tokens".into(), json!(20));
+        turn.attributes
+            .insert("gen_ai.usage.cost_usd".into(), json!(0.0123));
+        turn.input = Some(json!("what is 2+2?"));
+        turn.output = Some(json!("4"));
+        let spans = vec![turn];
+
+        // Content OFF (default): span is promoted to a generation with native
+        // usage + cost, but prompt/reply are withheld.
+        let off = spans_to_langfuse_batch(&spans, false);
+        let obs = &off["batch"][1];
+        assert_eq!(obs["type"], "generation-create");
+        assert_eq!(obs["body"]["model"], "claude-x");
+        assert_eq!(obs["body"]["usageDetails"]["input"], 100);
+        assert_eq!(obs["body"]["usageDetails"]["output"], 20);
+        assert_eq!(obs["body"]["usageDetails"]["total"], 120);
+        assert_eq!(obs["body"]["costDetails"]["total"], 0.0123);
+        assert!(
+            obs["body"].get("input").is_none(),
+            "prompt must be withheld when capture_content is off"
+        );
+        assert!(obs["body"].get("output").is_none());
+
+        // Content ON: prompt/reply included, usage/cost unchanged.
+        let on = spans_to_langfuse_batch(&spans, true);
+        let obs = &on["batch"][1];
+        assert_eq!(obs["type"], "generation-create");
+        assert_eq!(obs["body"]["input"], "what is 2+2?");
+        assert_eq!(obs["body"]["output"], "4");
+        assert_eq!(obs["body"]["costDetails"]["total"], 0.0123);
     }
 
     #[tokio::test]
