@@ -3786,6 +3786,37 @@ const en: TranslationMap = {
   'conversations.subagent.cancel': 'Cancel task',
   'conversations.subagent.cancelling': 'Cancelling…',
   'conversations.subagent.cancelFailed': "Couldn't cancel the task. Try again.",
+  // Tool-failure explanation surfaced under a failed step in "View processing" (#4254).
+  'conversations.toolFailure.whyLabel': 'Why',
+  'conversations.toolFailure.nextLabel': 'What to do next',
+  'conversations.toolFailure.missingPermission.cause':
+    "OpenHuman doesn't have permission to do this yet.",
+  'conversations.toolFailure.missingPermission.next':
+    'Grant the permission it needs, then try again.',
+  'conversations.toolFailure.missingApp.cause':
+    "The app or program needed for this action isn't available.",
+  'conversations.toolFailure.missingApp.next': 'Install or open the app, then try again.',
+  'conversations.toolFailure.serviceUnavailable.cause':
+    'A service OpenHuman needs is temporarily unavailable.',
+  'conversations.toolFailure.serviceUnavailable.next':
+    'OpenHuman will try again shortly — no action needed.',
+  'conversations.toolFailure.badCredentials.cause':
+    'The saved sign-in details are missing or no longer valid.',
+  'conversations.toolFailure.badCredentials.next':
+    'Sign in again or update the credentials, then try again.',
+  'conversations.toolFailure.blockedByPolicy.cause':
+    'This action is blocked by your safety settings.',
+  'conversations.toolFailure.blockedByPolicy.next':
+    'Allow it in Settings → Agent access if you want it to run.',
+  'conversations.toolFailure.modelConnection.cause': "OpenHuman couldn't reach the AI model.",
+  'conversations.toolFailure.modelConnection.next':
+    'Check your connection or model settings; OpenHuman will retry.',
+  'conversations.toolFailure.timeout.cause': 'The action took too long and was stopped.',
+  'conversations.toolFailure.timeout.next':
+    'OpenHuman will try again, or you can retry it manually.',
+  'conversations.toolFailure.unknown.cause': 'Something went wrong with this action.',
+  'conversations.toolFailure.unknown.next':
+    'Try again; if it keeps failing, run diagnostics from Settings.',
   'conversations.backgroundTasks.title': 'Background tasks',
   'conversations.backgroundTasks.titleWithCount': 'Background tasks ({count})',
   'conversations.backgroundTasks.running': '{count} running',

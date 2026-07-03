@@ -9,6 +9,35 @@ const messages: TranslationMap = {
   'crossHostVault.title': 'वॉल्ट कोर होस्ट पर है।',
   'crossHostVault.message':
     'यह मेमोरी वॉल्ट openhuman-core होस्ट ({os}) पर संग्रहीत है। इसे केवल उसी मशीन पर खोला या दिखाया जा सकता है, इस डिवाइस से नहीं।',
+  'conversations.toolFailure.whyLabel': 'क्यों',
+  'conversations.toolFailure.nextLabel': 'आगे क्या करें',
+  'conversations.toolFailure.missingPermission.cause':
+    'OpenHuman के पास अभी यह करने की अनुमति नहीं है।',
+  'conversations.toolFailure.missingPermission.next': 'आवश्यक अनुमति दें, फिर दोबारा प्रयास करें।',
+  'conversations.toolFailure.missingApp.cause':
+    'इस कार्य के लिए आवश्यक ऐप या प्रोग्राम उपलब्ध नहीं है।',
+  'conversations.toolFailure.missingApp.next': 'ऐप इंस्टॉल करें या खोलें, फिर दोबारा प्रयास करें।',
+  'conversations.toolFailure.serviceUnavailable.cause':
+    'OpenHuman को जिस सेवा की आवश्यकता है वह अस्थायी रूप से अनुपलब्ध है।',
+  'conversations.toolFailure.serviceUnavailable.next':
+    'OpenHuman शीघ्र ही फिर से प्रयास करेगा — कोई कार्रवाई आवश्यक नहीं।',
+  'conversations.toolFailure.badCredentials.cause':
+    'सहेजी गई साइन-इन जानकारी गायब है या अब मान्य नहीं है।',
+  'conversations.toolFailure.badCredentials.next':
+    'फिर से साइन इन करें या क्रेडेंशियल अपडेट करें, फिर दोबारा प्रयास करें।',
+  'conversations.toolFailure.blockedByPolicy.cause':
+    'यह कार्य आपकी सुरक्षा सेटिंग्स द्वारा अवरुद्ध है।',
+  'conversations.toolFailure.blockedByPolicy.next':
+    'यदि आप इसे चलाना चाहते हैं तो इसे सेटिंग्स → एजेंट एक्सेस में अनुमति दें।',
+  'conversations.toolFailure.modelConnection.cause': 'OpenHuman AI मॉडल तक नहीं पहुँच सका।',
+  'conversations.toolFailure.modelConnection.next':
+    'अपना कनेक्शन या मॉडल सेटिंग्स जाँचें; OpenHuman फिर से प्रयास करेगा।',
+  'conversations.toolFailure.timeout.cause': 'कार्य में बहुत अधिक समय लगा और इसे रोक दिया गया।',
+  'conversations.toolFailure.timeout.next':
+    'OpenHuman फिर से प्रयास करेगा, या आप इसे मैन्युअल रूप से दोबारा कर सकते हैं।',
+  'conversations.toolFailure.unknown.cause': 'इस कार्य में कुछ गड़बड़ हो गई।',
+  'conversations.toolFailure.unknown.next':
+    'दोबारा प्रयास करें; यदि यह बार-बार विफल हो, तो सेटिंग्स से डायग्नोस्टिक्स चलाएँ।',
   'conversations.backgroundTasks.title': 'Background tasks',
   'nav.feedback': 'फ़ीडबैक साझा करें',
   'feedback.board': 'फ़ीडबैक बोर्ड',

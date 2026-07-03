@@ -176,6 +176,59 @@ export interface SubagentToolCallEntry {
   detail?: string;
 }
 
+/**
+ * Human-readable explanation for a FAILED tool call (#4254). Carried on the
+ * tool-completion socket event (optional `failure` object, snake_case on the
+ * wire) and surfaced in the "View processing" timeline as a "why" + "what to
+ * do next" pair. `class`/`category` come from the core's failure taxonomy;
+ * `causePlain`/`nextAction` are English fallbacks used when the class is not
+ * one the UI has localized copy for.
+ */
+export interface ToolFailureExplanation {
+  /** PascalCase failure class, e.g. `MissingPermission`, `Timeout`, `Unknown`. */
+  class: string;
+  /** `Recoverable` | `BlockedByPolicy` | `NeedsUserConfirmation`. */
+  category: string;
+  /** Whether the core considers the failure automatically recoverable. */
+  recoverable: boolean;
+  /** English fallback cause copy (used when `class` is unrecognized). */
+  causePlain: string;
+  /** English fallback next-action copy (used when `class` is unrecognized). */
+  nextAction: string;
+}
+
+/**
+ * Defensively parse an incoming `failure` object from a tool-completion socket
+ * payload (snake_case wire) or a persisted entry (camelCase) into a
+ * {@link ToolFailureExplanation}. Returns `undefined` for anything that is not
+ * a well-formed failure object so a malformed/partial payload never corrupts a
+ * timeline entry.
+ */
+export function parseToolFailure(raw: unknown): ToolFailureExplanation | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  const cls = obj.class;
+  const category = obj.category;
+  // Accept both wire (snake_case) and persisted (camelCase) key spellings.
+  const causePlain = obj.cause_plain ?? obj.causePlain;
+  const nextAction = obj.next_action ?? obj.nextAction;
+  if (
+    typeof cls !== 'string' ||
+    typeof category !== 'string' ||
+    typeof causePlain !== 'string' ||
+    typeof nextAction !== 'string'
+  ) {
+    return undefined;
+  }
+  return {
+    class: cls,
+    category,
+    recoverable: typeof obj.recoverable === 'boolean' ? obj.recoverable : false,
+    causePlain,
+    nextAction,
+  };
+}
+
 export interface ToolTimelineEntry {
   id: string;
   name: string;
@@ -192,6 +245,13 @@ export interface ToolTimelineEntry {
    * rows and for legacy snapshots emitted by older cores.
    */
   subagent?: SubagentActivity;
+  /**
+   * Human-readable failure explanation for an `error` row (#4254). Parsed from
+   * the tool-completion socket event's optional `failure` object; absent on
+   * successful/running rows and on legacy snapshots. Preserved through the
+   * persisted round-trip so a reloaded failed turn keeps its explanation.
+   */
+  failure?: ToolFailureExplanation;
 }
 
 export interface StreamingAssistantState {
@@ -669,6 +729,9 @@ function toolTimelineFromPersisted(entry: PersistedToolTimelineEntry): ToolTimel
     detail: entry.detail,
     sourceToolName: entry.sourceToolName,
     subagent: entry.subagent ? subagentActivityFromPersisted(entry.subagent) : undefined,
+    // Carry a persisted failure explanation across the round-trip (#4254). The
+    // shared parser tolerates both camelCase (persisted) and snake_case (wire).
+    failure: parseToolFailure(entry.failure),
   };
 }
 

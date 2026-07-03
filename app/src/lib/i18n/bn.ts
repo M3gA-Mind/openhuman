@@ -10,6 +10,36 @@ const messages: TranslationMap = {
   'crossHostVault.title': 'ভল্টটি কোর হোস্টে রয়েছে।',
   'crossHostVault.message':
     'এই মেমরি ভল্টটি openhuman-core হোস্টে ({os}) সংরক্ষিত আছে। এটি কেবল সেই মেশিনেই খোলা বা দেখানো যায়, এই ডিভাইস থেকে নয়।',
+  'conversations.toolFailure.whyLabel': 'কেন',
+  'conversations.toolFailure.nextLabel': 'এরপর কী করবেন',
+  'conversations.toolFailure.missingPermission.cause': 'OpenHuman-এর এখনও এটি করার অনুমতি নেই।',
+  'conversations.toolFailure.missingPermission.next':
+    'প্রয়োজনীয় অনুমতি দিন, তারপর আবার চেষ্টা করুন।',
+  'conversations.toolFailure.missingApp.cause':
+    'এই কাজের জন্য প্রয়োজনীয় অ্যাপ বা প্রোগ্রামটি উপলব্ধ নেই।',
+  'conversations.toolFailure.missingApp.next':
+    'অ্যাপটি ইনস্টল করুন বা খুলুন, তারপর আবার চেষ্টা করুন।',
+  'conversations.toolFailure.serviceUnavailable.cause':
+    'OpenHuman-এর প্রয়োজনীয় একটি পরিষেবা সাময়িকভাবে অনুপলব্ধ।',
+  'conversations.toolFailure.serviceUnavailable.next':
+    'OpenHuman শীঘ্রই আবার চেষ্টা করবে — কোনো পদক্ষেপের প্রয়োজন নেই।',
+  'conversations.toolFailure.badCredentials.cause':
+    'সংরক্ষিত সাইন-ইন তথ্য অনুপস্থিত বা আর বৈধ নয়।',
+  'conversations.toolFailure.badCredentials.next':
+    'আবার সাইন ইন করুন বা শংসাপত্র আপডেট করুন, তারপর আবার চেষ্টা করুন।',
+  'conversations.toolFailure.blockedByPolicy.cause':
+    'এই কাজটি আপনার নিরাপত্তা সেটিংস দ্বারা অবরুদ্ধ।',
+  'conversations.toolFailure.blockedByPolicy.next':
+    'আপনি চালাতে চাইলে সেটিংস → এজেন্ট অ্যাক্সেস-এ এটি অনুমতি দিন।',
+  'conversations.toolFailure.modelConnection.cause': 'OpenHuman AI মডেলে পৌঁছাতে পারেনি।',
+  'conversations.toolFailure.modelConnection.next':
+    'আপনার সংযোগ বা মডেল সেটিংস পরীক্ষা করুন; OpenHuman আবার চেষ্টা করবে।',
+  'conversations.toolFailure.timeout.cause': 'কাজটি অনেক বেশি সময় নেওয়ায় থামিয়ে দেওয়া হয়েছে।',
+  'conversations.toolFailure.timeout.next':
+    'OpenHuman আবার চেষ্টা করবে, অথবা আপনি নিজে আবার চেষ্টা করতে পারেন।',
+  'conversations.toolFailure.unknown.cause': 'এই কাজটিতে কিছু ভুল হয়েছে।',
+  'conversations.toolFailure.unknown.next':
+    'আবার চেষ্টা করুন; বারবার ব্যর্থ হলে সেটিংস থেকে ডায়াগনস্টিকস চালান।',
   'conversations.backgroundTasks.title': 'Background tasks',
   'nav.feedback': 'মতামত দিন',
   'feedback.board': 'মতামত বোর্ড',

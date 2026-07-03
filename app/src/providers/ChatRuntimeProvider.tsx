@@ -39,6 +39,7 @@ import {
   clearStreamingAssistantForThread,
   endInferenceTurn,
   markInferenceTurnStreaming,
+  parseToolFailure,
   recordChatTurnUsage,
   recordProcessingTool,
   recordSubagentTranscriptTool,
@@ -586,6 +587,11 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
         )
           return;
 
+        // On failure, parse the optional structured explanation (#4254) once so
+        // both the id-match and name/round-fallback paths can attach it. A
+        // successful result clears any stale failure carried on the row.
+        const failure = event.success ? undefined : parseToolFailure(event.failure);
+
         const existing = store.getState().chatRuntime.toolTimelineByThread[event.thread_id] ?? [];
         if (existing.length > 0) {
           const nextEntries = [...existing];
@@ -597,6 +603,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
               nextEntries[idx] = {
                 ...nextEntries[idx],
                 status: event.success ? 'success' : 'error',
+                failure,
               };
               changed = true;
             }
@@ -610,7 +617,7 @@ const ChatRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
                 entry.name === event.tool_name &&
                 entry.round === event.round
               ) {
-                nextEntries[i] = { ...entry, status: event.success ? 'success' : 'error' };
+                nextEntries[i] = { ...entry, status: event.success ? 'success' : 'error', failure };
                 changed = true;
                 break;
               }

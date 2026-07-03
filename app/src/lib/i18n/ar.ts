@@ -9,6 +9,34 @@ const messages: TranslationMap = {
   'crossHostVault.title': 'الخزنة موجودة على مضيف النواة.',
   'crossHostVault.message':
     'يتم تخزين خزنة الذاكرة هذه على مضيف openhuman-core ({os}). لا يمكن فتحها أو عرضها إلا على ذلك الجهاز، وليس من هذا الجهاز.',
+  'conversations.toolFailure.whyLabel': 'لماذا',
+  'conversations.toolFailure.nextLabel': 'ما الذي يجب فعله بعد ذلك',
+  'conversations.toolFailure.missingPermission.cause': 'لا يملك OpenHuman الإذن للقيام بهذا بعد.',
+  'conversations.toolFailure.missingPermission.next': 'امنح الإذن المطلوب ثم حاول مرة أخرى.',
+  'conversations.toolFailure.missingApp.cause':
+    'التطبيق أو البرنامج اللازم لهذا الإجراء غير متوفر.',
+  'conversations.toolFailure.missingApp.next': 'ثبّت التطبيق أو افتحه ثم حاول مرة أخرى.',
+  'conversations.toolFailure.serviceUnavailable.cause':
+    'إحدى الخدمات التي يحتاجها OpenHuman غير متوفرة مؤقتًا.',
+  'conversations.toolFailure.serviceUnavailable.next':
+    'سيحاول OpenHuman مرة أخرى قريبًا — لا حاجة لأي إجراء.',
+  'conversations.toolFailure.badCredentials.cause':
+    'بيانات تسجيل الدخول المحفوظة مفقودة أو لم تعد صالحة.',
+  'conversations.toolFailure.badCredentials.next':
+    'سجّل الدخول مجددًا أو حدّث بيانات الاعتماد ثم حاول مرة أخرى.',
+  'conversations.toolFailure.blockedByPolicy.cause':
+    'هذا الإجراء محظور بواسطة إعدادات الأمان الخاصة بك.',
+  'conversations.toolFailure.blockedByPolicy.next':
+    'اسمح به من الإعدادات → وصول الوكيل إذا أردت تشغيله.',
+  'conversations.toolFailure.modelConnection.cause':
+    'تعذّر على OpenHuman الوصول إلى نموذج الذكاء الاصطناعي.',
+  'conversations.toolFailure.modelConnection.next':
+    'تحقّق من اتصالك أو إعدادات النموذج؛ سيعيد OpenHuman المحاولة.',
+  'conversations.toolFailure.timeout.cause': 'استغرق الإجراء وقتًا طويلاً وتم إيقافه.',
+  'conversations.toolFailure.timeout.next': 'سيعيد OpenHuman المحاولة، أو يمكنك إعادتها يدويًا.',
+  'conversations.toolFailure.unknown.cause': 'حدث خطأ ما في هذا الإجراء.',
+  'conversations.toolFailure.unknown.next':
+    'حاول مرة أخرى؛ وإذا استمر الفشل، شغّل التشخيص من الإعدادات.',
   'conversations.backgroundTasks.title': 'Background tasks',
   'nav.feedback': 'شارك ملاحظاتك',
   'feedback.board': 'لوحة الملاحظات',

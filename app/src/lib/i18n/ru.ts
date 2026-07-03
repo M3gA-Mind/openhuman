@@ -10,6 +10,38 @@ const messages: TranslationMap = {
   'crossHostVault.title': 'Хранилище находится на хосте ядра.',
   'crossHostVault.message':
     'Это хранилище памяти размещено на хосте openhuman-core ({os}). Его можно открыть или показать только на той машине, но не с этого устройства.',
+  'conversations.toolFailure.whyLabel': 'Почему',
+  'conversations.toolFailure.nextLabel': 'Что делать дальше',
+  'conversations.toolFailure.missingPermission.cause':
+    'У OpenHuman пока нет разрешения на это действие.',
+  'conversations.toolFailure.missingPermission.next':
+    'Предоставьте нужное разрешение и повторите попытку.',
+  'conversations.toolFailure.missingApp.cause':
+    'Приложение или программа, необходимые для этого действия, недоступны.',
+  'conversations.toolFailure.missingApp.next':
+    'Установите или откройте приложение и повторите попытку.',
+  'conversations.toolFailure.serviceUnavailable.cause':
+    'Служба, необходимая OpenHuman, временно недоступна.',
+  'conversations.toolFailure.serviceUnavailable.next':
+    'OpenHuman скоро повторит попытку — ничего делать не нужно.',
+  'conversations.toolFailure.badCredentials.cause':
+    'Сохранённые данные для входа отсутствуют или больше недействительны.',
+  'conversations.toolFailure.badCredentials.next':
+    'Войдите заново или обновите учётные данные, затем повторите попытку.',
+  'conversations.toolFailure.blockedByPolicy.cause':
+    'Это действие заблокировано вашими настройками безопасности.',
+  'conversations.toolFailure.blockedByPolicy.next':
+    'Разрешите его в разделе Настройки → Доступ агента, если хотите, чтобы оно выполнилось.',
+  'conversations.toolFailure.modelConnection.cause': 'OpenHuman не удалось связаться с ИИ-моделью.',
+  'conversations.toolFailure.modelConnection.next':
+    'Проверьте подключение или настройки модели; OpenHuman повторит попытку.',
+  'conversations.toolFailure.timeout.cause':
+    'Действие заняло слишком много времени и было остановлено.',
+  'conversations.toolFailure.timeout.next':
+    'OpenHuman повторит попытку, или вы можете повторить её вручную.',
+  'conversations.toolFailure.unknown.cause': 'С этим действием что-то пошло не так.',
+  'conversations.toolFailure.unknown.next':
+    'Повторите попытку; если ошибка повторяется, запустите диагностику в Настройках.',
   'conversations.backgroundTasks.title': 'Background tasks',
   'nav.feedback': 'Поделиться отзывом',
   'feedback.board': 'Доска отзывов',

@@ -10,6 +10,38 @@ const messages: TranslationMap = {
   'crossHostVault.title': 'Skarbiec znajduje się na hoście rdzenia.',
   'crossHostVault.message':
     'Ten skarbiec pamięci jest przechowywany na hoście openhuman-core ({os}). Można go otworzyć lub pokazać tylko na tym komputerze, a nie z tego urządzenia.',
+  'conversations.toolFailure.whyLabel': 'Dlaczego',
+  'conversations.toolFailure.nextLabel': 'Co dalej',
+  'conversations.toolFailure.missingPermission.cause':
+    'OpenHuman nie ma jeszcze uprawnień, aby to zrobić.',
+  'conversations.toolFailure.missingPermission.next':
+    'Nadaj wymagane uprawnienie i spróbuj ponownie.',
+  'conversations.toolFailure.missingApp.cause':
+    'Aplikacja lub program potrzebny do tej czynności jest niedostępny.',
+  'conversations.toolFailure.missingApp.next':
+    'Zainstaluj lub otwórz aplikację i spróbuj ponownie.',
+  'conversations.toolFailure.serviceUnavailable.cause':
+    'Usługa, której potrzebuje OpenHuman, jest chwilowo niedostępna.',
+  'conversations.toolFailure.serviceUnavailable.next':
+    'OpenHuman spróbuje ponownie za chwilę — nie musisz nic robić.',
+  'conversations.toolFailure.badCredentials.cause':
+    'Zapisane dane logowania są niedostępne lub już nieważne.',
+  'conversations.toolFailure.badCredentials.next':
+    'Zaloguj się ponownie lub zaktualizuj dane logowania, a potem spróbuj jeszcze raz.',
+  'conversations.toolFailure.blockedByPolicy.cause':
+    'Ta czynność jest zablokowana przez Twoje ustawienia bezpieczeństwa.',
+  'conversations.toolFailure.blockedByPolicy.next':
+    'Zezwól na nią w Ustawienia → Dostęp agenta, jeśli ma zostać wykonana.',
+  'conversations.toolFailure.modelConnection.cause':
+    'OpenHuman nie mógł połączyć się z modelem AI.',
+  'conversations.toolFailure.modelConnection.next':
+    'Sprawdź połączenie lub ustawienia modelu; OpenHuman spróbuje ponownie.',
+  'conversations.toolFailure.timeout.cause': 'Czynność trwała zbyt długo i została zatrzymana.',
+  'conversations.toolFailure.timeout.next':
+    'OpenHuman spróbuje ponownie lub możesz powtórzyć ją ręcznie.',
+  'conversations.toolFailure.unknown.cause': 'Coś poszło nie tak z tą czynnością.',
+  'conversations.toolFailure.unknown.next':
+    'Spróbuj ponownie; jeśli nadal się nie udaje, uruchom diagnostykę w Ustawieniach.',
   'conversations.backgroundTasks.title': 'Background tasks',
   'nav.feedback': 'Podziel się opinią',
   'feedback.board': 'Tablica opinii',

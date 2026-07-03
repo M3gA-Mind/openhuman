@@ -9,6 +9,34 @@ const messages: TranslationMap = {
   'crossHostVault.title': '보관소가 코어 호스트에 있습니다.',
   'crossHostVault.message':
     '이 메모리 보관소는 openhuman-core 호스트({os})에 저장되어 있습니다. 해당 컴퓨터에서만 열거나 표시할 수 있으며 이 기기에서는 불가능합니다.',
+  'conversations.toolFailure.whyLabel': '이유',
+  'conversations.toolFailure.nextLabel': '다음 할 일',
+  'conversations.toolFailure.missingPermission.cause':
+    'OpenHuman에 아직 이 작업을 수행할 권한이 없습니다.',
+  'conversations.toolFailure.missingPermission.next': '필요한 권한을 부여한 후 다시 시도하세요.',
+  'conversations.toolFailure.missingApp.cause':
+    '이 작업에 필요한 앱 또는 프로그램을 사용할 수 없습니다.',
+  'conversations.toolFailure.missingApp.next': '앱을 설치하거나 연 후 다시 시도하세요.',
+  'conversations.toolFailure.serviceUnavailable.cause':
+    'OpenHuman에 필요한 서비스를 일시적으로 사용할 수 없습니다.',
+  'conversations.toolFailure.serviceUnavailable.next':
+    'OpenHuman이 곧 다시 시도합니다 — 별도의 조치가 필요하지 않습니다.',
+  'conversations.toolFailure.badCredentials.cause':
+    '저장된 로그인 정보가 없거나 더 이상 유효하지 않습니다.',
+  'conversations.toolFailure.badCredentials.next':
+    '다시 로그인하거나 자격 증명을 업데이트한 후 다시 시도하세요.',
+  'conversations.toolFailure.blockedByPolicy.cause': '이 작업은 보안 설정에 의해 차단되었습니다.',
+  'conversations.toolFailure.blockedByPolicy.next':
+    '실행하려면 설정 → 에이전트 액세스에서 허용하세요.',
+  'conversations.toolFailure.modelConnection.cause': 'OpenHuman이 AI 모델에 연결하지 못했습니다.',
+  'conversations.toolFailure.modelConnection.next':
+    '연결 또는 모델 설정을 확인하세요. OpenHuman이 다시 시도합니다.',
+  'conversations.toolFailure.timeout.cause': '작업이 너무 오래 걸려 중지되었습니다.',
+  'conversations.toolFailure.timeout.next':
+    'OpenHuman이 다시 시도하거나 수동으로 다시 실행할 수 있습니다.',
+  'conversations.toolFailure.unknown.cause': '이 작업에서 문제가 발생했습니다.',
+  'conversations.toolFailure.unknown.next':
+    '다시 시도하세요. 계속 실패하면 설정에서 진단을 실행하세요.',
   'conversations.backgroundTasks.title': 'Background tasks',
   'nav.feedback': '피드백 보내기',
   'feedback.board': '피드백 보드',

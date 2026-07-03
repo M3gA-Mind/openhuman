@@ -118,6 +118,20 @@ export interface PersistedSubagentActivity {
   transcript?: PersistedSubagentTranscriptItem[];
 }
 
+/**
+ * Human-readable failure explanation persisted alongside a FAILED tool row
+ * (#4254). Mirrors the socket `failure` object; carried in the snapshot so a
+ * settled/reloaded turn keeps its "why + what to do next" explanation. Absent
+ * on successful rows and on snapshots written before this field.
+ */
+export interface PersistedToolFailure {
+  class: string;
+  category: string;
+  recoverable: boolean;
+  causePlain: string;
+  nextAction: string;
+}
+
 export interface PersistedToolTimelineEntry {
   id: string;
   name: string;
@@ -128,6 +142,7 @@ export interface PersistedToolTimelineEntry {
   detail?: string;
   sourceToolName?: string;
   subagent?: PersistedSubagentActivity;
+  failure?: PersistedToolFailure;
 }
 
 export interface PersistedTurnState {

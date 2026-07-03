@@ -10,6 +10,38 @@ const messages: TranslationMap = {
   'crossHostVault.title': "Il vault è sull'host del core.",
   'crossHostVault.message':
     "Questo vault di memoria è archiviato sull'host openhuman-core ({os}). Può essere aperto o mostrato solo su quella macchina, non da questo dispositivo.",
+  'conversations.toolFailure.whyLabel': 'Perché',
+  'conversations.toolFailure.nextLabel': 'Cosa fare ora',
+  'conversations.toolFailure.missingPermission.cause':
+    'OpenHuman non ha ancora il permesso di farlo.',
+  'conversations.toolFailure.missingPermission.next':
+    'Concedi il permesso necessario, poi riprova.',
+  'conversations.toolFailure.missingApp.cause':
+    "L'app o il programma necessario per questa azione non è disponibile.",
+  'conversations.toolFailure.missingApp.next': "Installa o apri l'app, poi riprova.",
+  'conversations.toolFailure.serviceUnavailable.cause':
+    'Un servizio necessario a OpenHuman è temporaneamente non disponibile.',
+  'conversations.toolFailure.serviceUnavailable.next':
+    'OpenHuman riproverà a breve — non serve fare nulla.',
+  'conversations.toolFailure.badCredentials.cause':
+    'I dati di accesso salvati mancano o non sono più validi.',
+  'conversations.toolFailure.badCredentials.next':
+    'Accedi di nuovo o aggiorna le credenziali, poi riprova.',
+  'conversations.toolFailure.blockedByPolicy.cause':
+    'Questa azione è bloccata dalle tue impostazioni di sicurezza.',
+  'conversations.toolFailure.blockedByPolicy.next':
+    "Consentila in Impostazioni → Accesso dell'agente se vuoi che venga eseguita.",
+  'conversations.toolFailure.modelConnection.cause':
+    'OpenHuman non è riuscito a raggiungere il modello di IA.',
+  'conversations.toolFailure.modelConnection.next':
+    'Controlla la connessione o le impostazioni del modello; OpenHuman riproverà.',
+  'conversations.toolFailure.timeout.cause':
+    "L'azione ha richiesto troppo tempo ed è stata interrotta.",
+  'conversations.toolFailure.timeout.next':
+    'OpenHuman riproverà, oppure puoi riprovare manualmente.',
+  'conversations.toolFailure.unknown.cause': 'Qualcosa è andato storto con questa azione.',
+  'conversations.toolFailure.unknown.next':
+    'Riprova; se continua a fallire, esegui la diagnostica dalle Impostazioni.',
   'conversations.backgroundTasks.title': 'Background tasks',
   'nav.feedback': 'Condividi feedback',
   'feedback.board': 'Bacheca dei feedback',

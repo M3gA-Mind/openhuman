@@ -10,6 +10,36 @@ const messages: TranslationMap = {
   'crossHostVault.title': 'Vault berada di host core.',
   'crossHostVault.message':
     'Vault memori ini disimpan di host openhuman-core ({os}). Hanya dapat dibuka atau ditampilkan di mesin tersebut, bukan dari perangkat ini.',
+  'conversations.toolFailure.whyLabel': 'Mengapa',
+  'conversations.toolFailure.nextLabel': 'Yang harus dilakukan',
+  'conversations.toolFailure.missingPermission.cause':
+    'OpenHuman belum memiliki izin untuk melakukan ini.',
+  'conversations.toolFailure.missingPermission.next':
+    'Berikan izin yang diperlukan, lalu coba lagi.',
+  'conversations.toolFailure.missingApp.cause':
+    'Aplikasi atau program yang diperlukan untuk tindakan ini tidak tersedia.',
+  'conversations.toolFailure.missingApp.next': 'Instal atau buka aplikasinya, lalu coba lagi.',
+  'conversations.toolFailure.serviceUnavailable.cause':
+    'Layanan yang dibutuhkan OpenHuman sedang tidak tersedia untuk sementara.',
+  'conversations.toolFailure.serviceUnavailable.next':
+    'OpenHuman akan mencoba lagi sebentar lagi — tidak perlu tindakan apa pun.',
+  'conversations.toolFailure.badCredentials.cause':
+    'Detail masuk yang tersimpan tidak ada atau tidak lagi valid.',
+  'conversations.toolFailure.badCredentials.next':
+    'Masuk kembali atau perbarui kredensial, lalu coba lagi.',
+  'conversations.toolFailure.blockedByPolicy.cause':
+    'Tindakan ini diblokir oleh pengaturan keamanan Anda.',
+  'conversations.toolFailure.blockedByPolicy.next':
+    'Izinkan di Pengaturan → Akses agen jika Anda ingin menjalankannya.',
+  'conversations.toolFailure.modelConnection.cause': 'OpenHuman tidak dapat menjangkau model AI.',
+  'conversations.toolFailure.modelConnection.next':
+    'Periksa koneksi atau pengaturan model Anda; OpenHuman akan mencoba lagi.',
+  'conversations.toolFailure.timeout.cause': 'Tindakan memakan waktu terlalu lama dan dihentikan.',
+  'conversations.toolFailure.timeout.next':
+    'OpenHuman akan mencoba lagi, atau Anda dapat mengulanginya secara manual.',
+  'conversations.toolFailure.unknown.cause': 'Terjadi kesalahan pada tindakan ini.',
+  'conversations.toolFailure.unknown.next':
+    'Coba lagi; jika terus gagal, jalankan diagnostik dari Pengaturan.',
   'conversations.backgroundTasks.title': 'Background tasks',
   'nav.feedback': 'Bagikan masukan',
   'feedback.board': 'Papan masukan',

@@ -9,6 +9,38 @@ const messages: TranslationMap = {
   'crossHostVault.title': 'Der Vault liegt auf dem Core-Host.',
   'crossHostVault.message':
     'Dieser Memory-Vault wird auf dem openhuman-core-Host ({os}) gespeichert. Er kann nur auf diesem Rechner geöffnet oder angezeigt werden, nicht von diesem Gerät.',
+  'conversations.toolFailure.whyLabel': 'Warum',
+  'conversations.toolFailure.nextLabel': 'Nächste Schritte',
+  'conversations.toolFailure.missingPermission.cause':
+    'OpenHuman hat noch keine Berechtigung, dies zu tun.',
+  'conversations.toolFailure.missingPermission.next':
+    'Erteile die benötigte Berechtigung und versuche es erneut.',
+  'conversations.toolFailure.missingApp.cause':
+    'Die für diese Aktion benötigte App oder das Programm ist nicht verfügbar.',
+  'conversations.toolFailure.missingApp.next':
+    'Installiere oder öffne die App und versuche es erneut.',
+  'conversations.toolFailure.serviceUnavailable.cause':
+    'Ein von OpenHuman benötigter Dienst ist vorübergehend nicht verfügbar.',
+  'conversations.toolFailure.serviceUnavailable.next':
+    'OpenHuman versucht es in Kürze erneut – nichts weiter nötig.',
+  'conversations.toolFailure.badCredentials.cause':
+    'Die gespeicherten Anmeldedaten fehlen oder sind nicht mehr gültig.',
+  'conversations.toolFailure.badCredentials.next':
+    'Melde dich erneut an oder aktualisiere die Anmeldedaten und versuche es erneut.',
+  'conversations.toolFailure.blockedByPolicy.cause':
+    'Diese Aktion wird durch deine Sicherheitseinstellungen blockiert.',
+  'conversations.toolFailure.blockedByPolicy.next':
+    'Erlaube sie unter Einstellungen → Agentenzugriff, wenn sie ausgeführt werden soll.',
+  'conversations.toolFailure.modelConnection.cause':
+    'OpenHuman konnte das KI-Modell nicht erreichen.',
+  'conversations.toolFailure.modelConnection.next':
+    'Prüfe deine Verbindung oder Modelleinstellungen; OpenHuman versucht es erneut.',
+  'conversations.toolFailure.timeout.cause': 'Die Aktion hat zu lange gedauert und wurde gestoppt.',
+  'conversations.toolFailure.timeout.next':
+    'OpenHuman versucht es erneut, oder du kannst es manuell wiederholen.',
+  'conversations.toolFailure.unknown.cause': 'Bei dieser Aktion ist etwas schiefgelaufen.',
+  'conversations.toolFailure.unknown.next':
+    'Versuche es erneut; wenn es weiterhin fehlschlägt, führe die Diagnose in den Einstellungen aus.',
   'conversations.backgroundTasks.title': 'Background tasks',
   'nav.feedback': 'Feedback geben',
   'feedback.board': 'Feedback-Board',
