@@ -3,7 +3,7 @@
 //! `OrchestrationState` is the spec's single `StateGraph` state object: one
 //! value flows through the whole wake path (normalize → frontend → execute →
 //! frontend → send_dm → context_guard → END) and is checkpointed at every
-//! super-step boundary by [`SqlRunLedgerCheckpointer`](crate::openhuman::tinyagents::SqlRunLedgerCheckpointer)
+//! super-step boundary by [`SqliteCheckpointer`](tinyagents::graph::checkpoint::SqliteCheckpointer)
 //! under the thread id `orchestration:<session_id>`.
 //!
 //! Every field is serde-serializable so a mid-cycle crash can resume from the
