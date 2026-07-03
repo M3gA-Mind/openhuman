@@ -35,27 +35,13 @@ fn classify_class(error_text: &str, timed_out: bool) -> ToolFailureClass {
         return ToolFailureClass::Timeout;
     }
 
-    // 2. Bad credentials — 401 / auth-token problems (distinct from 403 policy).
-    if contains_any(
-        &text,
-        &[
-            "unauthorized",
-            "401",
-            "invalid api key",
-            "invalid_api_key",
-            "authentication failed",
-            "invalid credentials",
-            "bad credentials",
-            "token expired",
-            "invalid_grant",
-            "not signed in",
-            "sign in again",
-        ],
-    ) {
-        return ToolFailureClass::BadCredentials;
-    }
-
-    // 3. Blocked by policy — the security/autonomy gate or a forbidden path.
+    // 2. Blocked by policy — the OpenHuman security/autonomy gate or a forbidden
+    //    path. Checked *before* credentials so the OpenHuman-specific
+    //    `forbidden path` marker wins over the bare `forbidden` that a plain
+    //    external 403 body carries (routed to credentials below). Reserved for
+    //    OpenHuman policy phrasing only — a hard policy block is normally tagged
+    //    upstream with `POLICY_BLOCKED_MARKER` and never reaches this heuristic;
+    //    bare HTTP `403`/`Forbidden` is an external authz failure, not our gate.
     //    `channel allows` is the tail of the tool-policy PermissionDenied render.
     if contains_any(
         &text,
@@ -65,13 +51,41 @@ fn classify_class(error_text: &str, timed_out: bool) -> ToolFailureClass {
             "channel allows",
             "not allowed by",
             "forbidden path",
-            "403",
-            "forbidden",
             "autonomy",
             "policy denied",
         ],
     ) {
         return ToolFailureClass::BlockedByPolicy;
+    }
+
+    // 3. Bad credentials — auth-token problems and external authz failures
+    //    (401/403). A bare HTTP 403/Forbidden or an `insufficient scopes` body
+    //    means the connected account lacks the grant, so the user should
+    //    reconnect / re-authorize — not toggle OpenHuman's Agent-access policy.
+    //    Numeric codes go through `contains_code` so `401`/`403` never match
+    //    inside a longer digit run (a port, byte count, or `14033`).
+    if contains_any(
+        &text,
+        &[
+            "unauthorized",
+            "invalid api key",
+            "invalid_api_key",
+            "authentication failed",
+            "invalid credentials",
+            "bad credentials",
+            "token expired",
+            "invalid_grant",
+            "not signed in",
+            "sign in again",
+            "forbidden",
+            "insufficient authentication scopes",
+            "insufficient scopes",
+            "insufficient_scope",
+        ],
+    ) || contains_code(&text, "401")
+        || contains_code(&text, "403")
+    {
+        return ToolFailureClass::BadCredentials;
     }
 
     // 4. Missing OS/tool permission — access denied at the filesystem/OS layer.
@@ -130,15 +144,15 @@ fn classify_class(error_text: &str, timed_out: bool) -> ToolFailureClass {
             "connection refused",
             "econnrefused",
             "service unavailable",
-            "503",
-            "502",
-            "504",
             "temporarily unavailable",
             "could not connect",
             "connection reset",
             "network is unreachable",
         ],
-    ) {
+    ) || contains_code(&text, "502")
+        || contains_code(&text, "503")
+        || contains_code(&text, "504")
+    {
         return ToolFailureClass::ServiceUnavailable;
     }
 
@@ -199,6 +213,27 @@ pub fn describe(class: ToolFailureClass) -> ClassifiedFailure {
 /// Case-insensitive: does `haystack` (already lowercased) contain any needle?
 fn contains_any(haystack: &str, needles: &[&str]) -> bool {
     needles.iter().any(|n| haystack.contains(n))
+}
+
+/// Does `haystack` contain `code` (an all-ASCII-digit HTTP status like `"403"`)
+/// as a standalone number — i.e. not embedded in a longer digit run? Guards the
+/// numeric needles against false positives such as `403` inside `14033`, a port,
+/// a byte count, or a timestamp. Matches when the char on each side of the hit
+/// is a non-digit (or a string boundary).
+fn contains_code(haystack: &str, code: &str) -> bool {
+    let bytes = haystack.as_bytes();
+    let mut from = 0;
+    while let Some(rel) = haystack[from..].find(code) {
+        let start = from + rel;
+        let end = start + code.len();
+        let left_ok = start == 0 || !bytes[start - 1].is_ascii_digit();
+        let right_ok = end >= bytes.len() || !bytes[end].is_ascii_digit();
+        if left_ok && right_ok {
+            return true;
+        }
+        from = start + 1;
+    }
+    false
 }
 
 #[cfg(test)]
@@ -289,9 +324,47 @@ mod tests {
             class_of("blocked by policy: destructive command"),
             ToolFailureClass::BlockedByPolicy
         );
+        // OpenHuman's own path guard stays policy...
+        assert_eq!(
+            class_of("write rejected: forbidden path outside action_dir"),
+            ToolFailureClass::BlockedByPolicy
+        );
+    }
+
+    #[test]
+    fn external_403_is_credentials_not_policy() {
+        // A bare external authz failure must route to credentials (reconnect /
+        // grant scopes), NOT OpenHuman's Agent-access policy.
         assert_eq!(
             class_of("HTTP 403 Forbidden"),
-            ToolFailureClass::BlockedByPolicy
+            ToolFailureClass::BadCredentials
+        );
+        assert_eq!(
+            class_of("Gmail API error: 403 insufficient authentication scopes"),
+            ToolFailureClass::BadCredentials
+        );
+        assert_eq!(
+            class_of("401 Unauthorized"),
+            ToolFailureClass::BadCredentials
+        );
+    }
+
+    #[test]
+    fn numeric_status_codes_need_word_boundaries() {
+        // `403`/`503` embedded in a longer digit run must NOT trip the code
+        // needles — these fall through to Unknown.
+        assert_eq!(
+            class_of("processed 14033 records before aborting"),
+            ToolFailureClass::Unknown
+        );
+        assert_eq!(
+            class_of("listening on port 15032 failed unexpectedly"),
+            ToolFailureClass::Unknown
+        );
+        // ...but a standalone 503 is still a service outage.
+        assert_eq!(
+            class_of("upstream returned 503"),
+            ToolFailureClass::ServiceUnavailable
         );
     }
 
