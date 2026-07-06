@@ -82,6 +82,13 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           fetch-depth: 1
+      # The RPC-catalog drift-guard test (rpcMethods.test.ts) reads
+      # vendor/tinychannels/src/controllers/schemas.rs at test time. This lane
+      # otherwise checks out without submodules, so init just that one — not
+      # `submodules: recursive`, which would also pull the large tauri-cef fork
+      # this job never builds.
+      - name: Init tinychannels submodule (drift-guard test reads its schemas)
+        run: git submodule update --init vendor/tinychannels
       - name: Cache pnpm store
         uses: actions/cache@v5
         with:
