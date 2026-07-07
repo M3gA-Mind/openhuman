@@ -399,23 +399,31 @@ describe('classifyAuthStoreFailure', () => {
 });
 
 describe('authStoreFailureUserMessage (issue #3025)', () => {
+  const CLOUD_KINDS = [
+    'auth_me_timeout',
+    'auth_me_unauthorized',
+    'auth_me_gateway',
+    'network',
+    'other',
+  ];
+
   // Local / unset mode always keeps the plain retry message — the failure there
   // is a transient embedded-core/backend blip that retrying can clear.
-  it.each(['local', null] as const)('returns the generic retry message for mode=%s', mode => {
-    for (const kind of ['auth_me_timeout', 'auth_me_unauthorized', 'network', 'other']) {
+  it.each(['local', null] as const)('stays generic for mode=%s', mode => {
+    for (const kind of CLOUD_KINDS) {
       expect(authStoreFailureUserMessage(kind, mode)).toBe('Sign-in failed. Please try again.');
     }
   });
 
-  it('points cloud-mode users at the remote runtime instead of a dead-end retry', () => {
-    for (const kind of ['auth_me_timeout', 'auth_me_unauthorized', 'auth_me_gateway', 'network', 'other']) {
+  it('points cloud-mode users at the remote runtime, not a dead-end retry', () => {
+    for (const kind of CLOUD_KINDS) {
       const msg = authStoreFailureUserMessage(kind, 'cloud');
       expect(msg).not.toBe('Sign-in failed. Please try again.');
       expect(msg.toLowerCase()).toContain('remote');
     }
   });
 
-  it('gives a token/backend hint for a cloud 401 and a connectivity hint for gateway/timeout', () => {
+  it('gives kind-specific cloud hints (401 token, gateway/timeout BACKEND_URL)', () => {
     expect(authStoreFailureUserMessage('auth_me_unauthorized', 'cloud')).toContain('RPC token');
     expect(authStoreFailureUserMessage('auth_me_gateway', 'cloud')).toContain('BACKEND_URL');
     expect(authStoreFailureUserMessage('auth_me_timeout', 'cloud')).toContain('BACKEND_URL');
