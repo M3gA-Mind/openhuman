@@ -2030,6 +2030,23 @@ fn cef_disable_gpu_enabled(env_override: Option<&str>) -> bool {
     }
 }
 
+/// Pin CEF to ANGLE's pure-software SwiftShader GL backend.
+///
+/// SwiftShader is a software rasteriser that needs no hardware EGL/driver, so it
+/// gives both WebGL surfaces and GPU-process init a working (software) context
+/// on stacks where the hardware GPU path aborts. `--enable-unsafe-swiftshader`
+/// is required because Chromium gates SwiftShader-backed WebGL behind it (the
+/// "unsafe" label is about software perf, not security). `--disable-gpu-compositing`
+/// keeps page compositing on the CPU. Crucially this does **not** pass
+/// `--disable-gpu`, which would shut the GPU process down entirely — and with it
+/// the SwiftShader context that lets CEF start.
+fn push_swiftshader_software_gl(args: &mut Vec<CefCommandLineArg>) {
+    args.push(("--use-gl", Some("angle")));
+    args.push(("--use-angle", Some("swiftshader")));
+    args.push(("--enable-unsafe-swiftshader", None));
+    args.push(("--disable-gpu-compositing", None));
+}
+
 fn append_platform_cef_gpu_workarounds(
     args: &mut Vec<CefCommandLineArg>,
     os: &str,
@@ -2044,11 +2061,27 @@ fn append_platform_cef_gpu_workarounds(
     // do not reach the vendored CEF runtime. Provide a narrow, release-safe
     // env escape hatch instead of forwarding arbitrary Chromium flags.
     if disable_gpu {
-        args.push(("--disable-gpu", None));
-        args.push(("--disable-gpu-compositing", None));
-        log::info!(
-            "[cef-startup] OPENHUMAN_DISABLE_GPU set: adding --disable-gpu and --disable-gpu-compositing for CEF startup compatibility (issue #4294)"
-        );
+        if os == "windows" {
+            // Issue #4385: on NVIDIA Blackwell / RTX 50-series Windows stacks the
+            // bundled CEF's GPU process fails to initialise and bare
+            // `--disable-gpu` is not enough — `cef::initialize` still returns 0
+            // before any UI renders (#4294, #4385). `--disable-gpu` removes the
+            // GPU process without giving CEF a working software GL path, so init
+            // still aborts. Pin CEF to the pure-software ANGLE/SwiftShader backend
+            // instead — the same fallback the Linux #1697/#4193 path relies on —
+            // which needs no hardware driver and lets CEF start on GPUs the
+            // bundled Chromium doesn't yet support.
+            push_swiftshader_software_gl(args);
+            log::info!(
+                "[cef-startup] OPENHUMAN_DISABLE_GPU set on Windows: forcing ANGLE/SwiftShader software GL for CEF startup compatibility (issues #4294/#4385)"
+            );
+        } else {
+            args.push(("--disable-gpu", None));
+            args.push(("--disable-gpu-compositing", None));
+            log::info!(
+                "[cef-startup] OPENHUMAN_DISABLE_GPU set: adding --disable-gpu and --disable-gpu-compositing for CEF startup compatibility (issue #4294)"
+            );
+        }
     }
 
     // Issue #1697: on Arch/Manjaro-family Linux systems, the AppImage can
@@ -2078,10 +2111,7 @@ fn append_platform_cef_gpu_workarounds(
                 "[cef-startup] OPENHUMAN_FORCE_GPU set — skipping SwiftShader software-GL fallback (issue #1697). If the app fails to launch with a GPU process abort, unset the env var."
             );
         } else {
-            args.push(("--use-gl", Some("angle")));
-            args.push(("--use-angle", Some("swiftshader")));
-            args.push(("--enable-unsafe-swiftshader", None));
-            args.push(("--disable-gpu-compositing", None));
+            push_swiftshader_software_gl(args);
             log::info!(
                 "[cef-startup] Linux detected: forcing ANGLE/SwiftShader software GL so WebGL surfaces (Tiny Place world renderer, Rive mascot) render without the crash-prone hardware GPU process (issues #1697/#4193); set OPENHUMAN_FORCE_GPU=1 for hardware acceleration"
             );
