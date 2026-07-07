@@ -2664,14 +2664,23 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     process_recovery::reap_stale_openhuman_processes();
 
-    // ── Windows pre-CEF proactive stale-process reap (issue #3605) ────────
+    // ── Windows pre-CEF proactive stale-process reap (issues #3605, #3900) ─
     // The Win32 mutex above already guaranteed we are the only *top-level*
-    // instance past that point — a concurrent secondary saw
-    // `ERROR_ALREADY_EXISTS` and exited before reaching here. So any
-    // surviving `openhuman.exe` / `openhuman-core.exe` is a *wedged prior
-    // instance* left behind by an update or hard exit, not a legitimate
-    // peer. Reap it proactively (TERM then KILL) — the cross-platform
-    // analogue of the macOS reap above.
+    // GUI instance past that point — a concurrent secondary saw
+    // `ERROR_ALREADY_EXISTS` and exited before reaching here. So a surviving
+    // GUI `OpenHuman.exe` browser process is a *wedged prior instance* left
+    // behind by an update or hard exit, not a legitimate peer. Reap it
+    // proactively (TERM then KILL) — the cross-platform analogue of the macOS
+    // reap above.
+    //
+    // The reap is deliberately narrow (issue #3900): it targets ONLY the
+    // wedged GUI browser process. It never touches `OpenHuman.exe core` /
+    // `mcp` CLI/MCP sessions or the standalone `openhuman-core.exe` (which
+    // never take the CEF mutex and may be an active user session), never
+    // touches CEF `--type=` helper subprocesses (the OS job object reaps
+    // those with their parent), never touches this process's ancestors (the
+    // old app that spawned us during an update relaunch), and force-kills
+    // without `/T` so a tree walk can never reach the freshly launched app.
     //
     // This must run BEFORE `cef_singleton_wait::wait_for_cache_release()`:
     // a wedged prior process that never exits on its own keeps the CEF
