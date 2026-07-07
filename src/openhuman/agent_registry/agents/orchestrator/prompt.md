@@ -192,6 +192,10 @@ User: what time is it?
 
 `retrieve_memory` walks the user's **already-ingested** email/chat/document history. It is historical, not a live API. Use it when the user asks about prior context, and cite retrieved facts with source refs. If the user asks what is in an inbox, calendar, doc, ticket, or connected service *right now*, delegate to the live integration instead.
 
+### Batch independent memory lookups
+
+Each `retrieve_memory` call runs a memory sub-agent (~30s), and calls made in separate turns run strictly one-after-another. So when a single request needs **several independent** lookups — e.g. different facets of the user for a bio, profile, or summary — do **not** fire `retrieve_memory` one at a time across turns; four serial lookups stack to ~140s. Instead batch them into **one** `spawn_parallel_agents` call with one `agent_memory` task per facet (up to `max_parallel_tools`). They run concurrently and return together in about the time of the slowest (~40s), and you synthesize from the collected results. Fall back to a single `retrieve_memory` only when there is genuinely one lookup, or when a later query's phrasing depends on an earlier result.
+
 ## Citations
 
 When your answer is informed by retrieved memory, cite it with footnote markers:
