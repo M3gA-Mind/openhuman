@@ -313,6 +313,31 @@ fn new_event_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
+/// Enrich `trace_ctx` with the run lineage (`run_id` / `parent_run_id` /
+/// `root_run_id`) carried by the run's journalled `observations` (#4657).
+///
+/// A single export corresponds to one run's observation stream (the journal is
+/// read per run id), so every observation shares the same lineage and the first
+/// is representative. For a spawned sub-agent that lineage points back at the
+/// spawning turn, which is exactly what links the sub-agent's trace to its
+/// parent. Returns the context unchanged when there are no observations.
+fn trace_ctx_with_run_lineage(
+    trace_ctx: &TraceContext,
+    observations: &[AgentObservation],
+) -> TraceContext {
+    let Some(first) = observations.first() else {
+        return trace_ctx.clone();
+    };
+    trace_ctx.clone().with_run_lineage(
+        Some(first.run_id.as_str().to_string()),
+        first
+            .parent_run_id
+            .as_ref()
+            .map(|id| id.as_str().to_string()),
+        Some(first.root_run_id.as_str().to_string()),
+    )
+}
+
 fn trace_config_from_context(trace_ctx: &TraceContext, environment: &str) -> LangfuseTraceConfig {
     let mut metadata = Map::new();
     if let Some(client_id) = &trace_ctx.client_id {
@@ -326,6 +351,18 @@ fn trace_config_from_context(trace_ctx: &TraceContext, environment: &str) -> Lan
     }
     metadata.insert("run_type".into(), json!(trace_ctx.run_type.as_str()));
     metadata.insert("app.version".into(), json!(env!("CARGO_PKG_VERSION")));
+    // Run lineage (#4657): stamp the run/parent/root ids so a spawned sub-agent's
+    // trace is navigable from — and threadable under — its parent turn. Omitted
+    // keys (e.g. `parent_run_id` for a top-level turn) simply stay absent.
+    if let Some(run_id) = &trace_ctx.run_id {
+        metadata.insert("run_id".into(), json!(run_id));
+    }
+    if let Some(parent_run_id) = &trace_ctx.parent_run_id {
+        metadata.insert("parent_run_id".into(), json!(parent_run_id));
+    }
+    if let Some(root_run_id) = &trace_ctx.root_run_id {
+        metadata.insert("root_run_id".into(), json!(root_run_id));
+    }
 
     let mut tags = vec![format!("run:{}", trace_ctx.run_type.as_str())];
     if let Some(source) = &trace_ctx.channel_source {
@@ -481,9 +518,12 @@ pub(crate) async fn push_observations(
     }
     let token = require_live_session_token(config)?;
     let environment = environment_for_base(&url);
-    let trace = trace_config_from_context(trace_ctx, environment);
+    // Stamp the run lineage from the run's own observations so a spawned
+    // sub-agent's trace links back to its parent turn (#4657).
+    let trace_ctx = trace_ctx_with_run_lineage(trace_ctx, observations);
+    let trace = trace_config_from_context(&trace_ctx, environment);
     let observation_count = observations.len();
-    let observations = observations_for_export(trace_ctx, observations);
+    let observations = observations_for_export(&trace_ctx, observations);
 
     tracing::debug!(
         target: LOG_TARGET,
@@ -680,6 +720,73 @@ mod tests {
         assert_eq!(trace.metadata["channel.source"], "chat");
         assert_eq!(trace.metadata["run_type"], "interactive_chat");
         assert_eq!(trace.metadata["app.version"], env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn trace_config_from_context_stamps_run_lineage() {
+        // A spawned sub-agent: its run has a parent (the spawning turn) and a
+        // root. Stamping these onto trace metadata is what links the sub-agent's
+        // Langfuse trace back to the parent turn (#4657).
+        let ctx = TraceContext::new("trace:req-1", None).with_run_lineage(
+            Some("sub-run".to_string()),
+            Some("parent-run".to_string()),
+            Some("root-run".to_string()),
+        );
+        let trace = trace_config_from_context(&ctx, "staging");
+        assert_eq!(trace.metadata["run_id"], "sub-run");
+        assert_eq!(trace.metadata["parent_run_id"], "parent-run");
+        assert_eq!(trace.metadata["root_run_id"], "root-run");
+    }
+
+    #[test]
+    fn trace_config_omits_parent_run_id_for_top_level_turn() {
+        // A top-level turn has no parent; the key must stay absent (root == run).
+        let ctx = TraceContext::new("trace:req-1", None).with_run_lineage(
+            Some("run-1".to_string()),
+            None,
+            Some("run-1".to_string()),
+        );
+        let trace = trace_config_from_context(&ctx, "staging");
+        assert_eq!(trace.metadata["run_id"], "run-1");
+        assert_eq!(trace.metadata["root_run_id"], "run-1");
+        assert!(
+            trace.metadata.get("parent_run_id").is_none(),
+            "top-level turn must not carry a parent_run_id"
+        );
+    }
+
+    #[test]
+    fn trace_ctx_with_run_lineage_derives_from_subagent_observations() {
+        // Sub-agent observations carry parent/root ids pointing at the spawning
+        // turn; the derived trace context stamps them so the sub-agent's trace
+        // links back instead of landing as a disconnected sibling (#4657).
+        let observations = vec![AgentObservation {
+            event_id: EventId::new("evt-1"),
+            run_id: RunId::new("sub-run"),
+            parent_run_id: Some(RunId::new("parent-run")),
+            root_run_id: RunId::new("root-run"),
+            offset: 1,
+            ts_ms: 1_000,
+            event: AgentEvent::ModelCompleted {
+                call_id: CallId::new("model-1"),
+                started_at_ms: Some(1_000),
+                usage: Some(Usage::new(1, 1)),
+                input: None,
+                output: None,
+            },
+        }];
+        let base = TraceContext::new("trace:req-1", None);
+
+        let enriched = trace_ctx_with_run_lineage(&base, &observations);
+        assert_eq!(enriched.run_id.as_deref(), Some("sub-run"));
+        assert_eq!(enriched.parent_run_id.as_deref(), Some("parent-run"));
+        assert_eq!(enriched.root_run_id.as_deref(), Some("root-run"));
+
+        // An empty stream leaves the context untouched (no lineage invented).
+        let untouched = trace_ctx_with_run_lineage(&base, &[]);
+        assert!(untouched.run_id.is_none());
+        assert!(untouched.parent_run_id.is_none());
+        assert!(untouched.root_run_id.is_none());
     }
 
     #[test]
