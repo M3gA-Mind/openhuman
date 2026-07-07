@@ -464,6 +464,34 @@ fn insert_run_telemetry_generation(payload: &mut Value, telemetry: Option<&RunTe
 /// exporter. The journal is already redacted before persistence, and this
 /// exporter additionally strips model/tool payloads unless `capture_content`
 /// is explicitly enabled.
+/// Langfuse rejects an ingestion request whose `batch` holds more than 500
+/// events (`400 "Langfuse ingestion batch cannot exceed 500 events"`). Large
+/// turns — especially ones that spawn sub-agents — routinely exceed this.
+const LANGFUSE_MAX_BATCH_EVENTS: usize = 500;
+
+/// Split a `{"batch": [...]}` ingestion payload into multiple payloads, each
+/// carrying at most `max` events and preserving any other top-level keys.
+///
+/// Langfuse dedupes ingestion events by id and resolves each observation to its
+/// trace by `traceId`, so delivering one run's events across several requests is
+/// safe (the `trace-create` event stays in the first chunk). A payload at or
+/// under the limit — or without a `batch` array — passes through unchanged as a
+/// single element.
+fn split_ingestion_batch(payload: Value, max: usize) -> Vec<Value> {
+    let events = match payload.get("batch").and_then(Value::as_array) {
+        Some(events) if max > 0 && events.len() > max => events.clone(),
+        _ => return vec![payload],
+    };
+    events
+        .chunks(max)
+        .map(|chunk| {
+            let mut part = payload.clone();
+            part["batch"] = Value::Array(chunk.to_vec());
+            part
+        })
+        .collect()
+}
+
 pub(crate) async fn push_observations(
     config: &Config,
     trace_ctx: &TraceContext,
@@ -506,10 +534,15 @@ pub(crate) async fn push_observations(
             "[agent-tracing] no run telemetry aggregate added to Langfuse journal batch"
         );
     }
-    tokio::time::timeout(PUSH_TIMEOUT, client.send_batch(payload))
-        .await
-        .map_err(|_| format!("Langfuse journal push timed out after {PUSH_TIMEOUT:?}"))?
-        .map_err(|err| format!("Langfuse journal ingestion failed: {err}"))?;
+    // Langfuse caps a single ingestion request at 500 events; a large run (e.g.
+    // one that spawns sub-agents) can far exceed that and previously had its
+    // ENTIRE trace rejected with a 400. Send in <=500-event chunks instead.
+    for chunk in split_ingestion_batch(payload, LANGFUSE_MAX_BATCH_EVENTS) {
+        tokio::time::timeout(PUSH_TIMEOUT, client.send_batch(chunk))
+            .await
+            .map_err(|_| format!("Langfuse journal push timed out after {PUSH_TIMEOUT:?}"))?
+            .map_err(|err| format!("Langfuse journal ingestion failed: {err}"))?;
+    }
 
     tracing::debug!(
         target: LOG_TARGET,
@@ -592,6 +625,41 @@ pub(crate) async fn push_spans(config: &Config, spans: &[TraceSpan]) -> Result<(
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    #[test]
+    fn split_ingestion_batch_chunks_over_the_limit() {
+        // 1201 events with max 500 -> chunks of 500, 500, 201.
+        let events: Vec<Value> = (0..1201).map(|i| json!({ "id": i })).collect();
+        let payload = json!({ "batch": events, "metadata": { "k": "v" } });
+
+        let parts = split_ingestion_batch(payload, 500);
+        assert_eq!(parts.len(), 3);
+        let sizes: Vec<usize> = parts
+            .iter()
+            .map(|p| p["batch"].as_array().unwrap().len())
+            .collect();
+        assert_eq!(sizes, vec![500, 500, 201]);
+        // Every chunk stays within the limit and preserves other top-level keys.
+        for p in &parts {
+            assert!(p["batch"].as_array().unwrap().len() <= 500);
+            assert_eq!(p["metadata"]["k"], json!("v"));
+        }
+        // The first event of the run (e.g. the trace-create) lands in chunk 0.
+        assert_eq!(parts[0]["batch"][0]["id"], json!(0));
+        // Order is preserved across the split.
+        assert_eq!(parts[2]["batch"][0]["id"], json!(1000));
+    }
+
+    #[test]
+    fn split_ingestion_batch_passes_small_payloads_through() {
+        let payload = json!({ "batch": [json!({ "id": 1 }), json!({ "id": 2 })] });
+        let parts = split_ingestion_batch(payload.clone(), 500);
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0], payload);
+        // A payload without a `batch` array is returned untouched.
+        let no_batch = json!({ "hello": "world" });
+        assert_eq!(split_ingestion_batch(no_batch.clone(), 500), vec![no_batch]);
+    }
 
     use crate::openhuman::agent::progress_tracing::SpanKind;
     use tinyagents::harness::ids::{CallId, EventId, RunId};
