@@ -516,6 +516,50 @@ fn all_tools_default_registry_has_no_duplicate_tool_names() {
 }
 
 #[test]
+fn all_tools_registers_protocol_mandated_index_update_tool() {
+    // #4458 regression guard. The memory read→dedupe→write→update-index protocol
+    // (`agent::harness::memory_protocol`) appends a "call `update_memory_md`"
+    // reminder after every durable write and can only close its write cycle via a
+    // successful call to that tool. If the protocol-mandated tool is absent from
+    // the production registry, the model hits an unknown-tool error and a
+    // permanent, unsatisfiable nag loop. Deriving the name from
+    // `MEMORY_INDEX_UPDATE_TOOL` (the same constant `classify_memory_op` matches
+    // on) ties this inventory assertion to what the protocol actually mandates:
+    // if the protocol ever mandates a different or additional tool, this test —
+    // not production — is what fails.
+    use crate::openhuman::agent::harness::memory_protocol::MEMORY_INDEX_UPDATE_TOOL;
+
+    let tmp = TempDir::new().unwrap();
+    let security = Arc::new(SecurityPolicy::default());
+    let mem = test_memory(&tmp);
+    let browser = BrowserConfig {
+        enabled: false,
+        ..BrowserConfig::default()
+    };
+    let http = crate::openhuman::config::HttpRequestConfig::default();
+    let cfg = test_config(&tmp);
+
+    let tools = all_tools(
+        Arc::new(Config::default()),
+        &security,
+        AuditLogger::disabled(),
+        mem,
+        &browser,
+        &http,
+        tmp.path(),
+        &HashMap::new(),
+        &cfg,
+    );
+    let names = tool_names(&tools);
+    assert!(
+        names.iter().any(|n| n.as_str() == MEMORY_INDEX_UPDATE_TOOL),
+        "memory protocol mandates `{MEMORY_INDEX_UPDATE_TOOL}` after every durable \
+         write, but it is not registered in all_tools; the model would hit an \
+         unsatisfiable nag loop. Registered tools: {names:?}"
+    );
+}
+
+#[test]
 fn all_tools_excludes_browser_when_disabled() {
     let tmp = TempDir::new().unwrap();
     let security = Arc::new(SecurityPolicy::default());

@@ -33,6 +33,17 @@
 /// recognise memory-protocol guidance in a tool result.
 pub const MEMORY_PROTOCOL_MARKER: &str = "[memory-protocol]";
 
+/// The tool that closes the write cycle: the protocol appends a "call
+/// `update_memory_md`" reminder after every durable write and only a successful
+/// call to it produces a [`MemoryOp::IndexUpdate`]. It is therefore a
+/// protocol-*mandated* tool — it MUST exist in the production registry or the
+/// model hits a permanent, unsatisfiable nag loop (unknown-tool error → the
+/// tracker never sees the index update). Naming it here gives the registry
+/// inventory test in `tools::ops_tests` a single source of truth to assert
+/// against, so a mandated tool missing from `all_tools` fails a test rather than
+/// production (#4458).
+pub const MEMORY_INDEX_UPDATE_TOOL: &str = "update_memory_md";
+
 /// Classification of a tool call for the memory protocol. Everything the model
 /// can call is one of these; non-memory tools are [`MemoryOp::Other`] and never
 /// affect protocol state.
@@ -70,7 +81,7 @@ pub fn classify_memory_op(tool_name: &str, arguments: &serde_json::Value) -> Mem
         // The index-sync step — but only for the MEMORY.md index. The same tool
         // can edit SKILL.md, which does not reconcile the memory index and so is
         // a no-op for this protocol.
-        "update_memory_md" => match arg_str("file") {
+        MEMORY_INDEX_UPDATE_TOOL => match arg_str("file") {
             Some("MEMORY.md") => MemoryOp::IndexUpdate,
             _ => MemoryOp::Other,
         },
