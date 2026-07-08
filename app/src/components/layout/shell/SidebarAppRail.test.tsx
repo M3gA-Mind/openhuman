@@ -125,6 +125,29 @@ describe('SidebarAppRail', () => {
 
     resolvePurge();
   });
+
+  it('still drops the account and swallows the error when the purge rejects (#4695)', async () => {
+    setAccounts(['acct-whatsapp']);
+    // A purge failure must not leave the user with a zombie icon: the account is
+    // already removed from state before the await, and the rejection is caught
+    // and logged (not surfaced) so the disconnect handler resolves cleanly.
+    vi.mocked(purgeWebviewAccount).mockRejectedValue(new Error('purge failed'));
+
+    renderRail('/chat');
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'WhatsApp' }));
+    fireEvent.click(screen.getByText('accounts.disconnect'));
+
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: 'accounts/removeAccount',
+      payload: { accountId: 'acct-whatsapp' },
+    });
+    expect(purgeWebviewAccount).toHaveBeenCalledWith('acct-whatsapp');
+
+    // Flush microtasks so the awaited purge rejection reaches the handler's
+    // catch (which logs and swallows it) — the disconnect must not throw.
+    await new Promise(resolve => setTimeout(resolve, 0));
+  });
 });
 
 function renderRail(route: string) {
