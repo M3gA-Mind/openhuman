@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { purgeWebviewAccount } from '../../../services/webviewAccountService';
 import SidebarAppRail from './SidebarAppRail';
 
 const mockNavigate = vi.fn();
@@ -95,6 +96,34 @@ describe('SidebarAppRail', () => {
     const addButton = screen.getByTestId('accounts-add-button');
     expect(addButton).not.toHaveTextContent('accounts.addApps');
     expect(addButton).toHaveAttribute('aria-label', 'accounts.addApps');
+  });
+
+  it('drops the account from state synchronously on disconnect, before the async purge (#4695)', () => {
+    setAccounts(['acct-whatsapp']);
+    // Hold the purge pending so we can prove `removeAccount` was dispatched
+    // *before* the purge (which triggers the app re-mount) resolves. The old
+    // order (await purge → removeAccount) let the re-mount re-open the
+    // just-purged webview because the account was still in the store.
+    let resolvePurge: () => void = () => {};
+    vi.mocked(purgeWebviewAccount).mockReturnValue(
+      new Promise<void>(res => {
+        resolvePurge = res;
+      })
+    );
+
+    renderRail('/chat');
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: 'WhatsApp' }));
+    fireEvent.click(screen.getByText('accounts.disconnect'));
+
+    // removeAccount is dispatched while the purge is still pending.
+    expect(mockDispatch).toHaveBeenCalledWith({
+      type: 'accounts/removeAccount',
+      payload: { accountId: 'acct-whatsapp' },
+    });
+    expect(purgeWebviewAccount).toHaveBeenCalledWith('acct-whatsapp');
+
+    resolvePurge();
   });
 });
 
