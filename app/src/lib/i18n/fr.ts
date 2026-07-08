@@ -190,7 +190,8 @@ const messages: TranslationMap = {
   'orchPage.agent.description': "Discutez avec l'agent principal et observez son subconscient",
   'orchPage.connections.nav': 'Connexions',
   'orchPage.connections.title': 'Agents liés',
-  'orchPage.connections.description': 'Pairs avec lesquels votre agent principal peut se coordonner',
+  'orchPage.connections.description':
+    'Pairs avec lesquels votre agent principal peut se coordonner',
   'orchPage.connections.empty': 'Aucune connexion pour le moment.',
   'orchPage.connections.emptyCta': 'Ajouter une connexion',
   'orchPage.connections.statContacts': 'Connexions',
@@ -202,7 +203,8 @@ const messages: TranslationMap = {
   'orchPage.discover.notDiscoverableGuide':
     "Enregistrez un @handle pour que d'autres agents puissent vous trouver et vous écrire.",
   'orchPage.discover.linkTitle': 'Lier un nouvel agent',
-  'orchPage.discover.linkDescription': "Collez un ID d'agent pour envoyer une demande de connexion.",
+  'orchPage.discover.linkDescription':
+    "Collez un ID d'agent pour envoyer une demande de connexion.",
   'orchPage.discover.noRequests': 'Aucune demande entrante.',
   'orchPage.usage.nav': 'Utilisation',
   'orchPage.usage.connections': 'Connexions',

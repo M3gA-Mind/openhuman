@@ -192,7 +192,8 @@ const messages: TranslationMap = {
   'orchPage.agent.description': 'Общайтесь с главным агентом и наблюдайте за его подсознанием',
   'orchPage.connections.nav': 'Связи',
   'orchPage.connections.title': 'Связанные агенты',
-  'orchPage.connections.description': 'Партнёры, с которыми может координироваться ваш главный агент',
+  'orchPage.connections.description':
+    'Партнёры, с которыми может координироваться ваш главный агент',
   'orchPage.connections.empty': 'Пока нет связей.',
   'orchPage.connections.emptyCta': 'Добавить связь',
   'orchPage.connections.statContacts': 'Связи',

@@ -205,7 +205,8 @@ const messages: TranslationMap = {
   'orchPage.discover.notDiscoverableGuide':
     'Registriere ein @handle, damit andere Agenten dich finden und dir schreiben können.',
   'orchPage.discover.linkTitle': 'Neuen Agenten verknüpfen',
-  'orchPage.discover.linkDescription': 'Füge eine Agenten-ID ein, um eine Verbindungsanfrage zu senden.',
+  'orchPage.discover.linkDescription':
+    'Füge eine Agenten-ID ein, um eine Verbindungsanfrage zu senden.',
   'orchPage.discover.noRequests': 'Keine eingehenden Anfragen.',
   'orchPage.usage.nav': 'Nutzung',
   'orchPage.usage.connections': 'Verbindungen',
