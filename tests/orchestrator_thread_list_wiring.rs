@@ -33,6 +33,21 @@ fn lists_named_tool(toml: &str, name: &str) -> bool {
         .any(|line| line == bare || line == trailing)
 }
 
+/// Returns just the `[subagents]` table (from its header up to the next
+/// top-level `[table]` header) so allowlist membership checks are scoped to the
+/// subagent allowlist rather than the whole file. An unrelated `context_scout`
+/// mention elsewhere (a different array, a comment) must neither satisfy nor
+/// break the routing invariant this test pins.
+fn subagents_section(toml: &str) -> &str {
+    let start = toml
+        .find("[subagents]")
+        .expect("orchestrator agent.toml must declare a [subagents] table");
+    let rest = &toml[start..];
+    // Table headers sit at the start of a line; the section runs until the next.
+    let end = rest[1..].find("\n[").map(|i| i + 1).unwrap_or(rest.len());
+    &rest[..end]
+}
+
 #[test]
 fn orchestrator_lists_thread_list_as_direct_tool() {
     assert!(
@@ -49,9 +64,10 @@ fn orchestrator_does_not_route_thread_listing_through_memory_subagent() {
     // subagent (surfaced as `retrieve_memory`). It must NOT own `context_scout`
     // (the other `thread_list` holder) as a subagent — the direct tool is the
     // intended route. If a future change adds `context_scout` here, revisit
-    // whether thread listing should still be direct.
+    // whether thread listing should still be direct. Scoped to the [subagents]
+    // table so an unrelated mention elsewhere can't false-fail the invariant.
     assert!(
-        !lists_named_tool(ORCHESTRATOR_TOML, "context_scout"),
+        !lists_named_tool(subagents_section(ORCHESTRATOR_TOML), "context_scout"),
         "orchestrator is not expected to delegate to context_scout; thread \
          listing is served by the direct `thread_list` tool (#4744)"
     );
