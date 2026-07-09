@@ -67,10 +67,19 @@ pub(crate) fn turn_timeout_error_message(secs: u64) -> String {
     )
 }
 
-/// True when `err` is the synthetic wall-clock-timeout error raised by the web
-/// turn driver — matched on the stable [`TURN_TIMEOUT_MARKER`] anchor.
+/// True when `err` is a turn wall-clock timeout — either the synthetic marker
+/// raised by the web turn driver's outer backstop ([`TURN_TIMEOUT_MARKER`]), or
+/// the tinyagents harness's own `TinyAgentsError::Timeout` (issue #4746). The
+/// harness renders that as `run timed out: <model|tool> call for run `..`
+/// exceeded its remaining wall-clock budget (.. ms)` / `.. exceeded its
+/// wall-clock deadline`, so both wall-clock phrasings are anchored here. This
+/// routes the loop's graceful budget-exhaustion terminal event to the dedicated
+/// `turn_timeout` copy instead of the generic catch-all.
 pub(crate) fn is_turn_timeout_error(err: &str) -> bool {
     err.contains(TURN_TIMEOUT_MARKER)
+        || err.contains("run timed out:")
+        || err.contains("exceeded its remaining wall-clock budget")
+        || err.contains("exceeded its wall-clock deadline")
 }
 
 /// Pull the structured provider error message out of a raw error string.

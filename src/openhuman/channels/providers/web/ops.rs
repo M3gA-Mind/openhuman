@@ -61,15 +61,17 @@ const BUDGET_SIGNAL_TTL: Duration = Duration::from_secs(5 * 60);
 
 /// Default wall-clock backstop for a single web chat turn, in seconds.
 ///
-/// A turn still running past this without producing a terminal event is treated
-/// as wedged — a stuck main-agent tool call, or a delegated sub-agent that
-/// never returned — and stopped with a graceful `chat_error`, so the client
-/// never receives an empty reply / spins on `inference_heartbeat` until the
-/// socket dies (issue #4746). Deliberately generous: normal turns, even slow
-/// reasoning-tier ones that buffer output for minutes, finish well under it —
-/// this is a hang backstop, not a UX deadline. Override via
-/// `OPENHUMAN_WEB_TURN_TIMEOUT_SECS`; set it to `0` to disable the backstop.
-const DEFAULT_WEB_TURN_TIMEOUT_SECS: u64 = 600;
+/// This is the OUTER safety net (issue #4746). The primary, root-cause guard is
+/// the harness policy's `max_wall_clock_ms` (`tinyagents::run_policy_for`,
+/// default 600s), which interrupts a hung/slow model or tool/sub-agent call
+/// mid-flight and returns a proper `Timeout` → `chat_error`. This channel-level
+/// backstop sits ABOVE that (900s) and only fires if a turn wedges OUTSIDE the
+/// harness run entirely (e.g. session assembly / persistence plumbing), so the
+/// client still always gets a terminal event instead of an empty reply / an
+/// endless `inference_heartbeat` stream. Deliberately generous — a hang
+/// backstop, not a UX deadline. Override via `OPENHUMAN_WEB_TURN_TIMEOUT_SECS`;
+/// set it to `0` to disable the backstop.
+const DEFAULT_WEB_TURN_TIMEOUT_SECS: u64 = 900;
 
 /// Resolve the per-turn wall-clock backstop. Returns `None` when disabled
 /// (env `OPENHUMAN_WEB_TURN_TIMEOUT_SECS=0`).

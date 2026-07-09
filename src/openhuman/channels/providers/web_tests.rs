@@ -430,6 +430,29 @@ fn classify_inference_error_turn_timeout_gets_dedicated_branch() {
 }
 
 #[test]
+fn classify_inference_error_harness_wall_clock_timeout_is_turn_timeout() {
+    // Issue #4746: the root-cause guard is the tinyagents harness policy
+    // wall-clock ceiling. When it fires the loop returns TinyAgentsError::Timeout,
+    // rendered `run timed out: <model|tool> call for run `..` exceeded its
+    // remaining wall-clock budget (.. ms)`. That terminal error must classify to
+    // the graceful `turn_timeout` bucket, not the generic catch-all, so the user
+    // sees actionable copy instead of "something went wrong".
+    for raw in [
+        "run timed out: model call for run `abc123` exceeded its remaining wall-clock budget (600000 ms)",
+        "run timed out: tool call for run `abc123` exceeded its remaining wall-clock budget (12345 ms)",
+        "run `abc123` exceeded its wall-clock deadline",
+    ] {
+        let ClassifiedError {
+            error_type: category,
+            retryable,
+            ..
+        } = classify_inference_error(raw);
+        assert_eq!(category, "turn_timeout", "must classify as turn_timeout: {raw}");
+        assert!(retryable, "a wall-clock timeout is retryable: {raw}");
+    }
+}
+
+#[test]
 fn classify_inference_error_rate_limited_surfaces_retry_after_seconds() {
     let raw = "openrouter API error (429 Too Many Requests): Retry-After: 30";
     let ClassifiedError {
