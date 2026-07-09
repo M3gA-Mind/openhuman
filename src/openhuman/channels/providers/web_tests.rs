@@ -414,7 +414,10 @@ fn classify_inference_error_turn_timeout_gets_dedicated_branch() {
     } = classify_inference_error(&raw);
     assert_eq!(category, "turn_timeout");
     assert_eq!(source, "agent_loop");
-    assert!(retryable, "a wedged-turn timeout is safe to retry in-thread");
+    assert!(
+        retryable,
+        "a wedged-turn timeout is safe to retry in-thread"
+    );
     assert!(
         message.contains("past its time budget"),
         "must explain the turn was stopped: {message}"
