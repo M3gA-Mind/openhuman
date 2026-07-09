@@ -195,7 +195,13 @@ pub struct UserFilesSection;
 /// continuity that isn't there ("already covered this in a previous chat")
 /// and shortcuts its answer (GH-4745). This note scopes the block as
 /// background knowledge and forbids claiming in-thread continuity.
-const MEMORY_MD_FRAMING: &str = "### Long-term memory (background — not this conversation)\n\n\
+///
+/// `pub(crate)` so the sub-agent renderer
+/// ([`super::render_helpers::render_subagent_system_prompt_with_format`])
+/// can share the exact same frame — Inline/File sub-agents inject
+/// `MEMORY.md` through their own path and must not drift from this note.
+pub(crate) const MEMORY_MD_FRAMING: &str =
+    "### Long-term memory (background — not this conversation)\n\n\
 The block below is your durable, cross-session memory: facts and observations \
 carried over from *past* sessions and previously ingested history. Treat it as \
 background knowledge only — it is **not** part of the current thread. Do not \

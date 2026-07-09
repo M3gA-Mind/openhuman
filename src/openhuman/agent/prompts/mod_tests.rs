@@ -934,6 +934,100 @@ fn render_subagent_system_prompt_skips_profile_md_when_include_profile_false() {
 }
 
 #[test]
+fn render_subagent_system_prompt_frames_memory_md_as_background() {
+    // GH-4745 regression for the sub-agent path: Inline/File sub-agents inject
+    // MEMORY.md through `render_subagent_system_prompt`, a separate renderer
+    // from `UserFilesSection`. It must share the same background-memory frame,
+    // otherwise a fresh thread reads the bare `### MEMORY.md` block as prior
+    // in-thread conversation and asserts continuity that isn't there.
+    let workspace = std::env::temp_dir().join(format!(
+        "openhuman_subagent_memory_framing_{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&workspace).unwrap();
+    std::fs::write(
+        workspace.join("MEMORY.md"),
+        "# Long-term memory\nReviewed `def f(x)` last week; user prefers terse notes.",
+    )
+    .unwrap();
+
+    let tools: Vec<Box<dyn Tool>> = vec![Box::new(TestTool)];
+    let rendered = render_subagent_system_prompt(
+        &workspace,
+        "test-model",
+        &[0],
+        &tools,
+        &[],
+        "You are a specialist agent.",
+        SubagentRenderOptions {
+            include_identity: false,
+            include_safety_preamble: false,
+            include_skills_catalog: false,
+            include_profile: false,
+            include_memory_md: true,
+        },
+        ToolCallFormat::PFormat,
+        &[],
+    );
+
+    assert!(
+        rendered.contains("### MEMORY.md") && rendered.contains("terse notes"),
+        "MEMORY.md must still be injected in the sub-agent path, got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("background — not this conversation"),
+        "sub-agent MEMORY.md must be framed as durable background memory, got:\n{rendered}"
+    );
+    let frame_at = rendered.find("background — not this conversation").unwrap();
+    let heading_at = rendered.find("### MEMORY.md").unwrap();
+    assert!(
+        frame_at < heading_at,
+        "the guardrail note must precede the MEMORY.md block, got:\n{rendered}"
+    );
+
+    let _ = std::fs::remove_dir_all(workspace);
+}
+
+#[test]
+fn render_subagent_system_prompt_omits_memory_framing_when_no_memory_content() {
+    // Companion to the framing test: with `include_memory_md = true` but no
+    // MEMORY.md on disk (a genuinely fresh workspace) the dangling frame must
+    // NOT appear — emitting a "background memory" note pointing at nothing
+    // would itself imply phantom history.
+    let workspace = std::env::temp_dir().join(format!(
+        "openhuman_subagent_memory_noframe_{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&workspace).unwrap();
+
+    let tools: Vec<Box<dyn Tool>> = vec![Box::new(TestTool)];
+    let rendered = render_subagent_system_prompt(
+        &workspace,
+        "test-model",
+        &[0],
+        &tools,
+        &[],
+        "You are a specialist agent.",
+        SubagentRenderOptions {
+            include_identity: false,
+            include_safety_preamble: false,
+            include_skills_catalog: false,
+            include_profile: false,
+            include_memory_md: true,
+        },
+        ToolCallFormat::PFormat,
+        &[],
+    );
+
+    assert!(
+        !rendered.contains("background — not this conversation"),
+        "no MEMORY.md content → no dangling framing note in sub-agent path, got:\n{rendered}"
+    );
+
+    let _ = std::fs::remove_dir_all(workspace);
+}
+
+#[test]
 fn render_subagent_system_prompt_injects_profile_md_when_identity_included() {
     // When identity is on, PROFILE.md must still be injected alongside
     // SOUL/IDENTITY — the split must not regress the non-welcome path.
