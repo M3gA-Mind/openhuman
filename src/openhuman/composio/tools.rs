@@ -685,6 +685,43 @@ fn canonicalize_toolkit_slug(slug: &str) -> String {
     }
 }
 
+/// Default bound (seconds) for how long [`ComposioConnectTool`] parks on the
+/// inline-connect approval card before giving up (issue #4756).
+///
+/// The gate's own TTL is up to ten minutes (`DEFAULT_APPROVAL_TTL` in
+/// `approval::gate`). That is fine when a human is watching the card, but when
+/// the card can't be resolved — a headless/eval run, or a chat turn whose
+/// client has since disconnected — `composio_connect` would otherwise block the
+/// whole turn for minutes and deliver an empty reply, while the read path
+/// (`composio_list_connections`) returns a graceful "not connected" prompt in
+/// seconds. Bounding the park keeps the interactive resume-in-turn UX for a
+/// present user (a click + OAuth round-trip completes well inside it) while
+/// guaranteeing the act path degrades to a fast connect prompt instead of
+/// hanging. Generous by design; env-overridable, `0` restores the full gate TTL.
+const DEFAULT_COMPOSIO_CONNECT_TIMEOUT_SECS: u64 = 120;
+
+/// Resolve the connect-card park bound. Reads
+/// `OPENHUMAN_COMPOSIO_CONNECT_TIMEOUT_SECS`; `0` means "no composio-side bound"
+/// (`None`) → fall back to the gate's own TTL.
+fn composio_connect_timeout() -> Option<std::time::Duration> {
+    parse_composio_connect_timeout(
+        std::env::var("OPENHUMAN_COMPOSIO_CONNECT_TIMEOUT_SECS")
+            .ok()
+            .as_deref(),
+    )
+}
+
+/// Pure core of [`composio_connect_timeout`], kept env-free so it is
+/// deterministically unit-testable. An absent/unparseable value falls back to
+/// [`DEFAULT_COMPOSIO_CONNECT_TIMEOUT_SECS`]; `0` yields `None` (opt out of the
+/// composio-side bound).
+fn parse_composio_connect_timeout(env_value: Option<&str>) -> Option<std::time::Duration> {
+    let secs = env_value
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(DEFAULT_COMPOSIO_CONNECT_TIMEOUT_SECS);
+    (secs > 0).then(|| std::time::Duration::from_secs(secs))
+}
+
 /// Fresh (uncached) liveness check for `toolkit`.
 ///
 /// Tri-state via `Result`:
@@ -883,9 +920,43 @@ impl Tool for ComposioConnectTool {
             }
         };
         let summary = format!("Connect {toolkit} to complete your task");
-        let (outcome, _request_id) = gate
-            .intercept_audited("composio_connect", &summary, json!({ "toolkit": toolkit }))
-            .await;
+        let intercept =
+            gate.intercept_audited("composio_connect", &summary, json!({ "toolkit": toolkit }));
+        // Bound the park (issue #4756). The gate parks up to its full TTL (10
+        // min) waiting for the card to resolve; when nothing resolves it — a
+        // headless/eval run, or a chat client that has since disconnected — that
+        // otherwise blocks the whole turn to an empty reply. On the bound
+        // elapsing, drop the park (a `pending_approvals` row was persisted, so a
+        // later human click still resolves it in the DB and a re-ask sees it
+        // already-connected) and degrade to a fast, actionable connect prompt —
+        // matching the read path — rather than hanging. The returned result is
+        // deliberately shaped so the agent RELAYS it and does NOT immediately
+        // retry `composio_connect` (a retry would just park again).
+        let (outcome, _request_id) = match composio_connect_timeout() {
+            Some(bound) => match tokio::time::timeout(bound, intercept).await {
+                Ok(resolved) => resolved,
+                Err(_elapsed) => {
+                    tracing::info!(
+                        toolkit = %toolkit,
+                        timeout_secs = bound.as_secs(),
+                        "[composio] connect.execute: approval card not resolved within bound — \
+                         returning a fast connect prompt instead of parking the turn (#4756)"
+                    );
+                    return Ok(ToolResult::success(serde_json::to_string(&json!({
+                        "toolkit": toolkit,
+                        "connected": false,
+                        "pending": true,
+                        "reason": format!(
+                            "A Connect card for {toolkit} was raised but wasn't completed in time \
+                             (no one authorized it). Tell the user to click Connect on the card, or \
+                             connect {toolkit} in Settings → Connections, then ask again once it's \
+                             done. Do not call composio_connect again until they confirm."
+                        ),
+                    }))?));
+                }
+            },
+            None => intercept.await,
+        };
         match outcome {
             crate::openhuman::approval::GateOutcome::Allow => {
                 // `Allow` only means the prompt was approved — re-check liveness

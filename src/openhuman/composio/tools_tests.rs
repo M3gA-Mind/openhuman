@@ -1095,3 +1095,37 @@ async fn authorize_in_direct_mode_refuses_with_app_composio_dev_hint() {
         "must not leak backend-tenant routing artifacts in direct mode: {msg}"
     );
 }
+
+// ── composio_connect park bound (issue #4756) ────────────────────────
+//
+// composio_connect parks on the inline-connect approval card up to the gate's
+// full TTL. When nothing resolves it (headless/eval run, or a disconnected
+// chat client) that blocked the whole turn to an empty reply, while the read
+// path returns a graceful "not connected" prompt fast. The park is now bounded
+// by `composio_connect_timeout()`; these cover its pure env parser.
+
+#[test]
+fn parse_composio_connect_timeout_defaults_when_absent_or_garbage() {
+    let default = std::time::Duration::from_secs(DEFAULT_COMPOSIO_CONNECT_TIMEOUT_SECS);
+    // Absent → default bound (never unbounded by accident).
+    assert_eq!(parse_composio_connect_timeout(None), Some(default));
+    // Unparseable → default bound.
+    assert_eq!(parse_composio_connect_timeout(Some("soon")), Some(default));
+    assert_eq!(parse_composio_connect_timeout(Some("")), Some(default));
+}
+
+#[test]
+fn parse_composio_connect_timeout_honors_override_and_zero_opt_out() {
+    // Explicit value → that many seconds.
+    assert_eq!(
+        parse_composio_connect_timeout(Some("45")),
+        Some(std::time::Duration::from_secs(45))
+    );
+    // Whitespace tolerated.
+    assert_eq!(
+        parse_composio_connect_timeout(Some("  90 ")),
+        Some(std::time::Duration::from_secs(90))
+    );
+    // `0` → opt out of the composio-side bound (fall back to the gate TTL).
+    assert_eq!(parse_composio_connect_timeout(Some("0")), None);
+}
