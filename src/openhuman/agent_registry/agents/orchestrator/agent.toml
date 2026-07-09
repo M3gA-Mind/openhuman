@@ -216,6 +216,14 @@ named = [
     "grep",
     "glob",
     "list",
+    # Conversation-thread listing is a read-only, zero-arg, local lookup —
+    # exactly the kind of "small touch" this direct surface exists for. Without
+    # it, "list my recent threads / conversations" has no correct route (the
+    # thread-owning `context_scout` is not in this agent's subagent allowlist),
+    # so the model misroutes to `agent_memory`, which walks the memory tree
+    # (`memory_tree` / `memory_doctor`) instead of listing threads (#4744).
+    # Reading a thread's messages still delegates — this is list-only.
+    "thread_list",
     # Quick web/API lookups. A single fact ("what's the capital of X", "latest
     # version of Y") is one `web_search_tool` / `web_fetch` / `http_request`
     # call — spawning the `research` worker for that is overkill. Multi-source
