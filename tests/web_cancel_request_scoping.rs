@@ -38,5 +38,8 @@ fn stale_scoped_cancel_does_not_kill_a_newer_turn() {
     // turn on this thread. A's late, request-scoped cancel must NOT tear down B.
     assert!(!cancel_should_target(Some("req-A"), "req-B"));
     // Symmetric: a cancel naming an already-finished request is inert.
-    assert!(!cancel_should_target(Some("old-request"), "current-request"));
+    assert!(!cancel_should_target(
+        Some("old-request"),
+        "current-request"
+    ));
 }
