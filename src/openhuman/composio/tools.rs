@@ -920,42 +920,49 @@ impl Tool for ComposioConnectTool {
             }
         };
         let summary = format!("Connect {toolkit} to complete your task");
-        let intercept =
-            gate.intercept_audited("composio_connect", &summary, json!({ "toolkit": toolkit }));
         // Bound the park (issue #4756). The gate parks up to its full TTL (10
-        // min) waiting for the card to resolve; when nothing resolves it — a
-        // headless/eval run, or a chat client that has since disconnected — that
-        // otherwise blocks the whole turn to an empty reply. On the bound
-        // elapsing, drop the park (a `pending_approvals` row was persisted, so a
-        // later human click still resolves it in the DB and a re-ask sees it
-        // already-connected) and degrade to a fast, actionable connect prompt —
-        // matching the read path — rather than hanging. The returned result is
-        // deliberately shaped so the agent RELAYS it and does NOT immediately
-        // retry `composio_connect` (a retry would just park again).
-        let (outcome, _request_id) = match composio_connect_timeout() {
-            Some(bound) => match tokio::time::timeout(bound, intercept).await {
-                Ok(resolved) => resolved,
-                Err(_elapsed) => {
-                    tracing::info!(
-                        toolkit = %toolkit,
-                        timeout_secs = bound.as_secs(),
-                        "[composio] connect.execute: approval card not resolved within bound — \
-                         returning a fast connect prompt instead of parking the turn (#4756)"
-                    );
-                    return Ok(ToolResult::success(serde_json::to_string(&json!({
-                        "toolkit": toolkit,
-                        "connected": false,
-                        "pending": true,
-                        "reason": format!(
-                            "A Connect card for {toolkit} was raised but wasn't completed in time \
-                             (no one authorized it). Tell the user to click Connect on the card, or \
-                             connect {toolkit} in Settings → Connections, then ask again once it's \
-                             done. Do not call composio_connect again until they confirm."
-                        ),
-                    }))?));
-                }
-            },
-            None => intercept.await,
+        // min) waiting for the inline connect card to resolve; when nothing
+        // resolves it — a headless/eval run, or a chat client that has since
+        // disconnected — that otherwise blocks the whole turn to an empty reply.
+        // `intercept_audited_bounded` caps the park at `composio_connect_timeout()`
+        // and, when that bound elapses, abandons the park *inside the gate* in a
+        // cancellation-safe way (waiter evicted + thread/meeting routing cleared,
+        // but the `pending_approvals` row left open so a later human card-click
+        // still resolves it in the DB and a re-ask sees it already-connected). It
+        // returns `None` on that elapse, so we degrade to a fast, actionable
+        // connect prompt — matching the read path — rather than hanging. We bound
+        // through the gate (not an outer `tokio::time::timeout` that would drop
+        // the parked future and orphan the waiter/routing) per the codex review
+        // on this PR. The reply is shaped so the agent RELAYS it and does NOT
+        // immediately retry `composio_connect` (a retry would just park again).
+        let (outcome, _request_id) = match gate
+            .intercept_audited_bounded(
+                "composio_connect",
+                &summary,
+                json!({ "toolkit": toolkit }),
+                composio_connect_timeout(),
+            )
+            .await
+        {
+            Some(resolved) => resolved,
+            None => {
+                tracing::info!(
+                    toolkit = %toolkit,
+                    "[composio] connect.execute: approval card not resolved within bound — \
+                     returning a fast connect prompt instead of parking the turn (#4756)"
+                );
+                return Ok(ToolResult::success(serde_json::to_string(&json!({
+                    "toolkit": toolkit,
+                    "connected": false,
+                    "pending": true,
+                    "reason": format!(
+                        "A Connect card for {toolkit} was raised but wasn't completed in time \
+                         (no one authorized it). Tell the user to click Connect on the card, or \
+                         connect {toolkit} in Settings → Connections, then ask again once it's \
+                         done. Do not call composio_connect again until they confirm."
+                    ),
+                }))?));
+            }
         };
         match outcome {
             crate::openhuman::approval::GateOutcome::Allow => {
