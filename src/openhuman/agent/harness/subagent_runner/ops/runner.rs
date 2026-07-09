@@ -170,6 +170,16 @@ fn format_deterministic_memory_hits(resp: &QueryResponse) -> Option<String> {
 /// the same hits in a single deterministic pass. When it finds data we return
 /// those hits directly; when the fast path is disabled, errors, or finds nothing
 /// we return `None` so the caller runs the full sub-agent unchanged.
+///
+/// # Relevance guard (Codex review)
+///
+/// We only short-circuit for an **entity-grounded** query — one that yields at
+/// least one canonical entity or salient topic. Without grounding, `fast_retrieve`
+/// falls back to a pure global-dense pass that reranks/truncates whatever
+/// summaries exist, so a vague query against a populated profile would surface
+/// unrelated top-k memories as a "completed" retrieval instead of letting the
+/// model-driven agent judge relevance (or emit "no relevant memory found").
+/// Grounded queries keep the fast path; ungrounded ones defer to the full agent.
 async fn try_deterministic_memory_retrieval(
     task_prompt: &str,
     agent_id: &str,
@@ -183,9 +193,32 @@ async fn try_deterministic_memory_retrieval(
     if query.is_empty() {
         return None;
     }
-    let config = crate::openhuman::config::Config::load_or_init()
+    let config = match crate::openhuman::config::Config::load_or_init().await {
+        Ok(config) => config,
+        Err(e) => {
+            tracing::warn!(
+                task_id = %task_id,
+                error = %format!("{e:#}"),
+                "[subagent_runner] agent_memory fast-path config load failed — falling back to model walk (#4677)"
+            );
+            return None;
+        }
+    };
+    // Relevance guard (Codex review): require entity/topic grounding before we
+    // let a deterministic pass stand in for the model's relevance judgement. The
+    // extraction here is deterministic and cheap (regex, or one spaCy call);
+    // `fast_retrieve` repeats it internally, which is the same work its first
+    // model-driven tool call would have done.
+    if crate::openhuman::memory_tree::nlp::extract_query_entities(&config, query)
         .await
-        .ok()?;
+        .is_empty()
+    {
+        tracing::debug!(
+            task_id = %task_id,
+            "[subagent_runner] agent_memory fast-path skipped — ungrounded query (no entities/topics); deferring to model walk (#4677)"
+        );
+        return None;
+    }
     let opts = FastRetrieveOptions {
         limit: MEMORY_FAST_PATH_LIMIT,
         ..FastRetrieveOptions::default()
