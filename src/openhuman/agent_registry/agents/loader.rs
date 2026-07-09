@@ -764,6 +764,15 @@ mod tests {
                         "orchestrator must have direct memory tool `{direct}` (#4762)"
                     );
                 }
+                // Memory-protocol close-out (#4116): a direct `memory_store` write
+                // obliges an `update_memory_md` index reconcile, so the tool that
+                // performs it must be in scope — otherwise the protocol's guidance
+                // is unsatisfiable and MEMORY.md (loaded here) drifts from the store.
+                assert!(
+                    tools.iter().any(|t| t == "update_memory_md"),
+                    "orchestrator must have `update_memory_md` to reconcile MEMORY.md \
+                     after a direct memory_store (#4762)"
+                );
             }
             ToolScope::Wildcard => panic!("orchestrator must have named tool allowlist"),
         }

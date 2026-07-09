@@ -238,6 +238,21 @@ named = [
     "memory_recall",
     "memory_store",
     "save_preference",
+    # Memory-protocol close-out (#4116). A successful `memory_store` is a durable
+    # write, so the memory-protocol middleware appends a "call `update_memory_md`
+    # to keep the MEMORY.md index in sync" note to the tool result and warns at run
+    # end if the index was never reconciled. Since the orchestrator now takes the
+    # direct-store path itself, it must own that closing step too — otherwise the
+    # guidance is unsatisfiable and MEMORY.md (which this agent loads,
+    # `omit_memory_md = false`) drifts from the store. `update_memory_md` is locked
+    # to the MEMORY.md / SKILL.md workspace index files (enum-gated, symlink-hardened),
+    # NOT a general file-editor: it is the index-sync counterpart of `memory_store`,
+    # so it belongs in the same memory bucket as the writes above — the "no write
+    # tools" rule (below) is about editing arbitrary files (`edit` / `file_write` /
+    # `apply_patch`) and running commands, which stay out. `save_preference` writes
+    # to the preference store and is deliberately NOT part of the MEMORY.md wiki, so
+    # it needs no reconcile.
+    "update_memory_md",
     # Managed file-storage transfer surface for passing artifacts/attachments
     # between chat, users, and workers. Storage lifecycle mutators
     # (`storage_set_visibility`, `storage_delete_file`) stay out of the broad
