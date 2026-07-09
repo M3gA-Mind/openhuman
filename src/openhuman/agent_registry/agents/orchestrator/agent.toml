@@ -223,6 +223,21 @@ named = [
     "web_search_tool",
     "web_fetch",
     "http_request",
+    # Direct memory surface (#4762). Recall/store are the product's core and must
+    # be first-class DIRECT tools, not a sub-agent spawn: a trivial "what is my Q3
+    # OKR" recall or a "remember my Q3 OKR" write should not pay a blocking
+    # agentic round-trip (over-delegation, #4744) that can hang or — as observed —
+    # spawn `manage_profile_memory` which did 0 tool calls and returned a 0-char
+    # result, leaving the write's persistence unconfirmed. `memory_recall` reads
+    # the same store `memory_store` writes, so store→recall closes the loop inline
+    # with a real confirmation. Deep tree walks / reconciliation / people-graph /
+    # persona edits still delegate to `retrieve_memory` (agent_memory) and
+    # `manage_profile_memory` (profile_memory_agent) below. These are memory-store
+    # writes, NOT file/shell mutation — the "no write tools" rule (below) is about
+    # editing files and running commands, which stays out.
+    "memory_recall",
+    "memory_store",
+    "save_preference",
     # Managed file-storage transfer surface for passing artifacts/attachments
     # between chat, users, and workers. Storage lifecycle mutators
     # (`storage_set_visibility`, `storage_delete_file`) stay out of the broad
