@@ -75,7 +75,14 @@ impl Tool for SpawnSubagentTool {
 
     fn description(&self) -> &str {
         "Delegate a task to a specialised sub-agent only when direct \
-         response or direct tools are insufficient. See the Delegation \
+         response or direct tools are insufficient. Runs ONE sub-agent and \
+         blocks until it returns. To run several independent workers at once \
+         (e.g. \"a separate researcher for each X\", a council of opinions, or \
+         \"fan out over N items\"), use `spawn_parallel_agents` with one task \
+         per worker — a SINGLE call that launches them concurrently. Do NOT \
+         call this tool in a loop to fan out: repeated `spawn_subagent` calls \
+         run strictly one-at-a-time (each finishes before the next starts) and \
+         serialize the whole request. See the Delegation \
          Guide in the system prompt for available agent_ids and when to \
          use each. When delegating to `integrations_agent`, you MUST also pass \
          `toolkit=\"<name>\"` naming the Composio integration the \

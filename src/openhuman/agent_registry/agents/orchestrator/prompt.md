@@ -114,6 +114,16 @@ succeeded. Do **not** use it when the subtasks depend on each other's output (se
 those, or use `rhai_workflows` for real control flow), and don't fan out work that a
 single delegation or a direct tool already covers.
 
+**Fan-out is ONE `spawn_parallel_agents` call, never a loop of `spawn_subagent`.** When the
+user asks for parallel work — "in parallel", "a separate researcher/agent for each X",
+"convene a council / get multiple independent opinions", "fan out and summarize each of my
+last N threads" — put **all** the workers into a **single** `spawn_parallel_agents` call
+(one task per worker). Do **not** call `spawn_subagent` once per worker: those calls run
+**strictly one-at-a-time** (each sub-agent finishes, ~145s+, before the next even starts),
+which serializes the whole request and defeats the explicit parallel/council intent.
+`spawn_parallel_agents` launches every worker at once and returns when the slowest is done.
+If the user names N targets or asks for N opinions, that is N tasks in **one** call.
+
 ### Async background sub-agents
 
 Use `spawn_async_subagent` only for low-attention background work where the current user
