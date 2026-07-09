@@ -109,7 +109,7 @@ pub(super) fn connect_timeout() -> Duration {
 /// long response that keeps emitting tokens is never cut — only a genuine stall
 /// (no bytes from upstream, or a wedged consumer) for the whole window trips it.
 /// Resolved once per process and cached — see [`request_timeout`].
-pub(super) fn stream_idle_timeout() -> Duration {
+pub(crate) fn stream_idle_timeout() -> Duration {
     static CACHED: OnceLock<Duration> = OnceLock::new();
     *CACHED.get_or_init(|| {
         resolve(

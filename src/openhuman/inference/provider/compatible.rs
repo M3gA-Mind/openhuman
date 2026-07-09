@@ -19,7 +19,7 @@ mod compatible_stream;
 #[path = "compatible_stream_native.rs"]
 mod compatible_stream_native;
 #[path = "compatible_timeout.rs"]
-mod compatible_timeout;
+pub(crate) mod compatible_timeout;
 #[path = "compatible_types.rs"]
 mod compatible_types;
 

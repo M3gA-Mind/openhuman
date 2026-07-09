@@ -69,7 +69,7 @@ pub(crate) fn sse_bytes_to_chunks(
         // in `.env.example`) drives both this SSE path and the native stream
         // parser, so `OPENHUMAN_INFERENCE_STREAM_IDLE_TIMEOUT_SECS` means the same
         // thing everywhere and a typo can never wedge a turn indefinitely.
-        let idle_timeout = Some(super::compatible_timeout::stream_idle_timeout());
+        let idle_timeout = Some(super::compatible::compatible_timeout::stream_idle_timeout());
 
         loop {
             let item = match read_next_or_idle(&mut bytes_stream, idle_timeout).await {
