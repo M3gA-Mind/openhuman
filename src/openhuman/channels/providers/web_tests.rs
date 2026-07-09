@@ -399,6 +399,37 @@ fn classify_inference_error_max_iterations_gets_dedicated_branch() {
 }
 
 #[test]
+fn classify_inference_error_turn_timeout_gets_dedicated_branch() {
+    // Issue #4746: the web turn driver's wall-clock backstop raises a synthetic
+    // error carrying a stable marker when a wedged turn is stopped. It must
+    // classify to a dedicated, retryable `turn_timeout` bucket with graceful
+    // copy — never the generic catch-all, and the internal marker must not leak.
+    let raw = super::web_errors::turn_timeout_error_message(600);
+    let ClassifiedError {
+        error_type: category,
+        message,
+        source,
+        retryable,
+        ..
+    } = classify_inference_error(&raw);
+    assert_eq!(category, "turn_timeout");
+    assert_eq!(source, "agent_loop");
+    assert!(retryable, "a wedged-turn timeout is safe to retry in-thread");
+    assert!(
+        message.contains("past its time budget"),
+        "must explain the turn was stopped: {message}"
+    );
+    assert!(
+        message.contains("retry your question in this thread"),
+        "must reassure same-thread recovery: {message}"
+    );
+    assert!(
+        !message.contains("openhuman_turn_wall_clock_timeout"),
+        "internal marker must not leak into user copy: {message}"
+    );
+}
+
+#[test]
 fn classify_inference_error_rate_limited_surfaces_retry_after_seconds() {
     let raw = "openrouter API error (429 Too Many Requests): Retry-After: 30";
     let ClassifiedError {
@@ -1940,6 +1971,73 @@ async fn cancel_chat_cooperatively_stops_in_flight_turn() {
     wait_for_flag(&block.dropped, "turn future dropped by cooperative cancel").await;
 
     set_test_run_chat_task_block(None).await;
+}
+
+/// Issue #4746: a turn that never produces a terminal event on its own — a
+/// wedged main agent stuck mid tool-call, or a delegated sub-agent that never
+/// returns (modeled here by the parked test block) — must still end in a
+/// terminal `chat_error`, never an empty reply / an endless `inference_heartbeat`
+/// stream until the socket dies. The web turn driver's wall-clock backstop fires
+/// and emits a graceful, retryable `turn_timeout` chat_error, and tears the
+/// wedged future down cooperatively (its `Drop` guard flips well before the 30s
+/// test sleep would elapse).
+#[tokio::test]
+async fn wedged_turn_hits_wall_clock_backstop_and_emits_turn_timeout_chat_error() {
+    let _serial = FORCED_ERROR_TEST_LOCK.lock().await;
+    // Tight 1s backstop so the parked (30s) turn trips it quickly. Scoped to this
+    // serialized test and cleared below.
+    std::env::set_var("OPENHUMAN_WEB_TURN_TIMEOUT_SECS", "1");
+    let block = make_block();
+    set_test_run_chat_task_block(Some(block.clone())).await;
+
+    let mut rx = subscribe_web_channel_events();
+    let request_id = start_chat(
+        "backstop-client",
+        "backstop-thread",
+        "park me until the wall-clock backstop fires",
+        None,
+        None,
+        None,
+        None,
+        None,
+        ChatRequestMetadata::default(),
+    )
+    .await
+    .expect("turn should start");
+
+    let recv = timeout(Duration::from_secs(20), async move {
+        loop {
+            let event = rx.recv().await.expect("event stream should stay open");
+            if event.event == "chat_error" && event.request_id == request_id {
+                return event;
+            }
+        }
+    })
+    .await
+    .expect("a wedged turn must still emit a terminal chat_error (issue #4746)");
+
+    assert_eq!(
+        recv.error_type.as_deref(),
+        Some("turn_timeout"),
+        "the backstop must surface a graceful turn_timeout, not a generic error"
+    );
+    assert_eq!(
+        recv.error_retryable,
+        Some(true),
+        "a turn_timeout is safe to retry in the same thread"
+    );
+    let message = recv.message.unwrap_or_default();
+    assert!(
+        !message.contains("openhuman_turn_wall_clock_timeout"),
+        "internal marker must not leak into user copy: {message}"
+    );
+
+    // The wedged future is torn down cooperatively when the backstop drops it
+    // (the Drop guard flips), not left sleeping to its 30s test wall.
+    wait_for_flag(&block.dropped, "wedged turn future dropped by backstop").await;
+
+    set_test_run_chat_task_block(None).await;
+    std::env::remove_var("OPENHUMAN_WEB_TURN_TIMEOUT_SECS");
 }
 
 /// Helper: poll the parallel in-flight lane until `pred` holds (or time out).

@@ -50,6 +50,29 @@ pub(crate) fn generic_inference_error_user_message() -> &'static str {
     "Something went wrong. Please try again.\nThis error has been reported. You can also report it on Discord.\n<openhuman-link path=\"community/discord-report\">Report on Discord</openhuman-link>"
 }
 
+/// Stable marker embedded in the synthetic error a web turn raises when it
+/// exceeds its wall-clock backstop (`OPENHUMAN_WEB_TURN_TIMEOUT_SECS`). Kept as
+/// a grep-friendly anchor so [`classify_inference_error`] routes it to the
+/// dedicated `turn_timeout` branch instead of the generic catch-all.
+pub(crate) const TURN_TIMEOUT_MARKER: &str = "openhuman_turn_wall_clock_timeout";
+
+/// Build the synthetic error string a wedged web turn raises when its
+/// wall-clock backstop fires. Carries [`TURN_TIMEOUT_MARKER`] so the error
+/// classifier surfaces a graceful, retryable `turn_timeout` chat_error rather
+/// than letting the turn hang forever with no terminal event (issue #4746).
+pub(crate) fn turn_timeout_error_message(secs: u64) -> String {
+    format!(
+        "{TURN_TIMEOUT_MARKER}: agent turn exceeded its {secs}s wall-clock budget \
+         without producing a terminal event (a tool or delegated sub-agent likely stalled)"
+    )
+}
+
+/// True when `err` is the synthetic wall-clock-timeout error raised by the web
+/// turn driver — matched on the stable [`TURN_TIMEOUT_MARKER`] anchor.
+pub(crate) fn is_turn_timeout_error(err: &str) -> bool {
+    err.contains(TURN_TIMEOUT_MARKER)
+}
+
 /// Pull the structured provider error message out of a raw error string.
 ///
 /// Provider error chains from OpenAI/Anthropic/OpenRouter/etc. arrive looking
@@ -134,7 +157,7 @@ pub(crate) struct ClassifiedError {
     /// `max_iterations`, `timeout`, `auth_error`, `budget_exhausted`,
     /// `provider_error`, `context_overflow`, `model_unavailable`,
     /// `payload_too_large`, `provider_request_rejected`,
-    /// `capability_unsupported`, `empty_response`, `inference`.
+    /// `capability_unsupported`, `empty_response`, `turn_timeout`, `inference`.
     pub(crate) error_type: &'static str,
     /// User-facing copy (already includes provider detail block and the
     /// retry-after countdown sentence when available).
@@ -564,6 +587,28 @@ pub(crate) fn classify_inference_error(err: &str) -> ClassifiedError {
             retryable: true,
             retry_after_ms: None,
             provider,
+            fallback_available: None,
+        }
+    } else if is_turn_timeout_error(err) {
+        // The web turn driver's wall-clock backstop fired: the turn ran past its
+        // time budget without ever producing a terminal event — a wedged main
+        // agent (stuck mid tool-call) or a delegated sub-agent that never
+        // returned. Surface a graceful, retryable chat_error so the client stops
+        // "processing" instead of receiving an empty reply / spinning on
+        // `inference_heartbeat` until the socket dies (issue #4746). Anchored
+        // next to max_iterations — both are deterministic agent-loop outcomes
+        // that must not be shadowed by the broad provider-429 / 5xx arms below.
+        // No `with_provider_detail`: the marker string carries no provider body.
+        ClassifiedError {
+            error_type: "turn_timeout",
+            message: "This turn ran past its time budget without finishing and was \
+                 stopped so it wouldn't hang. This usually means a tool call or a \
+                 delegated sub-agent stalled. You can retry your question in this thread."
+                .to_string(),
+            source: "agent_loop",
+            retryable: true,
+            retry_after_ms: None,
+            provider: None,
             fallback_available: None,
         }
     } else if is_empty_provider_response_text(&lower) {
