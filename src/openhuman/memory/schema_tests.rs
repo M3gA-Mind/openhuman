@@ -1,5 +1,5 @@
-use super::*;
 use super::definitions::NAMESPACE;
+use super::*;
 
 #[test]
 fn all_controller_schemas_and_registered_controllers_stay_in_sync() {

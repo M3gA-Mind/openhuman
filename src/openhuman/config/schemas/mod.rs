@@ -11,8 +11,6 @@ use crate::core::TypeSchema;
 #[cfg(test)]
 use crate::rpc::RpcOutcome;
 #[cfg(test)]
-use schema_defs::schemas;
-#[cfg(test)]
 use controllers::{
     handle_get_agent_paths, handle_get_autonomy_settings, handle_update_autonomy_settings,
 };
@@ -28,6 +26,8 @@ use helpers::{
     VoiceServerSettingsUpdate, WorkspaceOnboardingFlagParams, WorkspaceOnboardingFlagSetParams,
     DEFAULT_ONBOARDING_FLAG_NAME,
 };
+#[cfg(test)]
+use schema_defs::schemas;
 #[cfg(test)]
 use serde_json::{Map, Value};
 
