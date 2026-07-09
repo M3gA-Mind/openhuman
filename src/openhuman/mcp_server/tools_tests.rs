@@ -1,4 +1,5 @@
 use super::*;
+use super::specs::list_tools_result_for_config;
 
 #[test]
 fn list_tools_exposes_base_mcp_surface_when_searxng_disabled() {
