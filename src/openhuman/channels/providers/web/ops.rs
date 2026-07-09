@@ -1048,9 +1048,18 @@ pub async fn cancel_chat_scoped(
         None => cancel_parallel_turns_for_thread(thread_id).await,
     };
 
+    // #4760: a scoped cancel that matched only a parallel (forked) turn — not the
+    // primary — still genuinely tore a turn down and emitted its cancelled event.
+    // Surface that id so `channel_web_cancel` reports `cancelled: true` with the
+    // right request_id instead of misreporting a no-op just because the primary
+    // turn wasn't the one cancelled.
+    let cancelled_any = removed_request_id
+        .clone()
+        .or_else(|| cancelled_parallel.first().cloned());
+
     // Emit a cancelled chat_error for each cancelled turn (primary + parallels)
     // so every interleaved branch's UI is resolved.
-    for request_id in removed_request_id.iter().cloned().chain(cancelled_parallel) {
+    for request_id in removed_request_id.into_iter().chain(cancelled_parallel) {
         publish_web_channel_event(WebChannelEvent {
             event: "chat_error".to_string(),
             client_id: client_id.to_string(),
@@ -1062,7 +1071,7 @@ pub async fn cancel_chat_scoped(
         });
     }
 
-    Ok(removed_request_id)
+    Ok(cancelled_any)
 }
 
 pub async fn channel_web_chat(
