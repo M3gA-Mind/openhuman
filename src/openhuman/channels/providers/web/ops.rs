@@ -113,6 +113,40 @@ where
     }
 }
 
+/// Run a chat-turn future under the two standard web-channel guards, inside the
+/// shared origin + approval-context scope: the cooperative cancel token
+/// (interrupt/cancel paths tear the turn down at its next await point) and the
+/// wall-clock backstop ([`drive_turn_with_deadline`]).
+///
+/// Returns `None` when the turn was cancelled cooperatively before producing a
+/// result — the cancelling side already emitted the user-facing `chat_error`,
+/// so the caller just unwinds quietly. Otherwise `Some(res)` carries the turn's
+/// `Result`. Extracted so `start_chat` and `spawn_parallel_turn` share one copy
+/// of this wiring and can't drift apart (issue #4746 review); the only per-site
+/// differences are the `fork` flag and run-queue handle passed to
+/// `run_chat_task` when building `fut`.
+async fn run_turn_under_cancel_and_deadline<F>(
+    cancel_token: CancellationToken,
+    origin: crate::openhuman::agent::turn_origin::AgentTurnOrigin,
+    approval_ctx: crate::openhuman::approval::ApprovalChatContext,
+    fut: F,
+) -> Option<Result<super::types::WebChatTaskResult, String>>
+where
+    F: std::future::Future<Output = Result<super::types::WebChatTaskResult, String>>,
+{
+    tokio::select! {
+        biased;
+        _ = cancel_token.cancelled() => None,
+        res = drive_turn_with_deadline(
+            web_turn_deadline(),
+            crate::openhuman::agent::turn_origin::with_origin(
+                origin,
+                crate::openhuman::approval::APPROVAL_CHAT_CONTEXT.scope(approval_ctx, fut),
+            ),
+        ) => Some(res),
+    }
+}
+
 /// What the budget-correlator should do with a terminated turn (#3386).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum BudgetCorrelation {
@@ -609,32 +643,25 @@ pub async fn start_chat(
         // `None` => the turn was cancelled cooperatively before producing a
         // result; the interrupting/cancelling side already emitted the
         // user-facing `chat_error`, so we just unwind quietly here.
-        let result = tokio::select! {
-            biased;
-            _ = task_cancel_token.cancelled() => None,
-            res = drive_turn_with_deadline(
-                web_turn_deadline(),
-                crate::openhuman::agent::turn_origin::with_origin(
-                    origin,
-                    crate::openhuman::approval::APPROVAL_CHAT_CONTEXT.scope(
-                        approval_ctx,
-                        run_chat_task(
-                            &client_id_task,
-                            &thread_id_task,
-                            &request_id_task,
-                            &user_message,
-                            model_override,
-                            temperature,
-                            profile_id,
-                            locale,
-                            turn_run_queue_task,
-                            metadata,
-                            /* fork */ false,
-                        ),
-                    ),
-                ),
-            ) => Some(res),
-        };
+        let result = run_turn_under_cancel_and_deadline(
+            task_cancel_token,
+            origin,
+            approval_ctx,
+            run_chat_task(
+                &client_id_task,
+                &thread_id_task,
+                &request_id_task,
+                &user_message,
+                model_override,
+                temperature,
+                profile_id,
+                locale,
+                turn_run_queue_task,
+                metadata,
+                /* fork */ false,
+            ),
+        )
+        .await;
 
         let result = match result {
             Some(res) => res,
@@ -840,32 +867,25 @@ async fn spawn_parallel_turn(
             client_id: client_id_task.clone(),
             request_id: Some(request_id_task.clone()),
         };
-        let result = tokio::select! {
-            biased;
-            _ = task_cancel_token.cancelled() => None,
-            res = drive_turn_with_deadline(
-                web_turn_deadline(),
-                crate::openhuman::agent::turn_origin::with_origin(
-                    origin,
-                    crate::openhuman::approval::APPROVAL_CHAT_CONTEXT.scope(
-                        approval_ctx,
-                        run_chat_task(
-                            &client_id_task,
-                            &thread_id_task,
-                            &request_id_task,
-                            &user_message,
-                            model_override,
-                            temperature,
-                            profile_id,
-                            locale,
-                            run_queue,
-                            metadata,
-                            /* fork */ true,
-                        ),
-                    ),
-                ),
-            ) => Some(res),
-        };
+        let result = run_turn_under_cancel_and_deadline(
+            task_cancel_token,
+            origin,
+            approval_ctx,
+            run_chat_task(
+                &client_id_task,
+                &thread_id_task,
+                &request_id_task,
+                &user_message,
+                model_override,
+                temperature,
+                profile_id,
+                locale,
+                run_queue,
+                metadata,
+                /* fork */ true,
+            ),
+        )
+        .await;
 
         match result {
             Some(Ok(chat_result)) => {
