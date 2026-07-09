@@ -163,10 +163,11 @@ pub(crate) fn with_provider_detail(summary: &str, err: &str) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClassifiedError {
     /// Stable token: `rate_limited`, `action_budget_exceeded`,
-    /// `max_iterations`, `timeout`, `auth_error`, `budget_exhausted`,
-    /// `provider_error`, `context_overflow`, `model_unavailable`,
-    /// `payload_too_large`, `provider_request_rejected`,
-    /// `capability_unsupported`, `empty_response`, `turn_timeout`, `inference`.
+    /// `max_iterations`, `turn_timeout`, `timeout`, `auth_error`,
+    /// `session_expired`, `budget_exhausted`, `provider_error`,
+    /// `context_overflow`, `model_unavailable`, `payload_too_large`,
+    /// `provider_request_rejected`, `capability_unsupported`,
+    /// `empty_response`, `network`, `inference`.
     pub(crate) error_type: &'static str,
     /// User-facing copy (already includes provider detail block and the
     /// retry-after countdown sentence when available).
