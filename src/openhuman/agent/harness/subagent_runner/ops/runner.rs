@@ -26,7 +26,8 @@ use crate::openhuman::agent::harness::subagent_runner::tool_prep::{
     load_prompt_source, top_k_for_toolkit,
 };
 use crate::openhuman::agent::harness::subagent_runner::types::{
-    SubagentMode, SubagentRunError, SubagentRunOptions, SubagentRunOutcome,
+    SubagentMode, SubagentRunError, SubagentRunOptions, SubagentRunOutcome, SubagentRunStatus,
+    SubagentUsage,
 };
 use crate::openhuman::agent::harness::{
     current_spawn_depth, with_current_sandbox_mode, with_spawn_depth, MAX_SPAWN_DEPTH,
@@ -36,6 +37,7 @@ use crate::openhuman::context::prompt::{
 };
 use crate::openhuman::file_state::with_file_state_agent_id;
 use crate::openhuman::inference::provider::AGENT_TURN_MAX_OUTPUT_TOKENS;
+use crate::openhuman::memory_tree::retrieval::{fast_retrieve, FastRetrieveOptions, QueryResponse};
 use crate::openhuman::tools::{Tool, ToolCategory, ToolSpec};
 use tinyagents::harness::tool::SandboxMode as TinyagentsSandboxMode;
 use tinyagents::harness::workspace::WorkspaceDescriptor;
@@ -95,6 +97,129 @@ pub(super) fn tier_gate_decision(
         });
     }
     Ok(())
+}
+
+/// Definition id of the pure-retrieval memory agent, reached from chat as the
+/// `retrieve_memory` delegate and from other agents as `call_memory_agent`.
+const AGENT_MEMORY_ID: &str = "agent_memory";
+
+/// How many deterministic hits the memory fast path returns (#4677).
+const MEMORY_FAST_PATH_LIMIT: usize = 8;
+
+/// Whether the deterministic memory fast path (#4677) is enabled. Default on;
+/// `OPENHUMAN_MEMORY_FAST_PATH=0` (or `false`/`no`/`off`) forces the full
+/// model-driven walk, e.g. to A/B the two paths without a rebuild.
+fn memory_fast_path_enabled() -> bool {
+    parse_memory_fast_path_enabled(std::env::var("OPENHUMAN_MEMORY_FAST_PATH").ok().as_deref())
+}
+
+/// Pure core of [`memory_fast_path_enabled`], kept env-free for deterministic
+/// unit testing.
+fn parse_memory_fast_path_enabled(env_value: Option<&str>) -> bool {
+    !matches!(
+        env_value.map(|v| v.trim().to_ascii_lowercase()).as_deref(),
+        Some("0") | Some("false") | Some("no") | Some("off")
+    )
+}
+
+/// Render deterministic retrieval hits into a compact, citable memory-context
+/// block for the parent turn. Returns `None` when there are no hits, so the
+/// caller falls back to the model-driven walk (the empty/degraded case is
+/// #4655's territory and still benefits from the model's judgement).
+fn format_deterministic_memory_hits(resp: &QueryResponse) -> Option<String> {
+    use std::fmt::Write as _;
+    if resp.hits.is_empty() {
+        return None;
+    }
+    const PER_HIT_CHARS: usize = 600;
+    let mut out = format!(
+        "Retrieved {} relevant memor{} via deterministic memory search:\n",
+        resp.hits.len(),
+        if resp.hits.len() == 1 { "y" } else { "ies" }
+    );
+    for (i, hit) in resp.hits.iter().enumerate() {
+        let content = hit.content.trim();
+        let body: String = content.chars().take(PER_HIT_CHARS).collect();
+        let ellipsis = if content.chars().count() > PER_HIT_CHARS {
+            " …"
+        } else {
+            ""
+        };
+        let scope = if hit.tree_scope.trim().is_empty() {
+            "memory"
+        } else {
+            hit.tree_scope.trim()
+        };
+        let _ = writeln!(
+            out,
+            "{}. [{scope}] {body}{ellipsis} (relevance {:.2})",
+            i + 1,
+            hit.score
+        );
+    }
+    Some(out)
+}
+
+/// Deterministic fast path for the pure-retrieval [`AGENT_MEMORY_ID`] sub-agent
+/// (#4677).
+///
+/// `agent_memory` otherwise runs a model-driven walk (≤ its `max_iterations`)
+/// whose per-iteration LLM round-trips dominate turn latency at ~30–40s per call
+/// *even when data is present*. [`fast_retrieve`] (E2GraphRAG: query-entity +
+/// dense/semantic recall over the same memory tree, no LLM in the loop) returns
+/// the same hits in a single deterministic pass. When it finds data we return
+/// those hits directly; when the fast path is disabled, errors, or finds nothing
+/// we return `None` so the caller runs the full sub-agent unchanged.
+async fn try_deterministic_memory_retrieval(
+    task_prompt: &str,
+    agent_id: &str,
+    task_id: &str,
+    started: Instant,
+) -> Option<SubagentRunOutcome> {
+    if !memory_fast_path_enabled() {
+        return None;
+    }
+    let query = task_prompt.trim();
+    if query.is_empty() {
+        return None;
+    }
+    let config = crate::openhuman::config::Config::load_or_init()
+        .await
+        .ok()?;
+    let opts = FastRetrieveOptions {
+        limit: MEMORY_FAST_PATH_LIMIT,
+        ..FastRetrieveOptions::default()
+    };
+    let resp = match fast_retrieve(&config, query, opts).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            tracing::warn!(
+                task_id = %task_id,
+                error = %format!("{e:#}"),
+                "[subagent_runner] agent_memory fast-path retrieval errored — falling back to model walk (#4677)"
+            );
+            return None;
+        }
+    };
+    let output = format_deterministic_memory_hits(&resp)?;
+    tracing::info!(
+        task_id = %task_id,
+        hits = resp.hits.len(),
+        total = resp.total,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "[subagent_runner] agent_memory deterministic fast-path hit — skipped the model walk (#4677)"
+    );
+    Some(SubagentRunOutcome {
+        task_id: task_id.to_string(),
+        agent_id: agent_id.to_string(),
+        output,
+        iterations: 0,
+        elapsed: started.elapsed(),
+        mode: SubagentMode::Typed,
+        status: SubagentRunStatus::Completed,
+        final_history: Vec::new(),
+        usage: SubagentUsage::default(),
+    })
 }
 
 /// Run a sub-agent based on its definition and a task prompt.
@@ -166,6 +291,22 @@ pub async fn run_subagent(
         let parent_def =
             AgentDefinitionRegistry::global().and_then(|reg| reg.get(&parent.agent_definition_id));
         tier_gate_decision(parent_def, definition, &parent.agent_definition_id, &task_id)?;
+
+        // Deterministic fast path for the pure-retrieval memory agent (#4677).
+        // Both `retrieve_memory` (chat delegate) and `call_memory_agent` land
+        // here via `run_subagent`; short-circuit with the E2GraphRAG hits when
+        // data is present so the happy path costs ~1 deterministic pass instead
+        // of a ≤6-iteration model walk (~30–40s of round-trips). Falls through
+        // to the full sub-agent when the fast path is disabled/errs/finds
+        // nothing (the empty/degraded case is handled by #4655).
+        if definition.id == AGENT_MEMORY_ID {
+            if let Some(outcome) =
+                try_deterministic_memory_retrieval(task_prompt, &definition.id, &task_id, started)
+                    .await
+            {
+                return Ok(outcome);
+            }
+        }
 
         tracing::info!(
             agent_id = %definition.id,
@@ -1184,4 +1325,104 @@ async fn run_typed_mode(
         final_history: history,
         usage,
     })
+}
+#[cfg(test)]
+mod fast_path_tests {
+    use super::{
+        format_deterministic_memory_hits, parse_memory_fast_path_enabled, MEMORY_FAST_PATH_LIMIT,
+    };
+    use crate::openhuman::memory_store::trees::types::TreeKind;
+    use crate::openhuman::memory_tree::retrieval::types::{NodeKind, QueryResponse, RetrievalHit};
+    use chrono::Utc;
+
+    fn hit(content: &str, scope: &str, score: f32) -> RetrievalHit {
+        RetrievalHit {
+            node_id: "n1".into(),
+            node_kind: NodeKind::Summary,
+            tree_id: "t1".into(),
+            tree_kind: TreeKind::Source,
+            tree_scope: scope.into(),
+            level: 1,
+            content: content.into(),
+            entities: vec![],
+            topics: vec![],
+            time_range_start: Utc::now(),
+            time_range_end: Utc::now(),
+            score,
+            child_ids: vec![],
+            source_ref: None,
+        }
+    }
+
+    #[test]
+    fn fast_path_enabled_by_default_and_opt_out_parsing() {
+        // Unset / unrecognised → enabled (fast path on by default).
+        assert!(parse_memory_fast_path_enabled(None));
+        assert!(parse_memory_fast_path_enabled(Some("1")));
+        assert!(parse_memory_fast_path_enabled(Some("yes")));
+        // Explicit falsy values → disabled (fall back to the model walk).
+        for off in ["0", "false", "no", "off", " OFF ", "False"] {
+            assert!(
+                !parse_memory_fast_path_enabled(Some(off)),
+                "{off:?} must disable the fast path"
+            );
+        }
+    }
+
+    #[test]
+    fn format_returns_none_for_no_hits() {
+        // Empty response → None so the caller falls back to the full sub-agent
+        // (the empty/degraded case is #4655's territory, not this fast path).
+        let resp = QueryResponse::new(vec![], 0);
+        assert!(format_deterministic_memory_hits(&resp).is_none());
+    }
+
+    #[test]
+    fn format_renders_hits_with_scope_content_and_score() {
+        let resp = QueryResponse::new(
+            vec![
+                hit("Q3 OKR is to ship memory v2", "notes", 0.91),
+                hit("prefers concise replies", "profile", 0.80),
+            ],
+            2,
+        );
+        let out = format_deterministic_memory_hits(&resp).expect("hits present → Some");
+        assert!(out.contains("Retrieved 2 relevant memories"), "{out}");
+        assert!(out.contains("[notes] Q3 OKR is to ship memory v2"), "{out}");
+        assert!(out.contains("[profile] prefers concise replies"), "{out}");
+        assert!(out.contains("(relevance 0.91)"), "{out}");
+        // Numbered list, no LLM synthesis needed.
+        assert!(out.contains("1. ") && out.contains("2. "), "{out}");
+    }
+
+    #[test]
+    fn format_singular_wording_for_one_hit() {
+        let resp = QueryResponse::new(vec![hit("only one", "memory", 0.5)], 1);
+        let out = format_deterministic_memory_hits(&resp).unwrap();
+        assert!(out.contains("Retrieved 1 relevant memory"), "{out}");
+    }
+
+    #[test]
+    fn format_truncates_oversized_hit_body() {
+        let big = "x".repeat(5_000);
+        let resp = QueryResponse::new(vec![hit(&big, "memory", 0.42)], 1);
+        let out = format_deterministic_memory_hits(&resp).unwrap();
+        assert!(
+            out.contains(" …"),
+            "oversized body must be ellipsised: {out}"
+        );
+        assert!(
+            out.chars().count() < big.chars().count(),
+            "output must be shorter than the raw 5k-char body"
+        );
+    }
+
+    #[test]
+    fn fast_path_limit_is_small_single_digit() {
+        // Guards against an accidental blow-up of the deterministic fan-out.
+        assert!(
+            (1..=16).contains(&MEMORY_FAST_PATH_LIMIT),
+            "fast-path limit should stay small: {MEMORY_FAST_PATH_LIMIT}"
+        );
+    }
 }
