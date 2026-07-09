@@ -2863,7 +2863,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.57.0",
 ]
 
 [[package]]
@@ -4341,7 +4341,7 @@ dependencies = [
 
 [[package]]
 name = "openhuman"
-version = "0.58.15"
+version = "0.58.16"
 dependencies = [
  "aes-gcm",
  "aho-corasick",
@@ -6889,7 +6889,7 @@ dependencies = [
 
 [[package]]
 name = "tinyflows"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "async-trait",
  "futures-timer",
@@ -6928,7 +6928,7 @@ dependencies = [
 
 [[package]]
 name = "tinyplace"
-version = "2.0.0"
+version = "2.0.1"
 dependencies = [
  "aes",
  "async-trait",
@@ -8268,7 +8268,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
