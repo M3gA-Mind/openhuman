@@ -72,3 +72,28 @@ pub async fn cancel_session(thread_id: &str) -> bool {
     );
     true
 }
+
+/// Request-scoped variant of [`cancel_session`].
+///
+/// When `request_id` is `Some`, the active run is aborted only if its `run_id`
+/// matches — a scoped cancel for a superseded or unrelated request is a no-op so
+/// it can't tear down a newer autonomous run on the thread (#4760). When
+/// `request_id` is `None`, this behaves exactly like [`cancel_session`] (stop
+/// whatever run is on the thread — the Stop button / session-teardown path).
+/// Returns `true` if a run was found and cancelled.
+pub async fn cancel_session_scoped(thread_id: &str, request_id: Option<&str>) -> bool {
+    if let Some(rid) = request_id {
+        // Peek (don't remove) so a non-matching scoped cancel leaves the run
+        // intact for the request that actually owns it.
+        let matches = active_runs()
+            .lock()
+            .expect("active_runs mutex poisoned")
+            .get(thread_id)
+            .map(|run| run.run_id == rid)
+            .unwrap_or(false);
+        if !matches {
+            return false;
+        }
+    }
+    cancel_session(thread_id).await
+}

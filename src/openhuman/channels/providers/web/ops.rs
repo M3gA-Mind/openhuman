@@ -1182,16 +1182,20 @@ pub async fn channel_web_cancel(
 ) -> Result<RpcOutcome<Value>, String> {
     let cancelled_request_id = cancel_chat_scoped(client_id, thread_id, request_id).await?;
 
-    // A scoped cancel that matched nothing (the request already finished or was
-    // superseded) is a clean no-op — do NOT fall through to the thread-wide
-    // `cancel_session`, which would tear down a newer turn on the thread (#4760).
-    // Only the unscoped stop escalates to the session-level teardown.
+    // No web-channel turn matched. Fall through to the task-dispatcher registry,
+    // which holds autonomous runs that are NOT web-channel turns (so they never
+    // appear in IN_FLIGHT and can only be reached here). The fallback is itself
+    // request-scoped: a scoped cancel aborts the run only when its run_id
+    // matches, so a stale cancel for a superseded request can't tear down a newer
+    // run on the thread (#4760); an unscoped stop aborts whatever run is running.
     let cancelled = if cancelled_request_id.is_some() {
         true
-    } else if request_id.is_some() {
-        false
     } else {
-        crate::openhuman::agent::task_dispatcher::cancel_session(thread_id.trim()).await
+        crate::openhuman::agent::task_dispatcher::cancel_session_scoped(
+            thread_id.trim(),
+            request_id,
+        )
+        .await
     };
 
     Ok(RpcOutcome::single_log(
