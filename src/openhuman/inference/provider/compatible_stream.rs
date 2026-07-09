@@ -203,10 +203,7 @@ mod tests {
         // `None` restores the pre-#4761 unbounded wait; a ready item must still
         // be delivered (the disabled guard only removes the timeout, not data).
         let mut s = stream::iter(vec![9u8]);
-        assert_eq!(
-            read_next_or_idle(&mut s, None).await,
-            IdleRead::Item(9u8)
-        );
+        assert_eq!(read_next_or_idle(&mut s, None).await, IdleRead::Item(9u8));
         assert_eq!(read_next_or_idle(&mut s, None).await, IdleRead::Ended);
     }
 
