@@ -139,6 +139,12 @@ pub(crate) fn is_stream_error_non_retryable(err: &StreamError) -> bool {
         // JSON/SSE parse errors and IO errors are generally non-retryable
         StreamError::Json(_) | StreamError::InvalidSse(_) => true,
         StreamError::Io(_) => false,
+        // A mid-stream idle timeout (#4761) is a transient upstream stall — the
+        // connection went silent, not a permanent failure — so a retry on a
+        // fresh connection may succeed. If retries are exhausted it still
+        // surfaces as a terminal error (a `chat_error`), which is the whole
+        // point: the turn can no longer hang with no terminal event.
+        StreamError::IdleTimeout(_) => false,
     }
 }
 

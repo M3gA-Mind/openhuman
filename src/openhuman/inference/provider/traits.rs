@@ -316,6 +316,11 @@ pub enum StreamError {
     #[error("Provider error: {0}")]
     Provider(String),
 
+    #[error(
+        "inference stream idle for {0:?} with no data — treating the upstream as stalled (#4761)"
+    )]
+    IdleTimeout(std::time::Duration),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 }
