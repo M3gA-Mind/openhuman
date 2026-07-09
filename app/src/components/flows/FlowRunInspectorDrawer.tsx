@@ -4,7 +4,7 @@
  *
  * Right-side drawer showing a single durable `tinyflows` run's status + step
  * timeline, opened from the "View run" action on {@link FlowApprovalCard}.
- * Drawer chrome mirrors `pages/conversations/components/SubagentDrawer.tsx`
+ * Drawer chrome mirrors `features/conversations/components/SubagentDrawer.tsx`
  * (fixed overlay + backdrop-click-to-close + Escape-to-close) so it renders
  * as a fixed overlay regardless of where the parent mounts it in the DOM.
  *
@@ -18,18 +18,20 @@
  * + collapsible output, not a graduated status timeline. Status-dot/pill
  * visual language borrows from `components/intelligence/WorkflowRunDetail.tsx`
  * (`RUN_STATUS_ACCENT`/`PHASE_STATUS_DOT`) and
- * `pages/conversations/components/ToolTimelineBlock.tsx` (`StatusTag`) —
+ * `features/conversations/components/ToolTimelineBlock.tsx` (`StatusTag`) —
  * dots, not progress bars (project rule).
  */
 import debug from 'debug';
 
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useFlowPendingApprovals } from '../../hooks/useFlowPendingApprovals';
 import { useFlowRunPoller } from '../../hooks/useFlowRunPoller';
 import { type FlowNodeRunStatus, useFlowRunProgress } from '../../hooks/useFlowRunProgress';
 import { type FlowRunItem, normalizeItems } from '../../lib/flows/runItems';
 import { useT } from '../../lib/i18n/I18nContext';
 import type { FlowRunStatus, FlowRunStep } from '../../services/api/flowsApi';
 import Button from '../ui/Button';
+import { FlowRunPendingApprovalCard } from './FlowRunPendingApprovalCard';
 import { RunItemDataBrowser } from './RunItemDataBrowser';
 
 /**
@@ -217,6 +219,19 @@ export function FlowRunInspectorDrawer({ runId, onClose, onFixWithAgent }: Props
   // Live per-node status overlay (Phase 3e): the socket feed makes the poller's
   // durable step list feel live without replacing it as the source of truth.
   const liveStatuses = useFlowRunProgress(runId);
+  // Actionable approval gates for this run (flow-approval surface — run
+  // details). Only polls while the run is in an active state; `null`/`null`
+  // stops the underlying poll loop.
+  const isActiveRun = !!run && (run.status === 'running' || run.status === 'pending_approval');
+  const {
+    approvals: pendingApprovals,
+    decidingId: decidingApprovalId,
+    error: pendingApprovalsError,
+    decide: decideApproval,
+  } = useFlowPendingApprovals(
+    isActiveRun && run ? run.flow_id : null,
+    isActiveRun && run ? run.thread_id : null
+  );
 
   const handleFixWithAgent = () => {
     if (!run || !onFixWithAgent) return;
@@ -247,7 +262,6 @@ export function FlowRunInspectorDrawer({ runId, onClose, onFixWithAgent }: Props
 
   const startedAt = formatTimestamp(run?.started_at);
   const finishedAt = formatTimestamp(run?.finished_at);
-  const pendingCount = run?.pending_approvals.length ?? 0;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" data-testid="flow-run-inspector-drawer">
@@ -358,14 +372,32 @@ export function FlowRunInspectorDrawer({ runId, onClose, onFixWithAgent }: Props
                 </div>
               )}
 
-              {/* Pending approvals banner */}
-              {run.status === 'pending_approval' && pendingCount > 0 && (
-                <div
-                  data-testid="flow-run-pending-approvals-banner"
-                  className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                  {t('flowRuns.inspector.pendingApprovalsCount').replace(
-                    '{count}',
-                    String(pendingCount)
+              {/* Actionable pending-approval gates for this run (flow-approval
+                  surface). Replaces the old read-only "N node(s) awaiting
+                  approval" banner — Approve once / Approve always / Deny
+                  resolve the gate in place via `openhuman.approval_decide`;
+                  the run poller above picks up the resulting steps on its
+                  own 2s cadence once the gate clears. */}
+              {isActiveRun && pendingApprovals.length > 0 && (
+                <div className="space-y-2" data-testid="flow-run-pending-approvals">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-content-muted">
+                    {t('flowRuns.inspector.pendingApprovals')}
+                  </h3>
+                  {pendingApprovals.map(approval => (
+                    <FlowRunPendingApprovalCard
+                      key={approval.request_id}
+                      approval={approval}
+                      deciding={decidingApprovalId === approval.request_id}
+                      onDecide={decision => decideApproval(approval.request_id, decision)}
+                    />
+                  ))}
+                  {pendingApprovalsError && (
+                    <p
+                      role="alert"
+                      data-testid="flow-run-pending-approvals-error"
+                      className="text-xs text-coral-600 dark:text-coral-400">
+                      {t('flowRuns.inspector.approval.loadError')}
+                    </p>
                   )}
                 </div>
               )}

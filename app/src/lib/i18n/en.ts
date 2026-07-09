@@ -26,6 +26,80 @@ const en: TranslationMap = {
   'nav.activity': 'Activity',
   'nav.brain': 'Brain',
   'nav.flows': 'Workflows',
+  'nav.orchestration': 'Orchestration',
+
+  // ── Orchestration sub-pages (orchPage.*) ──────────────────────────────────
+  'orchPage.subtitle': 'Coordinate your main agent',
+  'orchPage.group.agent': 'Agent',
+  'orchPage.group.network': 'Network',
+  'orchPage.group.insights': 'Insights',
+  'orchPage.overview.nav': 'Agent graph',
+  'orchPage.tasks.nav': 'Tasks',
+  'orchPage.tasks.subtitle': "The orchestrator's global task board",
+  'orchPage.tasks.colPending': 'Pending',
+  'orchPage.tasks.colActive': 'Active',
+  'orchPage.tasks.colBlocked': 'Blocked',
+  'orchPage.tasks.colCompleted': 'Completed',
+  'orchPage.overview.core': 'Agent core',
+  'orchPage.overview.empty': 'No sub-agents to visualize yet',
+  'orchPage.agent.nav': 'Chat',
+  'orchPage.agent.mainTab': 'Main agent',
+  'orchPage.agent.consciousTab': 'Conscious',
+  'orchPage.agent.subconsciousTab': 'Subconscious',
+  'orchPage.agent.modeLabel': 'Agent mind',
+  'orchPage.agent.description': 'Chat with the main agent and watch its subconscious',
+  'orchPage.agent.viewSession': 'View session',
+  'orchPage.sessions.railTitle': 'Active agents',
+  'orchPage.sessions.empty': 'No active agents yet',
+  'orchPage.sessions.statusConnected': 'Connected',
+  'orchPage.sessions.statusDisconnected': 'Disconnected',
+  'orchPage.sessions.statusWaiting': 'Waiting for input',
+  'orchPage.session.runtime': 'Runtime',
+  'orchPage.session.directory': 'Directory',
+  'orchPage.session.runningOn': 'Running on',
+  'orchPage.connections.nav': 'Connections',
+  'orchPage.connections.title': 'Linked agents',
+  'orchPage.connections.description':
+    'Peers your agent coordinates with — expand one to see your sessions with it',
+  'orchPage.connections.empty': 'No connections yet.',
+  'orchPage.connections.emptyCta': 'Add a connection',
+  'orchPage.connections.statContacts': 'Connections',
+  'orchPage.connections.statSessions': 'Sessions',
+  'orchPage.connections.statPending': 'Pending',
+  'orchPage.connections.pendingHint': 'Awaiting acceptance',
+  'orchPage.connections.sessionCount': '{n} sessions',
+  'orchPage.connections.noSessions': 'No sessions',
+  'orchPage.connections.messageCount': '{n} messages',
+  'orchPage.connections.back': 'Connections',
+  'orchPage.connections.replyPlaceholder': 'Reply…',
+  'orchPage.connections.initTitle': 'Initialize an agent or an instance',
+  'orchPage.connections.initDesc':
+    'Spin up a new sub-agent to work alongside you. Open the agent chat and describe the role, goal, and tools it should use — OpenHuman provisions a dedicated instance you can steer from here.',
+  'orchPage.connections.initCta': 'Start in chat',
+  'orchPage.connections.status.needsYou': 'Needs you',
+  'orchPage.connections.status.running': 'Running',
+  'orchPage.connections.status.idle': 'Idle',
+  'orchPage.connections.status.done': 'Done',
+  'orchPage.connections.status.error': 'Error',
+  'orchPage.discover.nav': 'Discover',
+  'orchPage.discover.linkAction': 'Add',
+  'orchPage.discover.identityTitle': 'Your discoverability',
+  'orchPage.discover.notDiscoverableGuide':
+    'Register a @handle so other agents can find and message you.',
+  'orchPage.discover.linkTitle': 'Link a new agent',
+  'orchPage.discover.linkDescription': 'Paste an agent ID to send a connection request.',
+  'orchPage.discover.noRequests': 'No incoming requests.',
+  'orchPage.usage.nav': 'Usage',
+  'orchPage.usage.connections': 'Connections',
+  'orchPage.usage.balance': 'Credit balance',
+  'orchPage.usage.balanceHint': 'Promotional + top-up',
+  'orchPage.usage.cycleSpend': 'Cycle spend',
+  'orchPage.usage.ofBudget': 'of',
+  'orchPage.usage.inferenceCalls': 'Model calls',
+  'orchPage.usage.integrationCalls': 'Integration calls',
+  'orchPage.usage.tokensSaved': 'Tokens saved',
+  'orchPage.usage.saved': 'saved',
+  'orchPage.usage.footnote': 'Usage reflects your current billing cycle.',
   'nav.agentWorld': 'Tiny Place',
   'nav.wallet': 'Wallet',
   // Agent World section sub-navigation labels
@@ -1028,21 +1102,21 @@ const en: TranslationMap = {
   'memoryTree.status.degradedStructure': 'Wiki structure incomplete',
   'memoryTree.status.extractionCoverage': 'Extraction coverage: {pct}% of chunks have structure',
   'memory.health.remediation.budget_exhausted':
-    'Memory embeddings hit the managed budget. Set up local Ollama embeddings (Settings → AI → Embeddings) or add your own embeddings API key to keep building memory.',
+    'Memory embeddings hit the managed budget. Set up local Ollama embeddings (Connections → API keys → Embeddings) or add your own embeddings API key to keep building memory.',
   'memory.health.remediation.auth_missing':
-    'No embeddings credentials found. Log in to OpenHuman, or set up local Ollama embeddings in Settings → AI → Embeddings.',
+    'No embeddings credentials found. Log in to OpenHuman, or set up local Ollama embeddings in Connections → API keys → Embeddings.',
   'memory.health.remediation.auth_invalid':
-    'Your embeddings credentials were rejected. Re-authenticate, or switch to local Ollama embeddings in Settings → AI → Embeddings.',
+    'Your embeddings credentials were rejected. Re-authenticate, or switch to local Ollama embeddings in Connections → API keys → Embeddings.',
   'memory.health.remediation.embeddings_unconfigured':
-    'No embeddings provider is configured, so semantic recall is off. Set up local Ollama embeddings (recommended) or add an embeddings key in Settings → AI → Embeddings.',
+    'No embeddings provider is configured, so semantic recall is off. Set up local Ollama embeddings (recommended) or add an embeddings key in Connections → API keys → Embeddings.',
   'memory.health.remediation.embedding_dim_mismatch':
     'The embedding model returns the wrong vector size (memory expects 1024 dimensions). Pick a 1024-dim model, or request 1024 dimensions for your provider.',
   'memory.health.remediation.local_model_unavailable':
-    'A required local model is not available. Install/run Ollama and pull the model, or switch this workload to a cloud provider in Settings → AI.',
+    'A required local model is not available. Install/run Ollama and pull the model, or switch this workload to a cloud provider in Connections → API keys.',
   'memory.health.remediation.extraction_timeout':
-    'The memory extraction model is timing out, so the wiki has little structure. Switch the Memory extraction model to a faster one in Settings → AI.',
+    'The memory extraction model is timing out, so the wiki has little structure. Switch the Memory extraction model to a faster one in Connections → API keys → LLM.',
   'memory.health.remediation.summarizer_unavailable':
-    'No summarization provider is available for Build Summary Trees. Enable local AI (Ollama), or enable cloud summarization in Settings → AI → Memory.',
+    'No summarization provider is available for Build Summary Trees. Enable local AI (Ollama), or set memory_tree.cloud_summarization_opt_in=true and configure an LLM provider in Connections → API keys → LLM.',
   'memory.health.remediation.empty_input_refused':
     'A memory item was skipped because its text was empty. No action needed — newer items continue to embed normally.',
   'memory.health.remediation.storage_unavailable':
@@ -1050,7 +1124,7 @@ const en: TranslationMap = {
   'memory.health.remediation.transient':
     'A temporary error interrupted memory processing. It will retry automatically.',
   'memory.health.remediation.unknown':
-    'Memory processing encountered an issue. Check Settings → AI for configuration.',
+    'Memory processing encountered an issue. Check Connections → API keys for configuration.',
   'memoryTree.status.fetchError': "Couldn't fetch Memory Tree status",
   'memoryTree.status.retry': 'Retry',
   'memoryTree.status.toggleFailed': "Couldn't toggle auto-sync",
@@ -1137,7 +1211,7 @@ const en: TranslationMap = {
   // Onboarding: API keys step (only when Custom is picked)
   'onboarding.apiKeys.title': "Let's Add Your API Keys",
   'onboarding.apiKeys.subtitle':
-    'You can paste them now or skip and add them later in Settings › AI. Keys are stored on this device, encrypted at rest.',
+    'You can paste them now or skip and add them later in Connections › API keys. Keys are stored on this device, encrypted at rest.',
   'onboarding.apiKeys.openaiLabel': 'OpenAI API key',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -3560,6 +3634,20 @@ const en: TranslationMap = {
   'chat.approval.fallback': 'The agent wants to run an action that needs your approval.',
   'chat.approval.title': 'Approval needed',
   'chat.approval.tool': 'Tool:',
+  // Flow-approval surface — chat banner for a `flow_approval_request` socket
+  // event (a paused tinyflows run's gate, surfaced while the user is
+  // chatting rather than inspecting the run directly).
+  'chat.flowApproval.title': 'Workflow needs approval',
+  'chat.flowApproval.fallback':
+    'A workflow run wants to perform an action that needs your approval.',
+  'chat.flowApproval.tool': 'Tool:',
+  'chat.flowApproval.flow': 'Flow:',
+  'chat.flowApproval.approve': 'Approve once',
+  'chat.flowApproval.approveAlways': 'Approve always',
+  'chat.flowApproval.approveAlwaysHint': 'Skip this checkpoint for future runs of this flow',
+  'chat.flowApproval.deny': 'Deny',
+  'chat.flowApproval.deciding': 'Working…',
+  'chat.flowApproval.error': 'Could not record your decision — try again.',
   'chat.flowProposal.title': 'Workflow proposal',
   'chat.flowProposal.subtitle': 'Review this automation before saving it.',
   'chat.flowProposal.triggerLabel': 'Trigger',
@@ -4184,6 +4272,8 @@ const en: TranslationMap = {
   'tinyplaceOrchestration.title': 'TinyPlace relay',
   'tinyplaceOrchestration.subtitle': 'Pinned agent channels and app-session chats',
   'tinyplaceOrchestration.refresh': 'Refresh',
+  'tinyplaceOrchestration.newInstance': 'New instance',
+  'tinyplaceOrchestration.newInstanceSoon': 'Coming soon',
   'tinyplaceOrchestration.pinned': 'Pinned',
   'tinyplaceOrchestration.sessions': 'Sessions',
   'tinyplaceOrchestration.contacts': 'Contacts',
@@ -4232,7 +4322,11 @@ const en: TranslationMap = {
   'tinyplaceOrchestration.identity.discoverable': 'Discoverable',
   'tinyplaceOrchestration.identity.undiscoverable': 'Not discoverable',
   'tinyplaceOrchestration.identity.undiscoverableHint':
-    'Register a @handle so peers can message you.',
+    'Publish your directory card + encryption key so peers can message you.',
+  'tinyplaceOrchestration.identity.makeDiscoverable': 'Make discoverable',
+  'tinyplaceOrchestration.identity.republish': 'Republish keys',
+  'tinyplaceOrchestration.identity.publishing': 'Publishing…',
+  'tinyplaceOrchestration.identity.publishFailed': 'Publish failed — try again',
   'tinyplaceOrchestration.identity.card': 'Directory card',
   'tinyplaceOrchestration.identity.key': 'Encryption key',
   'tinyplaceOrchestration.identity.published': 'Published',
@@ -4337,6 +4431,18 @@ const en: TranslationMap = {
   'notifications.flow.approveHint': 'Resume the workflow past this checkpoint',
   'notifications.flow.dismissHint': 'Hide this prompt without resuming the workflow',
   'notifications.flow.viewRun': 'View run',
+  // Flow-approval surface — notification-center gate card for the
+  // `flow-gate-approval` CoreNotification kind. Distinct from
+  // `notifications.flow.*` above (that's the older `flows_resume`-based
+  // pending-approval prompt); this one decides via `approval_decide`.
+  'notifications.flowGate.title': 'Workflow needs approval',
+  'notifications.flowGate.tool': 'Tool:',
+  'notifications.flowGate.approve': 'Approve once',
+  'notifications.flowGate.approveAlways': 'Approve always',
+  'notifications.flowGate.approveAlwaysHint': 'Skip this checkpoint for future runs of this flow',
+  'notifications.flowGate.deny': 'Deny',
+  'notifications.flowGate.deciding': 'Working…',
+  'notifications.flowGate.error': 'Could not record your decision. Please try again.',
   'flowRuns.inspector.title': 'Run details',
   'flowRuns.inspector.startedAt': 'Started',
   'flowRuns.inspector.finishedAt': 'Finished',
@@ -4344,6 +4450,15 @@ const en: TranslationMap = {
   'flowRuns.inspector.error': 'Error',
   'flowRuns.inspector.pendingApprovals': 'Pending approvals',
   'flowRuns.inspector.pendingApprovalsCount': '{count} node(s) awaiting approval',
+  // Actionable approval gate cards (flow-approval surface — run details).
+  'flowRuns.inspector.approval.tool': 'Tool:',
+  'flowRuns.inspector.approval.approve': 'Approve once',
+  'flowRuns.inspector.approval.approveAlways': 'Approve always',
+  'flowRuns.inspector.approval.approveAlwaysHint':
+    'Skip this checkpoint for future runs of this flow',
+  'flowRuns.inspector.approval.deny': 'Deny',
+  'flowRuns.inspector.approval.deciding': 'Working…',
+  'flowRuns.inspector.approval.loadError': 'Could not load pending approvals for this run.',
   'flowRuns.inspector.steps': 'Steps',
   'flowRuns.inspector.noSteps': 'No steps recorded yet.',
   'flowRuns.inspector.output': 'Output',
@@ -5952,6 +6067,7 @@ const en: TranslationMap = {
   'settings.approvalHistory.decidedAt': 'Decided {date}',
   'settings.approvalHistory.decision.approveOnce': 'Approved once',
   'settings.approvalHistory.decision.approveAlways': 'Always allowed',
+  'settings.approvalHistory.decision.approveAlwaysFlow': 'Always allowed (flow)',
   'settings.approvalHistory.decision.deny': 'Denied',
   'settings.theme.title': 'Theme Studio',
   'settings.theme.menuDesc': 'Fully customize colours and fonts, or pick a preset theme.',
@@ -6024,6 +6140,10 @@ const en: TranslationMap = {
   'settings.appearance.fontSizeXLargeDesc': 'The largest text, for maximum readability.',
   'settings.appearance.fontSizeHelperText':
     'Scales text across the whole app — chat, settings and panels — independently of your system font setting.',
+  'settings.appearance.fontSizeCustomLabel': 'Custom size',
+  'settings.appearance.fontSizeCustomAria': 'Custom font size in pixels',
+  'settings.appearance.fontSizeCustomSliderAria': 'Custom font size slider, in pixels',
+  'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': 'Bottom tab bar',
   'settings.appearance.tabBarAlwaysShowLabels': 'Always show labels',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':
@@ -6067,6 +6187,13 @@ const en: TranslationMap = {
   'settings.mascot.menuDesc': 'Pick the mascot color used across the app',
   'settings.mascot.noCharacters': 'No OpenHuman characters are available yet',
   'settings.mascot.noColorVariants': 'No color variants',
+  'settings.mascot.secondaryHeading': 'Meeting duo (second mascot)',
+  'settings.mascot.secondaryDesc':
+    'Add a second mascot for meetings. When two are set they appear together and take turns speaking. Leave as None for a single mascot.',
+  'settings.mascot.secondaryNone': 'None (single mascot)',
+  'settings.mascot.perMascotVoiceHeading': 'Per-mascot voices',
+  'settings.mascot.primaryVoiceLabel': 'First mascot voice',
+  'settings.mascot.secondaryVoiceLabel': 'Second mascot voice',
   'settings.mascot.voice.current': 'current',
   'settings.mascot.voice.customDesc':
     'Find voice ids at api.elevenlabs.io/v1/voices or your ElevenLabs dashboard. Only the id is stored — your API key stays on the backend.',

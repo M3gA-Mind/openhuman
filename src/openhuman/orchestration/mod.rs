@@ -12,16 +12,22 @@
 
 pub mod attention;
 pub mod bus;
+pub mod cloud;
+pub mod effect_executor;
 pub mod frontend_agent;
 pub mod graph;
 pub mod ingest;
+pub mod master_agent;
+pub mod master_reporter;
 pub mod ops;
+pub mod presence;
 pub mod reasoning_agent;
 pub mod schemas;
 pub mod steering;
 pub mod store;
 pub mod tools;
 pub mod types;
+pub mod wire;
 
 pub use bus::{
     notify_orchestration_message, register_orchestration_ingest_subscriber,

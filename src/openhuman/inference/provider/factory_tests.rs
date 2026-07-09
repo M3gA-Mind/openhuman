@@ -1047,6 +1047,57 @@ fn invalid_models_fail() {
     assert!(!is_known_openhuman_tier("hint:"));
 }
 
+// ── is_raw_passthrough_model ─────────────────────────────────────────────────
+// Raw/BYOK model ids (non-empty, non-tier, non-`hint:*`) must be recognized as
+// passthrough so they reach provider construction verbatim (issue #4598).
+#[test]
+fn raw_passthrough_model_detects_byok_ids() {
+    assert!(is_raw_passthrough_model("claude-opus-4"));
+    assert!(is_raw_passthrough_model("deepseek-v4-pro"));
+    assert!(is_raw_passthrough_model("gpt-4o"));
+    assert!(is_raw_passthrough_model("reasoning-v2"));
+    // Surrounding whitespace is trimmed before the classification.
+    assert!(is_raw_passthrough_model("  claude-opus-4  "));
+}
+
+#[test]
+fn raw_passthrough_model_excludes_tiers_hints_and_empty() {
+    // Managed tiers are resolved, never forwarded raw.
+    assert!(!is_raw_passthrough_model("reasoning-v1"));
+    assert!(!is_raw_passthrough_model("chat-v1"));
+    assert!(!is_raw_passthrough_model("summarization-v1"));
+    // Every `hint:*` alias (known or not) stays on the hint-resolution path.
+    assert!(!is_raw_passthrough_model("hint:reasoning"));
+    assert!(!is_raw_passthrough_model("hint:garbage"));
+    // Empty / whitespace-only ids are not passthrough — they fall back to default.
+    assert!(!is_raw_passthrough_model(""));
+    assert!(!is_raw_passthrough_model("   "));
+}
+
+// End-to-end through the public factory string entry: a raw BYOK model pinned in
+// `default_model` reaches provider construction verbatim on the managed backend,
+// while a known tier and a `hint:*` alias keep their existing resolution.
+#[test]
+fn managed_backend_passthrough_via_create_chat_provider_from_string() {
+    let mut config = Config::default();
+    config.default_model = Some("claude-opus-4".to_string());
+    let (_, model) = create_chat_provider_from_string("chat", "openhuman", &config)
+        .expect("managed backend must build");
+    assert_eq!(model, "claude-opus-4");
+
+    // Managed tier resolution is unchanged.
+    config.default_model = Some("chat-v1".to_string());
+    let (_, model) = create_chat_provider_from_string("chat", "openhuman", &config)
+        .expect("managed backend must build");
+    assert_eq!(model, "chat-v1");
+
+    // `hint:*` resolution is unchanged.
+    config.default_model = Some("hint:reasoning".to_string());
+    let (_, model) = create_chat_provider_from_string("chat", "openhuman", &config)
+        .expect("managed backend must build");
+    assert_eq!(model, crate::openhuman::config::MODEL_REASONING_V1);
+}
+
 // ── oh_tier_supports_vision ──────────────────────────────────────────────────────
 
 #[test]
@@ -1153,7 +1204,7 @@ fn create_chat_provider_subconscious_managed_resolves_chat_v1() {
 #[test]
 fn create_chat_provider_subconscious_honours_byok_route() {
     // When the user pins a concrete cloud provider for the subconscious workload
-    // in Settings → AI → Advanced, the factory builds that provider and returns
+    // in Connections → API keys → LLM, the factory builds that provider and returns
     // its exact model id.
     let mut config = Config::default();
     config.cloud_providers.push(openai_entry("p_oai", "openai"));
@@ -1192,17 +1243,24 @@ fn make_openhuman_backend_reports_vision_capability() {
 }
 
 #[test]
-fn make_openhuman_backend_falls_back_for_invalid_model() {
-    // An invalid default_model must not be forwarded to the backend.
-    // The factory must silently fall back to reasoning-v1 (the platform default).
+fn make_openhuman_backend_forwards_raw_byok_model_verbatim() {
+    // Issue #4598: a raw/BYOK model id pinned into `default_model` (e.g. a user
+    // selecting "claude-opus-4" for an agent) must reach provider construction
+    // verbatim rather than the core silently collapsing it onto reasoning-v1.
+    // The managed backend preserves non-empty ids and is authoritative over
+    // their validity.
     let mut config = Config::default();
-    config.default_model = Some("deepseek-v4-pro".to_string());
+    config.default_model = Some("claude-opus-4".to_string());
     let (_, model) = make_openhuman_backend("chat", &config).expect("factory should succeed");
     assert_eq!(
-        model,
-        crate::openhuman::config::MODEL_REASONING_V1,
-        "invalid default_model should fall back to MODEL_REASONING_V1"
+        model, "claude-opus-4",
+        "a raw/BYOK default_model must be forwarded verbatim, not collapsed"
     );
+
+    // Another stale/custom id shape from the wild — still forwarded verbatim.
+    config.default_model = Some("deepseek-v4-pro".to_string());
+    let (_, model) = make_openhuman_backend("chat", &config).expect("factory should succeed");
+    assert_eq!(model, "deepseek-v4-pro");
 }
 
 #[test]
@@ -2709,4 +2767,45 @@ fn enforce_local_only_inference_errors_on_external_when_local_only() {
     // Restore Standard so we don't leak LocalOnly into other serial tests.
     crate::openhuman::security::live_policy::reload_privacy(PrivacyMode::Standard)
         .expect("policy installed");
+}
+
+// ── Phase 1 (#4249): `create_chat_model` seam ──────────────────────────────
+// The crate `ChatModel` factory wraps the resolved `Provider` via
+// `ProviderModel` with zero behaviour change; a one-shot `invoke` must
+// round-trip through the underlying provider.
+#[tokio::test]
+async fn create_chat_model_wraps_provider_and_round_trips() {
+    use crate::openhuman::inference::provider::traits::Provider;
+    use async_trait::async_trait;
+    use std::sync::Arc;
+    use tinyagents::harness::message::Message;
+    use tinyagents::harness::model::{ChatModel, ModelRequest};
+
+    let _guard = crate::openhuman::inference::inference_test_guard();
+
+    struct CannedProvider;
+    #[async_trait]
+    impl Provider for CannedProvider {
+        async fn chat_with_system(
+            &self,
+            _system_prompt: Option<&str>,
+            message: &str,
+            _model: &str,
+            _temperature: f64,
+        ) -> anyhow::Result<String> {
+            Ok(format!("echo: {message}"))
+        }
+    }
+
+    // The factory consults this override under cfg(test), so `create_chat_model`
+    // resolves to the mock without needing configured cloud providers.
+    let _override = test_provider_override::install(Arc::new(CannedProvider));
+    let config = Config::default();
+
+    let model = create_chat_model("chat", &config, 0.3).expect("create_chat_model must build");
+    let response = model
+        .invoke(&(), ModelRequest::new(vec![Message::user("hi there")]))
+        .await
+        .expect("invoke must succeed");
+    assert_eq!(response.text(), "echo: hi there");
 }

@@ -25,13 +25,14 @@ use tinyflows::model::WorkflowGraph;
 
 use crate::openhuman::agent::harness::definition::SandboxMode;
 use crate::openhuman::composio::client::{
-    create_composio_client, direct_execute, ComposioClientKind,
+    create_composio_client, direct_execute, direct_list_tools, ComposioClientKind,
 };
 use crate::openhuman::config::{Config, HttpRequestConfig};
 use crate::openhuman::credentials::{HttpCredential, HttpCredentialsStore};
 use crate::openhuman::flows;
 use crate::openhuman::inference::provider::{
-    create_chat_provider, role_for_model_tier, ChatMessage, ChatRequest, UsageInfo,
+    create_chat_provider, is_raw_passthrough_model, role_for_model_tier, ChatMessage, ChatRequest,
+    UsageInfo,
 };
 use crate::openhuman::sandbox::{execute_in_sandbox, resolve_sandbox_policy};
 use crate::openhuman::security::{
@@ -181,6 +182,51 @@ fn escalated_origin_for_prompt(
     if tier_decision != GateDecision::Prompt {
         return None;
     }
+    match origin {
+        Some(AgentTurnOrigin::TrustedAutomation {
+            job_id,
+            source:
+                TrustedAutomationSource::Workflow {
+                    require_approval: false,
+                },
+        }) => Some(AgentTurnOrigin::TrustedAutomation {
+            job_id,
+            source: TrustedAutomationSource::Workflow {
+                require_approval: true,
+            },
+        }),
+        _ => None,
+    }
+}
+
+/// Pure decision core of the nested agent-node harness escalation (issue
+/// #4595): when the flow run's origin is a `Workflow { require_approval: false }`
+/// trust root, returns a clone with `require_approval` flipped to `true` so the
+/// [`ApprovalGate`](crate::openhuman::approval::ApprovalGate)'s pre-declared-
+/// action shortcut (`gate.rs::intercept_audited`, `Workflow { require_approval:
+/// false }` → `Allow` without prompt) does NOT apply to tool calls the nested
+/// harness picks at runtime.
+///
+/// **Why this is different from [`escalated_origin_for_prompt`].** That helper
+/// escalates a *single* flow-node acting tool dispatch when the tier decision
+/// is `Prompt`. This helper escalates the *entire nested harness turn*
+/// unconditionally, because the flow author never pre-declared which tools the
+/// referenced agent's LLM will pick — the graph only names the `agent_ref`, and
+/// the definition's `ToolScope` is the runtime pool. So the "trust root =
+/// static action" invariant that justifies the `intercept_audited` shortcut
+/// simply doesn't hold across the `Agent::run_single` boundary.
+///
+/// `Workflow { require_approval: true }` passes through unchanged (already
+/// user-forced HITL); other origins pass through unchanged (Cron / Web chat
+/// / etc. don't route through this call site today, but if they ever do the
+/// shortcut is safe or already covered by that origin's own gate branch).
+/// Split out as a free function over plain values so the escalation policy is
+/// unit-testable without a live `ApprovalGate`.
+fn escalated_origin_for_nested_harness(
+    origin: Option<crate::openhuman::agent::turn_origin::AgentTurnOrigin>,
+) -> Option<crate::openhuman::agent::turn_origin::AgentTurnOrigin> {
+    use crate::openhuman::agent::turn_origin::{AgentTurnOrigin, TrustedAutomationSource};
+
     match origin {
         Some(AgentTurnOrigin::TrustedAutomation {
             job_id,
@@ -367,6 +413,28 @@ pub(crate) fn parse_llm_json(text: &str) -> Option<Value> {
     matches!(parsed, Value::Object(_) | Value::Array(_)).then_some(parsed)
 }
 
+/// Select the model an `agent` node completion actually runs on.
+///
+/// `resolved_model` is what [`create_chat_provider`] returned for the node's
+/// mapped workload role. A node may instead pin a **raw/BYOK** model id
+/// (e.g. `claude-opus-4`) that [`role_for_model_tier`] collapsed to the `chat`
+/// role — in that case the pinned id, not the role default, is the model the
+/// user selected, so it is forwarded verbatim (issue #4598). Managed tiers and
+/// every `hint:*` alias fall through to `resolved_model` unchanged.
+fn resolve_completion_model(node_model: Option<&str>, resolved_model: String) -> String {
+    match node_model {
+        Some(pinned) if is_raw_passthrough_model(pinned) => {
+            tracing::debug!(
+                target: "flows",
+                raw_model = pinned,
+                "[flows] llm.complete: forwarding raw/BYOK node model verbatim (not a managed tier)"
+            );
+            pinned.to_string()
+        }
+        _ => resolved_model,
+    }
+}
+
 /// [`LlmProvider`] adapter over OpenHuman's inference stack
 /// (`src/openhuman/inference/provider/`).
 ///
@@ -450,6 +518,9 @@ impl LlmProvider for OpenHumanLlm {
 
         let (provider, model) = create_chat_provider(role, &self.config)
             .map_err(|e| EngineError::Capability(e.to_string()))?;
+        // `create_chat_provider` handed back the role's default model. If the node
+        // pinned a raw/BYOK id, forward it verbatim instead (issue #4598).
+        let model = resolve_completion_model(node_model, model);
 
         let response = provider
             .chat(
@@ -630,11 +701,19 @@ pub(crate) fn resolve_node_model(request: &Value, entry_model: Option<&str>) -> 
 /// to the workload serving that tier. The session builder's `provider_role_for`
 /// only routes the `hint:<role>` form to a specialised workload, so a bare tier
 /// name (`reasoning-v1`) must be normalised to `hint:reasoning` here — otherwise
-/// it would silently fall through to the chat workload. Mirrors the per-node
-/// routing [`OpenHumanLlm::complete`] applies via
-/// [`role_for_model_tier`](crate::openhuman::inference::provider::role_for_model_tier);
-/// an unrecognised string maps to the chat workload, same as there.
+/// it would silently fall through to the chat workload.
+///
+/// A **raw/BYOK** model id (e.g. `claude-opus-4`) is instead forwarded verbatim:
+/// wrapping it in `hint:chat` would collapse the user's explicit per-node model
+/// onto the managed `chat-v1` tier (issue #4598). Left verbatim, it flows through
+/// the session builder's generic `chat` role — which inherits
+/// `config.default_model` — to `make_openhuman_backend`, which forwards non-tier
+/// ids to the backend unchanged. Mirrors the per-node routing
+/// [`OpenHumanLlm::complete`] applies via [`resolve_completion_model`].
 pub(crate) fn harness_model_default_override(node_model: &str) -> String {
+    if is_raw_passthrough_model(node_model) {
+        return node_model.to_string();
+    }
     format!("hint:{}", role_for_model_tier(node_model))
 }
 
@@ -815,12 +894,45 @@ impl OpenHumanAgentRunner {
             "[flows] agent_runner: dispatching full harness turn"
         );
 
-        // No origin wrapper: the engine future already runs under the flow's
-        // Workflow origin, so the inner turn inherits the autonomy tier +
-        // approval gate; the definition's ToolScope/sandbox is the inner gate.
+        // Nested-harness HITL escalation (issue #4595): the engine future runs
+        // under the flow's Workflow origin, but the flow author only pre-
+        // declared `agent_ref` — not the concrete tools the harness LLM will
+        // pick from the definition's `ToolScope`. If we let the inner turn
+        // inherit a `Workflow { require_approval: false }` origin,
+        // `ApprovalGate::intercept_audited` treats it as a trust root and
+        // auto-`Allow`s external_effect tools (see
+        // `src/openhuman/approval/gate.rs` `Workflow { require_approval: false }`
+        // branch), which would let a scheduled / app-event flow reach out to
+        // Slack / email / desktop control with no HITL. We force
+        // `require_approval: true` around `run_single` so external_effect tools
+        // park for a real decision the same way flow acting nodes escalated by
+        // [`gate_call_for_tier`] do. Read-only tools (no `external_effect`)
+        // aren't gated by `intercept_audited` at all, so this doesn't add noise
+        // for pure-read nested agents.
+        //
         // Cancellation: the run_registry token aborts the engine future, and the
-        // inner turn drops with it.
-        let run = agent.run_single(&prompt);
+        // inner turn drops with it (task-local scope unwinds cleanly).
+        use crate::openhuman::agent::turn_origin;
+        let escalated_origin = escalated_origin_for_nested_harness(turn_origin::current());
+        if let Some(ref escalated) = escalated_origin {
+            tracing::debug!(
+                target: "flows",
+                agent_ref,
+                origin = ?escalated,
+                "[flows] agent_runner: escalating nested harness turn to Workflow{{require_approval:true}} \
+                 so external_effect tools park for HITL (issue #4595)"
+            );
+        }
+        let run: std::pin::Pin<
+            Box<dyn std::future::Future<Output = anyhow::Result<String>> + Send>,
+        > = if let Some(escalated) = escalated_origin {
+            Box::pin(turn_origin::with_origin(
+                escalated,
+                agent.run_single(&prompt),
+            ))
+        } else {
+            Box::pin(agent.run_single(&prompt))
+        };
         let final_text =
             match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), run).await {
                 Ok(Ok(text)) => text,
@@ -1108,17 +1220,35 @@ pub(crate) fn http_cred_name(conn: &str) -> Option<&str> {
 /// // unchanged (a connected-but-uncurated action on a cataloged toolkit is
 /// // still rejected — the catalog is the tighter allowlist there).
 ///
-/// Returns whether `slug` may be invoked as a flow `tool_call`, given (only when
-/// needed) the user's live connected-toolkit slug set.
+/// // (systemic tool-contract fix, PR2) Path B is now further tightened rather
+/// // than loosened: on top of the (0.3) connected-toolkit check, the SLUG
+/// // ITSELF must be a genuine action in that toolkit's LIVE Composio catalog
+/// // (`fetch_live_toolkit_catalog`) — previously any string sharing the
+/// // connected toolkit's prefix passed (e.g. a hallucinated/typo'd
+/// // `STRIPE_DOES_NOT_EXIST` for a connected `stripe`), with no per-user
+/// // read/write/admin scope check at all. Now: existence is broadened to the
+/// // real catalog (a real-but-uncurated action is allowed), but scope gating
+/// // is ADDED via [`classify_unknown`] — strictly narrower than before, never
+/// // looser.
 ///
-/// Split out from [`is_curated_flow_tool`] as a pure function so the two decision
-/// paths are unit-testable without a live Composio backend: `connected_toolkits`
-/// is `None` when the toolkit has a static catalog (the connected set is never
-/// consulted then) or when the connected set could not be fetched (fail-closed).
-async fn flow_tool_allowed(slug: &str, connected_toolkits: Option<&[String]>) -> bool {
+/// Returns whether `slug` may be invoked as a flow `tool_call`, given (only when
+/// needed) the user's live connected-toolkit slug set. `config` is only used by
+/// Path B's live-catalog fetch (fed through [`fetch_live_toolkit_catalog`],
+/// which is itself cached — a seeded test cache never touches the network).
+///
+/// Split out from [`is_curated_flow_tool`] as a (mostly) pure function so the
+/// two decision paths are unit-testable without a live Composio backend:
+/// `connected_toolkits` is `None` when the toolkit has a static catalog (the
+/// connected set is never consulted then) or when the connected set could not
+/// be fetched (fail-closed).
+async fn flow_tool_allowed(
+    config: &Config,
+    slug: &str,
+    connected_toolkits: Option<&[String]>,
+) -> bool {
     use crate::openhuman::memory_sync::composio::providers::{
-        catalog_for_toolkit, find_curated, get_provider, load_user_scope_or_default,
-        toolkit_from_slug,
+        catalog_for_toolkit, classify_unknown, find_curated, get_provider,
+        load_user_scope_or_default, toolkit_from_slug,
     };
 
     let Some(toolkit) = toolkit_from_slug(slug) else {
@@ -1142,19 +1272,47 @@ async fn flow_tool_allowed(slug: &str, connected_toolkits: Option<&[String]>) ->
         return allowed;
     }
 
-    // Path B (0.3): no static catalog — allow iff the user has a live ACTIVE
-    // Composio connection for this toolkit. Made-up toolkits are never connected.
-    match connected_toolkits {
-        Some(toolkits) => {
-            let connected = toolkits.iter().any(|t| t.eq_ignore_ascii_case(&toolkit));
-            tracing::debug!(target: "flows", %slug, %toolkit, connected, "[flows] tool_call curation: live connected-toolkit allowlist decision");
-            connected
-        }
+    // Path B: no static catalog. First, the (0.3) toolkit-level gate — allow
+    // only when the user has a live ACTIVE Composio connection for it. A
+    // made-up toolkit is never connected, so it rejects right here without
+    // ever reaching the live-catalog fetch below.
+    let connected = match connected_toolkits {
+        Some(toolkits) => toolkits.iter().any(|t| t.eq_ignore_ascii_case(&toolkit)),
         None => {
             tracing::warn!(target: "flows", %slug, %toolkit, "[flows] tool_call curation: reject — no static catalog and the connected-toolkit set was unavailable (fail-closed)");
             false
         }
+    };
+    if !connected {
+        tracing::debug!(target: "flows", %slug, %toolkit, "[flows] tool_call curation: reject — toolkit has no static catalog and is not connected");
+        return false;
     }
+
+    // Second, the (systemic tool-contract fix) slug-existence gate — the
+    // exact slug must be a genuine action in the toolkit's LIVE Composio
+    // catalog, not merely share its prefix. A fetch failure fails closed
+    // (never falls back to "any slug with the right prefix passes").
+    let Some(live_catalog) = fetch_live_toolkit_catalog(config, &toolkit).await else {
+        tracing::warn!(target: "flows", %slug, %toolkit, "[flows] tool_call curation: reject — connected but the live catalog fetch failed (fail-closed)");
+        return false;
+    };
+    if live_catalog
+        .iter()
+        .find(|c| c.slug.eq_ignore_ascii_case(slug))
+        .is_none()
+    {
+        tracing::debug!(target: "flows", %slug, %toolkit, "[flows] tool_call curation: reject — slug is not a real action in this toolkit's live catalog");
+        return false;
+    }
+
+    // Finally, scope-gate the same way a curated action is — via the
+    // classify_unknown heuristic (mirrors
+    // `providers::is_action_visible_with_pref`'s uncurated branch), which the
+    // pre-fix Path B never applied at all.
+    let pref = load_user_scope_or_default(&toolkit).await;
+    let allowed = pref.allows(classify_unknown(slug));
+    tracing::debug!(target: "flows", %slug, %toolkit, allowed, "[flows] tool_call curation: live catalog + scope decision");
+    allowed
 }
 
 /// Whether `slug`'s toolkit lacks a static curated catalog, i.e. the curation
@@ -1222,7 +1380,7 @@ async fn is_curated_flow_tool(config: &Config, slug: &str) -> bool {
     } else {
         None
     };
-    flow_tool_allowed(slug, connected.as_deref()).await
+    flow_tool_allowed(config, slug, connected.as_deref()).await
 }
 
 /// Finds the connected account a Composio `connection_id` refers to within a
@@ -1311,175 +1469,733 @@ pub struct OpenHumanTools {
 /// search / media generation / file / shell / etc. — the full toolset.
 pub(crate) const NATIVE_TOOL_PREFIX: &str = "oh:";
 
-/// Process-level cache for [`composio_required_args`]: toolkit → (uppercase
-/// action slug → required top-level arg names). One `list_tools` fetch per
-/// toolkit per process; schemas are effectively static within a session.
-static REQUIRED_ARGS_CACHE: std::sync::OnceLock<
-    std::sync::Mutex<
-        std::collections::HashMap<String, std::collections::HashMap<String, Vec<String>>>,
-    >,
+/// One Composio action's LIVE, ground-truth contract — the source of truth
+/// [Part 1 of the systemic tool-contract fix] grounds the Workflow builder
+/// against, replacing the old "guess a slug/arg/field/path and hope"
+/// authoring flow.
+///
+/// Everything on this type comes straight from Composio's own v3 `/tools`
+/// listing (`ComposioToolFunction` — `parameters`/`output_parameters`), never
+/// from OpenHuman's static curated catalog: `required_args`/`input_schema`
+/// are the action's real input contract, `output_fields`/`output_schema`/
+/// `primary_array_path` are its real output contract. `is_curated` is the
+/// ONE field that cross-references the static catalog — purely for ranking
+/// (curated matches first in `search_tool_catalog`), never for filtering:
+/// a real, uncurated action still produces a full `ToolContract`.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ToolContract {
+    /// The Composio action slug, e.g. `"GMAIL_SEND_EMAIL"`.
+    pub slug: String,
+    /// The lowercase toolkit slug this action belongs to, e.g. `"gmail"`.
+    pub toolkit: String,
+    /// Human-readable description shown to the model, when Composio
+    /// publishes one for this action.
+    pub description: Option<String>,
+    /// Required top-level input argument names (`input_schema`'s
+    /// `required` array). Empty when the action takes no required args —
+    /// NOT the same as "schema unknown" (there is no such state here: an
+    /// action always has SOME input schema, even if empty).
+    pub required_args: Vec<String>,
+    /// The action's full input JSON Schema, verbatim from Composio.
+    pub input_schema: Option<Value>,
+    /// Top-level output/response field names — empty when
+    /// [`Self::output_schema`] is `None` (unknown) OR when it's `Some` but
+    /// names no top-level properties; check `output_schema` to tell those
+    /// two apart.
+    ///
+    /// **These name fields of the tool's PAYLOAD, not of the runtime
+    /// envelope.** Composio's `output_parameters` (what [`Self::output_schema`]
+    /// mirrors) describes the return value the provider hands back — the
+    /// same value that ends up under `ComposioExecuteResponse.data` — NOT
+    /// the `{data, successful, error, costUsd, …}` envelope the execute
+    /// response wraps it in. So a downstream binding to one of these fields
+    /// off a `tool_call` node must dereference `.item.json.data.<field>`
+    /// (the engine's own `{json,text,raw}` envelope, THEN Composio's
+    /// `data` wrapper), never the bare `.item.json.<field>` an agent/
+    /// `http_request` output would use.
+    pub output_fields: Vec<String>,
+    /// The action's full output JSON Schema, when Composio publishes one.
+    /// `None` means "unknown to this listing", not "empty" — mirrors
+    /// [`composio_response_fields`]'s long-standing contract.
+    pub output_schema: Option<Value>,
+    /// Dotted path (relative to the envelope's own `json` field — prefix
+    /// with `"json."` for a `split_out.path`, e.g. `"json.data.messages"`)
+    /// to the first array-typed property in the tool's real runtime output,
+    /// via [`compute_composio_array_path`]. Already accounts for Composio's
+    /// `data` wrapper (see [`Self::output_fields`]'s doc) — this is NOT the
+    /// bare [`compute_primary_array_path`] walk over [`Self::output_schema`],
+    /// which is relative to the unwrapped payload and would be missing the
+    /// leading `data.` segment. `None` when the output schema is unknown or
+    /// names no array property.
+    pub primary_array_path: Option<String>,
+    /// Whether this action is ALSO one of OpenHuman's hand-curated actions
+    /// for its toolkit (`catalog_for_toolkit` /
+    /// `ComposioProvider::curated_tools`) — ranking signal only; a `false`
+    /// here never hides a real action, it only sorts it after curated ones.
+    pub is_curated: bool,
+}
+
+/// Process-level cache backing [`fetch_live_toolkit_catalog`]: lowercase
+/// toolkit slug → every [`ToolContract`] the LIVE Composio catalog published
+/// for it. One fetch per toolkit per process — schemas are effectively
+/// static within a session.
+///
+/// Replaces the narrower `REQUIRED_ARGS_CACHE` / `RESPONSE_FIELDS_CACHE`
+/// pair (single-purpose, args-only / fields-only) that predated this fix:
+/// [`composio_required_args`] and [`composio_response_fields`] now both
+/// delegate to this one cache/fetch instead of each running its own
+/// independent `composio_list_tools` round trip.
+static LIVE_CATALOG_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, Vec<ToolContract>>>,
 > = std::sync::OnceLock::new();
 
-/// Seeds the required-args cache for a toolkit — test hook so preflight
-/// behavior can be exercised without a live Composio backend.
+/// Seeds the live-catalog cache for a toolkit — test hook so preflight /
+/// search / contract-validation behavior can be exercised without a live
+/// Composio backend. Replaces the narrower `seed_required_args_cache` /
+/// `seed_response_fields_cache` test hooks this fix removes.
 #[cfg(test)]
-pub(crate) fn seed_required_args_cache(
-    toolkit: &str,
-    entries: std::collections::HashMap<String, Vec<String>>,
-) {
-    REQUIRED_ARGS_CACHE
+pub(crate) fn seed_live_catalog_cache(toolkit: &str, contracts: Vec<ToolContract>) {
+    LIVE_CATALOG_CACHE
         .get_or_init(Default::default)
         .lock()
-        .expect("required-args cache poisoned")
-        .insert(toolkit.to_string(), entries);
+        .expect("live catalog cache poisoned")
+        .insert(toolkit.trim().to_ascii_lowercase(), contracts);
+}
+
+/// Fetches a toolkit's tool schemas STRAIGHT from the Composio client,
+/// deliberately bypassing `composio::ops::composio_list_tools`'s curated-
+/// whitelist filter (Direct mode's `filter_list_tools_response_for_direct` —
+/// Backend mode's branch of `composio_list_tools` never filters at all, so
+/// this is behavior-identical to it there) — so [`fetch_live_toolkit_catalog`]
+/// grounds against the FULL live catalog (every real action, connected or
+/// not, curated or not), not the narrower curated subset the pre-fix
+/// `search_tool_catalog` searched.
+///
+/// - **Backend mode** calls [`crate::openhuman::composio::client::ComposioClient::list_tools`]
+///   directly — already unfiltered (`composio_list_tools`'s backend branch
+///   applies no filter either), so this is not a behavior change there.
+/// - **Direct mode** calls [`direct_list_tools`] directly instead of going
+///   through `composio_list_tools`'s direct branch, which DOES apply
+///   `filter_list_tools_response_for_direct` — that's the filter this
+///   function exists to skip. `direct_list_tools` itself never filters; the
+///   curation is layered on entirely by its `composio_list_tools` caller.
+///
+/// Returns `None` on any client-construction or network failure — callers
+/// degrade to "catalog unknown" rather than blocking.
+async fn fetch_raw_toolkit_tools(
+    config: &Config,
+    toolkit: &str,
+) -> Option<crate::openhuman::composio::types::ComposioToolsResponse> {
+    let kind = create_composio_client(config)
+        .map_err(|e| {
+            tracing::debug!(target: "flows", %toolkit, error = %e, "[flows] live catalog: composio client unavailable — skipping");
+            e
+        })
+        .ok()?;
+    match kind {
+        ComposioClientKind::Backend(client) => client
+            .list_tools(Some(&[toolkit.to_string()]), None)
+            .await
+            .map_err(|e| {
+                tracing::debug!(target: "flows", %toolkit, error = %e, "[flows] live catalog: backend fetch failed — skipping");
+                e
+            })
+            .ok(),
+        ComposioClientKind::Direct(tool) => direct_list_tools(&tool, &[toolkit.to_string()], None)
+            .await
+            .map_err(|e| {
+                tracing::debug!(target: "flows", %toolkit, error = %e, "[flows] live catalog: direct fetch failed — skipping");
+                e
+            })
+            .ok(),
+    }
+}
+
+/// Fetches (or returns the cached) FULL LIVE Composio catalog for one
+/// toolkit — every real action Composio publishes for it, mapped into
+/// [`ToolContract`]s — regardless of OpenHuman's curated whitelist or the
+/// user's connection state. This is the ground-truth source the Workflow
+/// builder's discovery (`search_tool_catalog`/`get_tool_contract`) and
+/// enforcement (`ops::validate_tool_contracts`) both consult.
+///
+/// Degrades gracefully when an action's listing carries no
+/// `output_parameters` (unknown to this crate, or genuinely unpublished by
+/// Composio for it) — `output_fields` is empty, `primary_array_path` is
+/// `None`, and `output_schema` stays `None` so callers can distinguish "no
+/// fields" from "schema unknown". Applies identically whether the listing
+/// came from Direct mode (which threads `output_parameters` through
+/// natively) or Backend mode (whatever its own proxy response carries under
+/// the same field — may legitimately be absent).
+///
+/// `None` when the fetch itself failed (no client, network error) —
+/// distinct from `Some(vec![])`, which means the toolkit is real but
+/// currently publishes zero actions.
+pub(crate) async fn fetch_live_toolkit_catalog(
+    config: &Config,
+    toolkit: &str,
+) -> Option<Vec<ToolContract>> {
+    use crate::openhuman::memory_sync::composio::providers::{
+        catalog_for_toolkit, find_curated, get_provider,
+    };
+
+    let key = toolkit.trim().to_ascii_lowercase();
+    if key.is_empty() {
+        return None;
+    }
+
+    if let Some(cached) = LIVE_CATALOG_CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .ok()?
+        .get(&key)
+    {
+        return Some(cached.clone());
+    }
+
+    tracing::debug!(target: "flows", toolkit = %key, "[flows] live catalog: fetching (cache miss)");
+    let resp = fetch_raw_toolkit_tools(config, &key).await?;
+
+    let curated_catalog = get_provider(&key)
+        .and_then(|p| p.curated_tools())
+        .or_else(|| catalog_for_toolkit(&key));
+
+    let contracts: Vec<ToolContract> = resp
+        .tools
+        .iter()
+        .map(|tool| {
+            let slug = tool.function.name.clone();
+            let required_args = tool
+                .function
+                .parameters
+                .as_ref()
+                .and_then(|p| p.get("required"))
+                .and_then(Value::as_array)
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let output_fields =
+                response_fields_from_schema(tool.function.output_parameters.as_ref());
+            let primary_array_path =
+                compute_composio_array_path(tool.function.output_parameters.as_ref());
+            let is_curated = curated_catalog.is_some_and(|cat| find_curated(cat, &slug).is_some());
+            ToolContract {
+                slug,
+                toolkit: key.clone(),
+                description: tool.function.description.clone(),
+                required_args,
+                input_schema: tool.function.parameters.clone(),
+                output_fields,
+                output_schema: tool.function.output_parameters.clone(),
+                primary_array_path,
+                is_curated,
+            }
+        })
+        .collect();
+
+    if let Ok(mut cache) = LIVE_CATALOG_CACHE.get_or_init(Default::default).lock() {
+        cache.insert(key, contracts.clone());
+    }
+    Some(contracts)
+}
+
+/// Walks an output JSON Schema breadth-first for the first `type: "array"`
+/// property, returning its dotted path relative to the schema's own root
+/// (e.g. `"data.messages"` for a schema that itself is shaped `{data:
+/// {messages: [...]}}`, or `"messages"` for a flatter `{messages: [...]}`
+/// schema). `None` when `schema` is absent or no array property is found at
+/// any depth.
+///
+/// Pure schema walker — relative to `schema`'s own root, nothing else. A
+/// real Composio `output_parameters` schema is normally shaped like the
+/// flatter example (it describes the tool's payload, not the runtime
+/// envelope around it) — [`compute_composio_array_path`] is the caller that
+/// adjusts for that envelope; this function has no opinion on it.
+///
+/// Breadth-first (not depth-first): when a schema nests more than one array
+/// property, the SHALLOWEST one wins, since that is virtually always the one
+/// a `split_out` node should fan out over.
+pub(crate) fn compute_primary_array_path(schema: Option<&Value>) -> Option<String> {
+    let root = schema?;
+    let mut queue: std::collections::VecDeque<(String, &Value)> = std::collections::VecDeque::new();
+    queue.push_back((String::new(), root));
+
+    while let Some((path, node)) = queue.pop_front() {
+        let Some(props) = node.get("properties").and_then(Value::as_object) else {
+            continue;
+        };
+        // Check every property at THIS level for an array before descending
+        // to the next level — guarantees the shallowest match wins.
+        for (key, prop_schema) in props {
+            if prop_schema.get("type").and_then(Value::as_str) == Some("array") {
+                let prop_path = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                return Some(prop_path);
+            }
+        }
+        for (key, prop_schema) in props {
+            let prop_path = if path.is_empty() {
+                key.clone()
+            } else {
+                format!("{path}.{key}")
+            };
+            queue.push_back((prop_path, prop_schema));
+        }
+    }
+    None
+}
+
+/// [`compute_primary_array_path`], adjusted for the wrapper EVERY Composio
+/// `tool_call` result carries at runtime.
+///
+/// A `tool_call` node's real output (`OpenHumanTools::invoke`, which
+/// `serde_json::to_value`s the client's `ComposioExecuteResponse` verbatim)
+/// is `{data: <payload>, successful, error, costUsd, …}` — but the schema
+/// Composio publishes as `output_parameters` (what [`compute_primary_array_path`]
+/// walks) describes only `<payload>`, the content of that `data` field, not
+/// the envelope around it. So the bare walk's result (e.g. `"messages"`) is
+/// missing the `data.` segment a real `split_out.path`/downstream binding
+/// needs (`"data.messages"`) — this wrapper adds it, UNCONDITIONALLY.
+///
+/// There is no escape hatch for a payload schema that itself happens to
+/// declare a top-level `data` property (e.g. a provider whose real payload
+/// shape is `{data: {messages: [...]}}`, unrelated to Composio's own
+/// wrapper) — `output_parameters` describes the payload only, per the
+/// invariant documented on [`ToolContract::output_fields`], so the real
+/// runtime path in that case is `data.data.messages`, not `data.messages`.
+/// Treating a payload-level `data` key as "this schema already models the
+/// envelope" silently drops a real wrapper segment and points a downstream
+/// binding / `split_out.path` at the wrong (non-existent) array.
+pub(crate) fn compute_composio_array_path(schema: Option<&Value>) -> Option<String> {
+    let path = compute_primary_array_path(schema)?;
+    Some(format!("data.{path}"))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Real-output probe (systemic tool-contract fix, Part 3 / B12)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// [`compute_composio_array_path`] above is entirely schema-derived — it has
+// nothing to walk when Composio (or the backend-proxied listing path, see
+// [`crate::openhuman::composio::ComposioToolFunction::output_parameters`]'s
+// doc) simply never publishes `output_parameters` for an action. Verified
+// live: EVERY GitHub action's `get_tool_contract` (including the curated
+// `GITHUB_LIST_REPOSITORY_ISSUES`) comes back `output_fields: [],
+// output_schema: null, primary_array_path: null` — there is no schema at all
+// to fix a walker bug in. The one remaining source of ground truth is the
+// real response itself, so [`probe_tool_output_sample`] makes ONE bounded,
+// READ-only, REAL Composio call and derives the same shape of hint
+// (`primary_array_path`/`output_fields`) from the ACTUAL value instead.
+//
+// This is the exact bug observed live on flow "funny reminders v2": with no
+// schema to consult, the builder guessed `split_out.path = "json.data"` (the
+// whole envelope payload — one item, the `{issues:[...]}` container) instead
+// of the real `"json.data.issues"`, and the downstream condition/agent saw
+// the wrong shape and produced zero reminders.
+
+/// Top-level [`crate::openhuman::composio::ComposioExecuteResponse`] fields
+/// that are never part of the tool's own payload — skipped at the ROOT by
+/// [`compute_primary_array_path_from_value`]'s scan so an envelope field
+/// never masquerades as (or shadows) the real array. None of these are ever
+/// arrays in practice, but the skip is explicit so a future envelope field
+/// can't silently win a shallowest-wins tie against a real nested array.
+const COMPOSIO_ENVELOPE_META_KEYS_AT_ROOT: &[&str] =
+    &["successful", "error", "costUsd", "markdownFormatted"];
+
+/// [`compute_primary_array_path`]'s counterpart for a REAL runtime value
+/// rather than a schema — walks a
+/// [`crate::openhuman::composio::ComposioExecuteResponse`]-shaped value
+/// (envelope AND payload together, e.g. `{data: {issues: [...]}, successful:
+/// true, …}`) breadth-first for the first array-typed property, skipping
+/// [`COMPOSIO_ENVELOPE_META_KEYS_AT_ROOT`] at the root.
+///
+/// Because the scan starts at the envelope root (not the unwrapped payload),
+/// a hit under `data` naturally comes back prefixed (`"data.issues"`) with no
+/// separate `data.` stitching step needed, unlike
+/// [`compute_composio_array_path`] — this walks real data, not a schema
+/// relative to the unwrapped payload.
+///
+/// `None` when no array is found anywhere in the value (e.g. every field is a
+/// scalar) — a genuinely empty real list still serializes as `[]`, an array,
+/// so this only returns `None` for a shape that truly has no list anywhere.
+pub(crate) fn compute_primary_array_path_from_value(value: &Value) -> Option<String> {
+    let mut queue: std::collections::VecDeque<(String, &Value)> = std::collections::VecDeque::new();
+    queue.push_back((String::new(), value));
+
+    while let Some((path, node)) = queue.pop_front() {
+        let Some(obj) = node.as_object() else {
+            continue;
+        };
+        for (key, v) in obj {
+            if path.is_empty() && COMPOSIO_ENVELOPE_META_KEYS_AT_ROOT.contains(&key.as_str()) {
+                continue;
+            }
+            if v.is_array() {
+                let prop_path = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                return Some(prop_path);
+            }
+        }
+        for (key, v) in obj {
+            if path.is_empty() && COMPOSIO_ENVELOPE_META_KEYS_AT_ROOT.contains(&key.as_str()) {
+                continue;
+            }
+            let prop_path = if path.is_empty() {
+                key.clone()
+            } else {
+                format!("{path}.{key}")
+            };
+            queue.push_back((prop_path, v));
+        }
+    }
+    None
+}
+
+/// One real, LIVE-sampled Composio action result — [`probe_tool_output_sample`]'s
+/// cached ground truth, keyed by action slug (uppercased). Distinct from
+/// (and takes priority over, via [`apply_probe_override`]) the schema-derived
+/// fields on [`ToolContract`]: a probe is an ACTUAL observed response, not a
+/// published schema Composio may or may not provide.
+#[derive(Debug, Clone, serde::Serialize)]
+pub(crate) struct ProbedOutputSample {
+    /// Dotted path (relative to the envelope's own `json` field — prefix with
+    /// `"json."` for a `split_out.path`, same convention as
+    /// [`ToolContract::primary_array_path`]) to the first array found in the
+    /// real response. `None` when the real response named no array at all.
+    pub primary_array_path: Option<String>,
+    /// Top-level field names of the real response's `data` payload — the
+    /// probed analogue of [`ToolContract::output_fields`].
+    pub output_fields: Vec<String>,
+    /// The full envelope-shaped sample value the probe observed, verbatim —
+    /// returned to `probe_tool_output_sample`'s IMMEDIATE caller only for
+    /// this one call. **Never persisted** into [`PROBE_CACHE`]
+    /// ([`cache_probe_result`] redacts it to `Value::Null` before inserting)
+    /// — the process-wide cache is keyed by slug alone, and a real probe
+    /// response can carry one user/connection/args' actual private data
+    /// (repo issues, messages, …); nothing else in the process reads a
+    /// CACHED sample (only the derived `primary_array_path`/`output_fields`
+    /// do), so retaining the full payload there would be pure unnecessary
+    /// exposure (see PR #4702 review).
+    pub sample: Value,
+}
+
+/// Process-level cache backing [`probe_tool_output_sample`]: action slug
+/// (uppercased) → the [`ProbedOutputSample`] it produced. One real probe per
+/// slug per process — mirrors [`LIVE_CATALOG_CACHE`]'s one-fetch-per-process
+/// shape, and for the same reason: a probe is a real, potentially
+/// rate-limited/billed external call, not something to repeat every turn.
+///
+/// Entries here always have `sample` redacted to `Value::Null` — see
+/// [`cache_probe_result`] and [`ProbedOutputSample::sample`]'s doc.
+static PROBE_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, ProbedOutputSample>>,
+> = std::sync::OnceLock::new();
+
+/// Seeds the probe cache for a slug — test hook so [`apply_probe_override`]
+/// and the enforcement checks that consult a probe can be exercised without a
+/// live Composio backend. Unlike [`cache_probe_result`], does NOT redact
+/// `sample` — tests seed only small synthetic fixtures, never real user data.
+#[cfg(test)]
+pub(crate) fn seed_probe_cache(slug: &str, sample: ProbedOutputSample) {
+    PROBE_CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .expect("probe cache poisoned")
+        .insert(slug.trim().to_ascii_uppercase(), sample);
+}
+
+/// Caches the DERIVED metadata from a real probe — never the raw `sample`
+/// payload itself (redacted to `Value::Null` here). See
+/// [`ProbedOutputSample::sample`]'s doc for why: a real probe response can
+/// contain one user/connection/args' actual private data, and nothing that
+/// reads from the cache (only [`apply_probe_override`]) ever needs the raw
+/// payload — only the derived `primary_array_path`/`output_fields`.
+fn cache_probe_result(slug: &str, sample: ProbedOutputSample) {
+    let cached = ProbedOutputSample {
+        sample: Value::Null,
+        ..sample
+    };
+    if let Ok(mut cache) = PROBE_CACHE.get_or_init(Default::default).lock() {
+        cache.insert(slug.trim().to_ascii_uppercase(), cached);
+    }
+}
+
+/// Looks up a cached [`ProbedOutputSample`] for `slug`, or `None` when
+/// [`probe_tool_output_sample`] has never successfully probed it this
+/// process.
+pub(crate) fn probed_output_sample(slug: &str) -> Option<ProbedOutputSample> {
+    PROBE_CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .ok()?
+        .get(&slug.trim().to_ascii_uppercase())
+        .cloned()
+}
+
+/// Overlays a cached [`probed_output_sample`] (if any) onto a schema-derived
+/// [`ToolContract`] — the probe, being an ACTUAL observed response, always
+/// wins over the schema-derived hint when both are present. A contract with
+/// no cached probe passes through unchanged. Called everywhere a
+/// [`ToolContract`] is consulted for wiring (`get_tool_contract`,
+/// `graph_output_field_warnings`, `graph_split_out_path_warnings`) so a
+/// probe the builder already ran is never shadowed by a stale/absent schema.
+///
+/// `primary_array_path` is overlaid UNCONDITIONALLY (including `None`) once a
+/// probe exists: a probe's `None` is itself meaningful ("the real response
+/// named no array anywhere"), not "no opinion" — leaving a stale
+/// schema-derived path in place after a real observation disproves it would
+/// let a since-confirmed-wrong `split_out.path` keep looking supported (see
+/// PR #4702 review). `output_fields` only overlays when non-empty since an
+/// empty probe result there genuinely means "unknown", not "confirmed empty".
+pub(crate) fn apply_probe_override(mut contract: ToolContract) -> ToolContract {
+    if let Some(probe) = probed_output_sample(&contract.slug) {
+        contract.primary_array_path = probe.primary_array_path;
+        if !probe.output_fields.is_empty() {
+            contract.output_fields = probe.output_fields;
+        }
+    }
+    contract
+}
+
+/// Best-effort, but FAIL-CLOSED, classification of a Composio action slug's
+/// [`ToolScope`] — mirrors [`flow_tool_allowed`]'s Path A / Path B split
+/// rather than trusting `classify_unknown`'s verb heuristic unconditionally:
+///
+/// - Toolkit has no extractable prefix at all (`toolkit_from_slug` fails):
+///   `None` — nothing to confirm a scope against.
+/// - Toolkit HAS a static curated catalog (`get_provider().curated_tools()`
+///   or `catalog_for_toolkit`): the slug's scope is authoritative ONLY if the
+///   slug is actually one of that catalog's curated entries. An uncurated
+///   slug on a cataloged toolkit resolves to `None` — it must NOT fall
+///   through to the verb heuristic, which can misclassify an uncurated write
+///   action (e.g. a connected GitHub/Gmail action not in the curated list)
+///   as `Read` by name alone (see PR #4702 review — this exact hole would
+///   otherwise let the probe execute a real write).
+/// - Toolkit has NO static catalog at all: falls back to `classify_unknown`
+///   — the same authority [`flow_tool_allowed`]'s Path B accepts once it has
+///   already confirmed (via its own connected + live-catalog checks) the
+///   slug is real; here it's just the scope signal, gated further below.
+///
+/// Used exclusively by [`probe_tool_output_sample`] to hard-refuse anything
+/// that isn't a CONFIDENTLY CONFIRMED `Read` action REGARDLESS of the user's
+/// per-toolkit scope preference — unlike [`flow_tool_allowed`], which honors
+/// a user's opt-in to Write/Admin for a real `tool_call` node, a
+/// schema-discovery probe must never perform a real mutation no matter what
+/// the user has toggled on, and must never rely on a heuristic guess to
+/// decide that: the builder never asked for (and the user never approved)
+/// THIS specific write. `None` means "refuse — no confirmed Read scope", not
+/// "assume Read".
+fn resolve_composio_action_scope(
+    slug: &str,
+) -> Option<crate::openhuman::memory_sync::composio::providers::ToolScope> {
+    use crate::openhuman::memory_sync::composio::providers::{
+        catalog_for_toolkit, classify_unknown, find_curated, get_provider, toolkit_from_slug,
+    };
+
+    let toolkit = toolkit_from_slug(slug)?;
+    match get_provider(&toolkit)
+        .and_then(|p| p.curated_tools())
+        .or_else(|| catalog_for_toolkit(&toolkit))
+    {
+        // A static catalog exists for this toolkit — only a genuinely
+        // curated entry's scope is trustworthy; an uncurated slug fails
+        // closed rather than being guessed via the verb heuristic.
+        Some(catalog) => find_curated(catalog, slug).map(|curated| curated.scope),
+        // No static catalog anywhere for this toolkit — the heuristic is
+        // the only available signal (still gated by the connected-toolkit
+        // check below in `probe_tool_output_sample`).
+        None => Some(classify_unknown(slug)),
+    }
+}
+
+/// `get_tool_output_sample`'s implementation — see the module comment above
+/// this section for why it exists. Gates, in order (fail closed on any):
+///
+/// 1. **Scope**: [`resolve_composio_action_scope`] must CONFIRM `slug` as
+///    `Read` (`None` — no confirmed scope, e.g. an uncurated slug on a
+///    cataloged toolkit — refuses exactly like a confirmed non-`Read` scope
+///    does; it is never treated as "assume Read").
+/// 2. **Connected**: the slug's toolkit must have an active Composio
+///    connection.
+///
+/// On success, derives + caches a [`ProbedOutputSample`] (process-lifetime,
+/// keyed by slug) and returns it. `args` is forwarded verbatim to the real
+/// call — the builder should pass the SAME arguments it intends to wire into
+/// the real `tool_call` node (this is a sample of THAT call, not a generic
+/// fixture); omitted/`null` becomes `{}`, which is fine for a
+/// zero-required-arg action.
+pub(crate) async fn probe_tool_output_sample(
+    config: &Config,
+    slug: &str,
+    args: Value,
+) -> std::result::Result<ProbedOutputSample, String> {
+    let slug = slug.trim();
+    if slug.is_empty() {
+        return Err("get_tool_output_sample: slug must not be empty".to_string());
+    }
+
+    match resolve_composio_action_scope(slug) {
+        Some(crate::openhuman::memory_sync::composio::providers::ToolScope::Read) => {}
+        Some(other) => {
+            tracing::warn!(
+                target: "flows",
+                %slug,
+                scope = other.as_str(),
+                "[flows] get_tool_output_sample: refused — not a Read-scope action"
+            );
+            return Err(format!(
+                "get_tool_output_sample refuses `{slug}`: classified as {} — this probe is \
+                 READ-only and never performs a real mutation, regardless of the user's scope \
+                 preference. Use get_tool_contract for its schema-derived (possibly unknown) \
+                 output shape instead.",
+                other.as_str()
+            ));
+        }
+        None => {
+            tracing::warn!(
+                target: "flows",
+                %slug,
+                "[flows] get_tool_output_sample: refused — no confirmed Read scope (either no \
+                 extractable toolkit, or an uncurated slug on a toolkit with a static curated \
+                 catalog — fails closed rather than guessing via the verb heuristic)"
+            );
+            return Err(format!(
+                "get_tool_output_sample refuses `{slug}`: could not confirm this is a Read-scope \
+                 action. Either no toolkit could be extracted from the slug, or its toolkit ships \
+                 a static curated catalog and this slug is not one of its curated actions — this \
+                 probe never falls back to a verb-name heuristic in that case, since an uncurated \
+                 action on a cataloged toolkit could really be a write. Use get_tool_contract for \
+                 its schema-derived (possibly unknown) output shape instead."
+            ));
+        }
+    }
+
+    let Some(toolkit) = crate::openhuman::memory_sync::composio::providers::toolkit_from_slug(slug)
+    else {
+        return Err(format!(
+            "get_tool_output_sample: could not extract a toolkit from slug '{slug}' — it must \
+             look like '<TOOLKIT>_<ACTION>'."
+        ));
+    };
+
+    let integrations = crate::openhuman::composio::fetch_connected_integrations(config).await;
+    let connected = integrations
+        .iter()
+        .any(|i| i.connected && i.toolkit.eq_ignore_ascii_case(&toolkit));
+    if !connected {
+        tracing::warn!(target: "flows", %slug, %toolkit, "[flows] get_tool_output_sample: refused — toolkit not connected");
+        return Err(format!(
+            "get_tool_output_sample refuses `{slug}`: the '{toolkit}' toolkit has no active \
+             Composio connection for this user — connect it first (composio_connect), or fall \
+             back to get_tool_contract's schema-derived hint."
+        ));
+    }
+
+    tracing::debug!(
+        target: "flows",
+        %slug,
+        %toolkit,
+        "[flows] get_tool_output_sample: probing the real live response (read-only, bounded, one call)"
+    );
+
+    let kind = create_composio_client(config).map_err(|e| e.to_string())?;
+    let args_opt = if args.is_null() { None } else { Some(args) };
+    let resp = match kind {
+        ComposioClientKind::Backend(client) => client
+            .execute_tool(slug, args_opt)
+            .await
+            .map_err(|e| format!("get_tool_output_sample: real call to `{slug}` failed: {e}"))?,
+        ComposioClientKind::Direct(tool) => {
+            direct_execute(&tool, slug, args_opt, &config.composio.entity_id, None)
+                .await
+                .map_err(|e| format!("get_tool_output_sample: real call to `{slug}` failed: {e}"))?
+        }
+    };
+
+    if !resp.successful {
+        let detail = resp
+            .error
+            .as_deref()
+            .map(str::trim)
+            .filter(|e| !e.is_empty())
+            .unwrap_or("no error detail returned by the provider");
+        return Err(format!(
+            "get_tool_output_sample: `{slug}` reported failure at the connected provider: {detail}"
+        ));
+    }
+
+    let envelope = serde_json::to_value(&resp).map_err(|e| {
+        format!("get_tool_output_sample: could not serialize the real response: {e}")
+    })?;
+    let primary_array_path = compute_primary_array_path_from_value(&envelope);
+    let output_fields = resp
+        .data
+        .as_object()
+        .map(|obj| obj.keys().cloned().collect())
+        .unwrap_or_default();
+
+    let sample = ProbedOutputSample {
+        primary_array_path,
+        output_fields,
+        sample: envelope,
+    };
+    cache_probe_result(slug, sample.clone());
+    tracing::info!(
+        target: "flows",
+        %slug,
+        primary_array_path = ?sample.primary_array_path,
+        "[flows] get_tool_output_sample: probed + cached the real output shape"
+    );
+    Ok(sample)
 }
 
 /// Best-effort lookup of a Composio action's **required** top-level parameter
-/// names, from the toolkit's tool schemas (`parameters.required`).
+/// names — a thin projection over [`fetch_live_toolkit_catalog`]'s
+/// [`ToolContract`]s (this used to run its own independent
+/// `REQUIRED_ARGS_CACHE`-backed fetch; existing callers — the required-arg
+/// preflight, `graph_wiring_warnings` — keep this exact signature).
 ///
 /// Returns `None` when the schema is unavailable — unknown toolkit, client
-/// construction failure, or a failed/empty listing — so callers can skip the
-/// preflight rather than block execution on a catalog hiccup. Results are
-/// cached per toolkit for the life of the process.
+/// construction failure, a failed/empty listing, or the slug isn't present
+/// in the toolkit's live catalog — so callers can skip the preflight rather
+/// than block execution on a catalog hiccup.
 pub(crate) async fn composio_required_args(config: &Config, slug: &str) -> Option<Vec<String>> {
     let toolkit = crate::openhuman::memory_sync::composio::providers::toolkit_from_slug(slug)?;
-    let slug_key = slug.to_ascii_uppercase();
-
-    if let Some(by_slug) = REQUIRED_ARGS_CACHE
-        .get_or_init(Default::default)
-        .lock()
-        .ok()?
-        .get(&toolkit)
-    {
-        return by_slug.get(&slug_key).cloned();
-    }
-
-    tracing::debug!(target: "flows", %toolkit, %slug, "[flows] preflight: fetching tool schemas for toolkit");
-    let resp = crate::openhuman::composio::ops::composio_list_tools(
-        config,
-        Some(vec![toolkit.clone()]),
-        None,
-    )
-    .await
-    .map_err(|e| {
-        tracing::debug!(target: "flows", %toolkit, error = %e, "[flows] preflight: schema fetch failed — skipping check");
-        e
-    })
-    .ok()?;
-
-    let mut by_slug = std::collections::HashMap::new();
-    for tool in &resp.value.tools {
-        let required: Vec<String> = tool
-            .function
-            .parameters
-            .as_ref()
-            .and_then(|p| p.get("required"))
-            .and_then(Value::as_array)
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect()
-            })
-            .unwrap_or_default();
-        by_slug.insert(tool.function.name.to_ascii_uppercase(), required);
-    }
-    let found = by_slug.get(&slug_key).cloned();
-    if let Ok(mut cache) = REQUIRED_ARGS_CACHE.get_or_init(Default::default).lock() {
-        cache.insert(toolkit, by_slug);
-    }
-    found
-}
-
-/// Process-level cache for [`composio_response_fields`]: toolkit → (uppercase
-/// action slug → top-level output/response field names). A sibling of
-/// [`REQUIRED_ARGS_CACHE`] — same keying and one-fetch-per-toolkit-per-process
-/// lifetime — but kept as its own `OnceLock` so seeding one cache in tests
-/// never leaks into the other.
-static RESPONSE_FIELDS_CACHE: std::sync::OnceLock<
-    std::sync::Mutex<
-        std::collections::HashMap<String, std::collections::HashMap<String, Vec<String>>>,
-    >,
-> = std::sync::OnceLock::new();
-
-/// Seeds the response-fields cache for a toolkit — test hook so
-/// `search_tool_catalog`'s grounding can be exercised without a live Composio
-/// backend. Mirrors [`seed_required_args_cache`].
-#[cfg(test)]
-pub(crate) fn seed_response_fields_cache(
-    toolkit: &str,
-    entries: std::collections::HashMap<String, Vec<String>>,
-) {
-    RESPONSE_FIELDS_CACHE
-        .get_or_init(Default::default)
-        .lock()
-        .expect("response-fields cache poisoned")
-        .insert(toolkit.to_string(), entries);
+    let contracts = fetch_live_toolkit_catalog(config, &toolkit).await?;
+    contracts
+        .iter()
+        .find(|c| c.slug.eq_ignore_ascii_case(slug))
+        .map(|c| c.required_args.clone())
 }
 
 /// Best-effort lookup of a Composio action's **response/output** top-level
-/// field names — the output-side analogue of [`composio_required_args`]'s
-/// input-side lookup, so `search_tool_catalog` can ground a downstream
-/// binding (`=nodes.<id>.item.json.<field>`) in a real field name instead of
-/// guessing one.
-///
-/// Source: Composio v3 `/tools` publishes an `output_parameters` JSON Schema
-/// per action alongside `input_parameters` — documented as "Schema
-/// definition of return values from the tool"
-/// (<https://docs.composio.dev/reference/api-reference/tools/getTools>).
-/// `direct_list_tools` (Composio Direct mode) threads that schema through as
-/// [`crate::openhuman::composio::types::ComposioToolFunction::output_parameters`].
-/// The backend-proxied path forwards whatever its own
-/// `/agent-integrations/composio/tools` response carries under the same
-/// field — opaque to this crate, so it may legitimately be absent there.
+/// field names — the output-side analogue of [`composio_required_args`],
+/// now a thin projection over [`fetch_live_toolkit_catalog`]'s
+/// [`ToolContract`]s (replaces the standalone `RESPONSE_FIELDS_CACHE`-backed
+/// fetch; `search_tool_catalog`'s grounding keeps this exact signature).
 ///
 /// Returns `None` when no output schema is known for the slug — unknown
-/// toolkit, client construction failure, a failed/empty listing, or an
-/// action whose listing doesn't publish `output_parameters` — so callers
-/// degrade to "output shape unknown" (e.g. suggest a dry-run) rather than
-/// blocking or guessing. `Some(vec![])` means the schema was found but names
-/// no top-level properties. Cached per toolkit for the life of the process.
+/// toolkit, client construction failure, a failed/empty listing, the slug
+/// isn't in the live catalog, or a real action whose listing doesn't
+/// publish `output_parameters` — so callers degrade to "output shape
+/// unknown" rather than blocking or guessing. `Some(vec![])` means the
+/// schema was found but names no top-level properties.
 pub(crate) async fn composio_response_fields(config: &Config, slug: &str) -> Option<Vec<String>> {
     let toolkit = crate::openhuman::memory_sync::composio::providers::toolkit_from_slug(slug)?;
-    let slug_key = slug.to_ascii_uppercase();
-
-    if let Some(by_slug) = RESPONSE_FIELDS_CACHE
-        .get_or_init(Default::default)
-        .lock()
-        .ok()?
-        .get(&toolkit)
-    {
-        return by_slug.get(&slug_key).cloned();
-    }
-
-    tracing::debug!(target: "flows", %toolkit, %slug, "[flows] catalog: fetching output schemas for toolkit");
-    let resp = crate::openhuman::composio::ops::composio_list_tools(
-        config,
-        Some(vec![toolkit.clone()]),
-        None,
-    )
-    .await
-    .map_err(|e| {
-        tracing::debug!(target: "flows", %toolkit, error = %e, "[flows] catalog: output-schema fetch failed — skipping");
-        e
-    })
-    .ok()?;
-
-    let mut by_slug = std::collections::HashMap::new();
-    for tool in &resp.value.tools {
-        // Only cache an entry when the listing actually published an output
-        // schema — an absent `output_parameters` must stay "unknown" (no
-        // entry, so lookups fall through to `None`) rather than collapsing
-        // into `Some(vec![])`, which would mean "schema present, no fields".
-        if let Some(schema) = tool.function.output_parameters.as_ref() {
-            let fields = response_fields_from_schema(Some(schema));
-            by_slug.insert(tool.function.name.to_ascii_uppercase(), fields);
-        }
-    }
-    let found = by_slug.get(&slug_key).cloned();
-    if let Ok(mut cache) = RESPONSE_FIELDS_CACHE.get_or_init(Default::default).lock() {
-        cache.insert(toolkit, by_slug);
-    }
-    found
+    let contracts = fetch_live_toolkit_catalog(config, &toolkit).await?;
+    let contract = contracts
+        .iter()
+        .find(|c| c.slug.eq_ignore_ascii_case(slug))?;
+    contract.output_schema.as_ref()?;
+    Some(contract.output_fields.clone())
 }
 
 /// Extracts top-level field names from a Composio `output_parameters` JSON
@@ -1528,6 +2244,51 @@ pub(crate) fn missing_required_args(required: &[String], args: &Value) -> Vec<St
         .collect()
 }
 
+/// [B13] Returns argument names in `args` that are NOT declared `properties`
+/// of `schema` — the NAME-VALIDITY counterpart to [`missing_required_args`]'s
+/// PRESENCE check. Catches the class of bug `missing_required_args` alone
+/// cannot: a builder wires a real, well-typed value under an arg name the
+/// action's schema doesn't recognize at all (e.g. `SLACK_SEND_MESSAGE`'s
+/// `text` when the live action actually wants `markdown_text`) — the
+/// required arg still LOOKS satisfied from `missing_required_args`'
+/// perspective (a value is present under *some* key), so the mistake sails
+/// through authoring/save and only 400s from the real provider at runtime.
+///
+/// `None` means "cannot validate this schema — skip, never reject", so a
+/// caller must never turn a `None` into a rejection:
+/// - `schema` is `None` (`ToolContract::input_schema` unknown for this slug), or
+/// - `schema` is not a JSON object, or names no object `properties` map (an
+///   unrecognized/legacy shape — nothing to check names against), or
+/// - `schema` declares `additionalProperties: true` (Composio explicitly
+///   telling us to accept arbitrary keys beyond the declared ones).
+///
+/// `Some(vec![])` means the schema WAS usable and every arg name in `args`
+/// is a real declared property. `args` must be a JSON object to check
+/// against; any other shape (including `Value::Null` — no args wired at
+/// all) yields `Some(vec![])`, mirroring `missing_required_args`' treatment
+/// of an absent/non-object `args`.
+pub(crate) fn unsupported_arg_names(schema: Option<&Value>, args: &Value) -> Option<Vec<String>> {
+    let schema_obj = schema?.as_object()?;
+    if schema_obj
+        .get("additionalProperties")
+        .and_then(Value::as_bool)
+        == Some(true)
+    {
+        return None;
+    }
+    let properties = schema_obj.get("properties")?.as_object()?;
+    let Some(args_obj) = args.as_object() else {
+        return Some(Vec::new());
+    };
+    let mut unsupported: Vec<String> = args_obj
+        .keys()
+        .filter(|k| !properties.contains_key(k.as_str()))
+        .cloned()
+        .collect();
+    unsupported.sort();
+    Some(unsupported)
+}
+
 /// Required-arg preflight for a Composio `tool_call`: fails **before** the
 /// Composio dispatch when a required arg is missing or resolved to `null`,
 /// with a message that names the field and the likely fix — instead of letting
@@ -1563,6 +2324,44 @@ pub(crate) async fn preflight_composio_args(
          `agent`/`tool_call`/`http_request` nodes wrap their output in a `{{json,text,raw}}` \
          envelope). If the value comes from an agent node, give that agent an output schema \
          (config.output_parser.schema) so its fields are addressable."
+    )))
+}
+
+/// Turns a Composio execute response that reports a provider-side failure
+/// into a real capability error.
+///
+/// The Composio execute endpoint is a "successful HTTP request describing an
+/// unsuccessful tool call" API: a transport-level failure (network error, 5xx,
+/// bad JSON) already surfaces as `Err` via `?` in [`OpenHumanTools::invoke`],
+/// but a 200 response whose body is `{successful: false, error: "..."}` (e.g.
+/// Slack rejecting `SLACK_SEND_MESSAGE` with a 400 "Invalid request data")
+/// comes back as `Ok(ComposioExecuteResponse)` — nothing downstream ever
+/// inspected `successful`, so the tinyflows engine recorded the step (and
+/// therefore the run) as `Success`/`"completed"` even though the requested
+/// action never actually happened upstream.
+///
+/// Called on every Composio response (never on native `oh:` tool results,
+/// which don't carry this envelope and return earlier in `invoke`). A
+/// genuinely successful response (`successful: true`) passes through
+/// unchanged; an unsuccessful one becomes `Err(EngineError::Capability(_))`,
+/// which the engine turns into `StepStatus::Error` and — via
+/// `degrade_completed_status` — a degraded/failed run instead of a false
+/// "Completed".
+fn reject_unsuccessful_composio_response(
+    slug: &str,
+    resp: crate::openhuman::composio::ComposioExecuteResponse,
+) -> Result<crate::openhuman::composio::ComposioExecuteResponse> {
+    if resp.successful {
+        return Ok(resp);
+    }
+    let detail = resp
+        .error
+        .as_deref()
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .unwrap_or("no error detail returned by the provider");
+    Err(EngineError::Capability(format!(
+        "tool_call `{slug}` failed at the connected provider: {detail}"
     )))
 }
 
@@ -1773,6 +2572,12 @@ impl ToolInvoker for OpenHumanTools {
                 .map_err(|e| EngineError::Capability(e.to_string()))
             }
         };
+
+        // A successful HTTP round-trip can still carry a provider-side failure
+        // (`{successful: false, error: "..."}`, e.g. a Slack 400 on
+        // `SLACK_SEND_MESSAGE`) — reject it into a real capability error, see
+        // `reject_unsuccessful_composio_response`'s doc.
+        let response = response.and_then(|resp| reject_unsuccessful_composio_response(slug, resp));
 
         if let Some(id) = audit_id {
             if let Some(gate) = crate::openhuman::approval::ApprovalGate::try_global() {
@@ -2365,7 +3170,61 @@ pub fn open_flow_checkpointer(
 mod tests {
     use super::*;
     use crate::openhuman::agent::prompts::types::IntegrationConnection;
-    use crate::openhuman::composio::ConnectedIntegration;
+    use crate::openhuman::composio::{ComposioExecuteResponse, ConnectedIntegration};
+
+    // ── reject_unsuccessful_composio_response (B6) ──────────────────────────
+
+    #[test]
+    fn reject_unsuccessful_composio_response_errors_on_provider_failure() {
+        // Live-observed shape: SLACK_SEND_MESSAGE 400s upstream but the
+        // Composio execute call itself still returns HTTP 200.
+        let resp = ComposioExecuteResponse {
+            data: json!({}),
+            successful: false,
+            error: Some("Invalid request data".to_string()),
+            cost_usd: 0.0,
+            markdown_formatted: None,
+        };
+        let err = reject_unsuccessful_composio_response("SLACK_SEND_MESSAGE", resp)
+            .expect_err("unsuccessful response must become an Err");
+        let msg = err.to_string();
+        assert!(msg.contains("SLACK_SEND_MESSAGE"), "message was: {msg}");
+        assert!(msg.contains("Invalid request data"), "message was: {msg}");
+    }
+
+    #[test]
+    fn reject_unsuccessful_composio_response_falls_back_when_error_field_is_empty() {
+        let resp = ComposioExecuteResponse {
+            data: json!({}),
+            successful: false,
+            error: None,
+            cost_usd: 0.0,
+            markdown_formatted: None,
+        };
+        let err = reject_unsuccessful_composio_response("GMAIL_SEND_EMAIL", resp)
+            .expect_err("unsuccessful response must become an Err");
+        let msg = err.to_string();
+        assert!(msg.contains("GMAIL_SEND_EMAIL"), "message was: {msg}");
+        assert!(
+            msg.contains("no error detail returned by the provider"),
+            "message was: {msg}"
+        );
+    }
+
+    #[test]
+    fn reject_unsuccessful_composio_response_passes_through_on_success() {
+        let resp = ComposioExecuteResponse {
+            data: json!({ "ts": "123.456" }),
+            successful: true,
+            error: None,
+            cost_usd: 0.002,
+            markdown_formatted: None,
+        };
+        let ok = reject_unsuccessful_composio_response("SLACK_SEND_MESSAGE", resp.clone())
+            .expect("successful response must remain Ok");
+        assert!(ok.successful);
+        assert_eq!(ok.data, resp.data);
+    }
 
     // ── input_context (PR A) ────────────────────────────────────────────────
 
@@ -2750,22 +3609,32 @@ mod tests {
         use crate::openhuman::memory_sync::composio::providers::{
             catalog_for_toolkit, get_provider,
         };
+        let config = Config::default();
         // Precondition: `flowstestkit` is genuinely uncatalogued, so the decision
         // flows through the connected-set path (not the static curated path).
         assert!(catalog_for_toolkit("flowstestkit").is_none());
         assert!(get_provider("flowstestkit").is_none());
 
         // No connected set at all → fail-closed reject.
-        assert!(!flow_tool_allowed("FLOWSTESTKIT_DO_THING", None).await);
+        assert!(!flow_tool_allowed(&config, "FLOWSTESTKIT_DO_THING", None).await);
         // Connected set present but does not include this toolkit → reject.
-        assert!(!flow_tool_allowed("FLOWSTESTKIT_DO_THING", Some(&["gmail".to_string()])).await);
+        assert!(
+            !flow_tool_allowed(
+                &config,
+                "FLOWSTESTKIT_DO_THING",
+                Some(&["gmail".to_string()])
+            )
+            .await
+        );
         // A blank slug is always rejected.
-        assert!(!flow_tool_allowed("", Some(&["flowstestkit".to_string()])).await);
+        assert!(!flow_tool_allowed(&config, "", Some(&["flowstestkit".to_string()])).await);
     }
 
     /// A real Composio toolkit OpenHuman ships no static catalog for now PASSES
-    /// once the user has an ACTIVE connection for it (the TODO(0.3) fix) — the
-    /// exact same slug that rejects above.
+    /// once the user has an ACTIVE connection for it (the TODO(0.3) fix) AND
+    /// the slug is a genuine action in its LIVE catalog (systemic tool-contract
+    /// fix) — seeded here so the test never touches a live Composio backend.
+    /// The exact same slug rejects above without a connection.
     #[tokio::test]
     async fn connected_uncatalogued_toolkit_now_passes() {
         use crate::openhuman::memory_sync::composio::providers::{
@@ -2774,12 +3643,77 @@ mod tests {
         assert!(catalog_for_toolkit("flowstestkit").is_none());
         assert!(get_provider("flowstestkit").is_none());
 
+        let config = Config::default();
+        seed_live_catalog_cache(
+            "flowstestkit",
+            vec![ToolContract {
+                slug: "FLOWSTESTKIT_DO_THING".to_string(),
+                toolkit: "flowstestkit".to_string(),
+                description: None,
+                required_args: Vec::new(),
+                input_schema: None,
+                output_fields: Vec::new(),
+                output_schema: None,
+                primary_array_path: None,
+                is_curated: false,
+            }],
+        );
+
         assert!(
-            flow_tool_allowed("FLOWSTESTKIT_DO_THING", Some(&["flowstestkit".to_string()])).await
+            flow_tool_allowed(
+                &config,
+                "FLOWSTESTKIT_DO_THING",
+                Some(&["flowstestkit".to_string()])
+            )
+            .await
         );
         // Case-insensitive match on the toolkit slug.
         assert!(
-            flow_tool_allowed("FLOWSTESTKIT_DO_THING", Some(&["FlowsTestKit".to_string()])).await
+            flow_tool_allowed(
+                &config,
+                "FLOWSTESTKIT_DO_THING",
+                Some(&["FlowsTestKit".to_string()])
+            )
+            .await
+        );
+    }
+
+    /// A CONNECTED but uncatalogued toolkit still rejects a slug that shares
+    /// its prefix but isn't a genuine action in the LIVE catalog — the
+    /// systemic tool-contract fix's tightening: connection alone is no longer
+    /// sufficient, the slug itself must be real.
+    #[tokio::test]
+    async fn connected_uncatalogued_toolkit_rejects_a_hallucinated_slug() {
+        use crate::openhuman::memory_sync::composio::providers::{
+            catalog_for_toolkit, get_provider,
+        };
+        assert!(catalog_for_toolkit("flowstestkit").is_none());
+        assert!(get_provider("flowstestkit").is_none());
+
+        let config = Config::default();
+        seed_live_catalog_cache(
+            "flowstestkit",
+            vec![ToolContract {
+                slug: "FLOWSTESTKIT_DO_THING".to_string(),
+                toolkit: "flowstestkit".to_string(),
+                description: None,
+                required_args: Vec::new(),
+                input_schema: None,
+                output_fields: Vec::new(),
+                output_schema: None,
+                primary_array_path: None,
+                is_curated: false,
+            }],
+        );
+
+        assert!(
+            !flow_tool_allowed(
+                &config,
+                "FLOWSTESTKIT_MADE_UP_ACTION",
+                Some(&["flowstestkit".to_string()])
+            )
+            .await,
+            "a hallucinated slug for a connected-but-uncurated toolkit must still reject"
         );
     }
 
@@ -3087,6 +4021,68 @@ mod tests {
         assert!(escalated_origin_for_prompt(GateDecision::Prompt, None).is_none());
     }
 
+    // ── Nested agent-node harness escalation (issue #4595) ─────────────────
+    //
+    // The `agent` node's harness turn runs the full agent tool loop, and the
+    // flow author never pre-declared the tool selection (only the `agent_ref`).
+    // So `escalated_origin_for_nested_harness` must escalate a default
+    // `Workflow { require_approval: false }` origin so
+    // `ApprovalGate::intercept_audited` can't apply its
+    // pre-declared-action `Allow` shortcut to tools the nested LLM picks at
+    // runtime.
+
+    /// A default `require_approval: false` workflow origin unconditionally
+    /// escalates: the nested harness's tool selection was not pre-declared, so
+    /// the trust-root shortcut in `ApprovalGate` must not apply. `job_id` is
+    /// preserved so the parked approval is still attributable to the flow run.
+    #[test]
+    fn nested_harness_escalates_default_workflow_origin_and_preserves_job_id() {
+        let escalated =
+            escalated_origin_for_nested_harness(Some(workflow_origin("flow-42", false)))
+                .expect("a default require_approval=false workflow must escalate");
+        match escalated {
+            AgentTurnOrigin::TrustedAutomation {
+                job_id,
+                source:
+                    TrustedAutomationSource::Workflow {
+                        require_approval: true,
+                    },
+            } => assert_eq!(job_id, "flow-42"),
+            other => panic!("expected escalated Workflow origin, got {other:?}"),
+        }
+    }
+
+    /// A flow that already opted into `require_approval: true` needs no
+    /// escalation — the parking branch already applies.
+    #[test]
+    fn nested_harness_does_not_re_escalate_already_gated_workflow() {
+        assert!(
+            escalated_origin_for_nested_harness(Some(workflow_origin("flow-42", true,))).is_none()
+        );
+    }
+
+    /// A non-Workflow origin (Cron, Cli, WebChat, Unknown, …) passes through
+    /// unchanged: their own gate branches already make the right decision.
+    #[test]
+    fn nested_harness_does_not_escalate_non_workflow_origin() {
+        assert!(
+            escalated_origin_for_nested_harness(Some(AgentTurnOrigin::TrustedAutomation {
+                job_id: "cron-1".into(),
+                source: TrustedAutomationSource::Cron,
+            }))
+            .is_none()
+        );
+        assert!(escalated_origin_for_nested_harness(Some(AgentTurnOrigin::Cli)).is_none());
+    }
+
+    /// No scoped origin (unlabelled caller) passes through: the gate maps it
+    /// to `Unknown` and fails closed on external_effect tools already, so we
+    /// don't invent an escalation.
+    #[test]
+    fn nested_harness_does_not_escalate_without_an_origin() {
+        assert!(escalated_origin_for_nested_harness(None).is_none());
+    }
+
     // ── Phase 7: sub_workflow-by-id resolver ───────────────────────────────
 
     fn resolver_test_config(tmp: &tempfile::TempDir) -> Config {
@@ -3218,5 +4214,592 @@ mod tests {
         assert!(response_fields_from_schema(None).is_empty());
         assert!(response_fields_from_schema(Some(&json!("not an object"))).is_empty());
         assert!(response_fields_from_schema(Some(&json!({}))).is_empty());
+    }
+
+    // ── unsupported_arg_names (B13) ──────────────────────────────────────────
+    // Direct unit tests for the pure name-validity check — see
+    // `openhuman::flows::ops_tests` for the end-to-end
+    // `validate_tool_contracts` coverage of the same behavior.
+
+    #[test]
+    fn unsupported_arg_names_flags_a_name_not_in_properties() {
+        let schema = json!({
+            "type": "object",
+            "properties": { "channel": {"type": "string"}, "markdown_text": {"type": "string"} }
+        });
+        let args = json!({ "channel": "#general", "text": "hi" });
+        assert_eq!(
+            unsupported_arg_names(Some(&schema), &args),
+            Some(vec!["text".to_string()])
+        );
+    }
+
+    #[test]
+    fn unsupported_arg_names_empty_when_every_name_is_a_real_property() {
+        let schema = json!({
+            "type": "object",
+            "properties": { "channel": {"type": "string"}, "markdown_text": {"type": "string"} }
+        });
+        let args = json!({ "channel": "#general", "markdown_text": "hi" });
+        assert_eq!(unsupported_arg_names(Some(&schema), &args), Some(vec![]));
+    }
+
+    #[test]
+    fn unsupported_arg_names_skips_when_schema_is_none() {
+        let args = json!({ "anything": "goes" });
+        assert_eq!(unsupported_arg_names(None, &args), None);
+    }
+
+    #[test]
+    fn unsupported_arg_names_skips_when_schema_has_no_properties_object() {
+        // Legacy/loose schema shape (no `properties` map at all) — nothing to
+        // validate names against, so this must skip, not reject.
+        let schema = json!({ "type": "object", "description": "legacy shape" });
+        let args = json!({ "anything": "goes" });
+        assert_eq!(unsupported_arg_names(Some(&schema), &args), None);
+    }
+
+    #[test]
+    fn unsupported_arg_names_skips_when_additional_properties_is_true() {
+        let schema = json!({
+            "type": "object",
+            "properties": { "channel": {"type": "string"} },
+            "additionalProperties": true
+        });
+        let args = json!({ "channel": "#general", "any_extra_field": "hi" });
+        assert_eq!(unsupported_arg_names(Some(&schema), &args), None);
+    }
+
+    #[test]
+    fn unsupported_arg_names_empty_for_null_or_non_object_args() {
+        let schema = json!({
+            "type": "object",
+            "properties": { "channel": {"type": "string"} }
+        });
+        assert_eq!(
+            unsupported_arg_names(Some(&schema), &Value::Null),
+            Some(vec![])
+        );
+        assert_eq!(
+            unsupported_arg_names(Some(&schema), &json!("not an object")),
+            Some(vec![])
+        );
+    }
+
+    // ── compute_primary_array_path ──────────────────────────────────────────
+
+    #[test]
+    fn compute_primary_array_path_finds_a_top_level_array_property() {
+        let schema = json!({
+            "type": "object",
+            "properties": { "items": { "type": "array" }, "count": { "type": "integer" } }
+        });
+        assert_eq!(
+            compute_primary_array_path(Some(&schema)),
+            Some("items".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_primary_array_path_finds_a_nested_array_property() {
+        // Gmail-shaped: the array lives two levels down, under `data.messages`.
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "messages": { "type": "array" },
+                        "nextPageToken": { "type": "string" }
+                    }
+                }
+            }
+        });
+        assert_eq!(
+            compute_primary_array_path(Some(&schema)),
+            Some("data.messages".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_primary_array_path_prefers_the_shallowest_array() {
+        // A top-level array (`items`) must win over a deeper one
+        // (`data.nested`) even though `data` is declared first.
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "properties": { "nested": { "type": "array" } }
+                },
+                "items": { "type": "array" }
+            }
+        });
+        assert_eq!(
+            compute_primary_array_path(Some(&schema)),
+            Some("items".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_primary_array_path_none_when_absent_or_no_array_property() {
+        assert_eq!(compute_primary_array_path(None), None);
+        assert_eq!(
+            compute_primary_array_path(Some(&json!({ "type": "object" }))),
+            None
+        );
+        assert_eq!(
+            compute_primary_array_path(Some(
+                &json!({ "type": "object", "properties": { "id": { "type": "string" } } })
+            )),
+            None
+        );
+    }
+
+    // ── compute_composio_array_path (B1: the `data` wrapper prefix) ─────────
+
+    #[test]
+    fn compute_composio_array_path_prefixes_data_for_an_unwrapped_payload_schema() {
+        // The real shape: Composio's `output_parameters` for GMAIL_FETCH_EMAILS
+        // describes the payload directly — no `data` key in the schema — but
+        // the tool_call's real runtime output nests that payload one level
+        // deeper under `data` (`ComposioExecuteResponse`). The array path must
+        // account for that even though the schema itself never mentions `data`.
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "messages": { "type": "array" },
+                "nextPageToken": { "type": "string" }
+            }
+        });
+        assert_eq!(
+            compute_composio_array_path(Some(&schema)),
+            Some("data.messages".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_composio_array_path_still_prefixes_data_when_the_payload_schema_itself_has_a_data_key(
+    ) {
+        // A payload whose own real shape happens to have a top-level `data`
+        // key (unrelated to Composio's wrapper — e.g. a provider that
+        // itself returns `{data: {messages: [...]}}`) must NOT be mistaken
+        // for "this schema already models the envelope". `output_parameters`
+        // always describes the payload only (see `ToolContract::output_fields`'s
+        // doc) — the real runtime path still needs the wrapper's `data.`
+        // prefix stacked on top, landing on `data.data.messages`, not
+        // `data.messages`.
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "object",
+                    "properties": { "messages": { "type": "array" } }
+                }
+            }
+        });
+        assert_eq!(
+            compute_composio_array_path(Some(&schema)),
+            Some("data.data.messages".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_composio_array_path_none_when_the_bare_walk_finds_nothing() {
+        assert_eq!(compute_composio_array_path(None), None);
+        assert_eq!(
+            compute_composio_array_path(Some(
+                &json!({ "type": "object", "properties": { "id": { "type": "string" } } })
+            )),
+            None
+        );
+    }
+
+    // ── compute_primary_array_path_from_value (B12: the real-output probe) ──
+
+    #[test]
+    fn compute_primary_array_path_from_value_finds_a_named_array_under_data() {
+        // The exact GITHUB_LIST_REPOSITORY_ISSUES shape observed live: the
+        // real array lives at `data.issues` (a NAMED field), not `data.items`
+        // — and there is no schema at all to derive this from (verified live:
+        // `output_schema: null` for this action), so only a real-value probe
+        // can find it.
+        let value = json!({
+            "data": { "issues": [ { "id": 1 }, { "id": 2 } ], "total_count": 2 },
+            "successful": true,
+            "error": null,
+            "costUsd": 0.0,
+            "markdownFormatted": null
+        });
+        assert_eq!(
+            compute_primary_array_path_from_value(&value),
+            Some("data.issues".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_primary_array_path_from_value_skips_envelope_metadata_at_the_root() {
+        // None of the envelope's OTHER top-level fields are ever arrays in
+        // practice, but the skip-list is explicit so one never wins a
+        // shallowest-wins tie against a real nested array.
+        let value = json!({
+            "successful": true,
+            "error": null,
+            "costUsd": 0.0,
+            "markdownFormatted": null,
+            "data": { "messages": ["a", "b"] }
+        });
+        assert_eq!(
+            compute_primary_array_path_from_value(&value),
+            Some("data.messages".to_string())
+        );
+    }
+
+    #[test]
+    fn compute_primary_array_path_from_value_none_when_no_array_anywhere() {
+        let value = json!({
+            "data": { "id": "abc123", "name": "octocat" },
+            "successful": true
+        });
+        assert_eq!(compute_primary_array_path_from_value(&value), None);
+        assert_eq!(compute_primary_array_path_from_value(&json!(null)), None);
+        assert_eq!(
+            compute_primary_array_path_from_value(&json!("scalar")),
+            None
+        );
+    }
+
+    // ── apply_probe_override (B12) ───────────────────────────────────────────
+
+    fn bare_contract(slug: &str) -> ToolContract {
+        ToolContract {
+            slug: slug.to_string(),
+            toolkit: "github".to_string(),
+            description: None,
+            required_args: vec![],
+            input_schema: None,
+            output_fields: vec![],
+            output_schema: None,
+            primary_array_path: None,
+            is_curated: true,
+        }
+    }
+
+    #[test]
+    fn apply_probe_override_overlays_a_cached_probe_onto_a_schemaless_contract() {
+        seed_probe_cache(
+            "PROBETEST_LIST_REPOSITORY_ISSUES",
+            ProbedOutputSample {
+                primary_array_path: Some("data.issues".to_string()),
+                output_fields: vec!["issues".to_string(), "total_count".to_string()],
+                sample: json!({ "data": { "issues": [], "total_count": 0 } }),
+            },
+        );
+        let contract = bare_contract("PROBETEST_LIST_REPOSITORY_ISSUES");
+        assert_eq!(contract.primary_array_path, None);
+        let overridden = apply_probe_override(contract);
+        assert_eq!(
+            overridden.primary_array_path,
+            Some("data.issues".to_string())
+        );
+        assert_eq!(
+            overridden.output_fields,
+            vec!["issues".to_string(), "total_count".to_string()]
+        );
+    }
+
+    #[test]
+    fn apply_probe_override_passes_through_unchanged_without_a_cached_probe() {
+        let contract = bare_contract("PROBETEST_SOME_UNPROBED_ACTION");
+        let overridden = apply_probe_override(contract.clone());
+        assert_eq!(overridden.primary_array_path, contract.primary_array_path);
+        assert_eq!(overridden.output_fields, contract.output_fields);
+    }
+
+    /// CodeRabbit (PR #4702 review): a probe that OBSERVED the real response
+    /// and found no array anywhere must CLEAR a stale schema-derived
+    /// `primary_array_path`, not merely leave it in place because the probe's
+    /// own path happens to be `None`. A schema-derived path a real
+    /// observation just disproved is worse than no path at all — it would
+    /// otherwise keep suggesting a `split_out.path` the probe itself showed
+    /// is wrong.
+    #[test]
+    fn apply_probe_override_clears_a_stale_schema_path_when_the_probe_finds_no_array() {
+        seed_probe_cache(
+            "PROBETEST_CLEARS_STALE_PATH",
+            ProbedOutputSample {
+                primary_array_path: None,
+                output_fields: vec![],
+                sample: json!({ "data": { "id": "abc123" } }),
+            },
+        );
+        let mut contract = bare_contract("PROBETEST_CLEARS_STALE_PATH");
+        contract.primary_array_path = Some("data.items".to_string());
+        let overridden = apply_probe_override(contract);
+        assert_eq!(overridden.primary_array_path, None);
+    }
+
+    /// PR #4702 review (security): the process-wide [`PROBE_CACHE`] must
+    /// never retain the raw observed payload — only derived metadata. A real
+    /// probe response can carry one user/connection/args' actual private
+    /// data (repo issues, messages, …), and nothing that reads the CACHE
+    /// (only [`apply_probe_override`], via [`probed_output_sample`]) ever
+    /// needs the raw payload.
+    #[test]
+    fn cache_probe_result_redacts_the_raw_sample_before_caching() {
+        cache_probe_result(
+            "PROBETEST_REDACTS_SAMPLE",
+            ProbedOutputSample {
+                primary_array_path: Some("data.issues".to_string()),
+                output_fields: vec!["issues".to_string()],
+                sample: json!({ "data": { "issues": [{"secret": "do-not-retain"}] } }),
+            },
+        );
+        let cached =
+            probed_output_sample("PROBETEST_REDACTS_SAMPLE").expect("just cached this slug");
+        assert_eq!(cached.sample, Value::Null);
+        // The derived metadata is still cached faithfully — only the raw
+        // payload is redacted.
+        assert_eq!(cached.primary_array_path, Some("data.issues".to_string()));
+    }
+
+    // ── resolve_composio_action_scope (B12: hard Read-only gate) ─────────────
+
+    #[test]
+    fn resolve_composio_action_scope_uses_the_curated_catalog_when_available() {
+        use crate::openhuman::memory_sync::composio::providers::ToolScope;
+        // GITHUB_LIST_REPOSITORY_ISSUES is curated as Read (github/tools.rs).
+        assert_eq!(
+            resolve_composio_action_scope("GITHUB_LIST_REPOSITORY_ISSUES"),
+            Some(ToolScope::Read)
+        );
+        // A curated Write action must classify as Write, not Read — the probe
+        // must refuse it regardless of the verb heuristic agreeing or not.
+        assert_eq!(
+            resolve_composio_action_scope("GMAIL_SEND_EMAIL"),
+            Some(ToolScope::Write)
+        );
+    }
+
+    /// PR #4702 review (P1): a toolkit with a static curated catalog (like
+    /// `github`) must NOT fall through to the `classify_unknown` verb
+    /// heuristic for a slug that isn't actually one of its curated actions —
+    /// `GITHUB_LIST_WORKFLOWS` is a REAL GitHub action name (reads as
+    /// Read-scope by its `LIST` verb) that was deliberately left uncurated
+    /// (see the commented-out entry in `github/tools.rs`), so this must
+    /// resolve to `None` (fail closed), not `Some(ToolScope::Read)` — the
+    /// heuristic agreeing with the "looks safe" name is exactly the
+    /// misclassification hole this guards against.
+    #[test]
+    fn resolve_composio_action_scope_rejects_an_uncurated_slug_on_a_cataloged_toolkit() {
+        assert_eq!(resolve_composio_action_scope("GITHUB_LIST_WORKFLOWS"), None);
+    }
+
+    #[test]
+    fn resolve_composio_action_scope_falls_back_to_the_verb_heuristic_only_without_a_static_catalog(
+    ) {
+        use crate::openhuman::memory_sync::composio::providers::ToolScope;
+        assert_eq!(
+            resolve_composio_action_scope("MADEUPTOOLKIT_LIST_THINGS"),
+            Some(ToolScope::Read)
+        );
+        assert_eq!(
+            resolve_composio_action_scope("MADEUPTOOLKIT_DELETE_THING"),
+            Some(ToolScope::Admin)
+        );
+    }
+
+    // ── probe_tool_output_sample (B12: gates) ────────────────────────────────
+
+    #[tokio::test]
+    async fn probe_tool_output_sample_refuses_a_non_read_action_before_any_client_call() {
+        let config = Config::default();
+        let result = probe_tool_output_sample(&config, "GMAIL_SEND_EMAIL", json!({})).await;
+        let err = result.expect_err("a Write action must be refused");
+        assert!(err.contains("READ-only"), "{err}");
+    }
+
+    /// PR #4702 review (P1): the probe entry point itself must refuse an
+    /// uncurated-but-read-sounding slug on a cataloged toolkit BEFORE any
+    /// client call — not just `resolve_composio_action_scope` in isolation.
+    #[tokio::test]
+    async fn probe_tool_output_sample_refuses_an_uncurated_slug_on_a_cataloged_toolkit_before_any_client_call(
+    ) {
+        let config = Config::default();
+        let result = probe_tool_output_sample(&config, "GITHUB_LIST_WORKFLOWS", json!({})).await;
+        let err = result.expect_err("an uncurated slug on a cataloged toolkit must be refused");
+        assert!(err.contains("could not confirm"), "{err}");
+    }
+
+    // ── fetch_live_toolkit_catalog / composio_required_args /
+    //    composio_response_fields delegation ─────────────────────────────────
+
+    fn contract(
+        slug: &str,
+        toolkit: &str,
+        required: &[&str],
+        output_fields: &[&str],
+    ) -> ToolContract {
+        let output_schema = if output_fields.is_empty() {
+            None
+        } else {
+            Some(json!({
+                "type": "object",
+                "properties": output_fields
+                    .iter()
+                    .map(|f| (f.to_string(), json!({ "type": "string" })))
+                    .collect::<serde_json::Map<String, Value>>()
+            }))
+        };
+        ToolContract {
+            slug: slug.to_string(),
+            toolkit: toolkit.to_string(),
+            description: None,
+            required_args: required.iter().map(|s| s.to_string()).collect(),
+            input_schema: None,
+            output_fields: output_fields.iter().map(|s| s.to_string()).collect(),
+            output_schema,
+            primary_array_path: None,
+            is_curated: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_live_toolkit_catalog_returns_the_seeded_cache_without_a_network_call() {
+        let config = Config::default();
+        seed_live_catalog_cache(
+            "flowscatalogkit",
+            vec![contract(
+                "FLOWSCATALOGKIT_DO_THING",
+                "flowscatalogkit",
+                &["to"],
+                &["id", "threadId"],
+            )],
+        );
+
+        let catalog = fetch_live_toolkit_catalog(&config, "flowscatalogkit")
+            .await
+            .expect("seeded catalog must be returned without a network call");
+        assert_eq!(catalog.len(), 1);
+        assert_eq!(catalog[0].slug, "FLOWSCATALOGKIT_DO_THING");
+
+        // Case/whitespace-insensitive on the toolkit key.
+        let same = fetch_live_toolkit_catalog(&config, "  FlowsCatalogKit  ")
+            .await
+            .expect("cache lookup is case/whitespace-insensitive");
+        assert_eq!(same.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn composio_required_args_and_response_fields_delegate_to_the_live_catalog() {
+        let config = Config::default();
+        seed_live_catalog_cache(
+            "flowsreqkit",
+            vec![contract(
+                "FLOWSREQKIT_SEND",
+                "flowsreqkit",
+                &["to", "body"],
+                &["id", "threadId"],
+            )],
+        );
+
+        assert_eq!(
+            composio_required_args(&config, "FLOWSREQKIT_SEND").await,
+            Some(vec!["to".to_string(), "body".to_string()])
+        );
+        assert_eq!(
+            composio_response_fields(&config, "FLOWSREQKIT_SEND").await,
+            Some(vec!["id".to_string(), "threadId".to_string()])
+        );
+
+        // An unknown slug within a known/seeded toolkit yields None (not a
+        // panic, not an empty-vec false positive).
+        assert_eq!(
+            composio_required_args(&config, "FLOWSREQKIT_UNKNOWN_ACTION").await,
+            None
+        );
+        assert_eq!(
+            composio_response_fields(&config, "FLOWSREQKIT_UNKNOWN_ACTION").await,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn composio_response_fields_distinguishes_unknown_schema_from_empty_fields() {
+        let config = Config::default();
+
+        // Schema KNOWN but empty (`properties: {}`) → `Some(vec![])`.
+        seed_live_catalog_cache(
+            "flowsschemaempty",
+            vec![{
+                let mut c = contract("FLOWSSCHEMAEMPTY_ACTION", "flowsschemaempty", &[], &[]);
+                c.output_schema = Some(json!({ "type": "object", "properties": {} }));
+                c
+            }],
+        );
+        assert_eq!(
+            composio_response_fields(&config, "FLOWSSCHEMAEMPTY_ACTION").await,
+            Some(Vec::new()),
+            "schema known but empty must be Some(vec![]), not None"
+        );
+
+        // Schema UNKNOWN (`output_schema: None`, the degrade-gracefully case)
+        // → `None`, even though the slug itself is found in the catalog.
+        seed_live_catalog_cache(
+            "flowsschemaunknown",
+            vec![contract(
+                "FLOWSSCHEMAUNKNOWN_ACTION",
+                "flowsschemaunknown",
+                &[],
+                &[],
+            )],
+        );
+        assert_eq!(
+            composio_response_fields(&config, "FLOWSSCHEMAUNKNOWN_ACTION").await,
+            None,
+            "an action with no published output schema must be None, not Some(vec![])"
+        );
+    }
+
+    // ── resolve_completion_model raw/BYOK passthrough (issue #4598) ───────────
+    #[test]
+    fn resolve_completion_model_forwards_raw_byok_node_model_verbatim() {
+        // A raw/BYOK id maps to the `chat` role, so the role resolves to the
+        // default model — but the pinned id is what the user selected and must
+        // be the model the completion runs on.
+        assert_eq!(
+            resolve_completion_model(Some("claude-opus-4"), "chat-v1".to_string()),
+            "claude-opus-4"
+        );
+        assert_eq!(
+            resolve_completion_model(Some("deepseek-v4-pro"), "chat-v1".to_string()),
+            "deepseek-v4-pro"
+        );
+    }
+
+    #[test]
+    fn resolve_completion_model_leaves_managed_tier_and_hint_node_models_untouched() {
+        // Managed tiers and every `hint:*` alias keep the role-resolved model.
+        assert_eq!(
+            resolve_completion_model(Some("chat-v1"), "chat-v1".to_string()),
+            "chat-v1"
+        );
+        assert_eq!(
+            resolve_completion_model(Some("hint:reasoning"), "reasoning-v1".to_string()),
+            "reasoning-v1"
+        );
+        assert_eq!(
+            resolve_completion_model(Some("hint:garbage"), "reasoning-v1".to_string()),
+            "reasoning-v1"
+        );
+        // No pinned model, or a whitespace-only pin, keeps the resolved default.
+        assert_eq!(
+            resolve_completion_model(None, "chat-v1".to_string()),
+            "chat-v1"
+        );
+        assert_eq!(
+            resolve_completion_model(Some("   "), "chat-v1".to_string()),
+            "chat-v1"
+        );
     }
 }

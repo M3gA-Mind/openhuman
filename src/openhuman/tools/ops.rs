@@ -262,6 +262,16 @@ pub fn all_tools_with_runtime(
         // graph's front-end agent routes by calling exactly one of these.
         Box::new(crate::openhuman::orchestration::tools::DeferToOrchestratorTool),
         Box::new(crate::openhuman::orchestration::tools::ReplyToChannelTool),
+        // Orchestration session-history read tools (Master chat) — the reasoning
+        // core browses its persisted OpenHuman↔agent transcripts to answer from
+        // its own history. Read-only; workspace-internal store access.
+        Box::new(crate::openhuman::orchestration::tools::ListSessionsTool::new(config.clone())),
+        Box::new(crate::openhuman::orchestration::tools::ReadSessionTool::new(config.clone())),
+        // List the agent's tiny.place contacts (browse-loop entry point).
+        Box::new(crate::openhuman::orchestration::tools::ListContactsTool),
+        // Send-on-behalf: DM another agent for the user. Linked-peers-only,
+        // reuse-or-mint per-peer session id; Write-class external effect.
+        Box::new(crate::openhuman::orchestration::tools::SendToAgentTool::new(config.clone())),
         Box::new(CronAddTool::new(config.clone(), security.clone())),
         Box::new(CronListTool::new(config.clone())),
         Box::new(CronRemoveTool::new(config.clone())),
@@ -286,6 +296,20 @@ pub fn all_tools_with_runtime(
         Box::new(GetFlowRunTool::new(config.clone())),
         Box::new(ListFlowConnectionsTool::new(config.clone())),
         Box::new(SearchToolCatalogTool::new(config.clone())),
+        // Full live contract (schemas, real required_args/output_fields,
+        // primary_array_path) for one action slug found via
+        // search_tool_catalog — the grounding step before WIRING a node's
+        // args/downstream bindings (systemic tool-contract fix, Part 1).
+        Box::new(GetToolContractTool::new(config.clone())),
+        // B12: ONE bounded, READ-ONLY, REAL Composio call to derive the real
+        // primary_array_path/output_fields when the live listing publishes no
+        // output schema at all (verified for every GitHub action) — overrides
+        // get_tool_contract's schema-derived hint for that slug from then on.
+        // Read-scope actions only (hard-refused otherwise), connected
+        // toolkits only — see builder_tools.rs's module doc for the carve-out
+        // this makes in the workflow-builder agent's "no composio_execute"
+        // invariant.
+        Box::new(GetToolOutputSampleTool::new(config.clone())),
         // Ground an `agent` node's `agent_ref` in real registered agent-kind ids
         // (researcher / code_executor / …) — the agent analogue of
         // search_tool_catalog. Read-only.
@@ -295,10 +319,10 @@ pub fn all_tools_with_runtime(
         // workflow-builder prompt requires it to ask the user for confirmation
         // first, and the flow's own approval gate still pauses outbound nodes.
         Box::new(RunFlowTool::new(config.clone())),
-        // Persist a built graph onto an EXISTING saved flow (Write). The one
-        // deliberate carve-out from the belt's propose-only origin: the Flows
-        // prompt bar creates the flow first and hands the agent its id, so the
-        // copilot can finish the "build → dry-run → save" arc itself. It can
+        // Persist a built graph onto an EXISTING saved flow (Write). Used only
+        // when the USER explicitly asks the agent to save; the seeded build
+        // turn from the Flows prompt bar is propose-only (see #4596) — Accept
+        // + the canvas's own Save persist the graph. The tool itself can
         // never create a flow or change enabled/require_approval.
         Box::new(SaveWorkflowTool::new(config.clone())),
         // Flow Scout discovery: the `flow_discovery` agent's terminal emit

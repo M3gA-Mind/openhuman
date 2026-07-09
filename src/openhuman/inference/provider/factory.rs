@@ -41,6 +41,8 @@ use crate::openhuman::inference::provider::openai_codex::{
 use crate::openhuman::inference::provider::openhuman_backend::OpenHumanBackendProvider;
 use crate::openhuman::inference::provider::traits::Provider;
 use crate::openhuman::inference::provider::ProviderRuntimeOptions;
+use std::sync::Arc;
+use tinyagents::harness::model::ChatModel;
 
 /// Sentinel meaning "use the OpenHuman backend session JWT".
 pub const PROVIDER_OPENHUMAN: &str = "openhuman";
@@ -254,6 +256,22 @@ pub(crate) fn is_known_openhuman_tier(model: &str) -> bool {
             | "hint:summarization"
             | "hint:vision"
     )
+}
+
+/// Return whether `model` is a raw BYOK/custom model id that must be forwarded
+/// **verbatim** to provider construction rather than mapped onto a managed tier.
+///
+/// A raw passthrough id is any **non-empty** string that is neither a `hint:*`
+/// alias nor a known managed tier ([`is_known_openhuman_tier`]) — i.e. the model
+/// ids a user pins directly on an agent/node (e.g. `"claude-opus-4"`). The
+/// OpenHuman backend preserves such ids verbatim
+/// ([`super::openhuman_backend`]'s `resolve_model`) and is authoritative over
+/// their validity, so the core must **not** silently collapse them onto
+/// `reasoning-v1` (issue #4598). Managed tiers and every `hint:*` string return
+/// `false` so their existing resolution is untouched.
+pub(crate) fn is_raw_passthrough_model(model: &str) -> bool {
+    let trimmed = model.trim();
+    !trimmed.is_empty() && !trimmed.starts_with("hint:") && !is_known_openhuman_tier(trimmed)
 }
 
 /// Per-tier vision (image-input) capability for the managed OpenHuman backend.
@@ -891,6 +909,75 @@ pub fn create_chat_provider_from_string(
     )
 }
 
+/// Build an `Arc<dyn ChatModel>` for the given workload role.
+///
+/// Phase 1 of the tinyagents inference migration (#4249): the crate
+/// [`ChatModel`] is the model interface the harness and one-shot inference
+/// callers target. Today this wraps the existing openhuman [`Provider`] stack
+/// via [`ProviderModel`](crate::openhuman::tinyagents::model) — a **zero
+/// behaviour change** shim — so callers can move off `Box<dyn Provider>`
+/// incrementally while the provider stack is dismantled underneath. `temperature`
+/// is pinned onto the returned model because the crate model interface bakes
+/// sampling into the model rather than the per-call request.
+pub fn create_chat_model(
+    role: &str,
+    config: &Config,
+    temperature: f64,
+) -> anyhow::Result<Arc<dyn ChatModel<()>>> {
+    Ok(create_chat_model_with_model_id(role, config, temperature)?.0)
+}
+
+/// Like [`create_chat_model`], but also returns the resolved model id.
+///
+/// One-shot callers that persist or log the concrete model (e.g. the memory
+/// summarise audit) need the id the role resolved to; the plain
+/// [`create_chat_model`] drops it.
+pub fn create_chat_model_with_model_id(
+    role: &str,
+    config: &Config,
+    temperature: f64,
+) -> anyhow::Result<(Arc<dyn ChatModel<()>>, String)> {
+    let (provider, model) = create_chat_provider(role, config)?;
+    let chat = chat_model_from_provider(provider, model.clone(), temperature);
+    Ok((chat, model))
+}
+
+/// Build an `Arc<dyn ChatModel>` from an explicit provider string and config.
+///
+/// The [`ChatModel`] counterpart of [`create_chat_provider_from_string`]; see
+/// [`create_chat_model`] for the migration rationale.
+pub fn create_chat_model_from_string(
+    role: &str,
+    provider: &str,
+    config: &Config,
+    temperature: f64,
+) -> anyhow::Result<Arc<dyn ChatModel<()>>> {
+    let (provider, model) = create_chat_provider_from_string(role, provider, config)?;
+    Ok(chat_model_from_provider(provider, model, temperature))
+}
+
+/// Wrap an owned [`Provider`] as an `Arc<dyn ChatModel>` pinned to
+/// `model`/`temperature`.
+///
+/// The single seam where a boxed provider becomes the crate model interface.
+/// As consumers migrate off `Box<dyn Provider>` this stays the conversion point,
+/// shrinking toward the Phase 1 exit criterion (`ProviderModel` constructed in
+/// exactly one place) and, ultimately, the `Provider` trait's deletion in
+/// Phase 4. Exposed `pub(crate)` so a caller that must build a specific provider
+/// itself (e.g. the LinkedIn enrichment path, which deliberately forces the
+/// managed backend) can still hand back a `ChatModel` without naming the trait.
+pub(crate) fn chat_model_from_provider(
+    provider: Box<dyn Provider>,
+    model: String,
+    temperature: f64,
+) -> Arc<dyn ChatModel<()>> {
+    crate::openhuman::tinyagents::model::provider_chat_model(
+        Arc::from(provider),
+        model,
+        temperature,
+    )
+}
+
 /// Build a local-runtime provider without applying the custom-provider session gate.
 ///
 /// Used by setup/probe flows that need to validate an endpoint before the
@@ -1142,17 +1229,28 @@ fn make_openhuman_backend(
             model
         }
         None => {
+            // `model` is guaranteed non-empty here: an empty/whitespace
+            // `default_model` was already normalised to `reasoning-v1` above, and
+            // the managed-tier / summarization branches yield non-empty tier
+            // constants. So a non-`hint:` id is either a known canonical tier or a
+            // raw/BYOK id the user pinned — both forward verbatim; only the log
+            // line differs.
             if is_known_openhuman_tier(&model) {
                 model
             } else {
-                log::warn!(
-                    "[providers][chat-factory] model '{}' is not a recognized OpenHuman \
-                     backend tier (valid: reasoning-v1, chat-v1, agentic-v1, burst-v1, coding-v1, \
-                     reasoning-quick-v1, summarization-v1, vision-v1); falling back to '{}'",
-                    model,
-                    crate::openhuman::config::MODEL_REASONING_V1,
+                // Unrecognised NON-empty model id — a raw/BYOK model the user
+                // pinned (e.g. `claude-opus-4`, written into `default_model` or
+                // a per-agent model pin). Forward it verbatim so the selected
+                // model actually reaches provider construction instead of the
+                // core silently collapsing it onto `reasoning-v1`. The managed
+                // backend is authoritative over validity and returns a clear
+                // error for a genuinely bad id (issue #4598).
+                log::debug!(
+                    "[providers][chat-factory] forwarding raw/BYOK model '{}' verbatim to the \
+                     OpenHuman backend (not a managed tier); the backend validates it",
+                    model
                 );
-                crate::openhuman::config::MODEL_REASONING_V1.to_string()
+                model
             }
         }
     };
@@ -2002,7 +2100,7 @@ pub(super) fn redact_endpoint(url: &str) -> String {
     if let Some(rest) = trimmed.split_once("://") {
         let scheme = rest.0;
         let authority = rest.1.split('/').next().unwrap_or("");
-        let host = authority.split('@').last().unwrap_or(authority);
+        let host = authority.split('@').next_back().unwrap_or(authority);
         let host_no_query = host.split('?').next().unwrap_or(host);
         return format!("{}://{}", scheme, host_no_query);
     }

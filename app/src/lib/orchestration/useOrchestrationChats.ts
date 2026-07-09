@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { socketService } from '../../services/socketService';
 import {
+  type HarnessEventKind,
   orchestrationClient,
   type OrchestrationMessage,
   type OrchestrationMessageEvent,
@@ -37,6 +38,18 @@ export interface ChatMessage {
   body: string;
   timestamp: string;
   encrypted: boolean;
+  /** Typed harness (v2) event kind; absent on legacy v1 text rows. */
+  eventKind?: HarnessEventKind;
+  /** Tool name on tool_call / tool_result rows. */
+  toolName?: string;
+  /** Correlation id linking a tool_call to its tool_result. */
+  callId?: string;
+  /** tool_result outcome — whether the tool call succeeded. */
+  ok?: boolean;
+  /** tool_result — the harness flagged the result as an error. */
+  isError?: boolean;
+  /** tool_result — process exit code when the tool was a command. */
+  exitCode?: number;
 }
 
 export interface ChatWindow {
@@ -84,6 +97,12 @@ function mapMessage(message: OrchestrationMessage): ChatMessage {
     body: message.body,
     timestamp: message.timestamp,
     encrypted: false,
+    ...(message.eventKind ? { eventKind: message.eventKind } : {}),
+    ...(message.toolName ? { toolName: message.toolName } : {}),
+    ...(message.callId ? { callId: message.callId } : {}),
+    ...(message.ok !== undefined ? { ok: message.ok } : {}),
+    ...(message.isError !== undefined ? { isError: message.isError } : {}),
+    ...(message.exitCode !== undefined ? { exitCode: message.exitCode } : {}),
   };
 }
 

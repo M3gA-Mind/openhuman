@@ -182,6 +182,79 @@ const messages: TranslationMap = {
   'nav.activity': 'Aktivität',
   'nav.brain': 'Gehirn',
   'nav.flows': 'Workflows',
+  'nav.orchestration': 'Orchestrierung',
+  'orchPage.subtitle': 'Koordiniere deinen Hauptagenten',
+  'orchPage.group.agent': 'Agent',
+  'orchPage.group.network': 'Netzwerk',
+  'orchPage.group.insights': 'Einblicke',
+  'orchPage.overview.nav': 'Agenten-Graph',
+  'orchPage.tasks.nav': 'Aufgaben',
+  'orchPage.tasks.subtitle': 'Die globale Aufgabentafel des Orchestrators',
+  'orchPage.tasks.colPending': 'Ausstehend',
+  'orchPage.tasks.colActive': 'Aktiv',
+  'orchPage.tasks.colBlocked': 'Blockiert',
+  'orchPage.tasks.colCompleted': 'Abgeschlossen',
+  'orchPage.overview.core': 'Agent-Kern',
+  'orchPage.overview.empty': 'Noch keine Sub-Agenten zum Visualisieren',
+  'orchPage.agent.nav': 'Chat',
+  'orchPage.agent.mainTab': 'Hauptagent',
+  'orchPage.agent.consciousTab': 'Bewusstsein',
+  'orchPage.agent.subconsciousTab': 'Unterbewusstsein',
+  'orchPage.agent.modeLabel': 'Agentengeist',
+  'orchPage.agent.description': 'Chatte mit dem Hauptagenten und beobachte sein Unterbewusstsein',
+  'orchPage.agent.viewSession': 'Sitzung ansehen',
+  'orchPage.sessions.railTitle': 'Aktive Agenten',
+  'orchPage.sessions.empty': 'Noch keine aktiven Agenten',
+  'orchPage.sessions.statusConnected': 'Verbunden',
+  'orchPage.sessions.statusDisconnected': 'Getrennt',
+  'orchPage.sessions.statusWaiting': 'Wartet auf Eingabe',
+  'orchPage.session.runtime': 'Laufzeit',
+  'orchPage.session.directory': 'Verzeichnis',
+  'orchPage.session.runningOn': 'Läuft auf',
+  'orchPage.connections.nav': 'Verbindungen',
+  'orchPage.connections.title': 'Verknüpfte Agenten',
+  'orchPage.connections.description':
+    'Peers, mit denen dein Agent zusammenarbeitet — erweitere einen, um deine Sitzungen damit anzuzeigen',
+  'orchPage.connections.empty': 'Noch keine Verbindungen.',
+  'orchPage.connections.emptyCta': 'Verbindung hinzufügen',
+  'orchPage.connections.statContacts': 'Verbindungen',
+  'orchPage.connections.statPending': 'Ausstehend',
+  'orchPage.connections.statSessions': 'Sitzungen',
+  'orchPage.connections.sessionCount': '{n} Sitzungen',
+  'orchPage.connections.noSessions': 'Keine Sitzungen',
+  'orchPage.connections.messageCount': '{n} Nachrichten',
+  'orchPage.connections.back': 'Verbindungen',
+  'orchPage.connections.replyPlaceholder': 'Antworten…',
+  'orchPage.connections.initTitle': 'Einen Agenten oder eine Instanz initialisieren',
+  'orchPage.connections.initDesc':
+    'Starte einen neuen Sub-Agenten, der an deiner Seite arbeitet. Öffne den Agent-Chat und beschreibe Rolle, Ziel und Tools — OpenHuman stellt eine eigene Instanz bereit, die du von hier aus steuerst.',
+  'orchPage.connections.initCta': 'Im Chat starten',
+  'orchPage.connections.status.needsYou': 'Braucht dich',
+  'orchPage.connections.status.running': 'Läuft',
+  'orchPage.connections.status.idle': 'Inaktiv',
+  'orchPage.connections.status.done': 'Fertig',
+  'orchPage.connections.status.error': 'Fehler',
+  'orchPage.connections.pendingHint': 'Warten auf Annahme',
+  'orchPage.discover.nav': 'Entdecken',
+  'orchPage.discover.linkAction': 'Hinzufügen',
+  'orchPage.discover.identityTitle': 'Deine Auffindbarkeit',
+  'orchPage.discover.notDiscoverableGuide':
+    'Registriere ein @handle, damit andere Agenten dich finden und dir schreiben können.',
+  'orchPage.discover.linkTitle': 'Neuen Agenten verknüpfen',
+  'orchPage.discover.linkDescription':
+    'Füge eine Agenten-ID ein, um eine Verbindungsanfrage zu senden.',
+  'orchPage.discover.noRequests': 'Keine eingehenden Anfragen.',
+  'orchPage.usage.nav': 'Nutzung',
+  'orchPage.usage.connections': 'Verbindungen',
+  'orchPage.usage.balance': 'Guthaben',
+  'orchPage.usage.balanceHint': 'Aktion + Aufladung',
+  'orchPage.usage.cycleSpend': 'Zyklusausgaben',
+  'orchPage.usage.ofBudget': 'von',
+  'orchPage.usage.inferenceCalls': 'Modellaufrufe',
+  'orchPage.usage.integrationCalls': 'Integrationsaufrufe',
+  'orchPage.usage.tokensSaved': 'Gesparte Tokens',
+  'orchPage.usage.saved': 'gespart',
+  'orchPage.usage.footnote': 'Die Nutzung bezieht sich auf deinen aktuellen Abrechnungszeitraum.',
   'nav.agentWorld': 'Tiny Place',
   'nav.wallet': 'Wallet',
   'agentWorld.description':
@@ -262,6 +335,8 @@ const messages: TranslationMap = {
   'tinyplaceOrchestration.title': 'TinyPlace-Relay',
   'tinyplaceOrchestration.subtitle': 'Angepinnte Agentenkanäle und App-Sitzungs-Chats',
   'tinyplaceOrchestration.refresh': 'Aktualisieren',
+  'tinyplaceOrchestration.newInstance': 'Neue Instanz',
+  'tinyplaceOrchestration.newInstanceSoon': 'Demnächst verfügbar',
   'tinyplaceOrchestration.pinned': 'Angepinnt',
   'tinyplaceOrchestration.sessions': 'Sitzungen',
   'tinyplaceOrchestration.contacts': 'Kontakte',
@@ -311,7 +386,12 @@ const messages: TranslationMap = {
   'tinyplaceOrchestration.identity.discoverable': 'Auffindbar',
   'tinyplaceOrchestration.identity.undiscoverable': 'Nicht auffindbar',
   'tinyplaceOrchestration.identity.undiscoverableHint':
-    'Registriere ein @handle, damit Peers dir schreiben können.',
+    'Veröffentliche deine Verzeichniskarte und deinen Verschlüsselungsschlüssel, damit Peers dir schreiben können.',
+  'tinyplaceOrchestration.identity.makeDiscoverable': 'Auffindbar machen',
+  'tinyplaceOrchestration.identity.republish': 'Schlüssel neu veröffentlichen',
+  'tinyplaceOrchestration.identity.publishing': 'Wird veröffentlicht…',
+  'tinyplaceOrchestration.identity.publishFailed':
+    'Veröffentlichung fehlgeschlagen — erneut versuchen',
   'tinyplaceOrchestration.identity.card': 'Verzeichniskarte',
   'tinyplaceOrchestration.identity.key': 'Verschlüsselungsschlüssel',
   'tinyplaceOrchestration.identity.published': 'Veröffentlicht',
@@ -1032,7 +1112,7 @@ const messages: TranslationMap = {
     'Onboarding konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.',
   'onboarding.apiKeys.title': 'Fügen wir deine API-Schlüssel hinzu',
   'onboarding.apiKeys.subtitle':
-    'Du kannst sie jetzt einfügen oder überspringen und später unter „Einstellungen“ > „KI“ hinzufügen. Schlüssel werden auf diesem Gerät gespeichert und im Ruhezustand verschlüsselt.',
+    'Du kannst sie jetzt einfügen oder überspringen und später unter „Verbindungen“ > „API-Schlüssel“ hinzufügen. Schlüssel werden auf diesem Gerät gespeichert und im Ruhezustand verschlüsselt.',
   'onboarding.apiKeys.openaiLabel': 'OpenAI API Schlüssel',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -3219,6 +3299,19 @@ const messages: TranslationMap = {
     'Der Agent möchte eine Aktion ausführen, die Ihre Zustimmung erfordert.',
   'chat.approval.title': 'Genehmigung erforderlich',
   'chat.approval.tool': 'Werkzeug:',
+  'chat.flowApproval.title': 'Workflow benötigt Genehmigung',
+  'chat.flowApproval.fallback':
+    'Ein Workflow-Lauf möchte eine Aktion ausführen, die deine Genehmigung erfordert.',
+  'chat.flowApproval.tool': 'Werkzeug:',
+  'chat.flowApproval.flow': 'Ablauf:',
+  'chat.flowApproval.approve': 'Einmal genehmigen',
+  'chat.flowApproval.approveAlways': 'Immer genehmigen',
+  'chat.flowApproval.approveAlwaysHint':
+    'Diesen Prüfpunkt für zukünftige Läufe dieses Flows überspringen',
+  'chat.flowApproval.deny': 'Ablehnen',
+  'chat.flowApproval.deciding': 'Arbeiten…',
+  'chat.flowApproval.error':
+    'Deine Entscheidung konnte nicht gespeichert werden — bitte versuche es erneut.',
   'chat.flowProposal.title': 'Workflow-Vorschlag',
   'chat.flowProposal.subtitle': 'Prüfen Sie diese Automatisierung, bevor Sie sie speichern.',
   'chat.flowProposal.triggerLabel': 'Auslöser',
@@ -3789,6 +3882,16 @@ const messages: TranslationMap = {
   'notifications.flow.approveHint': 'Workflow nach diesem Kontrollpunkt fortsetzen',
   'notifications.flow.dismissHint': 'Diesen Hinweis ausblenden, ohne den Workflow fortzusetzen',
   'notifications.flow.viewRun': 'Lauf anzeigen',
+  'notifications.flowGate.title': 'Workflow benötigt Genehmigung',
+  'notifications.flowGate.tool': 'Werkzeug:',
+  'notifications.flowGate.approve': 'Einmal genehmigen',
+  'notifications.flowGate.approveAlways': 'Immer genehmigen',
+  'notifications.flowGate.approveAlwaysHint':
+    'Diesen Prüfpunkt für zukünftige Läufe dieses Flows überspringen',
+  'notifications.flowGate.deny': 'Ablehnen',
+  'notifications.flowGate.deciding': 'Arbeiten…',
+  'notifications.flowGate.error':
+    'Deine Entscheidung konnte nicht gespeichert werden — bitte versuche es erneut.',
   'flowRuns.inspector.title': 'Laufdetails',
   'flowRuns.inspector.startedAt': 'Gestartet',
   'flowRuns.inspector.finishedAt': 'Beendet',
@@ -3796,6 +3899,15 @@ const messages: TranslationMap = {
   'flowRuns.inspector.error': 'Fehler',
   'flowRuns.inspector.pendingApprovals': 'Ausstehende Genehmigungen',
   'flowRuns.inspector.pendingApprovalsCount': '{count} Knoten warten auf Genehmigung',
+  'flowRuns.inspector.approval.tool': 'Werkzeug:',
+  'flowRuns.inspector.approval.approve': 'Einmal genehmigen',
+  'flowRuns.inspector.approval.approveAlways': 'Immer genehmigen',
+  'flowRuns.inspector.approval.approveAlwaysHint':
+    'Diesen Prüfpunkt für zukünftige Läufe dieses Flows überspringen',
+  'flowRuns.inspector.approval.deny': 'Ablehnen',
+  'flowRuns.inspector.approval.deciding': 'Arbeiten…',
+  'flowRuns.inspector.approval.loadError':
+    'Ausstehende Genehmigungen für diesen Lauf konnten nicht geladen werden.',
   'flowRuns.inspector.steps': 'Schritte',
   'flowRuns.inspector.noSteps': 'Noch keine Schritte aufgezeichnet.',
   'flowRuns.inspector.output': 'Ausgabe',
@@ -4146,8 +4258,8 @@ const messages: TranslationMap = {
   'pages.settings.accountSection.description':
     'Wiederherstellungsphrase, Team, Verbindungen und Datenschutzeinstellungen.',
   'pages.settings.accountSection.title': 'Konto',
-  'pages.settings.ai.llm': 'Llm',
-  'pages.settings.ai.llmDesc': 'Llm absch',
+  'pages.settings.ai.llm': 'LLM',
+  'pages.settings.ai.llmDesc': 'Sprachmodell-Anbieter und Routing',
   'pages.settings.ai.voice': 'Stimme',
   'pages.settings.ai.voiceDesc': 'Sprachbeschreibung',
   'pages.settings.aiSection.description':
@@ -5406,6 +5518,7 @@ const messages: TranslationMap = {
   'settings.approvalHistory.decidedAt': 'Entschieden am {date}',
   'settings.approvalHistory.decision.approveOnce': 'Einmal genehmigt',
   'settings.approvalHistory.decision.approveAlways': 'Immer erlaubt',
+  'settings.approvalHistory.decision.approveAlwaysFlow': 'Immer erlaubt (Flow)',
   'settings.approvalHistory.decision.deny': 'Denied',
   'settings.theme.variantLight': 'Hell',
   'settings.theme.variantDark': 'Dunkel',
@@ -5482,6 +5595,11 @@ const messages: TranslationMap = {
   'settings.appearance.fontSizeXLargeDesc': 'Der größte Text für maximale Lesbarkeit.',
   'settings.appearance.fontSizeHelperText':
     'Skaliert den Text in der gesamten App — Chat, Einstellungen und Bereiche — unabhängig von der Schrifteinstellung deines Systems.',
+  'settings.appearance.fontSizeCustomLabel': 'Benutzerdefinierte Größe',
+  'settings.appearance.fontSizeCustomAria': 'Benutzerdefinierte Schriftgröße in Pixeln',
+  'settings.appearance.fontSizeCustomSliderAria':
+    'Schieberegler für benutzerdefinierte Schriftgröße, in Pixeln',
+  'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': 'Untere Tab-Leiste',
   'settings.appearance.tabBarAlwaysShowLabels': 'Beschriftungen immer anzeigen',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':
@@ -5526,6 +5644,13 @@ const messages: TranslationMap = {
     'Wähle die Maskottchenfarbe aus, die in der gesamten App verwendet wird',
   'settings.mascot.noCharacters': 'Es sind noch keine OpenHuman Zeichen verfügbar',
   'settings.mascot.noColorVariants': 'Keine Farbvarianten',
+  'settings.mascot.secondaryHeading': 'Meeting-Duo (zweites Maskottchen)',
+  'settings.mascot.secondaryDesc':
+    'Füge ein zweites Maskottchen für Meetings hinzu. Sind zwei gesetzt, erscheinen sie gemeinsam und sprechen abwechselnd. Für ein einzelnes Maskottchen auf Keines lassen.',
+  'settings.mascot.secondaryNone': 'Keines (einzelnes Maskottchen)',
+  'settings.mascot.perMascotVoiceHeading': 'Stimmen pro Maskottchen',
+  'settings.mascot.primaryVoiceLabel': 'Stimme des ersten Maskottchens',
+  'settings.mascot.secondaryVoiceLabel': 'Stimme des zweiten Maskottchens',
   'settings.mascot.voice.current': 'aktuell',
   'settings.mascot.voice.customDesc':
     'Sprach-IDs findest du unter api.elevenlabs.io/v1/voices oder in deinem ElevenLabs-Dashboard. Es wird nur die ID gespeichert – dein API-Schlüssel bleibt im Backend.',
@@ -6726,21 +6851,21 @@ const messages: TranslationMap = {
   'memoryTree.status.extractionCoverage':
     'Extraktionsabdeckung: {pct}% der Abschnitte haben Struktur',
   'memory.health.remediation.budget_exhausted':
-    'Die Speicher-Embeddings haben das verwaltete Budget erreicht. Richte lokale Ollama-Embeddings ein (Einstellungen → KI → Einbettungen) oder füge deinen eigenen Embeddings-API-Schlüssel hinzu, um den Speicher weiter aufzubauen.',
+    'Die Speicher-Embeddings haben das verwaltete Budget erreicht. Richte lokale Ollama-Embeddings ein (Verbindungen → API-Schlüssel → Einbettungen) oder füge deinen eigenen Embeddings-API-Schlüssel hinzu, um den Speicher weiter aufzubauen.',
   'memory.health.remediation.auth_missing':
-    'Keine Embeddings-Anmeldedaten gefunden. Melde dich bei OpenHuman an oder richte lokale Ollama-Embeddings unter Einstellungen → KI → Einbettungen ein.',
+    'Keine Embeddings-Anmeldedaten gefunden. Melde dich bei OpenHuman an oder richte lokale Ollama-Embeddings unter Verbindungen → API-Schlüssel → Einbettungen ein.',
   'memory.health.remediation.auth_invalid':
-    'Deine Embeddings-Anmeldedaten wurden abgelehnt. Authentifiziere dich erneut oder wechsle unter Einstellungen → KI → Einbettungen zu lokalen Ollama-Embeddings.',
+    'Deine Embeddings-Anmeldedaten wurden abgelehnt. Authentifiziere dich erneut oder wechsle unter Verbindungen → API-Schlüssel → Einbettungen zu lokalen Ollama-Embeddings.',
   'memory.health.remediation.embeddings_unconfigured':
-    'Es ist kein Embeddings-Anbieter konfiguriert, daher ist die semantische Suche deaktiviert. Richte lokale Ollama-Embeddings ein (empfohlen) oder füge unter Einstellungen → KI → Einbettungen einen Embeddings-Schlüssel hinzu.',
+    'Es ist kein Embeddings-Anbieter konfiguriert, daher ist die semantische Suche deaktiviert. Richte lokale Ollama-Embeddings ein (empfohlen) oder füge unter Verbindungen → API-Schlüssel → Einbettungen einen Embeddings-Schlüssel hinzu.',
   'memory.health.remediation.embedding_dim_mismatch':
     'Das Embedding-Modell liefert die falsche Vektorgröße (der Speicher erwartet 1024 Dimensionen). Wähle ein Modell mit 1024 Dimensionen oder fordere 1024 Dimensionen von deinem Anbieter an.',
   'memory.health.remediation.local_model_unavailable':
-    'Ein erforderliches lokales Modell ist nicht verfügbar. Installiere/starte Ollama und lade das Modell herunter, oder wechsle diese Arbeitslast unter Einstellungen → KI zu einem Cloud-Anbieter.',
+    'Ein erforderliches lokales Modell ist nicht verfügbar. Installiere/starte Ollama und lade das Modell herunter, oder wechsle diese Arbeitslast unter Verbindungen → API-Schlüssel zu einem Cloud-Anbieter.',
   'memory.health.remediation.extraction_timeout':
-    'Das Modell zur Speicherextraktion überschreitet die Zeit, daher hat das Wiki wenig Struktur. Wechsle das Modell für die Speicherextraktion unter Einstellungen → KI zu einem schnelleren.',
+    'Das Modell zur Speicherextraktion überschreitet die Zeit, daher hat das Wiki wenig Struktur. Wechsle das Modell für die Speicherextraktion unter Verbindungen → API-Schlüssel → LLM zu einem schnelleren.',
   'memory.health.remediation.summarizer_unavailable':
-    'Für „Zusammenfassungsbäume erstellen” ist kein Zusammenfassungsanbieter verfügbar. Aktiviere die lokale KI (Ollama) oder aktiviere die Cloud-Zusammenfassung unter Einstellungen → KI → Speicher.',
+    'Für „Zusammenfassungsbäume erstellen” ist kein Zusammenfassungsanbieter verfügbar. Aktiviere die lokale KI (Ollama) oder setze memory_tree.cloud_summarization_opt_in=true und konfiguriere einen LLM-Anbieter unter Verbindungen → API-Schlüssel → LLM.',
   'memory.health.remediation.empty_input_refused':
     'Ein Speicherelement wurde übersprungen, weil sein Text leer war. Keine Aktion erforderlich — neue Einträge werden weiterhin normal eingebettet.',
   'memory.health.remediation.storage_unavailable':
@@ -6748,7 +6873,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.transient':
     'Ein vorübergehender Fehler hat die Speicherverarbeitung unterbrochen. Es wird automatisch erneut versucht.',
   'memory.health.remediation.unknown':
-    'Bei der Speicherverarbeitung ist ein Problem aufgetreten. Überprüfe Einstellungen → KI für die Konfiguration.',
+    'Bei der Speicherverarbeitung ist ein Problem aufgetreten. Überprüfe Verbindungen → API-Schlüssel für die Konfiguration.',
   // Chat — agent-generated artifacts (#2779)
 
   // Chat composer toolbar

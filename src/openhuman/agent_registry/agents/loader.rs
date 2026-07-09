@@ -299,6 +299,24 @@ pub const BUILTINS: &[BuiltinAgent] = &[
         prompt_fn: crate::openhuman::orchestration::reasoning_agent::prompt::build,
         graph_fn: Some(crate::openhuman::orchestration::reasoning_agent::graph::graph),
     },
+    // OpenHuman talking directly to its human in the Master chat — same tier +
+    // tiny.place tool belt as the reasoning core, human-facing prompt. Runs in the
+    // `execute` node for a local Master cycle (see orchestration::ops).
+    BuiltinAgent {
+        id: "master_agent",
+        toml: include_str!("../../orchestration/master_agent/agent.toml"),
+        prompt_fn: crate::openhuman::orchestration::master_agent::prompt::build,
+        graph_fn: Some(crate::openhuman::orchestration::reasoning_agent::graph::graph),
+    },
+    // Tool-free relay: reports an external agent's (untrusted) reply back into the
+    // Master chat as OpenHuman's own message. No tiny.place tools / sub-agents, so
+    // peer text can't prompt-inject OpenHuman into acting. Default single-turn graph.
+    BuiltinAgent {
+        id: "master_reporter",
+        toml: include_str!("../../orchestration/master_reporter/agent.toml"),
+        prompt_fn: crate::openhuman::orchestration::master_reporter::prompt::build,
+        graph_fn: None,
+    },
     // Workflow-authoring specialist (Phase 5a): builds tinyflows automation
     // graphs from natural language and returns a validated PROPOSAL — it never
     // persists or enables a flow. Deliberately narrow propose-or-read tool belt.
@@ -1035,9 +1053,13 @@ mod tests {
         // SAVED to test it (a real run the prompt gates behind user
         // confirmation), and `save_workflow` a built graph onto a flow the host
         // ALREADY created (the prompt bar's instant-create path) — but it can
-        // never create/enable a flow or perform a raw integration action. This
-        // pins the invariant in the agent definition itself, not just the tool
-        // implementations.
+        // never create/enable a flow or perform an arbitrary raw integration
+        // action. One narrow, deliberate carve-out (B12): `get_tool_output_sample`
+        // DOES make a real Composio call, but only ever a Read-scope one
+        // (hard-refused otherwise, regardless of the user's scope preference)
+        // against an already-connected toolkit — see `builder_tools.rs`'s
+        // module doc. This pins the invariant in the agent definition itself,
+        // not just the tool implementations.
         let def = find("workflow_builder");
         assert_eq!(def.agent_tier, AgentTier::Worker);
         assert_eq!(def.delegate_name.as_deref(), Some("build_workflow"));
@@ -1063,6 +1085,8 @@ mod tests {
                     "get_flow_run",
                     "list_flow_connections",
                     "search_tool_catalog",
+                    "get_tool_contract",
+                    "get_tool_output_sample",
                     "list_agent_profiles",
                     "dry_run_workflow",
                     "run_flow",
@@ -2011,6 +2035,7 @@ mod tests {
                     | "subconscious"
                     | "frontend_agent"
                     | "reasoning_agent"
+                    | "master_agent"
                     | "flow_discovery"
             ) {
                 continue;
@@ -2018,7 +2043,7 @@ mod tests {
             assert_eq!(
                 def.agent_tier,
                 AgentTier::Worker,
-                "{} should default to worker tier (only orchestrator/planner/subconscious/frontend_agent/reasoning_agent/flow_discovery are non-worker today)",
+                "{} should default to worker tier (only orchestrator/planner/subconscious/frontend_agent/reasoning_agent/master_agent/flow_discovery are non-worker today)",
                 def.id
             );
         }

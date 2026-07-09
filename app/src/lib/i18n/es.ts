@@ -179,6 +179,79 @@ const messages: TranslationMap = {
   'nav.activity': 'Actividad',
   'nav.brain': 'Cerebro',
   'nav.flows': 'Flujos de trabajo',
+  'nav.orchestration': 'Orquestación',
+  'orchPage.subtitle': 'Coordina tu agente principal',
+  'orchPage.group.agent': 'Agente',
+  'orchPage.group.network': 'Red',
+  'orchPage.group.insights': 'Estadísticas',
+  'orchPage.overview.nav': 'Grafo de agentes',
+  'orchPage.tasks.nav': 'Tareas',
+  'orchPage.tasks.subtitle': 'El tablero de tareas global del orquestador',
+  'orchPage.tasks.colPending': 'Pendiente',
+  'orchPage.tasks.colActive': 'Activo',
+  'orchPage.tasks.colBlocked': 'Bloqueado',
+  'orchPage.tasks.colCompleted': 'Completado',
+  'orchPage.overview.core': 'Núcleo del agente',
+  'orchPage.overview.empty': 'Aún no hay subagentes para visualizar',
+  'orchPage.agent.nav': 'Chat',
+  'orchPage.agent.mainTab': 'Agente principal',
+  'orchPage.agent.consciousTab': 'Consciente',
+  'orchPage.agent.subconsciousTab': 'Subconsciente',
+  'orchPage.agent.modeLabel': 'Mente del agente',
+  'orchPage.agent.description': 'Chatea con el agente principal y observa su subconsciente',
+  'orchPage.agent.viewSession': 'Ver sesión',
+  'orchPage.sessions.railTitle': 'Agentes activos',
+  'orchPage.sessions.empty': 'Aún no hay agentes activos',
+  'orchPage.sessions.statusConnected': 'Conectado',
+  'orchPage.sessions.statusDisconnected': 'Desconectado',
+  'orchPage.sessions.statusWaiting': 'Esperando entrada',
+  'orchPage.session.runtime': 'Tiempo de ejecución',
+  'orchPage.session.directory': 'Directorio',
+  'orchPage.session.runningOn': 'Ejecutándose en',
+  'orchPage.connections.nav': 'Conexiones',
+  'orchPage.connections.title': 'Agentes vinculados',
+  'orchPage.connections.description':
+    'Pares con los que se coordina tu agente: expande uno para ver tus sesiones con él',
+  'orchPage.connections.empty': 'Aún no hay conexiones.',
+  'orchPage.connections.emptyCta': 'Agregar una conexión',
+  'orchPage.connections.statContacts': 'Conexiones',
+  'orchPage.connections.statPending': 'Pendiente',
+  'orchPage.connections.statSessions': 'Sesiones',
+  'orchPage.connections.sessionCount': '{n} sesiones',
+  'orchPage.connections.noSessions': 'Sin sesiones',
+  'orchPage.connections.messageCount': '{n} mensajes',
+  'orchPage.connections.back': 'Conexiones',
+  'orchPage.connections.replyPlaceholder': 'Responder…',
+  'orchPage.connections.initTitle': 'Inicializar un agente o una instancia',
+  'orchPage.connections.initDesc':
+    'Crea un nuevo subagente para trabajar contigo. Abre el chat del agente y describe el rol, el objetivo y las herramientas que debe usar — OpenHuman aprovisiona una instancia dedicada que puedes dirigir desde aquí.',
+  'orchPage.connections.initCta': 'Empezar en el chat',
+  'orchPage.connections.status.needsYou': 'Te necesita',
+  'orchPage.connections.status.running': 'En ejecución',
+  'orchPage.connections.status.idle': 'Inactivo',
+  'orchPage.connections.status.done': 'Hecho',
+  'orchPage.connections.status.error': 'Fallo',
+  'orchPage.connections.pendingHint': 'Esperando aceptación',
+  'orchPage.discover.nav': 'Descubrir',
+  'orchPage.discover.linkAction': 'Agregar',
+  'orchPage.discover.identityTitle': 'Tu visibilidad',
+  'orchPage.discover.notDiscoverableGuide':
+    'Registra un @handle para que otros agentes puedan encontrarte y escribirte.',
+  'orchPage.discover.linkTitle': 'Vincular un nuevo agente',
+  'orchPage.discover.linkDescription':
+    'Pega un ID de agente para enviar una solicitud de conexión.',
+  'orchPage.discover.noRequests': 'No hay solicitudes entrantes.',
+  'orchPage.usage.nav': 'Uso',
+  'orchPage.usage.connections': 'Conexiones',
+  'orchPage.usage.balance': 'Saldo de crédito',
+  'orchPage.usage.balanceHint': 'Promocional + recarga',
+  'orchPage.usage.cycleSpend': 'Gasto del ciclo',
+  'orchPage.usage.ofBudget': 'de',
+  'orchPage.usage.inferenceCalls': 'Llamadas al modelo',
+  'orchPage.usage.integrationCalls': 'Llamadas de integración',
+  'orchPage.usage.tokensSaved': 'Tokens ahorrados',
+  'orchPage.usage.saved': 'ahorrado',
+  'orchPage.usage.footnote': 'El uso refleja tu ciclo de facturación actual.',
   'nav.agentWorld': 'Tiny Place',
   'nav.wallet': 'Cartera',
   'agentWorld.description':
@@ -259,6 +332,8 @@ const messages: TranslationMap = {
   'tinyplaceOrchestration.title': 'Relay de TinyPlace',
   'tinyplaceOrchestration.subtitle': 'Canales de agentes fijados y chats de sesiones de app',
   'tinyplaceOrchestration.refresh': 'Actualizar',
+  'tinyplaceOrchestration.newInstance': 'Nueva instancia',
+  'tinyplaceOrchestration.newInstanceSoon': 'Próximamente',
   'tinyplaceOrchestration.pinned': 'Fijados',
   'tinyplaceOrchestration.sessions': 'Sesiones',
   'tinyplaceOrchestration.contacts': 'Contactos',
@@ -308,7 +383,11 @@ const messages: TranslationMap = {
   'tinyplaceOrchestration.identity.discoverable': 'Detectable',
   'tinyplaceOrchestration.identity.undiscoverable': 'No detectable',
   'tinyplaceOrchestration.identity.undiscoverableHint':
-    'Registra un @handle para que otros agentes puedan escribirte.',
+    'Publica tu tarjeta de directorio y tu clave de cifrado para que otros agentes puedan escribirte.',
+  'tinyplaceOrchestration.identity.makeDiscoverable': 'Hacer detectable',
+  'tinyplaceOrchestration.identity.republish': 'Volver a publicar claves',
+  'tinyplaceOrchestration.identity.publishing': 'Publicando…',
+  'tinyplaceOrchestration.identity.publishFailed': 'Error al publicar — inténtalo de nuevo',
   'tinyplaceOrchestration.identity.card': 'Tarjeta de directorio',
   'tinyplaceOrchestration.identity.key': 'Clave de cifrado',
   'tinyplaceOrchestration.identity.published': 'Publicado',
@@ -1024,7 +1103,7 @@ const messages: TranslationMap = {
     'No se pudo completar el proceso de incorporación. Por favor, inténtalo de nuevo.',
   'onboarding.apiKeys.title': 'Agreguemos tus claves API',
   'onboarding.apiKeys.subtitle':
-    'Puedes pegarlas ahora u omitir y agregarlas luego en Configuración › IA. Las claves se guardan en este dispositivo, cifradas en reposo.',
+    'Puedes pegarlas ahora u omitir y agregarlas luego en Conexiones › claves API. Las claves se guardan en este dispositivo, cifradas en reposo.',
   'onboarding.apiKeys.openaiLabel': 'Clave API de OpenAI',
   'onboarding.apiKeys.openaiPlaceholder': 'sk-...',
   'onboarding.apiKeys.openaiOauthHint':
@@ -3197,6 +3276,18 @@ const messages: TranslationMap = {
   'chat.approval.fallback': 'El agente quiere ejecutar una acción que necesita su aprobación.',
   'chat.approval.title': 'Aprobación necesaria',
   'chat.approval.tool': 'Herramienta:',
+  'chat.flowApproval.title': 'El flujo de trabajo necesita aprobación',
+  'chat.flowApproval.fallback':
+    'Una ejecución de flujo de trabajo quiere realizar una acción que necesita tu aprobación.',
+  'chat.flowApproval.tool': 'Herramienta:',
+  'chat.flowApproval.flow': 'Flujo:',
+  'chat.flowApproval.approve': 'Aprobar una vez',
+  'chat.flowApproval.approveAlways': 'Aprobar siempre',
+  'chat.flowApproval.approveAlwaysHint':
+    'Omitir esta verificación en futuras ejecuciones de este flujo',
+  'chat.flowApproval.deny': 'Denegar',
+  'chat.flowApproval.deciding': 'Laboral…',
+  'chat.flowApproval.error': 'No se pudo registrar su decisión; inténtelo de nuevo.',
   'chat.flowProposal.title': 'Propuesta de flujo de trabajo',
   'chat.flowProposal.subtitle': 'Revisa esta automatización antes de guardarla.',
   'chat.flowProposal.triggerLabel': 'Disparador',
@@ -3762,6 +3853,15 @@ const messages: TranslationMap = {
   'notifications.flow.approveHint': 'Reanudar el flujo de trabajo después de este punto de control',
   'notifications.flow.dismissHint': 'Ocultar este aviso sin reanudar el flujo de trabajo',
   'notifications.flow.viewRun': 'Ver ejecución',
+  'notifications.flowGate.title': 'El flujo de trabajo necesita aprobación',
+  'notifications.flowGate.tool': 'Herramienta:',
+  'notifications.flowGate.approve': 'Aprobar una vez',
+  'notifications.flowGate.approveAlways': 'Aprobar siempre',
+  'notifications.flowGate.approveAlwaysHint':
+    'Omitir esta verificación en futuras ejecuciones de este flujo',
+  'notifications.flowGate.deny': 'Denegar',
+  'notifications.flowGate.deciding': 'Laboral…',
+  'notifications.flowGate.error': 'No se pudo registrar su decisión; inténtelo de nuevo.',
   'flowRuns.inspector.title': 'Detalles de la ejecución',
   'flowRuns.inspector.startedAt': 'Iniciado',
   'flowRuns.inspector.finishedAt': 'Finalizado',
@@ -3769,6 +3869,15 @@ const messages: TranslationMap = {
   'flowRuns.inspector.error': 'Error',
   'flowRuns.inspector.pendingApprovals': 'Aprobaciones pendientes',
   'flowRuns.inspector.pendingApprovalsCount': '{count} nodo(s) esperando aprobación',
+  'flowRuns.inspector.approval.tool': 'Herramienta:',
+  'flowRuns.inspector.approval.approve': 'Aprobar una vez',
+  'flowRuns.inspector.approval.approveAlways': 'Aprobar siempre',
+  'flowRuns.inspector.approval.approveAlwaysHint':
+    'Omitir esta verificación en futuras ejecuciones de este flujo',
+  'flowRuns.inspector.approval.deny': 'Denegar',
+  'flowRuns.inspector.approval.deciding': 'Laboral…',
+  'flowRuns.inspector.approval.loadError':
+    'No se pudieron cargar las aprobaciones pendientes de esta ejecución.',
   'flowRuns.inspector.steps': 'Pasos',
   'flowRuns.inspector.noSteps': 'Aún no se han registrado pasos.',
   'flowRuns.inspector.output': 'Salida',
@@ -5363,6 +5472,7 @@ const messages: TranslationMap = {
   'settings.approvalHistory.decidedAt': 'Decidido el {date}',
   'settings.approvalHistory.decision.approveOnce': 'Aprobado una vez',
   'settings.approvalHistory.decision.approveAlways': 'Siempre permitido',
+  'settings.approvalHistory.decision.approveAlwaysFlow': 'Siempre permitido (flujo)',
   'settings.approvalHistory.decision.deny': 'Denegado',
   'settings.theme.variantLight': 'Claro',
   'settings.theme.variantDark': 'Oscuro',
@@ -5439,6 +5549,11 @@ const messages: TranslationMap = {
   'settings.appearance.fontSizeXLargeDesc': 'El texto más grande, para la máxima legibilidad.',
   'settings.appearance.fontSizeHelperText':
     'Escala el texto en toda la app —chat, ajustes y paneles— independientemente de la configuración de fuente de tu sistema.',
+  'settings.appearance.fontSizeCustomLabel': 'Tamaño personalizado',
+  'settings.appearance.fontSizeCustomAria': 'Tamaño de fuente personalizado en píxeles',
+  'settings.appearance.fontSizeCustomSliderAria':
+    'Control deslizante de tamaño de fuente personalizado, en píxeles',
+  'settings.appearance.fontSizeUnit': 'px',
   'settings.appearance.tabBarHeading': 'Barra de pestañas inferior',
   'settings.appearance.tabBarAlwaysShowLabels': 'Mostrar siempre etiquetas',
   'settings.appearance.tabBarAlwaysShowLabelsDesc':
@@ -5482,6 +5597,13 @@ const messages: TranslationMap = {
   'settings.mascot.menuDesc': 'Elige el color de la mascota usado en toda la app',
   'settings.mascot.noCharacters': 'Aún no hay personajes de OpenHuman disponibles',
   'settings.mascot.noColorVariants': 'Sin variantes de color',
+  'settings.mascot.secondaryHeading': 'Dúo de reunión (segunda mascota)',
+  'settings.mascot.secondaryDesc':
+    'Añade una segunda mascota para las reuniones. Al fijar dos, aparecen juntas y hablan por turnos. Déjalo en Ninguna para una sola mascota.',
+  'settings.mascot.secondaryNone': 'Ninguna (una sola mascota)',
+  'settings.mascot.perMascotVoiceHeading': 'Voces por mascota',
+  'settings.mascot.primaryVoiceLabel': 'Voz de la primera mascota',
+  'settings.mascot.secondaryVoiceLabel': 'Voz de la segunda mascota',
   'settings.mascot.voice.current': 'actual',
   'settings.mascot.voice.customDesc':
     'Encuentra los ID de voz en api.elevenlabs.io/v1/voices o en tu panel de ElevenLabs. Solo se almacena el ID — tu clave de API permanece en el backend.',
@@ -6678,21 +6800,21 @@ const messages: TranslationMap = {
   'memoryTree.status.extractionCoverage':
     'Cobertura de extracción: {pct}% de los fragmentos tienen estructura',
   'memory.health.remediation.budget_exhausted':
-    'Los embeddings de memoria agotaron el presupuesto gestionado. Configura embeddings locales de Ollama (Configuración → IA → Incrustaciones) o añade tu propia clave de API de embeddings para seguir construyendo la memoria.',
+    'Los embeddings de memoria agotaron el presupuesto gestionado. Configura embeddings locales de Ollama (Conexiones → Claves de API → Incrustaciones) o añade tu propia clave de API de embeddings para seguir construyendo la memoria.',
   'memory.health.remediation.auth_missing':
-    'No se encontraron credenciales de embeddings. Inicia sesión en OpenHuman o configura embeddings locales de Ollama en Configuración → IA → Incrustaciones.',
+    'No se encontraron credenciales de embeddings. Inicia sesión en OpenHuman o configura embeddings locales de Ollama en Conexiones → Claves de API → Incrustaciones.',
   'memory.health.remediation.auth_invalid':
-    'Tus credenciales de embeddings fueron rechazadas. Vuelve a autenticarte o cambia a embeddings locales de Ollama en Configuración → IA → Incrustaciones.',
+    'Tus credenciales de embeddings fueron rechazadas. Vuelve a autenticarte o cambia a embeddings locales de Ollama en Conexiones → Claves de API → Incrustaciones.',
   'memory.health.remediation.embeddings_unconfigured':
-    'No hay ningún proveedor de embeddings configurado, por lo que la recuperación semántica está desactivada. Configura embeddings locales de Ollama (recomendado) o añade una clave de embeddings en Configuración → IA → Incrustaciones.',
+    'No hay ningún proveedor de embeddings configurado, por lo que la recuperación semántica está desactivada. Configura embeddings locales de Ollama (recomendado) o añade una clave de embeddings en Conexiones → Claves de API → Incrustaciones.',
   'memory.health.remediation.embedding_dim_mismatch':
     'El modelo de embeddings devuelve un tamaño de vector incorrecto (la memoria espera 1024 dimensiones). Elige un modelo de 1024 dimensiones o solicita 1024 dimensiones a tu proveedor.',
   'memory.health.remediation.local_model_unavailable':
-    'No hay disponible un modelo local requerido. Instala/ejecuta Ollama y descarga el modelo, o cambia esta carga de trabajo a un proveedor en la nube en Configuración → IA.',
+    'No hay disponible un modelo local requerido. Instala/ejecuta Ollama y descarga el modelo, o cambia esta carga de trabajo a un proveedor en la nube en Conexiones → Claves de API.',
   'memory.health.remediation.extraction_timeout':
-    'El modelo de extracción de memoria está agotando el tiempo de espera, por lo que la wiki tiene poca estructura. Cambia el modelo de extracción de memoria por uno más rápido en Configuración → IA.',
+    'El modelo de extracción de memoria está agotando el tiempo de espera, por lo que la wiki tiene poca estructura. Cambia el modelo de extracción de memoria por uno más rápido en Conexiones → Claves de API → LLM.',
   'memory.health.remediation.summarizer_unavailable':
-    'No hay ningún proveedor de resúmenes disponible para Crear árboles de resumen. Activa la IA local (Ollama) o activa el resumen en la nube en Configuración → IA → Memoria.',
+    'No hay ningún proveedor de resúmenes disponible para Crear árboles de resumen. Activa la IA local (Ollama), o configura memory_tree.cloud_summarization_opt_in=true y un proveedor LLM en Conexiones → Claves de API → LLM.',
   'memory.health.remediation.empty_input_refused':
     'Se omitió un elemento de memoria porque su texto estaba vacío. No se requiere ninguna acción — los elementos nuevos siguen incrustándose con normalidad.',
   'memory.health.remediation.storage_unavailable':
@@ -6700,7 +6822,7 @@ const messages: TranslationMap = {
   'memory.health.remediation.transient':
     'Un error temporal interrumpió el procesamiento de la memoria. Se reintentará automáticamente.',
   'memory.health.remediation.unknown':
-    'El procesamiento de la memoria encontró un problema. Comprueba Configuración → IA para la configuración.',
+    'El procesamiento de la memoria encontró un problema. Comprueba Conexiones → Claves de API para la configuración.',
   // Chat — agent-generated artifacts (#2779)
 
   // Chat composer toolbar

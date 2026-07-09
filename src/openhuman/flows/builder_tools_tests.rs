@@ -58,6 +58,40 @@ async fn revise_workflow_validates_and_returns_revision_proposal() {
 }
 
 #[tokio::test]
+async fn revise_workflow_omitted_require_approval_defaults_true() {
+    let tmp = TempDir::new().unwrap();
+    let tool = ReviseWorkflowTool::new(test_config(&tmp));
+
+    let result = tool
+        .execute(json!({ "name": "Revised flow", "graph": valid_graph() }))
+        .await
+        .unwrap();
+
+    assert!(!result.is_error, "{}", result.output());
+    let parsed: Value = serde_json::from_str(&result.output()).unwrap();
+    assert_eq!(parsed["require_approval"], true);
+}
+
+#[tokio::test]
+async fn revise_workflow_explicit_require_approval_true_is_respected() {
+    let tmp = TempDir::new().unwrap();
+    let tool = ReviseWorkflowTool::new(test_config(&tmp));
+
+    let result = tool
+        .execute(json!({
+            "name": "Revised flow",
+            "graph": valid_graph(),
+            "require_approval": true
+        }))
+        .await
+        .unwrap();
+
+    assert!(!result.is_error, "{}", result.output());
+    let parsed: Value = serde_json::from_str(&result.output()).unwrap();
+    assert_eq!(parsed["require_approval"], true);
+}
+
+#[tokio::test]
 async fn revise_workflow_rejects_invalid_graph() {
     let tmp = TempDir::new().unwrap();
     let tool = ReviseWorkflowTool::new(test_config(&tmp));
@@ -148,12 +182,40 @@ async fn list_flow_connections_is_read_only() {
     assert!(parsed["connections"].is_array());
 }
 
-// ── search_tool_catalog ──────────────────────────────────────────────────────
+// ── search_tool_catalog / get_tool_contract ─────────────────────────────────
+// The live-catalog cache is process-global (`LIVE_CATALOG_CACHE`) — every
+// test below seeds the exact toolkit(s)/contract(s) it needs via
+// `seed_live_catalog_cache` so none of this touches a live Composio backend,
+// and keeps each toolkit's seeded contents self-consistent across tests that
+// share a toolkit key (same discipline the pre-fix required-args/response-
+// fields caches already required).
 
-#[test]
-fn search_curated_catalog_finds_real_gmail_slug() {
-    // Grounded search over the curated catalog returns a real slug/scope.
-    let results = search_curated_catalog("gmail", Some("gmail"), 40);
+use crate::openhuman::tinyflows::caps::{
+    seed_live_catalog_cache, seed_probe_cache, ProbedOutputSample, ToolContract,
+};
+
+fn seeded_gmail_send_contract() -> ToolContract {
+    ToolContract {
+        slug: "GMAIL_SEND_EMAIL".to_string(),
+        toolkit: "gmail".to_string(),
+        description: Some("Send an email".to_string()),
+        required_args: vec!["to".to_string(), "body".to_string()],
+        input_schema: Some(json!({ "type": "object", "required": ["to", "body"] })),
+        output_fields: vec!["id".to_string(), "threadId".to_string()],
+        output_schema: Some(json!({
+            "type": "object",
+            "properties": { "id": {"type": "string"}, "threadId": {"type": "string"} }
+        })),
+        primary_array_path: None,
+        is_curated: true,
+    }
+}
+
+#[tokio::test]
+async fn search_live_catalog_finds_a_seeded_real_gmail_slug() {
+    seed_live_catalog_cache("gmail", vec![seeded_gmail_send_contract()]);
+    let config = Config::default();
+    let results = search_live_catalog(&config, "send", Some("gmail"), 40).await;
     assert!(!results.is_empty(), "gmail catalog should have entries");
     for r in &results {
         assert_eq!(r["toolkit"], "gmail");
@@ -162,19 +224,45 @@ fn search_curated_catalog_finds_real_gmail_slug() {
             .unwrap()
             .to_ascii_uppercase()
             .starts_with("GMAIL"));
-        assert!(r["scope"].is_string());
+        assert_eq!(r["featured"], true);
     }
 }
 
-#[test]
-fn search_curated_catalog_all_terms_must_match() {
+#[tokio::test]
+async fn search_live_catalog_all_terms_must_match() {
+    seed_live_catalog_cache("gmail", vec![seeded_gmail_send_contract()]);
+    let config = Config::default();
     // A nonsense term matches nothing.
-    let results = search_curated_catalog("zzz_no_such_slug_zzz", None, 40);
+    let results = search_live_catalog(&config, "zzz_no_such_slug_zzz", Some("gmail"), 40).await;
     assert!(results.is_empty());
 }
 
 #[tokio::test]
+async fn search_live_catalog_ranks_curated_before_uncurated_without_hiding_either() {
+    // Uses its own cache key (never `"gmail"`) — the process-global
+    // `LIVE_CATALOG_CACHE` is shared with every other `#[tokio::test]` in
+    // this file, most of which seed `"gmail"` with a single curated entry.
+    // This test's 2-item, exact-order assertion would be flaky if a
+    // concurrently-running test's `seed_live_catalog_cache("gmail", ..)`
+    // replaced the entry between this seed and the query below.
+    let mut uncurated = seeded_gmail_send_contract();
+    uncurated.slug = "GMAIL_UNCURATED_SEND".to_string();
+    uncurated.is_curated = false;
+    seed_live_catalog_cache(
+        "gmailranktest",
+        vec![uncurated, seeded_gmail_send_contract()],
+    );
+
+    let config = Config::default();
+    let results = search_live_catalog(&config, "send", Some("gmailranktest"), 40).await;
+    assert_eq!(results.len(), 2, "a real, uncurated action is never hidden");
+    assert_eq!(results[0]["featured"], true, "curated match ranks first");
+    assert_eq!(results[1]["featured"], false);
+}
+
+#[tokio::test]
 async fn search_tool_catalog_tool_is_read_only_and_grounds() {
+    seed_live_catalog_cache("gmail", vec![seeded_gmail_send_contract()]);
     let tmp = TempDir::new().unwrap();
     let tool = SearchToolCatalogTool::new(test_config(&tmp));
     assert_eq!(tool.name(), "search_tool_catalog");
@@ -200,17 +288,12 @@ async fn search_tool_catalog_missing_query_is_error() {
 }
 
 #[tokio::test]
-async fn search_tool_catalog_grounds_response_fields_from_seeded_output_schema() {
-    // A known action's output schema (seeded, standing in for a live
-    // Composio fetch) surfaces as real `response_fields` on the match.
+async fn search_tool_catalog_grounds_output_fields_from_the_live_catalog() {
+    // A known action's real output schema (seeded, standing in for a live
+    // Composio fetch) surfaces as real `output_fields`/`required_args` on
+    // the match — no separate per-slug lookup needed anymore.
+    seed_live_catalog_cache("gmail", vec![seeded_gmail_send_contract()]);
     let tmp = TempDir::new().unwrap();
-    let mut entries = std::collections::HashMap::new();
-    entries.insert(
-        "GMAIL_SEND_EMAIL".to_string(),
-        vec!["id".to_string(), "threadId".to_string()],
-    );
-    crate::openhuman::tinyflows::caps::seed_response_fields_cache("gmail", entries);
-
     let tool = SearchToolCatalogTool::new(test_config(&tmp));
     let result = tool
         .execute(json!({ "query": "send", "toolkit": "gmail" }))
@@ -222,34 +305,45 @@ async fn search_tool_catalog_grounds_response_fields_from_seeded_output_schema()
     let send_email = results
         .iter()
         .find(|r| r["slug"] == "GMAIL_SEND_EMAIL")
-        .expect("GMAIL_SEND_EMAIL should be in the curated catalog");
-    let fields: Vec<&str> = send_email["response_fields"]
+        .expect("GMAIL_SEND_EMAIL should be in the live catalog");
+    let fields: Vec<&str> = send_email["output_fields"]
         .as_array()
         .unwrap()
         .iter()
         .map(|v| v.as_str().unwrap())
         .collect();
     assert_eq!(fields, vec!["id", "threadId"]);
-    assert!(send_email.get("response_fields_note").is_none());
+    assert_eq!(send_email["required_args"], json!(["to", "body"]));
 }
 
 #[tokio::test]
 async fn search_tool_catalog_degrades_gracefully_when_output_schema_unknown() {
-    // No cache entry seeded for this toolkit and no live Composio backend
-    // configured in tests, so the fetch fails/returns nothing — the tool
-    // must still succeed, with an empty `response_fields` + explanatory note
-    // rather than erroring or blocking the search.
-    let tmp = TempDir::new().unwrap();
-    // Seed an entry for a *different* action so the toolkit's cache is
-    // populated but this slug is absent from it — the "known toolkit,
-    // unknown action" branch of the degrade path.
-    let mut entries = std::collections::HashMap::new();
-    entries.insert("SLACK_SOMETHING_ELSE".to_string(), vec!["ok".to_string()]);
-    crate::openhuman::tinyflows::caps::seed_response_fields_cache("slack", entries);
+    // The seeded action has no output schema — the tool must still succeed,
+    // with an empty `output_fields` list rather than erroring. Uses its own
+    // fictional toolkit key (never the real `"slack"` key) — `slack` is a
+    // statically-catalogued toolkit elsewhere in this test suite (e.g.
+    // `ops_tests.rs`'s `validate_tool_contracts` tests), and this fixture's
+    // `is_curated: false` would otherwise race with those tests over the
+    // shared process-global `LIVE_CATALOG_CACHE` entry for `"slack"`.
+    seed_live_catalog_cache(
+        "slackschematest",
+        vec![ToolContract {
+            slug: "SLACKSCHEMATEST_SEND_MESSAGE".to_string(),
+            toolkit: "slackschematest".to_string(),
+            description: None,
+            required_args: vec!["channel".to_string()],
+            input_schema: None,
+            output_fields: Vec::new(),
+            output_schema: None,
+            primary_array_path: None,
+            is_curated: false,
+        }],
+    );
 
+    let tmp = TempDir::new().unwrap();
     let tool = SearchToolCatalogTool::new(test_config(&tmp));
     let result = tool
-        .execute(json!({ "query": "send", "toolkit": "slack" }))
+        .execute(json!({ "query": "send", "toolkit": "slackschematest" }))
         .await
         .unwrap();
     assert!(!result.is_error, "{}", result.output());
@@ -257,12 +351,153 @@ async fn search_tool_catalog_degrades_gracefully_when_output_schema_unknown() {
     let results = parsed["results"].as_array().unwrap();
     assert!(!results.is_empty(), "slack catalog should have entries");
     for r in results {
-        assert!(r["response_fields"].as_array().unwrap().is_empty());
-        assert_eq!(
-            r["response_fields_note"],
-            "output shape unknown — dry-run to verify the binding resolves"
-        );
+        assert!(r["output_fields"].as_array().unwrap().is_empty());
+        assert_eq!(r["featured"], false);
     }
+}
+
+// ── get_tool_contract ────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn get_tool_contract_returns_the_full_seeded_contract() {
+    seed_live_catalog_cache("gmail", vec![seeded_gmail_send_contract()]);
+    let tmp = TempDir::new().unwrap();
+    let tool = GetToolContractTool::new(test_config(&tmp));
+    assert_eq!(tool.name(), "get_tool_contract");
+    assert_eq!(tool.permission_level(), PermissionLevel::None);
+    assert!(!tool.external_effect());
+
+    let result = tool
+        .execute(json!({ "slug": "GMAIL_SEND_EMAIL" }))
+        .await
+        .unwrap();
+    assert!(!result.is_error, "{}", result.output());
+    let parsed: Value = serde_json::from_str(&result.output()).unwrap();
+    assert_eq!(parsed["slug"], "GMAIL_SEND_EMAIL");
+    assert_eq!(parsed["toolkit"], "gmail");
+    assert_eq!(parsed["required_args"], json!(["to", "body"]));
+    assert_eq!(parsed["output_fields"], json!(["id", "threadId"]));
+    assert!(parsed["output_schema"].is_object());
+    assert!(parsed["input_schema"].is_object());
+}
+
+#[tokio::test]
+async fn get_tool_contract_missing_slug_is_error() {
+    let tmp = TempDir::new().unwrap();
+    let tool = GetToolContractTool::new(test_config(&tmp));
+    let result = tool.execute(json!({})).await.unwrap();
+    assert!(result.is_error);
+    assert!(result.output().contains("Missing 'slug'"));
+}
+
+#[tokio::test]
+async fn get_tool_contract_rejects_a_hallucinated_slug() {
+    seed_live_catalog_cache("gmail", vec![seeded_gmail_send_contract()]);
+    let tmp = TempDir::new().unwrap();
+    let tool = GetToolContractTool::new(test_config(&tmp));
+    let result = tool
+        .execute(json!({ "slug": "GMAIL_DOES_NOT_EXIST" }))
+        .await
+        .unwrap();
+    assert!(result.is_error);
+    assert!(result.output().contains("not a real action"));
+}
+
+/// B12: a cached real-output probe overrides `get_tool_contract`'s
+/// schema-derived `primary_array_path`/`output_fields` — most relevant for a
+/// slug whose live listing (like every GitHub action, verified live) has NO
+/// output schema at all, so the schema-derived fields would otherwise be
+/// permanently empty/null.
+#[tokio::test]
+async fn get_tool_contract_applies_a_cached_probe_override() {
+    let contract = ToolContract {
+        slug: "PROBEOVERRIDETEST_LIST_REPOSITORY_ISSUES".to_string(),
+        toolkit: "probeoverridetest".to_string(),
+        description: None,
+        required_args: vec!["owner".to_string(), "repo".to_string()],
+        input_schema: None,
+        output_fields: vec![],
+        output_schema: None,
+        primary_array_path: None,
+        is_curated: true,
+    };
+    seed_live_catalog_cache("probeoverridetest", vec![contract]);
+    seed_probe_cache(
+        "PROBEOVERRIDETEST_LIST_REPOSITORY_ISSUES",
+        ProbedOutputSample {
+            primary_array_path: Some("data.issues".to_string()),
+            output_fields: vec!["issues".to_string(), "total_count".to_string()],
+            sample: json!({ "data": { "issues": [], "total_count": 0 } }),
+        },
+    );
+    let tmp = TempDir::new().unwrap();
+    let tool = GetToolContractTool::new(test_config(&tmp));
+    let result = tool
+        .execute(json!({ "slug": "PROBEOVERRIDETEST_LIST_REPOSITORY_ISSUES" }))
+        .await
+        .unwrap();
+    assert!(!result.is_error, "{}", result.output());
+    let parsed: Value = serde_json::from_str(&result.output()).unwrap();
+    assert_eq!(parsed["primary_array_path"], "data.issues");
+    assert_eq!(parsed["output_fields"], json!(["issues", "total_count"]));
+    // The schema-derived field stays null — the probe overrides the HINT
+    // fields, it doesn't fabricate a schema that was never published.
+    assert!(parsed["output_schema"].is_null());
+}
+
+// ── get_tool_output_sample (B12: the real-output probe) ─────────────────────
+
+#[test]
+fn get_tool_output_sample_is_read_only_permission_with_no_external_effect() {
+    let tmp = TempDir::new().unwrap();
+    let tool = GetToolOutputSampleTool::new(test_config(&tmp));
+    assert_eq!(tool.name(), "get_tool_output_sample");
+    assert_eq!(tool.permission_level(), PermissionLevel::ReadOnly);
+    assert!(!tool.external_effect());
+}
+
+#[tokio::test]
+async fn get_tool_output_sample_missing_slug_is_error() {
+    let tmp = TempDir::new().unwrap();
+    let tool = GetToolOutputSampleTool::new(test_config(&tmp));
+    let result = tool.execute(json!({})).await.unwrap();
+    assert!(result.is_error);
+    assert!(result.output().contains("Missing 'slug'"));
+}
+
+/// The scope gate runs BEFORE any client/network call, so a Write-scope
+/// action is refused entirely offline — this must never depend on a live
+/// Composio backend to prove the probe can't perform a real mutation.
+#[tokio::test]
+async fn get_tool_output_sample_refuses_a_write_scope_action() {
+    let tmp = TempDir::new().unwrap();
+    let tool = GetToolOutputSampleTool::new(test_config(&tmp));
+    let result = tool
+        .execute(json!({ "slug": "GMAIL_SEND_EMAIL" }))
+        .await
+        .unwrap();
+    assert!(result.is_error);
+    assert!(result.output().contains("READ-only"), "{}", result.output());
+}
+
+/// The connected-toolkit gate runs before the real call too — in a test
+/// environment with no backend session, `fetch_connected_integrations`
+/// degrades to empty (best-effort, per its own doc), so a Read-scope action
+/// against an unconnected toolkit is refused without ever reaching a client.
+#[tokio::test]
+async fn get_tool_output_sample_refuses_an_unconnected_toolkit() {
+    let tmp = TempDir::new().unwrap();
+    let tool = GetToolOutputSampleTool::new(test_config(&tmp));
+    let result = tool
+        .execute(json!({ "slug": "GITHUB_LIST_REPOSITORY_ISSUES" }))
+        .await
+        .unwrap();
+    assert!(result.is_error);
+    assert!(
+        result.output().contains("not connected") || result.output().contains("no active"),
+        "{}",
+        result.output()
+    );
 }
 
 // ── dry_run_workflow ─────────────────────────────────────────────────────────
@@ -366,12 +601,7 @@ async fn dry_run_catches_unwired_required_composio_arg() {
     // NOTE: the cache is process-global and other tests seed the `gmail`
     // toolkit too — keep every seeding of GMAIL_SEND_EMAIL identical
     // (`to` + `body`) so test order can't change the outcome.
-    let mut entries = std::collections::HashMap::new();
-    entries.insert(
-        "GMAIL_SEND_EMAIL".to_string(),
-        vec!["to".to_string(), "body".to_string()],
-    );
-    crate::openhuman::tinyflows::caps::seed_required_args_cache("gmail", entries);
+    seed_live_catalog_cache("gmail", vec![seeded_gmail_send_contract()]);
 
     let tmp = TempDir::new().unwrap();
     let tool = DryRunWorkflowTool::new(policy(AutonomyLevel::Supervised), test_config(&tmp));
@@ -561,12 +791,16 @@ async fn dry_run_flags_tool_call_error_when_on_error_is_route() {
     // got far enough to trace an `=`-expression before the preflight error).
     // Seed the same schema as `dry_run_catches_unwired_required_composio_arg`
     // (process-global cache; keep the arg list identical across tests).
-    let mut entries = std::collections::HashMap::new();
-    entries.insert(
-        "GMAIL_SEND_EMAIL".to_string(),
-        vec!["to".to_string(), "body".to_string()],
-    );
-    crate::openhuman::tinyflows::caps::seed_required_args_cache("gmail", entries);
+    //
+    // The graph must give `post`'s `error` port a real destination: vendored
+    // tinyflows' author-time `validate()` (added alongside per-node error
+    // handling — a graph with `on_error: "route"` but no outgoing `error`-port
+    // edge is now rejected up front, since a route with nowhere to go is
+    // always a dead-end) would otherwise reject this graph before the sandbox
+    // run ever starts, which is a different failure mode than the one this
+    // test targets. `recover` is a no-op sink, same convention as
+    // `dry_run_passes_when_tool_call_binds_to_upstream_tool_output` above.
+    seed_live_catalog_cache("gmail", vec![seeded_gmail_send_contract()]);
 
     let tool = DryRunWorkflowTool::new(
         policy(AutonomyLevel::Supervised),
@@ -577,9 +811,14 @@ async fn dry_run_flags_tool_call_error_when_on_error_is_route() {
             { "id": "t", "kind": "trigger", "name": "Manual" },
             { "id": "post", "kind": "tool_call", "name": "Send email",
               "config": { "slug": "GMAIL_SEND_EMAIL", "on_error": "route",
-                "args": { "to": "=item.email", "body": "hello" } } }
+                "args": { "to": "=item.email", "body": "hello" } } },
+            { "id": "recover", "kind": "tool_call", "name": "Recover",
+              "config": { "slug": "oh:noop", "args": {} } }
         ],
-        "edges": [ { "from_node": "t", "to_node": "post" } ]
+        "edges": [
+            { "from_node": "t", "to_node": "post" },
+            { "from_node": "post", "from_port": "error", "to_node": "recover" }
+        ]
     });
 
     // `to` misses (trigger input has no `email`) — a real run would fail the
@@ -607,12 +846,7 @@ async fn dry_run_flags_tool_call_error_when_on_error_is_route() {
 async fn dry_run_flags_tool_call_error_when_on_error_is_continue() {
     // Same case as above, but `on_error: "continue"` — the other policy that
     // converts a node failure into routed data instead of failing the run.
-    let mut entries = std::collections::HashMap::new();
-    entries.insert(
-        "GMAIL_SEND_EMAIL".to_string(),
-        vec!["to".to_string(), "body".to_string()],
-    );
-    crate::openhuman::tinyflows::caps::seed_required_args_cache("gmail", entries);
+    seed_live_catalog_cache("gmail", vec![seeded_gmail_send_contract()]);
 
     let tool = DryRunWorkflowTool::new(
         policy(AutonomyLevel::Supervised),
@@ -738,6 +972,49 @@ async fn dry_run_flags_null_resolved_agent_prompt() {
 }
 
 #[tokio::test]
+async fn dry_run_flags_null_resolved_agent_input_context() {
+    // The B7 counterpart to `dry_run_flags_null_resolved_agent_prompt`:
+    // `input_context` has been the agent's primary upstream-data channel
+    // since #4590, so a null-resolved `input_context` is just as
+    // execution-breaking as a null `prompt` — the agent runs with no
+    // upstream data at all. Must fail the dry run the same way.
+    let tool = DryRunWorkflowTool::new(
+        policy(AutonomyLevel::Supervised),
+        test_config(&TempDir::new().unwrap()),
+    );
+    let graph = json!({
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "classify", "kind": "agent", "name": "Classify",
+              "config": { "prompt": "Classify the email as urgent, normal, or low priority.",
+                "input_context": "=nodes.missing.item.json.body" } }
+        ],
+        "edges": [ { "from_node": "t", "to_node": "classify" } ]
+    });
+
+    let result = tool.execute(json!({ "graph": graph })).await.unwrap();
+    assert!(!result.is_error, "{}", result.output());
+    let parsed: Value = serde_json::from_str(&result.output()).unwrap();
+    assert_eq!(
+        parsed["ok"], false,
+        "a null-resolved agent input_context must fail the dry run: {parsed}"
+    );
+    let agent_input_context_nulls = parsed["agent_input_context_nulls"]
+        .as_array()
+        .expect("agent_input_context_nulls array");
+    assert_eq!(agent_input_context_nulls.len(), 1, "{parsed}");
+    assert_eq!(agent_input_context_nulls[0]["node_id"], "classify");
+    assert_eq!(agent_input_context_nulls[0]["location"], "input_context");
+    assert!(
+        agent_input_context_nulls[0]["suggestion"]
+            .as_str()
+            .unwrap()
+            .contains("upstream"),
+        "{parsed}"
+    );
+}
+
+#[tokio::test]
 async fn dry_run_passes_when_agent_uses_input_context_instead_of_prompt_expression() {
     // The FALSE-POSITIVE-PREVENTION case: the same data need, wired the
     // correct way — `input_context` carries the upstream item, `prompt`
@@ -764,16 +1041,111 @@ async fn dry_run_passes_when_agent_uses_input_context_instead_of_prompt_expressi
         parsed["agent_prompt_nulls"].as_array().unwrap().is_empty(),
         "{parsed}"
     );
+    assert!(
+        parsed["agent_input_context_nulls"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "{parsed}"
+    );
 }
 
 #[tokio::test]
-async fn revise_workflow_warns_on_unwired_required_composio_arg() {
-    let mut entries = std::collections::HashMap::new();
-    entries.insert(
-        "GMAIL_SEND_EMAIL".to_string(),
-        vec!["to".to_string(), "body".to_string()],
+async fn dry_run_warns_on_unexercised_agent_after_condition() {
+    // B15's dry-run blind spot: `gate` is a `condition` wired with only a
+    // `true` edge to `classify`. The dry run's default trigger input is `{}`
+    // (no `input` param passed), so `gate`'s configured field ("active") is
+    // absent — falsey — and the condition emits `false`. Since `false` has no
+    // outgoing edge, `classify` never executes at all: not a null resolution,
+    // not a node error, just silently unexercised. A real trigger's payload
+    // could easily carry `active: true` and take the other branch, so the
+    // dry run must still surface this as a warning even though `ok` stays
+    // `true` — there's nothing here that flips it to a hard reject.
+    let tool = DryRunWorkflowTool::new(
+        policy(AutonomyLevel::Supervised),
+        test_config(&TempDir::new().unwrap()),
     );
-    crate::openhuman::tinyflows::caps::seed_required_args_cache("gmail", entries);
+    let graph = json!({
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "gate", "kind": "condition", "name": "Gate",
+              "config": { "field": "active" } },
+            { "id": "classify", "kind": "agent", "name": "Classify",
+              "config": { "prompt": "Classify the item.", "input_context": "=item" } }
+        ],
+        "edges": [
+            { "from_node": "t", "to_node": "gate" },
+            { "from_node": "gate", "from_port": "true", "to_node": "classify" }
+        ]
+    });
+
+    let result = tool.execute(json!({ "graph": graph })).await.unwrap();
+    assert!(!result.is_error, "{}", result.output());
+    let parsed: Value = serde_json::from_str(&result.output()).unwrap();
+    assert_eq!(
+        parsed["ok"], true,
+        "an unexercised branch is a warning, not a hard reject: {parsed}"
+    );
+    let warnings = parsed["routing_divergence_warnings"]
+        .as_array()
+        .expect("routing_divergence_warnings array");
+    assert_eq!(warnings.len(), 1, "{parsed}");
+    assert_eq!(warnings[0]["node_id"], "classify");
+    assert_eq!(warnings[0]["condition_node_id"], "gate");
+    assert!(
+        warnings[0]["message"]
+            .as_str()
+            .unwrap()
+            .contains("classify"),
+        "{parsed}"
+    );
+}
+
+#[tokio::test]
+async fn dry_run_no_routing_divergence_warning_when_every_node_executes() {
+    // FALSE-POSITIVE-PREVENTION: a condition whose taken branch under the
+    // default mock input DOES reach the downstream agent must not warn.
+    let tool = DryRunWorkflowTool::new(
+        policy(AutonomyLevel::Supervised),
+        test_config(&TempDir::new().unwrap()),
+    );
+    let graph = json!({
+        "nodes": [
+            { "id": "t", "kind": "trigger", "name": "Manual" },
+            { "id": "gate", "kind": "condition", "name": "Gate",
+              "config": { "field": "active" } },
+            { "id": "classify", "kind": "agent", "name": "Classify",
+              "config": { "prompt": "Classify the item.", "input_context": "=item" } }
+        ],
+        "edges": [
+            { "from_node": "t", "to_node": "gate" },
+            { "from_node": "gate", "from_port": "false", "to_node": "classify" }
+        ]
+    });
+
+    let result = tool.execute(json!({ "graph": graph })).await.unwrap();
+    assert!(!result.is_error, "{}", result.output());
+    let parsed: Value = serde_json::from_str(&result.output()).unwrap();
+    assert_eq!(parsed["ok"], true, "{parsed}");
+    assert!(
+        parsed["routing_divergence_warnings"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        "{parsed}"
+    );
+}
+
+/// (systemic tool-contract fix, Part 2b) A missing required Composio arg is
+/// now a HARD REJECT at `revise_workflow` — `validate_tool_contracts` runs
+/// ahead of the older advisory `graph_wiring_warnings` check and catches the
+/// exact same condition first, so the graph never gets far enough to merely
+/// warn about it. `graph_wiring_warnings`'s own required-arg warning (still
+/// exercised directly in `ops_tests.rs`) stays as a defense-in-depth
+/// fallback for any caller that doesn't also run `validate_tool_contracts`.
+#[tokio::test]
+async fn revise_workflow_rejects_a_missing_required_composio_arg() {
+    seed_live_catalog_cache("gmail", vec![seeded_gmail_send_contract()]);
 
     let tmp = TempDir::new().unwrap();
     let tool = ReviseWorkflowTool::new(test_config(&tmp));
@@ -794,23 +1166,15 @@ async fn revise_workflow_warns_on_unwired_required_composio_arg() {
         .await
         .unwrap();
 
-    assert!(!result.is_error, "{}", result.output());
-    let parsed: Value = serde_json::from_str(&result.output()).unwrap();
-    let warnings = parsed["warnings"].as_array().unwrap();
     assert!(
-        warnings.iter().any(|w| {
-            let w = w.as_str().unwrap_or_default();
-            w.contains("`to`") && w.contains("send")
-        }),
-        "expected a warning naming node `send` and arg `to`: {warnings:?}"
+        result.is_error,
+        "a missing required arg must now hard-reject"
     );
-    // `body` is wired (expression) — no warning for it.
-    assert!(
-        !warnings
-            .iter()
-            .any(|w| w.as_str().unwrap_or_default().contains("`body`")),
-        "wired arg must not warn: {warnings:?}"
-    );
+    let output = result.output();
+    assert!(output.contains("send"), "{output}");
+    assert!(output.contains("`to`"), "{output}");
+    // `body` is wired (expression) — never named as missing.
+    assert!(!output.contains("`body`"), "{output}");
 }
 
 // ── save_workflow ────────────────────────────────────────────────────────────
