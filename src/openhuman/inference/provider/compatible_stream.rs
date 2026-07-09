@@ -9,27 +9,6 @@ use std::time::Duration;
 
 use super::compatible_parse::parse_sse_line;
 
-/// Default mid-stream idle timeout: if the upstream sends no bytes for this long
-/// *after the stream has been established*, we treat the connection as stalled
-/// and emit a terminal [`StreamError::IdleTimeout`] instead of blocking on
-/// `bytes_stream.next()` forever (#4761 — a stalled upstream previously orphaned
-/// the turn with no `chat_done`/`chat_error`). Generous enough to tolerate a slow
-/// first token / long silent reasoning gap on staging, but far below the ~250s
-/// point where the connection was being dropped with no terminal event.
-///
-/// Override with `OPENHUMAN_INFERENCE_STREAM_IDLE_TIMEOUT_SECS`; set it to `0` to
-/// disable the guard entirely (restores the pre-#4761 unbounded wait).
-const DEFAULT_STREAM_IDLE_TIMEOUT_SECS: u64 = 120;
-
-/// Resolve the configured mid-stream idle timeout. `None` disables the guard.
-fn stream_idle_timeout() -> Option<Duration> {
-    let secs = std::env::var("OPENHUMAN_INFERENCE_STREAM_IDLE_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.trim().parse::<u64>().ok())
-        .unwrap_or(DEFAULT_STREAM_IDLE_TIMEOUT_SECS);
-    (secs > 0).then(|| Duration::from_secs(secs))
-}
-
 /// Outcome of a single idle-bounded read from an item stream.
 #[derive(Debug, PartialEq, Eq)]
 enum IdleRead<T> {
@@ -85,7 +64,12 @@ pub(crate) fn sse_bytes_to_chunks(
         }
 
         let mut bytes_stream = response.bytes_stream();
-        let idle_timeout = stream_idle_timeout();
+        // Reuse the single shared per-chunk idle watchdog (#4269) rather than a
+        // second, divergent resolver: one bounded default (1..=3600s, documented
+        // in `.env.example`) drives both this SSE path and the native stream
+        // parser, so `OPENHUMAN_INFERENCE_STREAM_IDLE_TIMEOUT_SECS` means the same
+        // thing everywhere and a typo can never wedge a turn indefinitely.
+        let idle_timeout = Some(super::compatible_timeout::stream_idle_timeout());
 
         loop {
             let item = match read_next_or_idle(&mut bytes_stream, idle_timeout).await {
@@ -95,11 +79,14 @@ pub(crate) fn sse_bytes_to_chunks(
                     // The upstream established the stream but sent no bytes for
                     // `idle_timeout`. Rather than block on `next()` forever and
                     // orphan the turn with no terminal event (#4761), surface a
-                    // terminal error so the consumer fires `chat_error`.
+                    // terminal error so the consumer fires `chat_error`. Return
+                    // (not break) so the success `final_chunk()` below is NOT
+                    // emitted after the error — otherwise a stalled generation
+                    // would be reported as a normal `finish_reason: stop`.
                     if let Some(dur) = idle_timeout {
                         let _ = tx.send(Err(StreamError::IdleTimeout(dur))).await;
                     }
-                    break;
+                    return;
                 }
             };
             match item {
@@ -205,31 +192,5 @@ mod tests {
         let mut s = stream::iter(vec![9u8]);
         assert_eq!(read_next_or_idle(&mut s, None).await, IdleRead::Item(9u8));
         assert_eq!(read_next_or_idle(&mut s, None).await, IdleRead::Ended);
-    }
-
-    #[test]
-    fn idle_timeout_env_override_and_disable() {
-        // Default (var unset) is the built-in guard; `0` disables it; a positive
-        // value overrides it. Serialized within one test to avoid racing the
-        // process-global env var across the test binary.
-        let key = "OPENHUMAN_INFERENCE_STREAM_IDLE_TIMEOUT_SECS";
-        let prev = std::env::var(key).ok();
-
-        std::env::remove_var(key);
-        assert_eq!(
-            stream_idle_timeout(),
-            Some(Duration::from_secs(DEFAULT_STREAM_IDLE_TIMEOUT_SECS))
-        );
-
-        std::env::set_var(key, "0");
-        assert_eq!(stream_idle_timeout(), None, "0 disables the guard");
-
-        std::env::set_var(key, "45");
-        assert_eq!(stream_idle_timeout(), Some(Duration::from_secs(45)));
-
-        match prev {
-            Some(v) => std::env::set_var(key, v),
-            None => std::env::remove_var(key),
-        }
     }
 }
