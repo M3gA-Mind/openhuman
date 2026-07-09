@@ -932,7 +932,78 @@ pub async fn parallel_in_flight_entries_for_test() -> Vec<(String, String)> {
         .collect()
 }
 
+/// Whether a cancel request should tear down the turn currently in flight for a
+/// thread.
+///
+/// `requested` is the `request_id` the caller is cancelling; `None` means an
+/// unscoped stop ("cancel whatever is running", e.g. a Stop button or a session
+/// teardown). `in_flight` is the `request_id` currently registered for the
+/// thread.
+///
+/// A *scoped* cancel matches only its own request. This is the fix for #4760: a
+/// client that times out on request A and then sends request B — which
+/// supersedes A on the same thread — must not have A's late-arriving cancel tear
+/// down B. Scoping the cancel to A makes it a no-op once B is in flight, so the
+/// newer turn survives instead of being killed at t=0.
+pub fn cancel_should_target(requested: Option<&str>, in_flight: &str) -> bool {
+    match requested {
+        Some(rid) => rid == in_flight,
+        None => true,
+    }
+}
+
+/// Cancel a single parallel (forked) turn identified by `request_id`, but only
+/// when it belongs to `thread_id`. Returns the cancelled id (as a one-element
+/// vec, mirroring [`cancel_parallel_turns_for_thread`]) or empty when no such
+/// parallel turn exists. Request-scoped cancel path (#4760).
+async fn cancel_parallel_turn_by_request_id(thread_id: &str, request_id: &str) -> Vec<String> {
+    let mut parallel = PARALLEL_IN_FLIGHT.lock().await;
+    let matches = parallel
+        .get(request_id)
+        .map(|entry| entry.thread_id == thread_id)
+        .unwrap_or(false);
+    if !matches {
+        return Vec::new();
+    }
+    if let Some(entry) = parallel.remove(request_id) {
+        entry.cancel_token.cancel();
+        let mut handle = entry.handle;
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = &mut handle => {}
+                _ = tokio::time::sleep(Duration::from_secs(5)) => {
+                    handle.abort();
+                }
+            }
+        });
+        return vec![request_id.to_string()];
+    }
+    Vec::new()
+}
+
+/// Cancel whatever turn is currently running on a thread (unscoped stop).
+///
+/// Back-compat entry point (Stop button / session teardown). For a cancel that
+/// must only affect a specific turn — so a stale cancel can't kill a newer turn
+/// on the same thread — use [`cancel_chat_scoped`] with the target `request_id`
+/// (#4760).
 pub async fn cancel_chat(client_id: &str, thread_id: &str) -> Result<Option<String>, String> {
+    cancel_chat_scoped(client_id, thread_id, None).await
+}
+
+/// Cancel the in-flight turn(s) for a thread.
+///
+/// When `request_id` is `Some`, the cancel is **scoped**: it only tears down the
+/// primary turn if that exact request is still running (and only the matching
+/// parallel turn), so a stale cancel for a superseded request can't kill the
+/// newer turn that replaced it (#4760). When `request_id` is `None`, it stops
+/// whatever is running on the thread (primary + every parallel) — the "stop
+/// everything" behaviour used by session teardown / a Stop button.
+pub async fn cancel_chat_scoped(
+    client_id: &str,
+    thread_id: &str,
+    request_id: Option<&str>,
+) -> Result<Option<String>, String> {
     let client_id = client_id.trim();
     let thread_id = thread_id.trim();
 
@@ -948,14 +1019,34 @@ pub async fn cancel_chat(client_id: &str, thread_id: &str) -> Result<Option<Stri
 
     {
         let mut in_flight = IN_FLIGHT.lock().await;
-        if let Some(existing) = in_flight.remove(&map_key) {
-            removed_request_id = Some(cancel_in_flight_gracefully(existing));
+        // #4760: only tear down the primary turn when the cancel is unscoped OR
+        // targets exactly the request that is running. A stale cancel for an
+        // already-superseded request must be a no-op so the newer turn lives.
+        let should_cancel_primary = in_flight
+            .get(&map_key)
+            .map(|entry| cancel_should_target(request_id, &entry.request_id))
+            .unwrap_or(false);
+        if should_cancel_primary {
+            if let Some(existing) = in_flight.remove(&map_key) {
+                removed_request_id = Some(cancel_in_flight_gracefully(existing));
+            }
+        } else if let Some(rid) = request_id {
+            log::info!(
+                "[web-channel] ignoring stale cancel request_id={} for thread_id={} — current in-flight is {:?}; newer turn preserved",
+                rid,
+                thread_id,
+                in_flight.get(&map_key).map(|e| e.request_id.as_str())
+            );
         }
     }
 
-    // Also tear down any concurrent parallel (forked) turns on the thread so a
-    // cancel/stop covers every in-flight turn, not just the primary one.
-    let cancelled_parallel = cancel_parallel_turns_for_thread(thread_id).await;
+    // Also tear down concurrent parallel (forked) turns. A scoped cancel targets
+    // only the named parallel turn (if it is one); an unscoped cancel/stop
+    // covers every parallel turn on the thread, not just the primary one.
+    let cancelled_parallel = match request_id {
+        Some(rid) => cancel_parallel_turn_by_request_id(thread_id, rid).await,
+        None => cancel_parallel_turns_for_thread(thread_id).await,
+    };
 
     // Emit a cancelled chat_error for each cancelled turn (primary + parallels)
     // so every interleaved branch's UI is resolved.
@@ -1078,11 +1169,18 @@ pub async fn channel_web_queue_clear(thread_id: &str) -> Result<RpcOutcome<Value
 pub async fn channel_web_cancel(
     client_id: &str,
     thread_id: &str,
+    request_id: Option<&str>,
 ) -> Result<RpcOutcome<Value>, String> {
-    let cancelled_request_id = cancel_chat(client_id, thread_id).await?;
+    let cancelled_request_id = cancel_chat_scoped(client_id, thread_id, request_id).await?;
 
+    // A scoped cancel that matched nothing (the request already finished or was
+    // superseded) is a clean no-op — do NOT fall through to the thread-wide
+    // `cancel_session`, which would tear down a newer turn on the thread (#4760).
+    // Only the unscoped stop escalates to the session-level teardown.
     let cancelled = if cancelled_request_id.is_some() {
         true
+    } else if request_id.is_some() {
+        false
     } else {
         crate::openhuman::agent::task_dispatcher::cancel_session(thread_id.trim()).await
     };
