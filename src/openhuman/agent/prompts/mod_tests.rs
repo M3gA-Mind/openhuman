@@ -1501,32 +1501,21 @@ fn for_subagent_builder_injects_user_files_even_when_identity_omitted() {
     let _ = std::fs::remove_dir_all(workspace);
 }
 
-#[test]
-fn memory_md_injection_is_framed_as_background_not_prior_chat() {
-    // GH-4745 regression: MEMORY.md is durable cross-session memory. Without
-    // a frame, a relevant curated observation reads to the model as prior
-    // *in-thread* conversation, so on a brand-new thread it opens with
-    // "already covered this in a previous chat" and shortcuts its answer.
-    // Pin that the rendered prompt frames the block as background memory and
-    // that the guardrail precedes the injected `### MEMORY.md` heading.
-    let workspace = std::env::temp_dir().join(format!(
-        "openhuman_prompt_memory_framing_{}",
-        uuid::Uuid::new_v4()
-    ));
-    std::fs::create_dir_all(&workspace).unwrap();
-    std::fs::write(
-        workspace.join("MEMORY.md"),
-        "# Long-term memory\nReviewed `def f(x)` last week; user prefers terse notes.",
-    )
-    .unwrap();
-
-    let tools: Vec<Box<dyn Tool>> = vec![];
-    let prompt_tools = PromptTool::from_tools(&tools);
-    let ctx = PromptContext {
-        workspace_dir: &workspace,
+/// Shared `PromptContext` for the MEMORY.md-framing tests below. Both
+/// exercise `UserFilesSection` with memory injection enabled and differ
+/// only in workspace contents, so they build an identical 19-field
+/// context — factor it out so the two can't drift when `PromptContext`
+/// gains fields. Borrows the caller's `workspace` and pre-built
+/// `prompt_tools` so the returned context outlives neither.
+fn memory_framing_ctx<'a>(
+    workspace: &'a std::path::Path,
+    prompt_tools: &'a [PromptTool<'a>],
+) -> PromptContext<'a> {
+    PromptContext {
+        workspace_dir: workspace,
         model_name: "test-model",
         agent_id: "",
-        tools: &prompt_tools,
+        tools: prompt_tools,
         workflows: &[],
         dispatcher_instructions: "",
         learned: LearnedContextData::default(),
@@ -1541,7 +1530,31 @@ fn memory_md_injection_is_framed_as_background_not_prior_chat() {
         personality_soul_md: None,
         personality_memory_md: None,
         personality_roster: vec![],
-    };
+    }
+}
+
+#[test]
+fn memory_md_injection_is_framed_as_background_not_prior_chat() {
+    // GH-4745 regression: MEMORY.md is durable cross-session memory. Without
+    // a frame, a relevant curated observation reads to the model as prior
+    // *in-thread* conversation, so on a brand-new thread it opens with
+    // "already covered this in a previous chat" and shortcuts its answer.
+    // Pin that the rendered prompt frames the block as background memory and
+    // that the guardrail precedes the injected `### MEMORY.md` heading.
+    //
+    // `tempfile::tempdir()` cleans up via `Drop` even when an assertion
+    // below panics — a bare `remove_dir_all` at the tail would leak the
+    // dir exactly on the failing run we most want to inspect.
+    let workspace = tempfile::tempdir().unwrap();
+    std::fs::write(
+        workspace.path().join("MEMORY.md"),
+        "# Long-term memory\nReviewed `def f(x)` last week; user prefers terse notes.",
+    )
+    .unwrap();
+
+    let tools: Vec<Box<dyn Tool>> = vec![];
+    let prompt_tools = PromptTool::from_tools(&tools);
+    let ctx = memory_framing_ctx(workspace.path(), &prompt_tools);
 
     let rendered = UserFilesSection.build(&ctx).unwrap();
 
@@ -1563,8 +1576,6 @@ fn memory_md_injection_is_framed_as_background_not_prior_chat() {
         frame_at < heading_at,
         "the guardrail note must precede the MEMORY.md block, got:\n{rendered}"
     );
-
-    let _ = std::fs::remove_dir_all(workspace);
 }
 
 #[test]
@@ -1572,42 +1583,17 @@ fn memory_md_framing_absent_when_no_memory_content() {
     // The frame must never appear on its own: when MEMORY.md is missing/empty
     // (a genuinely fresh workspace) there is nothing to scope, so emitting a
     // dangling "background memory" note would itself imply phantom history.
-    let workspace = std::env::temp_dir().join(format!(
-        "openhuman_prompt_memory_noframe_{}",
-        uuid::Uuid::new_v4()
-    ));
-    std::fs::create_dir_all(&workspace).unwrap();
+    let workspace = tempfile::tempdir().unwrap();
 
     let tools: Vec<Box<dyn Tool>> = vec![];
     let prompt_tools = PromptTool::from_tools(&tools);
-    let ctx = PromptContext {
-        workspace_dir: &workspace,
-        model_name: "test-model",
-        agent_id: "",
-        tools: &prompt_tools,
-        workflows: &[],
-        dispatcher_instructions: "",
-        learned: LearnedContextData::default(),
-        visible_tool_names: &NO_FILTER,
-        tool_call_format: ToolCallFormat::PFormat,
-        connected_integrations: &[],
-        connected_identities_md: String::new(),
-        include_profile: false,
-        include_memory_md: true,
-        curated_snapshot: None,
-        user_identity: None,
-        personality_soul_md: None,
-        personality_memory_md: None,
-        personality_roster: vec![],
-    };
+    let ctx = memory_framing_ctx(workspace.path(), &prompt_tools);
 
     let rendered = UserFilesSection.build(&ctx).unwrap();
     assert!(
         !rendered.contains("background — not this conversation"),
         "no MEMORY.md content → no dangling framing note, got:\n{rendered}"
     );
-
-    let _ = std::fs::remove_dir_all(workspace);
 }
 
 #[test]
