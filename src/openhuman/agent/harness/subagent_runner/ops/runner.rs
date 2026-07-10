@@ -160,6 +160,36 @@ fn format_deterministic_memory_hits(resp: &QueryResponse) -> Option<String> {
     Some(out)
 }
 
+/// Truncate `output` in place to the definition's `max_result_chars` cap (when
+/// set), appending a `[...truncated]` marker. Char-count based (not byte-length)
+/// to avoid panicking on a multi-byte UTF-8 sequence at the boundary.
+///
+/// Shared by the normal sub-agent path and the deterministic memory fast path so
+/// both honour a definition's cap. `agent_memory` sets no cap today (its output
+/// is self-bounded at 8 hits × 600 chars), but routing the fast path through the
+/// same helper keeps the two paths from silently diverging if one is ever added
+/// (YellowSnnowmann review).
+fn apply_max_result_chars(output: &mut String, cap: Option<usize>, agent_id: &str) {
+    let Some(cap) = cap else { return };
+    let original_chars = output.chars().count();
+    if original_chars <= cap {
+        return;
+    }
+    tracing::debug!(
+        agent_id = %agent_id,
+        original_chars,
+        cap,
+        "[subagent_runner] truncating oversized result to max_result_chars cap"
+    );
+    let byte_offset = output
+        .char_indices()
+        .nth(cap)
+        .map(|(i, _)| i)
+        .unwrap_or(output.len());
+    output.truncate(byte_offset);
+    output.push_str("\n[...truncated]");
+}
+
 /// Deterministic fast path for the pure-retrieval [`AGENT_MEMORY_ID`] sub-agent
 /// (#4677).
 ///
@@ -182,10 +212,11 @@ fn format_deterministic_memory_hits(resp: &QueryResponse) -> Option<String> {
 /// Grounded queries keep the fast path; ungrounded ones defer to the full agent.
 async fn try_deterministic_memory_retrieval(
     task_prompt: &str,
-    agent_id: &str,
+    definition: &AgentDefinition,
     task_id: &str,
     started: Instant,
 ) -> Option<SubagentRunOutcome> {
+    let agent_id = definition.id.as_str();
     if !memory_fast_path_enabled() {
         return None;
     }
@@ -234,7 +265,11 @@ async fn try_deterministic_memory_retrieval(
             return None;
         }
     };
-    let output = format_deterministic_memory_hits(&resp)?;
+    let mut output = format_deterministic_memory_hits(&resp)?;
+    // Honour the definition's `max_result_chars` cap just like the model-driven
+    // path (YellowSnnowmann review). No-op for `agent_memory` (uncapped, and the
+    // block above is already self-bounded), but keeps the paths from diverging.
+    apply_max_result_chars(&mut output, definition.max_result_chars, agent_id);
     tracing::info!(
         task_id = %task_id,
         hits = resp.hits.len(),
@@ -334,8 +369,7 @@ pub async fn run_subagent(
         // nothing (the empty/degraded case is handled by #4655).
         if definition.id == AGENT_MEMORY_ID {
             if let Some(outcome) =
-                try_deterministic_memory_retrieval(task_prompt, &definition.id, &task_id, started)
-                    .await
+                try_deterministic_memory_retrieval(task_prompt, definition, &task_id, started).await
             {
                 return Ok(outcome);
             }
@@ -398,28 +432,9 @@ pub async fn run_subagent(
         })
         .await?;
 
-        // Truncate result to the definition's cap if set.
-        // Use char-count (not byte-length) to avoid panicking on
-        // multi-byte UTF-8 sequences at the truncation boundary.
-        if let Some(cap) = definition.max_result_chars {
-            let original_chars = outcome.output.chars().count();
-            if original_chars > cap {
-                tracing::debug!(
-                    agent_id = %definition.id,
-                    original_chars,
-                    cap,
-                    "[subagent_runner] truncating oversized result to max_result_chars cap"
-                );
-                let byte_offset = outcome
-                    .output
-                    .char_indices()
-                    .nth(cap)
-                    .map(|(i, _)| i)
-                    .unwrap_or(outcome.output.len());
-                outcome.output.truncate(byte_offset);
-                outcome.output.push_str("\n[...truncated]");
-            }
-        }
+        // Truncate result to the definition's cap if set (shared with the
+        // deterministic memory fast path via `apply_max_result_chars`).
+        apply_max_result_chars(&mut outcome.output, definition.max_result_chars, &definition.id);
 
         tracing::info!(
             agent_id = %definition.id,
@@ -1362,7 +1377,8 @@ async fn run_typed_mode(
 #[cfg(test)]
 mod fast_path_tests {
     use super::{
-        format_deterministic_memory_hits, parse_memory_fast_path_enabled, MEMORY_FAST_PATH_LIMIT,
+        apply_max_result_chars, format_deterministic_memory_hits, parse_memory_fast_path_enabled,
+        MEMORY_FAST_PATH_LIMIT,
     };
     use crate::openhuman::memory_store::trees::types::TreeKind;
     use crate::openhuman::memory_tree::retrieval::types::{NodeKind, QueryResponse, RetrievalHit};
@@ -1457,5 +1473,39 @@ mod fast_path_tests {
             (1..=16).contains(&MEMORY_FAST_PATH_LIMIT),
             "fast-path limit should stay small: {MEMORY_FAST_PATH_LIMIT}"
         );
+    }
+
+    #[test]
+    fn max_result_chars_none_is_noop() {
+        // No cap → output untouched (the `agent_memory` default).
+        let mut out = "hello world".to_string();
+        apply_max_result_chars(&mut out, None, "agent_memory");
+        assert_eq!(out, "hello world");
+    }
+
+    #[test]
+    fn max_result_chars_under_cap_is_noop() {
+        let mut out = "short".to_string();
+        apply_max_result_chars(&mut out, Some(100), "agent_memory");
+        assert_eq!(out, "short");
+    }
+
+    #[test]
+    fn max_result_chars_over_cap_truncates_with_marker() {
+        let mut out = "x".repeat(50);
+        apply_max_result_chars(&mut out, Some(10), "agent_memory");
+        assert!(out.starts_with(&"x".repeat(10)), "{out}");
+        assert!(out.ends_with("[...truncated]"), "{out}");
+        // 10 kept chars + the marker, and shorter than the 50-char original.
+        assert!(out.chars().count() < 50, "{out}");
+    }
+
+    #[test]
+    fn max_result_chars_truncates_on_char_boundary_for_multibyte() {
+        // Cap lands mid-run of multi-byte chars; must not panic or split a char.
+        let mut out = "é".repeat(20); // each 'é' is 2 bytes
+        apply_max_result_chars(&mut out, Some(5), "agent_memory");
+        assert!(out.starts_with(&"é".repeat(5)), "{out}");
+        assert!(out.ends_with("[...truncated]"), "{out}");
     }
 }
