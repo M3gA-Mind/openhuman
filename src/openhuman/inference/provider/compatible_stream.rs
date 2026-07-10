@@ -106,7 +106,10 @@ pub(crate) fn sse_bytes_to_chunks(
                                     e
                                 ))))
                                 .await;
-                            break;
+                            // Return (not break) so the success `final_chunk()`
+                            // below is not emitted after this terminal error —
+                            // only a clean EOF (`IdleRead::Ended`) reaches it.
+                            return;
                         }
                     };
 
@@ -136,12 +139,17 @@ pub(crate) fn sse_bytes_to_chunks(
                 }
                 Err(e) => {
                     let _ = tx.send(Err(StreamError::Http(e))).await;
-                    break;
+                    // Return (not break) so a transport failure is not masked by
+                    // the success `final_chunk()` below — only a clean EOF
+                    // (`IdleRead::Ended`) emits the terminal success chunk.
+                    return;
                 }
             }
         }
 
-        // Send final chunk
+        // Reached only on a clean EOF (`IdleRead::Ended`): every error path above
+        // returns after sending its `Err(...)`, so a success `final_chunk()` can
+        // never mask a decoding/transport/idle-timeout failure as a normal stop.
         let _ = tx.send(Ok(StreamChunk::final_chunk())).await;
     });
 
