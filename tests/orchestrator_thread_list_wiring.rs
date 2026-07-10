@@ -61,11 +61,12 @@ fn orchestrator_lists_thread_list_as_direct_tool() {
 #[test]
 fn orchestrator_does_not_route_thread_listing_through_memory_subagent() {
     // The orchestrator reaches memory retrieval via the `agent_memory`
-    // subagent (surfaced as `retrieve_memory`). It must NOT own `context_scout`
-    // (the other `thread_list` holder) as a subagent — the direct tool is the
-    // intended route. If a future change adds `context_scout` here, revisit
-    // whether thread listing should still be direct. Scoped to the [subagents]
-    // table so an unrelated mention elsewhere can't false-fail the invariant.
+    // subagent (synthesised as `delegate_retrieve_memory`). It must NOT own
+    // `context_scout` (the other `thread_list` holder) as a subagent — the
+    // direct tool is the intended route. If a future change adds `context_scout`
+    // here, revisit whether thread listing should still be direct. Scoped to the
+    // [subagents] table so an unrelated mention elsewhere can't false-fail the
+    // invariant.
     assert!(
         !lists_named_tool(subagents_section(ORCHESTRATOR_TOML), "context_scout"),
         "orchestrator is not expected to delegate to context_scout; thread \
