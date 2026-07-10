@@ -5,7 +5,7 @@ use super::{
     in_flight_entries_for_test, inference_budget_exceeded_user_message,
     is_inference_budget_exceeded_error, json_output, key_for, locale_reply_directive,
     normalize_model_override, optional_f64, optional_string, parallel_in_flight_entries_for_test,
-    provider_role_for_model_override, required_string, schemas,
+    provider_role_for_model_override, required_string, schemas, sentry_suppression_reason,
     set_test_forced_run_chat_task_error, set_test_run_chat_task_block, start_chat,
     subscribe_web_channel_events, ChatRequestMetadata, ClassifiedError, TestRunChatTaskBlock,
     WebChatParams,
@@ -453,6 +453,40 @@ fn classify_inference_error_harness_wall_clock_timeout_is_turn_timeout() {
         assert_eq!(category, "turn_timeout", "must classify as turn_timeout: {raw}");
         assert!(retryable, "a wall-clock timeout is retryable: {raw}");
     }
+}
+
+#[test]
+fn turn_timeout_error_is_suppressed_from_sentry() {
+    // Issue #4746 (maintainer review): a wedged turn that trips the wall-clock
+    // ceiling is a deterministic, user-surfaced, retryable outcome — the client
+    // already gets a graceful `turn_timeout` chat_error, so it must NOT page
+    // Sentry (same tier as the max-iteration cap). `run_chat_task`'s emit site
+    // gates on `sentry_suppression_reason`; assert both the synthetic backstop
+    // marker and the harness `Timeout` renderings are suppressed, while a
+    // genuine provider defect still reports.
+    let detailed_marker = format!(
+        "run_chat_task failed client_id=c thread_id=t request_id=r error={}",
+        super::web_errors::turn_timeout_error_message(600)
+    );
+    assert_eq!(
+        sentry_suppression_reason(&detailed_marker),
+        Some("turn wall-clock backstop"),
+        "the synthetic backstop marker must suppress the Sentry emit"
+    );
+    assert_eq!(
+        sentry_suppression_reason(
+            "run timed out: model call for run `abc` exceeded its remaining wall-clock budget (600000 ms)"
+        ),
+        Some("turn wall-clock backstop"),
+        "the harness Timeout rendering must suppress the Sentry emit"
+    );
+    // A real provider defect is NOT a deterministic agent-loop outcome and must
+    // still page.
+    assert_eq!(
+        sentry_suppression_reason("openrouter API error (500 Internal Server Error)"),
+        None,
+        "a genuine provider error must still reach Sentry"
+    );
 }
 
 #[test]

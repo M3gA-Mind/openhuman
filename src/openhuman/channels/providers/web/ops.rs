@@ -147,6 +147,32 @@ where
     }
 }
 
+/// Reason a terminal `run_chat_task` error should be kept OUT of Sentry, or
+/// `None` when it is a genuine defect that must page.
+///
+/// Both suppressed cases are deterministic, user-surfaced, retryable
+/// agent-loop outcomes — a terminal `chat_error` already reaches the client, so
+/// a Sentry event is pure noise (same tier as `MaxIterationsExceeded` /
+/// `EmptyProviderResponse`, which are demoted the same way):
+///
+/// - the max-iteration cap (`is_max_iterations_error`), and
+/// - the turn wall-clock backstop / harness `Timeout` (`is_turn_timeout_error`,
+///   issue #4746) — without this arm every wedged turn that trips the ceiling
+///   would emit a spurious Sentry event, contradicting the graceful
+///   `turn_timeout` framing.
+///
+/// Kept as a pure predicate over the already-formatted error string so the
+/// suppression policy is unit-testable without a Sentry harness.
+pub(crate) fn sentry_suppression_reason(detailed: &str) -> Option<&'static str> {
+    if crate::openhuman::agent::error::is_max_iterations_error(detailed) {
+        Some("max-iteration cap")
+    } else if super::web_errors::is_turn_timeout_error(detailed) {
+        Some("turn wall-clock backstop")
+    } else {
+        None
+    }
+}
+
 /// What the budget-correlator should do with a terminated turn (#3386).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum BudgetCorrelation {
@@ -713,11 +739,12 @@ pub async fn start_chat(
                 let classified = classify_inference_error(&err);
                 let classified_type = classified.error_type;
                 let classified_type_string = classified_type.to_string();
-                if crate::openhuman::agent::error::is_max_iterations_error(&detailed) {
+                if let Some(reason) = sentry_suppression_reason(&detailed) {
                     log::info!(
                         target: "web_channel",
-                        "[web_channel.run_chat_task] suppressed Sentry emission for max-iteration \
-                         cap client_id={} thread_id={} request_id={} error_type={} message={}",
+                        "[web_channel.run_chat_task] suppressed Sentry emission for {} \
+                         client_id={} thread_id={} request_id={} error_type={} message={}",
+                        reason,
                         client_id_task,
                         thread_id_task,
                         request_id_task,
