@@ -29,6 +29,18 @@ fn spacy_pip_install_args() -> Vec<&'static str> {
     args
 }
 
+/// Filename of the marker dropped in a fully provisioned venv.
+const SPACY_READY_MARKER_NAME: &str = ".openhuman-spacy-ready";
+
+/// Schema version recorded on the first line of the ready marker. Bump this
+/// whenever the provisioned package set changes so existing venvs are
+/// re-provisioned instead of reused. `v2-click` adds the explicit `click` pin
+/// (GH-4687): a venv provisioned before that pin carries the marker but may
+/// still be missing `click`, so its (v1) marker must NOT satisfy readiness —
+/// otherwise `ensure_spacy` short-circuits and the app keeps hitting
+/// `ModuleNotFoundError: No module named 'click'` even after updating.
+const SPACY_READY_MARKER_VERSION: &str = "v2-click";
+
 const VENV_TIMEOUT: Duration = Duration::from_secs(120);
 const PIP_TIMEOUT: Duration = Duration::from_secs(600);
 
@@ -146,8 +158,11 @@ pub async fn ensure_spacy(config: &Config) -> Result<SpacyRuntime> {
     )
     .await?;
 
-    let marker = venv_dir.join(".openhuman-spacy-ready");
-    tokio::fs::write(&marker, base.version.as_bytes())
+    // First line is the schema version (checked by `spacy_marker_is_current`);
+    // the base python version follows for diagnostics.
+    let marker = spacy_ready_marker_path(&venv_dir);
+    let marker_contents = format!("{SPACY_READY_MARKER_VERSION}\n{}", base.version);
+    tokio::fs::write(&marker, marker_contents.as_bytes())
         .await
         .with_context(|| format!("writing spaCy ready marker {}", marker.display()))?;
 
@@ -271,8 +286,24 @@ fn legacy_spacy_venv_dirs(config: &Config) -> Vec<PathBuf> {
         .collect()
 }
 
+fn spacy_ready_marker_path(venv_dir: &Path) -> PathBuf {
+    venv_dir.join(SPACY_READY_MARKER_NAME)
+}
+
+/// True when the venv's ready marker exists AND records the current schema
+/// version. A missing marker, an unreadable marker, or a marker from an older
+/// schema (e.g. a pre-GH-4687 venv that may lack `click`) all read as "not
+/// ready" so the venv is re-provisioned with the current package set rather
+/// than reused.
+fn spacy_marker_is_current(venv_dir: &Path) -> bool {
+    match std::fs::read_to_string(spacy_ready_marker_path(venv_dir)) {
+        Ok(contents) => contents.lines().next().map(str::trim) == Some(SPACY_READY_MARKER_VERSION),
+        Err(_) => false,
+    }
+}
+
 fn spacy_venv_ready(venv_dir: &Path) -> bool {
-    venv_dir.join(".openhuman-spacy-ready").exists() && venv_python_path(venv_dir).exists()
+    spacy_marker_is_current(venv_dir) && venv_python_path(venv_dir).exists()
 }
 
 fn venv_python_path(venv_dir: &Path) -> PathBuf {
@@ -305,10 +336,45 @@ mod tests {
         let legacy_venv = temp.path().join("memory-nlp").join("spacy-venv");
         std::fs::create_dir_all(legacy_venv.join(if cfg!(windows) { "Scripts" } else { "bin" }))
             .unwrap();
-        std::fs::write(legacy_venv.join(".openhuman-spacy-ready"), "test").unwrap();
+        std::fs::write(
+            spacy_ready_marker_path(&legacy_venv),
+            format!("{SPACY_READY_MARKER_VERSION}\n3.11.0"),
+        )
+        .unwrap();
         std::fs::write(venv_python_path(&legacy_venv), "").unwrap();
 
         assert!(spacy_provisioned(&config));
+    }
+
+    #[test]
+    fn stale_marker_venv_is_not_ready_so_it_reprovisions() {
+        // Regression for GH-4687: a venv provisioned before the `click` pin
+        // carries the ready marker but may be missing `click`. Its old-schema
+        // marker must not satisfy readiness, so `ensure_spacy` re-provisions
+        // (re-running pip with the `click` pin) instead of short-circuiting and
+        // continuing to fail with `ModuleNotFoundError: click`.
+        let temp = tempfile::tempdir().unwrap();
+        let venv = temp.path().join("spacy-venv");
+        std::fs::create_dir_all(venv.join(if cfg!(windows) { "Scripts" } else { "bin" })).unwrap();
+        std::fs::write(venv_python_path(&venv), "").unwrap();
+
+        // Pre-#4687 marker wrote only the python version — no schema tag.
+        std::fs::write(spacy_ready_marker_path(&venv), "3.11.5").unwrap();
+        assert!(
+            !spacy_venv_ready(&venv),
+            "stale-marker venv must be re-provisioned, not treated as ready"
+        );
+
+        // Current-schema marker satisfies readiness.
+        std::fs::write(
+            spacy_ready_marker_path(&venv),
+            format!("{SPACY_READY_MARKER_VERSION}\n3.11.5"),
+        )
+        .unwrap();
+        assert!(
+            spacy_venv_ready(&venv),
+            "current-schema marker venv is ready"
+        );
     }
 
     #[test]
