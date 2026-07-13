@@ -3925,6 +3925,18 @@ pub fn run() {
                 }
             }
             RunEvent::ExitRequested { .. } => {
+                // Persist the main window's geometry on every clean quit
+                // (Cmd+Q, tray "Quit", dock quit, or the frontend
+                // `app_quit` command) so the next launch restores the
+                // user's size + position. Previously `save_main` ran only
+                // on the identity-flip `restart_app` path (#900): a normal
+                // quit never saved, so the window always reopened at the
+                // default small centered size (#4810). `save_main` is
+                // best-effort and idempotent — safe to also run here even
+                // though `restart_app` saves before it triggers exit.
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    window_state::save_main(&window);
+                }
                 // Run our cleanup BEFORE CEF's own Exit handler does
                 // `close_all_windows() → cef::shutdown()`. Doing this in
                 // RunEvent::Exit instead races CEF's teardown and the
