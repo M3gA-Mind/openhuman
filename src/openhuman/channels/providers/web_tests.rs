@@ -11,21 +11,24 @@ use super::{
     WebChatParams,
 };
 use crate::core::TypeSchema;
-use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::sync::Mutex as TokioMutex;
 use tokio::time::{timeout, Duration};
 
-/// Serializes every test that drives `start_chat` with a
-/// `TEST_FORCED_RUN_CHAT_TASK_ERROR` toggle. The toggle and the
-/// per-thread session cache are process-global, so two such tests
-/// running concurrently can clobber each other's forced error before
-/// `run_chat_task` reads it — leading to flaky asserts where one test
-/// observes another test's error string. Holding this mutex for the
-/// duration of each test body restores isolation without disabling
-/// `cargo test`'s default parallelism for the rest of the suite.
-static FORCED_ERROR_TEST_LOCK: Lazy<TokioMutex<()>> = Lazy::new(|| TokioMutex::new(()));
+// Serializes every test that drives `start_chat` with the process-global
+// `run_chat_task` test hooks (forced error / forced block) or the
+// `OPENHUMAN_WEB_TURN_TIMEOUT_SECS` override. Those toggles and the per-thread
+// session cache are process-global, so two such tests running concurrently can
+// clobber each other before `run_chat_task` reads them — leading to flaky
+// asserts where one test observes another test's state. Holding this mutex for
+// the duration of each test body restores isolation without disabling
+// `cargo test`'s default parallelism for the rest of the suite.
+//
+// This is the *shared* lock defined at the hook boundary
+// (`web::ops::RUN_CHAT_TASK_TEST_LOCK`), not a file-local one, so tests in other
+// modules that exercise `start_chat`/`run_chat_task` serialize on the same lock
+// (CodeRabbit review on #4746).
+use super::RUN_CHAT_TASK_TEST_LOCK as FORCED_ERROR_TEST_LOCK;
 
 #[tokio::test]
 async fn start_chat_validates_required_fields() {
