@@ -1292,12 +1292,12 @@ fn set_main_window_hidden(hide: bool) {
     use std::os::windows::ffi::OsStringExt;
     use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetClassNameW, GetWindowThreadProcessId, IsWindowVisible, ShowWindow,
+        EnumWindows, GetClassNameW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, ShowWindow,
     };
 
     struct EnumCtx {
         target_pid: u32,
-        action: i32,
+        hide: bool,
         require_visible: bool,
         matched: u32,
     }
@@ -1323,15 +1323,20 @@ fn set_main_window_hidden(hide: bool) {
         if class != "Chrome_WidgetWin_1" {
             return 1;
         }
-        unsafe { ShowWindow(hwnd, ctx.action) };
+        // Choose the restore command per frame: a minimized frame needs
+        // SW_RESTORE to un-minimize, but a hidden-but-maximized frame must be
+        // shown with SW_SHOW so it stays maximized (#4818). IsIconic is only
+        // consulted on the restore path.
+        let is_iconic = !ctx.hide && unsafe { IsIconic(hwnd) } != 0;
+        let action = window_show_command(ctx.hide, is_iconic);
+        unsafe { ShowWindow(hwnd, action) };
         ctx.matched += 1;
         1
     }
 
-    let action = show_window_command(hide);
     let mut ctx = EnumCtx {
         target_pid: std::process::id(),
-        action,
+        hide,
         // Hide path: only touch currently-visible frames. Show path: also
         // pick up frames already in the SW_HIDE state.
         require_visible: hide,
@@ -1340,37 +1345,46 @@ fn set_main_window_hidden(hide: bool) {
     unsafe { EnumWindows(Some(enum_proc), &mut ctx as *mut _ as LPARAM) };
     log::info!(
         "[window-hide] EnumWindows: action={} matched={} pid={}",
-        if hide { "SW_HIDE" } else { "SW_RESTORE" },
+        if hide {
+            "SW_HIDE"
+        } else {
+            "restore(SW_RESTORE/SW_SHOW)"
+        },
         ctx.matched,
         ctx.target_pid,
     );
 }
 
-/// `ShowWindow` command for [`set_main_window_hidden`]'s restore path.
+/// `ShowWindow` command for [`set_main_window_hidden`], chosen per frame.
 ///
-/// The restore path uses `SW_RESTORE`, not `SW_SHOW`: `SW_SHOW` displays a
-/// window in its *current* state, so a **minimized** `Chrome_WidgetWin_1`
-/// frame stays minimized. That is why clicking the desktop shortcut / taskbar
-/// entry while the app was minimized did nothing — the second-instance
-/// callback ran `set_main_window_hidden(false)` (a no-op SW_SHOW) and then
-/// `WebviewWindow::unminimize()`, which the vendored CEF runtime routes to the
-/// internal `cef::Window` proxy handle rather than the visible top-level frame
-/// (#1607), so neither un-minimized the OS window (#4809).
+/// Restore is *not* a single command — it depends on whether the frame is
+/// iconic (minimized):
 ///
-/// `SW_RESTORE` un-minimizes AND un-hides the OS frame, so it fixes the
-/// minimized case while remaining correct for the hide-to-tray case (a
-/// SW_HIDE'd frame's restore state is normal, so SW_RESTORE shows + activates
-/// it exactly as SW_SHOW did).
+/// - **Minimized frame** (`is_iconic`): `SW_RESTORE`. `SW_SHOW` displays a
+///   window in its *current* state, so a minimized `Chrome_WidgetWin_1` frame
+///   stays minimized — clicking the desktop shortcut / taskbar entry while the
+///   app was minimized did nothing, because the second-instance callback ran a
+///   no-op `SW_SHOW` and then `WebviewWindow::unminimize()`, which the vendored
+///   CEF runtime routes to the internal `cef::Window` proxy handle rather than
+///   the visible top-level frame (#1607), so neither un-minimized the OS window
+///   (#4809). `SW_RESTORE` un-minimizes AND un-hides.
+/// - **Hidden-but-not-minimized frame** (the plain hide-to-tray case, which may
+///   be **maximized**): `SW_SHOW`. `SW_RESTORE` would force a maximized frame
+///   back to its normal size, so a window closed to the tray while maximized
+///   would come back un-maximized. `SW_SHOW` displays it in its current state,
+///   preserving the maximized geometry (chatgpt-codex review on #4809/#4818).
 ///
 /// Split out as a pure `i32`-returning helper so the command selection is unit
 /// testable without driving real windows.
 #[cfg(target_os = "windows")]
-const fn show_window_command(hide: bool) -> i32 {
-    use windows_sys::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_RESTORE};
+const fn window_show_command(hide: bool, is_iconic: bool) -> i32 {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_RESTORE, SW_SHOW};
     if hide {
         SW_HIDE
-    } else {
+    } else if is_iconic {
         SW_RESTORE
+    } else {
+        SW_SHOW
     }
 }
 

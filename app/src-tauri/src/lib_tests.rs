@@ -9,21 +9,30 @@ static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 // NOTE: `is_daemon_mode_detects_daemon_flag` removed (plan.md §2.1) — it
 // discarded the result with `let _` and asserted nothing.
 
-// Regression for #4809: restoring the window (desktop shortcut / taskbar /
-// tray while minimized) must un-minimize the OS frame. `SW_SHOW` leaves a
-// minimized `Chrome_WidgetWin_1` frame minimized, so the restore path must
-// use `SW_RESTORE`. Windows-only: `show_window_command` is `cfg(windows)`.
+// Regression for #4809 + #4818: the restore command is chosen per frame.
+// - A minimized frame (desktop shortcut / taskbar / tray while minimized) must
+//   un-minimize the OS frame; `SW_SHOW` leaves it minimized, so it uses
+//   `SW_RESTORE` (#4809).
+// - A hidden-but-not-minimized frame may be maximized; `SW_RESTORE` would drop
+//   it back to normal size, so it uses `SW_SHOW` to preserve the maximized
+//   geometry (#4818).
+// Windows-only: `window_show_command` is `cfg(windows)`.
 #[cfg(target_os = "windows")]
 #[test]
-fn restore_uses_sw_restore_not_sw_show() {
+fn restore_command_preserves_minimized_and_maximized_frames() {
     use windows_sys::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_RESTORE, SW_SHOW};
-    // Restore path un-minimizes AND un-hides.
-    assert_eq!(show_window_command(false), SW_RESTORE);
+    // Minimized restore un-minimizes AND un-hides.
+    assert_eq!(window_show_command(false, true), SW_RESTORE);
     // Guard against a regression back to SW_SHOW, which no-ops on a
     // minimized frame and reproduces #4809.
-    assert_ne!(show_window_command(false), SW_SHOW);
-    // Hide path is unchanged.
-    assert_eq!(show_window_command(true), SW_HIDE);
+    assert_ne!(window_show_command(false, true), SW_SHOW);
+    // Hidden-but-not-minimized restore uses SW_SHOW so a tray-hidden maximized
+    // window comes back maximized (#4818), not shrunk to normal size.
+    assert_eq!(window_show_command(false, false), SW_SHOW);
+    assert_ne!(window_show_command(false, false), SW_RESTORE);
+    // Hide path is unchanged regardless of iconic state.
+    assert_eq!(window_show_command(true, false), SW_HIDE);
+    assert_eq!(window_show_command(true, true), SW_HIDE);
 }
 
 /// Test core_rpc_url returns expected format
