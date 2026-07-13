@@ -5,16 +5,16 @@ on:
     inputs:
       commit_sha:
         description:
-          Build from a specific commit SHA instead of main HEAD. Leave empty
-          to use main HEAD (the default). The commit must be reachable from
-          main.
+          Build from a specific commit SHA instead of release HEAD. Leave empty
+          to use release HEAD (the default). The commit must be reachable from
+          release.
         required: false
         type: string
         default: ""
       create_tag:
         description:
           Create the immutable `v<version>-staging` tag and run the full
-          build matrix. When false, bump versions and commit to main but
+          build matrix. When false, bump versions and commit to release but
           skip tag creation, desktop builds, and Docker — useful for
           version-bump-only runs.
         required: false
@@ -43,10 +43,10 @@ concurrency:
   group: release-staging
   cancel-in-progress: false
 # ---------------------------------------------------------------------------
-# Branch model: staging releases are cut from `main`. This workflow
-# bumps/commits/tags on `main` and the build matrix is built from the tag
-# this workflow creates on `main`. (Production still cuts from the
-# long-lived `release` branch — see release-production.yml.)
+# Branch model: releases are cut from the long-lived `release` branch, not
+# `main`. `release` only advances via green main→release PRs that run the
+# full test suite; this workflow bumps/commits/tags on `release` and the
+# build matrix is built from the tag this workflow creates on `release`.
 #
 # Job dependency graph
 #
@@ -67,9 +67,9 @@ concurrency:
 # ---------------------------------------------------------------------------
 jobs:
   # =========================================================================
-  # Phase 1: Patch-bump on `main` and optionally create the immutable
+  # Phase 1: Patch-bump on `release` and optionally create the immutable
   # `v<version>-staging` tag at that commit. The build matrix below then
-  # checks out the tag (not main HEAD) so reruns reproduce byte-for-byte.
+  # checks out the tag (not release HEAD) so reruns reproduce byte-for-byte.
   # =========================================================================
   prepare-build:
     name: Prepare build context
@@ -97,10 +97,10 @@ jobs:
       build_ref: ${{ steps.resolve.outputs.build_ref }}
       base_url: ${{ steps.resolve.outputs.base_url }}
     steps:
-      - name: Enforce main branch
-        if: github.ref != 'refs/heads/main'
+      - name: Enforce release branch
+        if: github.ref != 'refs/heads/release'
         run: |
-          echo "This workflow can only run from main. Current ref: $GITHUB_REF"
+          echo "This workflow can only run from release. Current ref: $GITHUB_REF"
           exit 1
       - name: Generate GitHub App token
         id: app-token
@@ -113,10 +113,10 @@ jobs:
           # is all it needs. Branch-protection bypass comes from the App's
           # identity in the ruleset bypass list, not from token scopes.
           permission-contents: write
-      - name: Checkout main
+      - name: Checkout release
         uses: actions/checkout@v7
         with:
-          ref: main
+          ref: release
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
           submodules: recursive
@@ -144,14 +144,14 @@ jobs:
               exit 1
             }
             git rev-parse --verify "${COMMIT_SHA}^{commit}" >/dev/null
-            git merge-base --is-ancestor "$COMMIT_SHA" origin/main || {
-              echo "commit_sha $COMMIT_SHA is not reachable from main"
+            git merge-base --is-ancestor "$COMMIT_SHA" origin/release || {
+              echo "commit_sha $COMMIT_SHA is not reachable from release"
               exit 1
             }
             git checkout --detach "$COMMIT_SHA"
           else
-            git checkout main
-            git pull origin main --ff-only
+            git checkout release
+            git pull origin release --ff-only
           fi
       # Direct App-token pushes bypass the PR merge gate, so nothing else
       # guarantees the commit being cut passed the full suite. Fail unless
@@ -164,12 +164,10 @@ jobs:
         run: bash scripts/release/require-ci-full-gate.sh "$(git rev-parse HEAD)"
       # Patch-only bump for staging cuts. Minor/major promotions are owned
       # by `release-production.yml` and only happen on the production path.
-      # Bump commit lands on `main` (we don't maintain a separate `staging`
+      # Bump commit lands on `release` (we don't maintain a separate `staging`
       # branch) and the immutable `v<version>-staging` tag pinpoints the
-      # exact main commit QA validated. NOTE: production cuts from `release`
-      # and requires the promoted commit reachable from `release`, so the
-      # QA'd main commit must be promoted to `release` (promote-main-to-
-      # release.yml) before it can be cut to production.
+      # exact release commit QA validated, so production promotion can later
+      # find the tagged commit reachable from release.
       - name: Bump patch version
         id: bump
         run: node scripts/release/bump-version.js patch
@@ -211,10 +209,10 @@ jobs:
           CREATE_TAG: ${{ inputs.create_tag }}
         run: |
           git add app/package.json app/src-tauri/tauri.conf.json app/src-tauri/Cargo.toml Cargo.toml app/src-tauri/Cargo.lock Cargo.lock
-          # [skip ci]: the bump commit lands on an already-validated main
+          # [skip ci]: the bump commit lands on an already-validated release
           # tree — don't re-trigger the full suite (ci-full.yml, push:release).
           git commit -m "chore(staging): v${VERSION} [skip ci]"
-          git push origin HEAD:main
+          git push origin HEAD:release
           if [ "$CREATE_TAG" = "true" ]; then
             git tag -a "$TAG" -m "Staging cut $TAG"
             git push origin "$TAG"
@@ -237,8 +235,8 @@ jobs:
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
           if [ "$CREATE_TAG" = "true" ]; then
-            # Build from the immutable staging tag rather than main HEAD so
-            # reruns of this workflow rebuild the same content even if main
+            # Build from the immutable staging tag rather than release HEAD so
+            # reruns of this workflow rebuild the same content even if release
             # has moved on (e.g. another patch cut, or a hotfix landed).
             echo "build_ref=$TAG" >> "$GITHUB_OUTPUT"
           else
@@ -246,12 +244,12 @@ jobs:
           fi
           echo "base_url=https://staging-api.tinyhumans.ai/" >> "$GITHUB_OUTPUT"
 
-      # Back-merge safety net: the bump commit already landed directly on
-      # `main` above, so this is now effectively a no-op (main fast-forwards
-      # to itself). Retained unchanged so the step still reconciles main with
-      # anything unexpected on the build ref. continue-on-error so a merge
-      # conflict never strands a cut that is already tagged — resolve the
-      # merge manually in that case.
+      # Keep main in sync: the version-bump commit (and anything else on
+      # release) flows back into main right after the cut — every release
+      # build back-merges, not just production. Runs in both create_tag
+      # variants because the bump commit lands on release in both.
+      # continue-on-error so a merge conflict never strands a cut that is
+      # already tagged — resolve the merge manually in that case.
       - name: Merge release back into main
         continue-on-error: true
         env:
