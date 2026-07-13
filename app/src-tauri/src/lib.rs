@@ -3905,6 +3905,19 @@ pub fn run() {
                     "[window] close requested on main window — hiding to tray"
                 );
                 api.prevent_close();
+                // Persist geometry now, while the window handle is still
+                // reachable. On Windows the hide below is a raw SW_HIDE on the
+                // OS frame, after which `get_webview_window("main")` returns
+                // `None` until the window is shown again (#1607). If the user
+                // then picks tray "Quit" while hidden, the ExitRequested save
+                // finds no window and nothing is persisted, so the next launch
+                // falls back to the default geometry (#4810). Saving here
+                // captures the last on-screen size/position before it becomes
+                // unreachable; ExitRequested still saves for the shown-window
+                // quit paths (`save_main` is best-effort and idempotent).
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    window_state::save_main(&window);
+                }
                 // Hide the OS top-level Chrome_WidgetWin_1 frame via
                 // EnumWindows + SW_HIDE — full hide-to-tray as PR #1548
                 // intended. `window.hide()` and `window.minimize()` through
