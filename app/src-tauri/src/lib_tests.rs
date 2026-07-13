@@ -9,6 +9,23 @@ static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 // NOTE: `is_daemon_mode_detects_daemon_flag` removed (plan.md §2.1) — it
 // discarded the result with `let _` and asserted nothing.
 
+// Regression for #4809: restoring the window (desktop shortcut / taskbar /
+// tray while minimized) must un-minimize the OS frame. `SW_SHOW` leaves a
+// minimized `Chrome_WidgetWin_1` frame minimized, so the restore path must
+// use `SW_RESTORE`. Windows-only: `show_window_command` is `cfg(windows)`.
+#[cfg(target_os = "windows")]
+#[test]
+fn restore_uses_sw_restore_not_sw_show() {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_RESTORE, SW_SHOW};
+    // Restore path un-minimizes AND un-hides.
+    assert_eq!(show_window_command(false), SW_RESTORE);
+    // Guard against a regression back to SW_SHOW, which no-ops on a
+    // minimized frame and reproduces #4809.
+    assert_ne!(show_window_command(false), SW_SHOW);
+    // Hide path is unchanged.
+    assert_eq!(show_window_command(true), SW_HIDE);
+}
+
 /// Test core_rpc_url returns expected format
 #[test]
 fn core_rpc_url_returns_expected_format() {

@@ -1292,8 +1292,7 @@ fn set_main_window_hidden(hide: bool) {
     use std::os::windows::ffi::OsStringExt;
     use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetClassNameW, GetWindowThreadProcessId, IsWindowVisible, ShowWindow, SW_HIDE,
-        SW_SHOW,
+        EnumWindows, GetClassNameW, GetWindowThreadProcessId, IsWindowVisible, ShowWindow,
     };
 
     struct EnumCtx {
@@ -1329,7 +1328,7 @@ fn set_main_window_hidden(hide: bool) {
         1
     }
 
-    let action = if hide { SW_HIDE } else { SW_SHOW };
+    let action = show_window_command(hide);
     let mut ctx = EnumCtx {
         target_pid: std::process::id(),
         action,
@@ -1341,10 +1340,38 @@ fn set_main_window_hidden(hide: bool) {
     unsafe { EnumWindows(Some(enum_proc), &mut ctx as *mut _ as LPARAM) };
     log::info!(
         "[window-hide] EnumWindows: action={} matched={} pid={}",
-        if hide { "SW_HIDE" } else { "SW_SHOW" },
+        if hide { "SW_HIDE" } else { "SW_RESTORE" },
         ctx.matched,
         ctx.target_pid,
     );
+}
+
+/// `ShowWindow` command for [`set_main_window_hidden`]'s restore path.
+///
+/// The restore path uses `SW_RESTORE`, not `SW_SHOW`: `SW_SHOW` displays a
+/// window in its *current* state, so a **minimized** `Chrome_WidgetWin_1`
+/// frame stays minimized. That is why clicking the desktop shortcut / taskbar
+/// entry while the app was minimized did nothing — the second-instance
+/// callback ran `set_main_window_hidden(false)` (a no-op SW_SHOW) and then
+/// `WebviewWindow::unminimize()`, which the vendored CEF runtime routes to the
+/// internal `cef::Window` proxy handle rather than the visible top-level frame
+/// (#1607), so neither un-minimized the OS window (#4809).
+///
+/// `SW_RESTORE` un-minimizes AND un-hides the OS frame, so it fixes the
+/// minimized case while remaining correct for the hide-to-tray case (a
+/// SW_HIDE'd frame's restore state is normal, so SW_RESTORE shows + activates
+/// it exactly as SW_SHOW did).
+///
+/// Split out as a pure `i32`-returning helper so the command selection is unit
+/// testable without driving real windows.
+#[cfg(target_os = "windows")]
+const fn show_window_command(hide: bool) -> i32 {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SW_HIDE, SW_RESTORE};
+    if hide {
+        SW_HIDE
+    } else {
+        SW_RESTORE
+    }
 }
 
 /// Look up the main `WebviewWindow`, optionally waiting briefly on Windows
