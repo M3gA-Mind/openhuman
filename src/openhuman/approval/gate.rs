@@ -246,11 +246,19 @@ impl Drop for WaiterGuard<'_> {
         // row. `store::decide` is `WHERE decided_at IS NULL`, so a decision that
         // committed in the same instant is honored rather than overwritten.
         self.gate.evict_waiter(&self.request_id);
+        // Only clear the routing entry when it still points at *this* request.
+        // On external teardown a replacement turn can park a new approval on the
+        // same thread/meeting and overwrite the mapping before this guard drops;
+        // an unconditional `remove` would delete the *new* request's routing, so
+        // the next typed yes/no would fall through as a fresh chat turn instead
+        // of resolving the live gate (#4774).
         if let Some(thread_id) = &self.thread_id {
-            self.gate.thread_to_request.lock().remove(thread_id);
+            self.gate
+                .clear_thread_route_if_owned(thread_id, &self.request_id);
         }
         if let Some(meeting_key) = &self.meeting_key {
-            self.gate.meeting_to_request.lock().remove(meeting_key);
+            self.gate
+                .clear_meeting_route_if_owned(meeting_key, &self.request_id);
         }
         let _ = store::decide(&self.gate.config, &self.request_id, ApprovalDecision::Deny);
         tracing::warn!(
@@ -1201,6 +1209,26 @@ impl ApprovalGate {
             self.meeting_to_request.lock().remove(&ic.meeting_key);
         }
     }
+
+    /// Drop the thread → request mapping **only if** it still points at
+    /// `request_id`. Used by [`WaiterGuard::drop`] on external teardown, where a
+    /// replacement turn may have already parked a new approval on the same
+    /// thread and overwritten the entry; clearing unconditionally would delete
+    /// the *new* request's routing (#4774).
+    fn clear_thread_route_if_owned(&self, thread_id: &str, request_id: &str) {
+        let mut map = self.thread_to_request.lock();
+        if map.get(thread_id).is_some_and(|rid| rid == request_id) {
+            map.remove(thread_id);
+        }
+    }
+
+    /// Meeting-map analogue of [`Self::clear_thread_route_if_owned`].
+    fn clear_meeting_route_if_owned(&self, meeting_key: &str, request_id: &str) {
+        let mut map = self.meeting_to_request.lock();
+        if map.get(meeting_key).is_some_and(|rid| rid == request_id) {
+            map.remove(meeting_key);
+        }
+    }
 }
 
 /// Wall-clock milliseconds since the Unix epoch, for `CoreNotificationEvent::timestamp_ms`.
@@ -1375,6 +1403,40 @@ mod tests {
             gate.pending_for_meeting("meet-1").is_none(),
             "meeting mapping must be cleared once the park resolves"
         );
+    }
+
+    #[test]
+    fn guard_cleanup_only_clears_routing_it_still_owns() {
+        // Regression for #4774: on external turn teardown a replacement turn may
+        // have already parked a new approval on the same thread/meeting and
+        // overwritten the routing entry. The dropped guard for the *old* request
+        // must not clobber the *new* request's mapping.
+        let (gate, _dir) = test_gate();
+
+        gate.thread_to_request
+            .lock()
+            .insert("thread-1".into(), "req-new".into());
+        gate.meeting_to_request
+            .lock()
+            .insert("meet-1".into(), "req-new".into());
+
+        // Stale guard for the superseded request is a no-op.
+        gate.clear_thread_route_if_owned("thread-1", "req-old");
+        gate.clear_meeting_route_if_owned("meet-1", "req-old");
+        assert_eq!(
+            gate.pending_for_thread("thread-1").as_deref(),
+            Some("req-new")
+        );
+        assert_eq!(
+            gate.pending_for_meeting("meet-1").as_deref(),
+            Some("req-new")
+        );
+
+        // The owning request's guard clears its own routing.
+        gate.clear_thread_route_if_owned("thread-1", "req-new");
+        gate.clear_meeting_route_if_owned("meet-1", "req-new");
+        assert!(gate.pending_for_thread("thread-1").is_none());
+        assert!(gate.pending_for_meeting("meet-1").is_none());
     }
 
     #[tokio::test]
