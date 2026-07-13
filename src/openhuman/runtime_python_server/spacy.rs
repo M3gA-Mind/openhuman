@@ -12,6 +12,23 @@ use crate::openhuman::runtime_python::PythonBootstrap;
 
 pub const SPACY_MODEL: &str = "en_core_web_sm";
 
+/// Packages installed into the bundled spaCy venv.
+///
+/// `click` is a transitive dependency of spaCy (via `typer`, whose CLI backs
+/// `import spacy`), but resolver quirks on Windows have been observed to drop
+/// it from the packaged venv, leaving `import spacy` to fail at runtime with
+/// `ModuleNotFoundError: No module named 'click'` (GH-4687). Pinning it here as
+/// an explicit dependency guarantees it is present in the venv on every
+/// platform regardless of transitive resolution.
+const SPACY_PIP_PACKAGES: &[&str] = &["spacy", "click"];
+
+/// Build the `pip install` argument vector for provisioning the spaCy venv.
+fn spacy_pip_install_args() -> Vec<&'static str> {
+    let mut args = vec!["-m", "pip", "install", "--upgrade", "pip"];
+    args.extend_from_slice(SPACY_PIP_PACKAGES);
+    args
+}
+
 const VENV_TIMEOUT: Duration = Duration::from_secs(120);
 const PIP_TIMEOUT: Duration = Duration::from_secs(600);
 
@@ -115,7 +132,7 @@ pub async fn ensure_spacy(config: &Config) -> Result<SpacyRuntime> {
 
     run_step(
         &venv_python,
-        &["-m", "pip", "install", "--upgrade", "pip", "spacy"],
+        &spacy_pip_install_args(),
         PIP_TIMEOUT,
         "pip install spacy",
     )
@@ -292,6 +309,17 @@ mod tests {
         std::fs::write(venv_python_path(&legacy_venv), "").unwrap();
 
         assert!(spacy_provisioned(&config));
+    }
+
+    #[test]
+    fn pip_install_args_include_click_dependency() {
+        // Regression for GH-4687: `click` must be an explicit venv dependency so
+        // it is never dropped from the packaged runtime on Windows, where its
+        // absence breaks `import spacy` with `ModuleNotFoundError: click`.
+        let args = spacy_pip_install_args();
+        assert!(args.contains(&"click"), "click must be installed: {args:?}");
+        assert!(args.contains(&"spacy"), "spacy must be installed: {args:?}");
+        assert_eq!(&args[..5], &["-m", "pip", "install", "--upgrade", "pip"]);
     }
 
     #[test]
