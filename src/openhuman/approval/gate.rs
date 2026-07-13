@@ -203,6 +203,64 @@ pub struct ApprovalGate {
     meeting_to_request: Mutex<HashMap<String, String>>,
 }
 
+/// RAII guard that tears the parked waiter down even when the surrounding turn
+/// future is dropped mid-park.
+///
+/// `intercept_audited_inner` only runs its cleanup (`evict_waiter` /
+/// `store::decide(Deny)` / routing-map removal) inside the
+/// `tokio::time::timeout(...).await` match arms — i.e. only when the park
+/// resolves *normally*. Once a turn future can be torn down *externally* — the
+/// harness `max_wall_clock_ms` backstop (#4746) or the outer web backstop
+/// (#4751) firing while a tool call is parked — dropping the future skips those
+/// arms entirely, leaving the in-memory waiter, the thread/meeting routing
+/// mappings, and the `pending_approvals` row dangling until the store TTL
+/// sweeps them. A later yes/no arriving before that expiry would then route to a
+/// dead request and return without starting a fresh turn (#4774).
+///
+/// The guard is created just before the park await and [`disarm`](Self::disarm)ed
+/// on every normal exit (the match arm already ran the exact teardown for its
+/// outcome), so its `Drop` fires *only* on external cancellation.
+struct WaiterGuard<'a> {
+    gate: &'a ApprovalGate,
+    request_id: String,
+    thread_id: Option<String>,
+    meeting_key: Option<String>,
+    armed: bool,
+}
+
+impl WaiterGuard<'_> {
+    /// Mark the park as resolved normally so `Drop` becomes a no-op.
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for WaiterGuard<'_> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        // External teardown: the normal cleanup was skipped. Evict the waiter,
+        // drop the routing mappings so a later chat/voice reply is not
+        // mis-routed to this now-dead request, and deny the still-open pending
+        // row. `store::decide` is `WHERE decided_at IS NULL`, so a decision that
+        // committed in the same instant is honored rather than overwritten.
+        self.gate.evict_waiter(&self.request_id);
+        if let Some(thread_id) = &self.thread_id {
+            self.gate.thread_to_request.lock().remove(thread_id);
+        }
+        if let Some(meeting_key) = &self.meeting_key {
+            self.gate.meeting_to_request.lock().remove(meeting_key);
+        }
+        let _ = store::decide(&self.gate.config, &self.request_id, ApprovalDecision::Deny);
+        tracing::warn!(
+            request_id = %self.request_id,
+            "[approval::gate] parked approval future dropped mid-park (external turn teardown) — \
+             evicted waiter, cleared routing, denied pending row (#4774)"
+        );
+    }
+}
+
 impl ApprovalGate {
     /// Install the process-global gate. Returns the existing gate if
     /// one was already installed (re-install is a no-op so repeated
@@ -816,6 +874,19 @@ impl ApprovalGate {
             None => effective_ttl,
         };
 
+        // RAII cleanup for external teardown (#4774): if the turn future is
+        // dropped while parked on the await below (the #4746/#4751 wall-clock
+        // backstop firing), the match arms never run, so this guard evicts the
+        // waiter, clears routing, and denies the pending row on drop. Disarmed
+        // right after the match on every normal exit.
+        let mut waiter_guard = WaiterGuard {
+            gate: self,
+            request_id: request_id.clone(),
+            thread_id: chat_thread_id.clone(),
+            meeting_key: in_call_ctx.as_ref().map(|ic| ic.meeting_key.clone()),
+            armed: true,
+        };
+
         let outcome = match tokio::time::timeout(wait, rx).await {
             Ok(Ok(decision)) => {
                 tracing::info!(
@@ -941,6 +1012,10 @@ impl ApprovalGate {
                 }
             }
         };
+        // Reached only on a normal park resolution: the match arm above already
+        // ran the exact teardown for its outcome, so disarm the RAII guard (its
+        // Drop is reserved for external cancellation — see `WaiterGuard`).
+        waiter_guard.disarm();
         // The routing mappings are only needed while parked; clear them on
         // every exit (decision, channel drop, or timeout).
         self.clear_thread(&chat_thread_id);
@@ -1608,6 +1683,77 @@ mod tests {
 
         // Mapping is cleared once intercept returns.
         assert!(gate.pending_for_thread("thread-42").is_none());
+    }
+
+    #[tokio::test]
+    async fn waiter_future_dropped_mid_park_evicts_waiter_clears_routing_and_denies_row() {
+        // #4774: once a turn future can be torn down *externally* (the #4746
+        // harness wall-clock backstop / #4751 outer web backstop firing while a
+        // tool call is parked), dropping the intercept future must not leak the
+        // waiter, the thread→request routing mapping, or the still-open pending
+        // row. The `WaiterGuard` Drop impl runs the cleanup the timeout match
+        // arms would otherwise own.
+        let (gate, _dir) = test_gate();
+        let gate = Arc::new(gate);
+
+        // Build the parked future with the WebChat origin + chat context scoped,
+        // exactly like the production web channel caller — but drive it locally
+        // so we can drop it mid-park instead of resolving it.
+        let g = gate.clone();
+        // `Box::pin` (not `tokio::pin!`) so `drop(fut)` below drops the *future
+        // itself* — and thus the `WaiterGuard` saved in its async state — rather
+        // than just a `Pin<&mut _>` reference.
+        let mut fut = Box::pin(turn_origin::with_origin(
+            web_origin(),
+            APPROVAL_CHAT_CONTEXT.scope(
+                chat_ctx(),
+                g.intercept("shell", "run rm", serde_json::json!({})),
+            ),
+        ));
+
+        // Poll it just long enough to register the waiter, persist the pending
+        // row, and park on the TTL timeout. Nothing resolves it, so the outer
+        // timeout must elapse with the future still pending.
+        let parked = tokio::time::timeout(Duration::from_millis(200), &mut fut).await;
+        assert!(
+            parked.is_err(),
+            "future should still be parked, not resolved"
+        );
+
+        // Capture the request_id from the routing mapping while parked, and
+        // confirm the waiter + pending row exist before teardown.
+        let request_id = gate
+            .pending_for_thread("t-test")
+            .expect("thread→request mapping must exist while parked");
+        assert!(
+            gate.waiters.lock().contains_key(&request_id),
+            "waiter must be registered while parked"
+        );
+        assert!(
+            matches!(store::get_decision(&gate.config, &request_id), Ok(None)),
+            "pending row must be open (undecided) while parked"
+        );
+
+        // External teardown: the wall-clock backstop tears the turn future down
+        // mid-park. This skips the timeout match arms entirely.
+        drop(fut);
+
+        // The RAII guard must have run the cleanup on drop.
+        assert!(
+            !gate.waiters.lock().contains_key(&request_id),
+            "waiter must be evicted when the parked future is dropped"
+        );
+        assert!(
+            gate.pending_for_thread("t-test").is_none(),
+            "thread→request routing must be cleared on external teardown"
+        );
+        assert!(
+            matches!(
+                store::get_decision(&gate.config, &request_id),
+                Ok(Some(ApprovalDecision::Deny))
+            ),
+            "pending row must be denied when the parked future is dropped"
+        );
     }
 
     // ── caller park bound (issue #4756) ──────────────────────────────
