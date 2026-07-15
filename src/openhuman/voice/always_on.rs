@@ -238,8 +238,14 @@ pub async fn start_if_enabled(app_config: &Config) {
 
     // The cpal stream is `!Send`, so it lives on a dedicated thread that pushes
     // 16 kHz mono frames over a channel to the async processor below.
+    // `spawn_capture_thread` blocks on a synchronous readiness handshake while
+    // the OS builds the input stream — cold WASAPI init on Windows can take a
+    // while — so run it on the blocking pool. This function is polled
+    // concurrently with the other login-gated services (#3490), and blocking an
+    // async worker here would stall them.
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Vec<f32>>();
-    if let Err(e) = spawn_capture_thread(tx) {
+    let setup = tokio::task::spawn_blocking(move || spawn_capture_thread(tx)).await;
+    if let Err(e) = setup.map_err(|e| e.to_string()).and_then(|inner| inner) {
         log::error!("{LOG_PREFIX} could not start microphone capture: {e}");
         RUNNING.store(false, Ordering::SeqCst);
         return;
