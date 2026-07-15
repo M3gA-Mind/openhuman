@@ -376,18 +376,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn generate_surfaces_timeout_under_tiny_deadline() {
-        // A 1 ns deadline cannot complete any real work — expect a
-        // structured Timeout, not a panic or a half-written buffer.
-        let err = generate(&sample_input(), Duration::from_nanos(1))
+    async fn generate_surfaces_timeout_under_zero_deadline() {
+        // A zero deadline cannot complete any real work — expect a structured
+        // Timeout, not a panic or a half-written buffer.
+        //
+        // Use `Duration::ZERO`, not a tiny non-zero value: a future-dated
+        // sub-millisecond deadline (e.g. `from_nanos(1)`) registers with tokio's
+        // timer wheel and only fires at wheel-tick granularity, so the
+        // `spawn_blocking` synthesis can win the race and surface a non-Timeout
+        // variant (flaky under coverage instrumentation). A zero deadline is
+        // already elapsed at poll time, so `timeout` takes the Elapsed branch on
+        // the first poll — the blocking handle is still `Pending` there since the
+        // task runs on another thread — making the Timeout path deterministic.
+        let err = generate(&sample_input(), Duration::ZERO)
             .await
-            .expect_err("1 ns deadline should never satisfy the timeout");
+            .expect_err("a zero deadline can never satisfy the timeout");
         match err {
             DocumentError::GenerationTimeout { timeout_secs } => {
-                assert_eq!(
-                    timeout_secs, 0,
-                    "nanosecond timeout rounds down to 0 seconds"
-                );
+                assert_eq!(timeout_secs, 0, "zero deadline reports 0 seconds");
             }
             other => panic!("expected GenerationTimeout, got {other:?}"),
         }
