@@ -4472,6 +4472,101 @@ async fn compute_required_connections_skips_native_and_http_nodes() {
     );
 }
 
+// ── extract_workflow_proposal: survives large, tabulation-eligible graphs ─────
+//
+// Regression coverage for the "blank canvas on ≥4-node graphs" bug: tinyjuice's
+// JSON compressor tabulates any uniform object-array of >= 3 rows over ~512
+// bytes, which strips the `"type": "workflow_proposal"` marker this extractor
+// keys on. The fix lives in `tinyagents::middleware::ToolOutputMiddleware`
+// (COMPACTION_EXEMPT_TOOLS), which keeps proposal-tool results out of
+// tokenjuice entirely — so by the time a payload reaches `agent.history()`
+// here, it must still be the untabulated, structurally-intact JSON.
+
+#[test]
+fn extract_workflow_proposal_survives_large_graph() {
+    use crate::openhuman::inference::provider::{ConversationMessage, ToolResultMessage};
+
+    // 6 nodes, several columns each — comfortably over tinyjuice's MIN_ROWS (3)
+    // and ~512-byte tabulation thresholds, so an unprotected payload would get
+    // compacted into a `[json table: …]` marker and lose the `"type"` field.
+    let nodes: Vec<serde_json::Value> = (0..6)
+        .map(|i| {
+            json!({
+                "id": format!("node-{i}"),
+                "kind": if i == 0 { "trigger" } else { "tool_call" },
+                "name": format!("Step {i}"),
+                "config": {
+                    "slug": format!("oh:placeholder_action_{i}"),
+                    "args": { "input": format!("value-{i}"), "note": "generic placeholder payload for size padding" }
+                }
+            })
+        })
+        .collect();
+    let edges: Vec<serde_json::Value> = (0..5)
+        .map(|i| json!({ "from_node": format!("node-{i}"), "to_node": format!("node-{}", i + 1) }))
+        .collect();
+    let proposal_payload = json!({
+        "type": "workflow_proposal",
+        "flow_id": "flow-large-graph",
+        "graph": { "nodes": nodes, "edges": edges },
+    });
+    let payload_str = serde_json::to_string(&proposal_payload).unwrap();
+    assert!(
+        payload_str.len() > 512,
+        "test payload must exceed tinyjuice's tabulation byte threshold: {} bytes",
+        payload_str.len()
+    );
+
+    let history = vec![ConversationMessage::ToolResults(vec![ToolResultMessage {
+        tool_call_id: "call-1".to_string(),
+        content: payload_str,
+    }])];
+
+    let proposal = extract_workflow_proposal(&history).expect("proposal should be extractable");
+    assert_eq!(
+        proposal.get("type").and_then(serde_json::Value::as_str),
+        Some("workflow_proposal")
+    );
+    assert_eq!(
+        proposal["graph"]["nodes"].as_array().unwrap().len(),
+        6,
+        "all 6 nodes must survive intact: {proposal}"
+    );
+}
+
+#[test]
+fn extract_workflow_proposal_returns_the_latest_of_multiple_results() {
+    use crate::openhuman::inference::provider::{ConversationMessage, ToolResultMessage};
+
+    let first = json!({ "type": "workflow_proposal", "flow_id": "first" });
+    let second = json!({ "type": "workflow_proposal", "flow_id": "second" });
+    let history = vec![
+        ConversationMessage::ToolResults(vec![ToolResultMessage {
+            tool_call_id: "call-1".to_string(),
+            content: first.to_string(),
+        }]),
+        ConversationMessage::ToolResults(vec![ToolResultMessage {
+            tool_call_id: "call-2".to_string(),
+            content: second.to_string(),
+        }]),
+    ];
+
+    let proposal = extract_workflow_proposal(&history).expect("proposal should be extractable");
+    assert_eq!(proposal["flow_id"], "second");
+}
+
+#[test]
+fn extract_workflow_proposal_ignores_non_proposal_tool_results() {
+    use crate::openhuman::inference::provider::{ConversationMessage, ToolResultMessage};
+
+    let history = vec![ConversationMessage::ToolResults(vec![ToolResultMessage {
+        tool_call_id: "call-1".to_string(),
+        content: json!({ "type": "search_results", "items": [] }).to_string(),
+    }])];
+
+    assert!(extract_workflow_proposal(&history).is_none());
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Builder convergence fix — trail-off backstop (`flows_build`'s terminal-state
 // guarantee: every turn ends in a proposal or a real question, never silence).
