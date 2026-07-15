@@ -30,6 +30,16 @@ pub(super) const MAX_PARAGRAPHS_PER_SECTION: usize = 200;
 /// Maximum number of bullet-list items in a single section.
 pub(super) const MAX_BULLETS_PER_SECTION: usize = 200;
 
+/// Aggregate cap on the total body text (title + author + every heading,
+/// paragraph, and bullet) across the whole document, in Unicode scalar
+/// values. The per-field/per-section limits above bound each piece, but
+/// their product (`MAX_SECTIONS × MAX_PARAGRAPHS_PER_SECTION ×
+/// MAX_PARAGRAPH_CHARS` alone is ~512M chars) would still let a single
+/// valid request build a multi-hundred-megabyte DOCX in memory. This
+/// checked total keeps the worst-case in-memory payload bounded to a few
+/// megabytes of text while remaining generous for any real document.
+pub(super) const MAX_TOTAL_CHARS: usize = 2_000_000;
+
 /// One section of the document, rendered in input order. A section is a
 /// heading (optional) followed by any number of body paragraphs and/or a
 /// bullet list. At least one of the three must be populated — a wholly
@@ -217,6 +227,31 @@ pub(super) fn validate_input(input: &GenerateDocumentInput) -> Result<(), Docume
             }
         }
     }
+    // Aggregate budget: the per-field caps above bound each piece, but not
+    // their sum, so a valid request could still assemble a huge in-memory DOCX.
+    // Sum every text field with saturating arithmetic (can't overflow) and
+    // reject once the whole document exceeds MAX_TOTAL_CHARS.
+    let mut total_chars = input.title.chars().count();
+    if let Some(author) = input.author.as_deref() {
+        total_chars = total_chars.saturating_add(author.chars().count());
+    }
+    for section in &input.sections {
+        if let Some(heading) = section.heading.as_deref() {
+            total_chars = total_chars.saturating_add(heading.chars().count());
+        }
+        for paragraph in &section.paragraphs {
+            total_chars = total_chars.saturating_add(paragraph.chars().count());
+        }
+        for bullet in &section.bullets {
+            total_chars = total_chars.saturating_add(bullet.chars().count());
+        }
+    }
+    if total_chars > MAX_TOTAL_CHARS {
+        return Err(DocumentError::InvalidInput {
+            field: "sections".to_string(),
+            reason: format!("total document text must be ≤ {MAX_TOTAL_CHARS} chars"),
+        });
+    }
     Ok(())
 }
 
@@ -362,6 +397,52 @@ mod tests {
         let mut i = base();
         i.sections[0].bullets = vec!["b".repeat(MAX_PARAGRAPH_CHARS + 1)];
         assert_rejects(&i, "sections[0].bullets[0]");
+    }
+
+    #[test]
+    fn accepts_document_exactly_at_total_char_budget() {
+        // 99 full paragraphs + one one-short paragraph + a 1-char title sum to
+        // exactly MAX_TOTAL_CHARS, while every field stays within its own cap.
+        let mut paragraphs: Vec<String> =
+            (0..99).map(|_| "p".repeat(MAX_PARAGRAPH_CHARS)).collect();
+        paragraphs.push("p".repeat(MAX_PARAGRAPH_CHARS - 1));
+        assert_eq!(
+            1 + 99 * MAX_PARAGRAPH_CHARS + (MAX_PARAGRAPH_CHARS - 1),
+            MAX_TOTAL_CHARS,
+            "test fixture must total exactly the budget"
+        );
+        let input = GenerateDocumentInput {
+            title: "T".to_string(),
+            author: None,
+            sections: vec![DocumentSection {
+                heading: None,
+                paragraphs,
+                bullets: vec![],
+            }],
+        };
+        assert!(
+            validate_input(&input).is_ok(),
+            "at-limit input must be accepted"
+        );
+    }
+
+    #[test]
+    fn rejects_document_over_total_char_budget() {
+        // 101 max-size paragraphs = 2_020_000 chars > MAX_TOTAL_CHARS, even
+        // though each paragraph and the section/paragraph counts stay within
+        // their own limits — only the aggregate budget catches it.
+        let mut i = base();
+        i.sections[0].paragraphs = (0..101).map(|_| "p".repeat(MAX_PARAGRAPH_CHARS)).collect();
+        match validate_input(&i) {
+            Err(DocumentError::InvalidInput { field, reason }) => {
+                assert_eq!(field, "sections");
+                assert!(
+                    reason.contains("total document text"),
+                    "expected aggregate-budget error, got: {reason}"
+                );
+            }
+            other => panic!("expected InvalidInput(sections), got {other:?}"),
+        }
     }
 
     #[test]

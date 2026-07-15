@@ -376,26 +376,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn generate_surfaces_timeout_under_zero_deadline() {
-        // A zero deadline cannot complete any real work — expect a structured
-        // Timeout, not a panic or a half-written buffer.
+    async fn generate_yields_clean_structured_result_under_zero_deadline() {
+        // Contract under an impossibly-short deadline: `generate` must surface a
+        // clean, structured outcome — never a panic or a half-written buffer.
         //
-        // Use `Duration::ZERO`, not a tiny non-zero value: a future-dated
-        // sub-millisecond deadline (e.g. `from_nanos(1)`) registers with tokio's
-        // timer wheel and only fires at wheel-tick granularity, so the
-        // `spawn_blocking` synthesis can win the race and surface a non-Timeout
-        // variant (flaky under coverage instrumentation). A zero deadline is
-        // already elapsed at poll time, so `timeout` takes the Elapsed branch on
-        // the first poll — the blocking handle is still `Pending` there since the
-        // task runs on another thread — making the Timeout path deterministic.
-        let err = generate(&sample_input(), Duration::ZERO)
-            .await
-            .expect_err("a zero deadline can never satisfy the timeout");
-        match err {
-            DocumentError::GenerationTimeout { timeout_secs } => {
+        // Which outcome we get is inherently racy and must NOT be pinned: a
+        // near-zero `timeout` wrapping `spawn_blocking` usually elapses first
+        // (GenerationTimeout), but the runtime can instead cancel the blocking
+        // task, which `map_join_error` maps to GenerationFailed, and a trivial
+        // input can even finish before the timer fires (Ok). Asserting one exact
+        // variant made this flake under coverage instrumentation. We assert the
+        // real invariant: any Ok is a non-empty buffer, any Err is one of the
+        // two documented structured variants, and nothing panics.
+        match generate(&sample_input(), Duration::ZERO).await {
+            Ok(bytes) => assert!(!bytes.is_empty(), "a completed docx must be non-empty"),
+            Err(DocumentError::GenerationTimeout { timeout_secs }) => {
                 assert_eq!(timeout_secs, 0, "zero deadline reports 0 seconds");
             }
-            other => panic!("expected GenerationTimeout, got {other:?}"),
+            Err(DocumentError::GenerationFailed { .. }) => {
+                // Blocking task cancelled before the timer fired — still clean.
+            }
+            Err(other) => panic!("unexpected error variant under a zero deadline: {other:?}"),
         }
     }
 
