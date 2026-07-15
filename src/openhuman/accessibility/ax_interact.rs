@@ -107,15 +107,20 @@ pub fn ax_list_elements_filtered(app_name: &str, filter: &str) -> Result<Vec<AXE
                 .unwrap_or("unknown error");
             return Err(err.to_string());
         }
-        let mut elements: Vec<AXElement> = resp
+        let elements: Vec<AXElement> = resp
             .get("elements")
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
-        let needle = filter.trim().to_lowercase();
-        if !needle.is_empty() {
-            elements.retain(|e| e.label.to_lowercase().contains(&needle));
+        let needle = filter.trim();
+        if needle.is_empty() {
+            Ok(elements)
+        } else {
+            // Rank the matches best-first (exact → prefix → substring) instead of
+            // returning raw tree order. Same membership a `contains` filter kept,
+            // but the tool's fixed top-N render cap now keeps the *best* N — the
+            // reliable-selection half of #3202.
+            Ok(super::element_match::filter_and_rank(elements, needle))
         }
-        Ok(elements)
     }
     #[cfg(target_os = "windows")]
     {
