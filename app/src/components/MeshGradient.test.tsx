@@ -1,24 +1,37 @@
 import { act } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ThemeProvider from '../providers/ThemeProvider';
 import { setThemeToken, upsertCustomTheme } from '../store/themeSlice';
 import { renderWithProviders } from '../test/test-utils';
 import MeshGradient from './MeshGradient';
 
-const gradientMock = vi.hoisted(() => ({
-  disconnect: vi.fn(),
-  // eslint-disable-next-line prefer-arrow-callback -- constructor mock must be new-able; arrows are not constructible.
-  Gradient: vi.fn(function MockGradient() {
-    return {
-      disconnect: gradientMock.disconnect,
-      initGradient: gradientMock.initGradient,
-      pause: gradientMock.pause,
-    };
-  }),
-  initGradient: vi.fn(),
-  pause: vi.fn(),
-}));
+const gradientMock = vi.hoisted(() => {
+  // Shared play flag, mirroring the real `Gradient.conf.playing`, so the
+  // component's double-schedule guard (`shouldAnimate === playing`) is exercised.
+  const conf = { playing: false };
+  return {
+    conf,
+    disconnect: vi.fn(),
+    initGradient: vi.fn(),
+    pause: vi.fn(() => {
+      conf.playing = false;
+    }),
+    play: vi.fn(() => {
+      conf.playing = true;
+    }),
+    // eslint-disable-next-line prefer-arrow-callback -- constructor mock must be new-able; arrows are not constructible.
+    Gradient: vi.fn(function MockGradient() {
+      return {
+        conf,
+        disconnect: gradientMock.disconnect,
+        initGradient: gradientMock.initGradient,
+        pause: gradientMock.pause,
+        play: gradientMock.play,
+      };
+    }),
+  };
+});
 
 vi.mock('../lib/meshGradient', () => ({ Gradient: gradientMock.Gradient }));
 
@@ -30,12 +43,21 @@ describe('<MeshGradient />', () => {
     gradientMock.Gradient.mockClear();
     gradientMock.initGradient.mockClear();
     gradientMock.pause.mockClear();
+    gradientMock.play.mockClear();
+    gradientMock.conf.playing = false;
+    // Default to a visible, focused window so the gradient animates unless a
+    // test says otherwise.
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
     rafQueue = [];
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
       rafQueue.push(callback);
       return rafQueue.length;
     });
     vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   function flushAnimationFrames() {
@@ -89,5 +111,40 @@ describe('<MeshGradient />', () => {
     expect(gradientMock.disconnect).toHaveBeenCalledTimes(1);
     expect(gradientMock.pause).toHaveBeenCalledTimes(1);
     expect(gradientMock.initGradient).toHaveBeenCalledTimes(2);
+  });
+
+  it('pauses the animation when the window loses focus and resumes when it returns (#3524)', () => {
+    const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+
+    renderWithProviders(
+      <ThemeProvider>
+        <MeshGradient />
+      </ThemeProvider>
+    );
+    act(() => {
+      flushAnimationFrames();
+    });
+
+    // Focused + visible on mount → animating.
+    expect(gradientMock.play).toHaveBeenCalledTimes(1);
+    expect(gradientMock.conf.playing).toBe(true);
+    gradientMock.play.mockClear();
+    gradientMock.pause.mockClear();
+
+    // Window backgrounded (occluded/blurred) → the shader must stop rendering.
+    hasFocus.mockReturnValue(false);
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    expect(gradientMock.pause).toHaveBeenCalledTimes(1);
+    expect(gradientMock.conf.playing).toBe(false);
+
+    // Window refocused → resume.
+    hasFocus.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(gradientMock.play).toHaveBeenCalledTimes(1);
+    expect(gradientMock.conf.playing).toBe(true);
   });
 });
