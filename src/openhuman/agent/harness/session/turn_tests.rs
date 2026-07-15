@@ -1166,6 +1166,107 @@ async fn turn_appends_required_output_block_when_streamed_to_preserve_consistenc
     assert_eq!(provider_impl.requests.lock().await.len(), 2);
 }
 
+/// Issue #4117 / #4900 — streamed path where the corrective re-prompt obeys
+/// `repair_instruction` literally: it leads with the block **and continues with
+/// the answer** (as the prompt asks). Because the original prose is already on
+/// the client, only the block may be appended — appending the whole re-prompt
+/// reply would duplicate the answer. Guards against that regression.
+#[tokio::test]
+async fn turn_appends_only_block_not_restated_answer_when_streamed() {
+    let provider_impl = Arc::new(SequenceProvider {
+        responses: AsyncMutex::new(vec![
+            // Turn 1 final reply: prose only, streamed to the client.
+            Ok(ChatResponse {
+                text: Some("Paris is the capital of France.".into()),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+            // Corrective re-prompt: block first, THEN the restated answer — exactly
+            // what `repair_instruction` ("…then continue with your answer") elicits.
+            Ok(ChatResponse {
+                text: Some(
+                    "{\"thoughts\": \"restating\", \"next_action\": \"answer\"}\n\n\
+                     Paris is the capital of France."
+                        .into(),
+                ),
+                tool_calls: vec![],
+                usage: None,
+                reasoning_content: None,
+            }),
+        ]),
+        requests: AsyncMutex::new(Vec::new()),
+    });
+    let provider: Arc<dyn Provider> = provider_impl.clone();
+
+    let config = crate::openhuman::config::AgentConfig {
+        max_tool_iterations: 3,
+        max_history_messages: 10,
+        required_output: Some(crate::openhuman::config::RequiredOutputContract {
+            block_key: "thoughts".into(),
+            required_keys: vec!["next_action".into()],
+        }),
+        ..crate::openhuman::config::AgentConfig::default()
+    };
+
+    let mut agent = make_agent_with_builder(
+        provider,
+        vec![],
+        Box::new(FixedMemoryLoader {
+            context: String::new(),
+        }),
+        vec![],
+        config,
+        crate::openhuman::config::ContextConfig::default(),
+    );
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+    let text_deltas = Arc::new(AsyncMutex::new(Vec::<String>::new()));
+    let text_deltas_drain = text_deltas.clone();
+    let drain = tokio::spawn(async move {
+        while let Some(progress) = rx.recv().await {
+            if let crate::openhuman::agent::progress::AgentProgress::TextDelta { delta, .. } =
+                progress
+            {
+                text_deltas_drain.lock().await.push(delta);
+            }
+        }
+    });
+    agent.set_on_progress(Some(tx));
+
+    let response = agent
+        .turn("what is the capital of France?")
+        .await
+        .expect("turn should succeed");
+
+    agent.set_on_progress(None);
+    let _ = timeout(Duration::from_secs(5), drain).await;
+
+    // The block is appended and the original prose preserved …
+    assert!(
+        response.contains("next_action"),
+        "repaired reply must contain the required block: {response}"
+    );
+    // … but the answer must appear exactly ONCE — the restated answer from the
+    // re-prompt reply must not be appended after the block.
+    assert_eq!(
+        response.matches("Paris is the capital of France.").count(),
+        1,
+        "the answer must not be duplicated by appending the re-prompt's restated prose: {response}"
+    );
+    // Streamed continuation carried the block, not a second copy of the answer.
+    let deltas = text_deltas.lock().await;
+    let streamed_continuation: String = deltas.concat();
+    assert!(
+        streamed_continuation.contains("next_action"),
+        "the appended block must be streamed as a continuation, got: {deltas:?}"
+    );
+    assert!(
+        !streamed_continuation.contains("Paris is the capital of France."),
+        "the streamed continuation must not restream the answer, got: {deltas:?}"
+    );
+}
+
 /// Issue #4117 — streamed path, but the corrective re-prompt *also* omits the
 /// block. A synthesized block is appended (never replacing the streamed prose)
 /// and streamed as a continuation, so the accepted turn still leads with the

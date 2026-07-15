@@ -260,17 +260,20 @@ impl Agent {
 
         // Streamed (append) path: the original prose is already on the client, so
         // never replace it — append a streamed correction and return the exact
-        // concatenation the client sees. Prefer the model's block when appending
-        // it to the prose validates; otherwise fall back to a synthesized block.
-        let correction = {
-            let candidate = format!("{reply}\n\n{repair_text}");
-            if !repair_text.is_empty() && ro::output_satisfies_contract(&candidate, contract) {
+        // concatenation the client sees. Append ONLY the required block, not the
+        // whole re-prompt reply: `repair_instruction` asks the model to re-emit the
+        // block *and continue with its answer*, so appending the full reply would
+        // duplicate the already-streamed answer after the block (#4900). Prefer the
+        // model's own recovered block; fall back to a synthesized one otherwise.
+        let correction = match ro::find_required_block(&repair_text, contract) {
+            Some(block) => {
                 log::info!(
                     "[agent_loop] required output block `{}` recovered via re-prompt (append)",
                     contract.block_key
                 );
-                repair_text
-            } else {
+                serde_json::to_string(&block).unwrap_or_else(|_| ro::synthesize_block(contract))
+            }
+            None => {
                 log::warn!(
                     "[agent_loop] required output block `{}` still missing after re-prompt — appending a synthesized block",
                     contract.block_key
