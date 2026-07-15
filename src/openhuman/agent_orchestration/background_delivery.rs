@@ -107,12 +107,15 @@ fn plan_delivery(session: &str) -> Option<Vec<background_completions::CompletedB
 /// idle drain rather than being lost.
 fn requeue(session: &str, batch: Vec<background_completions::CompletedBackgroundAgent>) {
     for c in batch {
-        background_completions::record_completion(
+        // Preserve the terminal outcome on requeue so a failed / awaiting-input
+        // result isn't downgraded to a success when a delivery turn fails (#4896).
+        background_completions::record_outcome(
             session,
             c.task_id,
             c.agent_id,
             c.summary,
             c.parent_thread_id,
+            c.outcome,
         );
     }
 }
