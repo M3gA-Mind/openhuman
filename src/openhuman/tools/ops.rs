@@ -696,6 +696,15 @@ pub fn all_tools_with_runtime(
         security.clone(),
     )));
 
+    // Document generation (#4847, Problem 3). Native-Rust engine
+    // (docx-rs backed) — no managed runtime, no subprocess — emitting a
+    // real `.docx` through the same byte-agnostic artifact pipeline as
+    // the presentation tool. Always registered; same constructor shape.
+    tools.push(Box::new(DocumentTool::new(
+        root_config.workspace_dir.clone(),
+        security.clone(),
+    )));
+
     // Long-term goals list tools. Used primarily by the background
     // `goals_agent` (which filters to these via its `[tools] named`
     // allowlist); also available to the main agent for explicit edits.
