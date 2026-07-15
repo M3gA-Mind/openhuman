@@ -67,7 +67,7 @@ const mockUseOpenRouterFreeModels = vi.hoisted(() => vi.fn());
 // ── Module mocks ───────────────────────────────────────────────────────────
 
 vi.mock('../../services/chatService', () => ({
-  chatCancel: vi.fn(),
+  chatCancel: vi.fn().mockResolvedValue(true),
   chatClearQueue: vi.fn().mockResolvedValue(0),
   chatSend: vi.fn().mockResolvedValue(undefined),
   subscribeChatEvents: vi.fn(() => () => {}),
@@ -1312,6 +1312,47 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
     expect(chatCancel).toHaveBeenCalledWith(thread.id);
     // Whitespace-only partial → nothing worth preserving, so no message append.
     expect(threadApi.appendMessage).not.toHaveBeenCalled();
+  });
+
+  it('does not persist a stopped reply when the cancel is rejected (#4862)', async () => {
+    // Socket down / RPC rejected → chatCancel resolves false. The original turn
+    // may keep running and append its own final response, so we must NOT leave a
+    // misleading partial bubble behind.
+    vi.mocked(chatCancel).mockResolvedValueOnce(false);
+    const { thread } = await renderStreamingConversation({ streamingContent: 'half a thought' });
+
+    const stopButton = await screen.findByTestId('stop-generation-button');
+    await act(async () => {
+      fireEvent.click(stopButton);
+    });
+
+    expect(chatCancel).toHaveBeenCalledWith(thread.id);
+    // Give the cancel promise a tick to resolve; no stopped message should land.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(threadApi.appendMessage).not.toHaveBeenCalled();
+  });
+
+  it('persists the stopped reply only once across repeated Stop clicks (#4862)', async () => {
+    const { thread } = await renderStreamingConversation({ streamingContent: 'half a thought' });
+
+    const stopButton = await screen.findByTestId('stop-generation-button');
+    // Two rapid Stop clicks before the cancel event clears the live stream.
+    await act(async () => {
+      fireEvent.click(stopButton);
+      fireEvent.click(stopButton);
+    });
+
+    expect(chatCancel).toHaveBeenCalledWith(thread.id);
+    // The one-shot requestId guard keeps the partial from being appended twice.
+    await waitFor(() => {
+      expect(threadApi.appendMessage).toHaveBeenCalledTimes(1);
+    });
+    expect(threadApi.appendMessage).toHaveBeenCalledWith(
+      thread.id,
+      expect.objectContaining({ extraMetadata: expect.objectContaining({ stopped: true }) })
+    );
   });
 
   it('interrupts the stream and restores the last prompt into the composer on ESC (#4862)', async () => {
