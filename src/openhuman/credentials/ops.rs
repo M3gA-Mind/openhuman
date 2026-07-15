@@ -141,7 +141,12 @@ pub async fn start_login_gated_services(config: &Config) {
         tasks.push((
             "screen_intelligence",
             tokio::spawn(async move {
+                let step = std::time::Instant::now();
                 crate::openhuman::screen_intelligence::server::start_if_enabled(&config).await;
+                log::debug!(
+                    "[services] screen intelligence started ({} ms)",
+                    step.elapsed().as_millis()
+                );
             }),
         ));
     }
@@ -152,7 +157,12 @@ pub async fn start_login_gated_services(config: &Config) {
         tasks.push((
             "autocomplete",
             tokio::spawn(async move {
+                let step = std::time::Instant::now();
                 crate::openhuman::autocomplete::start_if_enabled(&config).await;
+                log::debug!(
+                    "[services] autocomplete started ({} ms)",
+                    step.elapsed().as_millis()
+                );
             }),
         ));
     }
@@ -166,7 +176,12 @@ pub async fn start_login_gated_services(config: &Config) {
         tasks.push((
             "orchestration",
             tokio::spawn(async move {
+                let step = std::time::Instant::now();
                 crate::openhuman::orchestration::start_hosted_client_services(&config).await;
+                log::debug!(
+                    "[services] orchestration hosted-client started ({} ms)",
+                    step.elapsed().as_millis()
+                );
             }),
         ));
     }
