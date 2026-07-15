@@ -115,6 +115,7 @@ import {
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { selectSocketStatus } from '../../store/socketSelectors';
 import {
+  addInferenceResponse,
   addMessageLocal,
   clearThreadInferenceActive,
   createNewThread,
@@ -1408,11 +1409,35 @@ const Conversations = ({
     selectedThreadActive ? handleSendFollowup(text) : handleSendMessage(text);
 
   // Cancel the in-flight turn for the selected thread. Shared by the in-composer
-  // Stop button (text mode) and the footer Cancel control (mic-cloud / voice
-  // modes) so the cancel path lives in one place.
+  // Stop button (text mode), the ESC-to-interrupt shortcut, and the footer
+  // Cancel control (mic-cloud / voice modes) so the cancel path lives in one
+  // place.
+  //
+  // Before aborting, any assistant text already streamed for this turn is
+  // persisted as its own message flagged `stopped: true` so the partial output
+  // stays in the transcript (clearly marked) instead of vanishing when the
+  // `cancelled` chat_error clears the live streaming preview (#4862). The
+  // matching `onError` path deliberately appends no message for `cancelled`, so
+  // this can never double-render the partial reply.
   const handleStopGeneration = useCallback(() => {
-    if (selectedThreadId) void chatCancel(selectedThreadId);
-  }, [selectedThreadId]);
+    if (!selectedThreadId) return;
+    const threadId = selectedThreadId;
+    const streaming = streamingAssistantByThread[threadId];
+    const partial = streaming?.content ?? '';
+    if (partial.trim().length > 0) {
+      void dispatch(
+        addInferenceResponse({
+          content: partial,
+          threadId,
+          extraMetadata: {
+            stopped: true,
+            ...(streaming?.requestId ? { requestId: streaming.requestId } : {}),
+          },
+        })
+      );
+    }
+    void chatCancel(threadId);
+  }, [selectedThreadId, streamingAssistantByThread, dispatch]);
 
   const transcribeAndSendAudio = async (mimeType: string) => {
     setIsRecording(false);
@@ -1586,6 +1611,36 @@ const Conversations = ({
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (isComposingTextRef.current || isImeCompositionKeyEvent(e)) return;
+
+    // ESC while the selected thread is streaming interrupts the turn AND
+    // restores the user's last prompt into the composer for re-editing in
+    // place (#4862). Interrupt always fires; the prompt is only re-hydrated
+    // when the composer is empty so a follow-up the user already started
+    // typing is never clobbered. When nothing is streaming, ESC is left to its
+    // default behaviour (blur / no-op).
+    if (e.key === 'Escape' && selectedThreadActive) {
+      e.preventDefault();
+      handleStopGeneration();
+      if (inputValue.trim().length === 0) {
+        const lastUserMessage = [...messages].reverse().find(m => m.sender === 'user');
+        const restored = lastUserMessage
+          ? parseMessageImages(lastUserMessage.content ?? '').text
+          : '';
+        if (restored.length > 0) {
+          setInputValue(restored);
+          // Drop any stale inline ghost-completion so it doesn't reappear over
+          // the freshly restored prompt.
+          setInlineSuggestionValue('');
+          requestAnimationFrame(() => {
+            const ta = textInputRef.current;
+            if (!ta) return;
+            ta.focus();
+            ta.setSelectionRange(restored.length, restored.length);
+          });
+        }
+      }
+      return;
+    }
 
     const inlineSuffix = getInlineCompletionSuffix(inputValue, inlineSuggestionValue);
     const textarea = e.currentTarget;
@@ -2254,6 +2309,22 @@ const Conversations = ({
                                   );
                                 })()}
                             </div>
+                            {/* Stopped marker (#4862): the partial reply that was
+                                preserved when the user hit Stop / ESC mid-stream. */}
+                            {msg.extraMetadata?.stopped === true && (
+                              <p
+                                data-testid="stopped-marker"
+                                className="flex items-center gap-1 px-1 text-[10px] font-medium text-content-faint">
+                                <svg
+                                  className="h-2.5 w-2.5"
+                                  fill="currentColor"
+                                  viewBox="0 0 24 24"
+                                  aria-hidden>
+                                  <rect x="6" y="6" width="12" height="12" rx="1.5" />
+                                </svg>
+                                {t('chat.stoppedByUser')}
+                              </p>
+                            )}
                             {(() => {
                               const raw = msg.extraMetadata?.citations;
                               if (!Array.isArray(raw)) return null;

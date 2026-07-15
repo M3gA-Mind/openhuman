@@ -953,6 +953,7 @@ const messages: TranslationMap = {
   'chat.typeMessage': 'Чем я могу помочь тебе сегодня?',
   'chat.send': 'Отправить сообщение',
   'chat.stopGeneration': 'Остановить генерацию',
+  'chat.stoppedByUser': 'Остановлено',
   'chat.parallelBranchHint': 'Введите параллельную ветку: ⌘/Ctrl+Enter для отправки',
   'chat.followupHint':
     'Поставить продолжение в очередь: отправится после этого ответа · ⌘/Ctrl+Enter для параллельной ветки',

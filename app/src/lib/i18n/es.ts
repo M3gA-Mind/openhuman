@@ -966,6 +966,7 @@ const messages: TranslationMap = {
   'chat.typeMessage': '¿En qué puedo ayudarte hoy?',
   'chat.send': 'Enviar mensaje',
   'chat.stopGeneration': 'Detener generación',
+  'chat.stoppedByUser': 'Detenido',
   'chat.parallelBranchHint': 'Escribe una rama paralela: ⌘/Ctrl+Enter para enviar',
   'chat.followupHint':
     'Pon en cola un seguimiento: se envía tras esta respuesta · ⌘/Ctrl+Enter para una rama paralela',
