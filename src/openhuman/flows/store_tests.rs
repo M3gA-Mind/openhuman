@@ -98,6 +98,7 @@ fn update_flow_graph_bumps_updated_at_and_preserves_created_at() {
         new_graph,
         false,
         None,
+        None,
     )
     .unwrap();
 
@@ -203,6 +204,7 @@ fn update_flow_graph_can_change_require_approval() {
         flow.name.clone(),
         trigger_graph(),
         true,
+        None,
         None,
     )
     .unwrap();
