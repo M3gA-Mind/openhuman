@@ -85,18 +85,28 @@ pub(crate) fn normalize(s: &str) -> String {
     t.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// `true` when `needle` occurs in `haystack` starting at a word boundary — the
-/// string start or immediately after a non-alphanumeric char. Both inputs are
+/// `true` when `needle` occurs in `haystack` as a whole word run — delimited by
+/// the string edge or a non-alphanumeric char on **both** sides. Both inputs are
 /// expected already normalized.
+///
+/// Both boundaries matter: a leading-only check would let `changes` match inside
+/// `changeset` (partial word). Requiring a trailing boundary too keeps
+/// [`MatchTier::WordBoundary`] to genuine word matches; partial-word hits fall
+/// through to the weaker [`MatchTier::Substring`].
 fn is_word_boundary_match(haystack: &str, needle: &str) -> bool {
     if needle.is_empty() {
         return false;
     }
-    haystack.match_indices(needle).any(|(i, _)| {
-        haystack[..i]
+    haystack.match_indices(needle).any(|(i, m)| {
+        let before_ok = haystack[..i]
             .chars()
             .next_back()
-            .is_none_or(|c| !c.is_alphanumeric())
+            .is_none_or(|c| !c.is_alphanumeric());
+        let after_ok = haystack[i + m.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_alphanumeric());
+        before_ok && after_ok
     })
 }
 

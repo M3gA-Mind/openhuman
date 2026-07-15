@@ -86,6 +86,16 @@ fn classify_substring_is_weakest() {
 }
 
 #[test]
+fn classify_partial_word_is_substring_not_word_boundary() {
+    // "changes" starts a word in "changeset" but does not end at a boundary, so
+    // it must NOT rank as a word-boundary match — only the weaker substring.
+    assert_eq!(
+        classify("Discard changeset", "changes"),
+        Some(MatchTier::Substring)
+    );
+}
+
+#[test]
 fn classify_non_match_is_none() {
     assert_eq!(classify("Cancel", "submit"), None);
 }
@@ -171,11 +181,12 @@ fn best_match_flags_ambiguity_on_a_same_tier_tie() {
 
 #[test]
 fn best_match_same_tier_same_label_is_not_ambiguous() {
-    // Two controls with labels that normalize identically are the same target.
-    let elements = vec![el("AXButton", "Save…"), el("AXMenuItem", "save")];
-    let m = best_match(&elements, "save").expect("should match");
-    // "save" is a case-insensitive exact for the second; the first is NormalizedExact.
-    // The winning tier has a single member, so not ambiguous.
+    // Both land in the SAME non-trivial tier (NormalizedExact — neither is a
+    // literal Exact/CaseInsensitiveExact hit) yet normalize identically, so the
+    // same-tier rival comparison in `best_match` runs and finds no real rival.
+    let elements = vec![el("AXButton", "Save As…"), el("AXMenuItem", "Save   As")];
+    let m = best_match(&elements, "Save As").expect("should match");
+    assert_eq!(m.tier, MatchTier::NormalizedExact);
     assert!(!m.ambiguous);
 }
 
