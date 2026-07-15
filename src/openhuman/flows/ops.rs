@@ -142,6 +142,15 @@ pub(crate) async fn run_builder_gates(config: &Config, graph: &WorkflowGraph) ->
     if !binding_errors.is_empty() {
         return binding_errors;
     }
+    // Async, live connection list: a tool_call whose `connection_ref` names the
+    // wrong toolkit for its slug, or a connection id the user doesn't actually
+    // have (WS3 — the transcript bug where a TIKTOK connection id was wired onto
+    // Twitter/Gmail nodes and every author-time gate returned ok). Cheap:
+    // one connection-list fetch, no per-node catalog round trips.
+    let connection_ref_errors = validate_connection_refs(config, graph).await;
+    if !connection_ref_errors.is_empty() {
+        return connection_ref_errors;
+    }
     // Async, live catalog: a tool_call whose slug isn't a real Composio action
     // or whose real required args aren't all wired.
     let contract_errors = validate_tool_contracts(config, graph).await;
@@ -192,11 +201,20 @@ pub(crate) async fn strict_gate(config: &Config, graph_json: &Value) -> Result<(
 /// the tool in the "fix … and call `<tool>` again" guidance so each caller's
 /// error text points the agent back at the right tool.
 ///
+/// `draft_id` / `flow_id` are OPTIONAL persistence-state context echoed onto
+/// the payload (the draft this proposal's edit lives on, and the saved flow it
+/// derives from / targets). The payload ALWAYS carries `"persisted": false` so
+/// a proposal can never be mistaken for a save confirmation — the exact false
+/// belief the WS2 audit caught (an agent read a proposal as "written onto the
+/// saved flow"). Actual persistence only happens via `save_workflow` /
+/// `create_workflow` / `flows_draft_promote`.
+///
 /// Returns `Ok(payload)` on success, or `Err(message)` with a
 /// model-consumable, fix-and-retry error when a gate rejects the graph. The
 /// caller is responsible for structural validation (`validate_and_migrate_graph`
 /// / `validate_all`) *before* calling this — these gates assume a compilable
 /// graph.
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn build_builder_proposal(
     config: &Config,
     retry_tool: &str,
@@ -205,6 +223,8 @@ pub(crate) async fn build_builder_proposal(
     require_approval: bool,
     revision: bool,
     instruction: Option<String>,
+    draft_id: Option<String>,
+    flow_id: Option<String>,
 ) -> Result<Value, String> {
     // The full builder hard-gate stack, run through the single canonical
     // runner so every proposal/save/strict-RPC path gates identically (F3).
@@ -238,6 +258,10 @@ pub(crate) async fn build_builder_proposal(
     let mut payload = json!({
         "type": "workflow_proposal",
         "revision": revision,
+        // A proposal is NEVER a persisted flow — it is a candidate the user
+        // still has to accept/save. Stamp this unconditionally so the payload
+        // can't be misread as a save confirmation (WS2 audit).
+        "persisted": false,
         "name": name,
         "graph": graph_value,
         "require_approval": require_approval,
@@ -247,6 +271,14 @@ pub(crate) async fn build_builder_proposal(
     });
     if let Some(instruction) = instruction {
         payload["instruction"] = json!(instruction);
+    }
+    // Echo the persistence-state handles so the agent can iterate/persist
+    // against the right ids (the draft the edit lives on; the flow it targets).
+    if let Some(draft_id) = draft_id {
+        payload["draft_id"] = json!(draft_id);
+    }
+    if let Some(flow_id) = flow_id {
+        payload["flow_id"] = json!(flow_id);
     }
     Ok(payload)
 }
@@ -1102,10 +1134,23 @@ pub(crate) fn validate_binding_resolvability(graph: &WorkflowGraph) -> Vec<Strin
 /// (Part 2c/2d) — those degrade gracefully because a binding to an unknown
 /// field can't be proven wrong, whereas a nonexistent slug or a missing
 /// required arg are both provably broken.
+/// Whether OpenHuman ships a STATIC curated catalog for `toolkit`. This is the
+/// exact condition both [`validate_tool_contracts`]'s curation gate and
+/// `tinyflows::caps::flow_tool_allowed`'s runtime Path A use to decide a toolkit
+/// is a hard curated-only allowlist: for such a toolkit a real-but-uncurated
+/// action is rejected on EVERY real run, so the author-time gate and the early
+/// builder-tool warnings (`get_tool_contract` / `search_tool_catalog`) must all
+/// agree on it — one home for the check so they cannot drift.
+pub(crate) fn toolkit_has_curated_catalog(toolkit: &str) -> bool {
+    use crate::openhuman::memory_sync::composio::providers::{catalog_for_toolkit, get_provider};
+    get_provider(toolkit)
+        .and_then(|p| p.curated_tools())
+        .or_else(|| catalog_for_toolkit(toolkit))
+        .is_some()
+}
+
 pub(crate) async fn validate_tool_contracts(config: &Config, graph: &WorkflowGraph) -> Vec<String> {
-    use crate::openhuman::memory_sync::composio::providers::{
-        catalog_for_toolkit, get_provider, toolkit_from_slug,
-    };
+    use crate::openhuman::memory_sync::composio::providers::toolkit_from_slug;
     use crate::openhuman::tinyflows::caps::{
         fetch_live_toolkit_catalog, missing_required_args, unsupported_arg_names,
     };
@@ -1166,10 +1211,7 @@ pub(crate) async fn validate_tool_contracts(config: &Config, graph: &WorkflowGra
         // action on a curated toolkit and then fail every run with "tool
         // not permitted". Hold authoring to the same bar the runtime gate
         // enforces instead of loosening the runtime gate.
-        let has_static_catalog = get_provider(&toolkit)
-            .and_then(|p| p.curated_tools())
-            .or_else(|| catalog_for_toolkit(&toolkit))
-            .is_some();
+        let has_static_catalog = toolkit_has_curated_catalog(&toolkit);
         if has_static_catalog && !contract.is_curated {
             tracing::warn!(
                 target: "flows",
@@ -1274,6 +1316,248 @@ pub(crate) async fn validate_tool_contracts(config: &Config, graph: &WorkflowGra
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Connection-ref gate (WS3): a Composio tool_call's `connection_ref` must name
+// a real connected account of the RIGHT toolkit
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Transcript audit: the user's connections were `twitter →
+// composio:twitter:ca_JX6QU88UfSk4`, `gmail → composio:gmail:ca_vX_WA8FsqNmE`,
+// `tiktok → composio:tiktok:ca_LPCp3WQpaDma`. The agent wired
+// `composio:twitter:ca_LPCp3WQpaDma` and `composio:gmail:ca_LPCp3WQpaDma` (the
+// TIKTOK id) onto the Twitter and Gmail tool_call nodes. dry_run / validate /
+// propose all returned ok:true — nothing cross-checked the id against the user's
+// real connections, nor the ref's toolkit segment against the slug — and it
+// would fail on the first real run. This gate closes that gap: it parses the
+// ref, enforces the toolkit segment matches the slug (needs no I/O), and — when
+// the live connection list is reachable — that the id names a real connected
+// account of that toolkit, naming the correct ref when it can.
+
+/// Parses a `composio:<toolkit>:<id>` connection_ref into its `(toolkit, id)`
+/// segments. Mirrors [`crate::openhuman::tinyflows::caps::composio_connection_id`]'s
+/// rsplit for the id (everything after the LAST `:`), taking everything between
+/// the `composio:` prefix and that last `:` as the toolkit. Returns `None` for
+/// anything that isn't this shape (missing `composio:` prefix, no `:` after it,
+/// or an empty toolkit/id segment).
+fn parse_composio_connection_ref(conn_ref: &str) -> Option<(&str, &str)> {
+    let rest = conn_ref.strip_prefix("composio:")?;
+    let (toolkit, id) = rest.rsplit_once(':')?;
+    if toolkit.trim().is_empty() || id.trim().is_empty() {
+        return None;
+    }
+    Some((toolkit.trim(), id.trim()))
+}
+
+/// First connected account `connection_ref` for `toolkit` (case-insensitive)
+/// from `conns`, used to name the correct ref in a rejection's "did you mean"
+/// hint. `None` when the toolkit has no connection at all.
+fn first_connection_ref_for_toolkit(conns: &[FlowConnection], toolkit: &str) -> Option<String> {
+    conns
+        .iter()
+        .find(|c| {
+            c.toolkit
+                .as_deref()
+                .is_some_and(|t| t.eq_ignore_ascii_case(toolkit))
+        })
+        .map(|c| c.connection_ref.clone())
+}
+
+/// Hard gate: for every Composio `tool_call` node carrying a `connection_ref`,
+/// prove the ref names a real connected account of the SAME toolkit as the
+/// slug. Fetches the live connection list once (same source
+/// [`flows_list_connections`] reads) and delegates the pure matching to
+/// [`validate_connection_refs_against`].
+///
+/// Fail-open on I/O: if the Composio connection list is unreachable (backend
+/// outage), the id-existence check is SKIPPED (a `tracing::debug!` records it)
+/// so a real connection is never false-rejected during an outage — but the
+/// toolkit-mismatch check, which needs no I/O, still runs.
+pub(crate) async fn validate_connection_refs(
+    config: &Config,
+    graph: &WorkflowGraph,
+) -> Vec<String> {
+    let connections: Option<Vec<FlowConnection>> =
+        match crate::openhuman::composio::ops::composio_list_connections(config).await {
+            Ok(outcome) => Some(build_flow_connections(
+                outcome.value.connections,
+                Vec::new(),
+            )),
+            Err(e) => {
+                tracing::debug!(
+                    target: "flows",
+                    error = %e,
+                    "[flows] connection-ref check: composio connection list unavailable — \
+                     skipping id-existence check (fail-open); toolkit-mismatch check still runs"
+                );
+                None
+            }
+        };
+    validate_connection_refs_against(graph, connections.as_deref())
+}
+
+/// Pure connection-ref validator (no I/O) so the gate's decision logic is
+/// unit-testable without a live Composio backend. `connections` is `Some(list)`
+/// when the live connection list was fetched (possibly empty — a genuine "no
+/// connections" state), or `None` when it was unavailable (fail-open: the
+/// id-existence check is skipped, only the toolkit-mismatch check runs).
+fn validate_connection_refs_against(
+    graph: &WorkflowGraph,
+    connections: Option<&[FlowConnection]>,
+) -> Vec<String> {
+    use crate::openhuman::memory_sync::composio::providers::toolkit_from_slug;
+
+    let mut errors = Vec::new();
+    for node in &graph.nodes {
+        if node.kind != NodeKind::ToolCall {
+            continue;
+        }
+        let Some(slug) = node.config.get("slug").and_then(Value::as_str) else {
+            continue;
+        };
+        // `=`-derived slugs resolve at runtime; native `oh:` tools have no
+        // Composio connection to name.
+        if slug.starts_with('=') || slug.starts_with("oh:") {
+            continue;
+        }
+        // A MISSING `connection_ref` stays allowed (unchanged): a Composio
+        // tool_call with no ref runs against the ambient signed-in account and
+        // the flow prompts for a connection at first run.
+        let Some(conn_ref) = node.config.get("connection_ref").and_then(Value::as_str) else {
+            continue;
+        };
+        if conn_ref.trim().is_empty() {
+            continue;
+        }
+        let Some(slug_toolkit) = toolkit_from_slug(slug) else {
+            continue;
+        };
+
+        let Some((ref_toolkit, ref_id)) = parse_composio_connection_ref(conn_ref) else {
+            tracing::debug!(
+                target: "flows",
+                node = %node.id,
+                %slug,
+                toolkit = %slug_toolkit,
+                %conn_ref,
+                matched = false,
+                "[flows] connection-ref check: malformed ref — rejecting"
+            );
+            errors.push(format!(
+                "Node '{}': `connection_ref` `{conn_ref}` is malformed — a Composio account ref \
+                 must look like `composio:<toolkit>:<connection_id>` (e.g. \
+                 `composio:{slug_toolkit}:<id>`). Call list_flow_connections and copy a \
+                 `connection_ref` value verbatim.",
+                node.id
+            ));
+            continue;
+        };
+
+        // Toolkit segment vs the slug's toolkit — needs no I/O.
+        if !ref_toolkit.eq_ignore_ascii_case(&slug_toolkit) {
+            let suggestion = connections
+                .and_then(|conns| first_connection_ref_for_toolkit(conns, &slug_toolkit));
+            tracing::debug!(
+                target: "flows",
+                node = %node.id,
+                %slug,
+                toolkit = %slug_toolkit,
+                %ref_toolkit,
+                %ref_id,
+                matched = false,
+                "[flows] connection-ref check: toolkit segment does not match the slug's toolkit — rejecting"
+            );
+            let hint = match suggestion {
+                Some(r) => format!(" — did you mean `{r}`?"),
+                None => format!(
+                    " — no `{slug_toolkit}` account is connected; connect one with \
+                     composio_connect (or ask the user to), then use its `connection_ref`"
+                ),
+            };
+            errors.push(format!(
+                "Node '{}': `connection_ref` `{conn_ref}` names the `{ref_toolkit}` toolkit but the \
+                 tool_call slug `{slug}` is a `{slug_toolkit}` action{hint}.",
+                node.id
+            ));
+            continue;
+        }
+
+        // Existence check: the id must name a real connected account of this
+        // toolkit. Skipped (fail-open) when the connection list is unavailable.
+        let Some(conns) = connections else {
+            tracing::debug!(
+                target: "flows",
+                node = %node.id,
+                %slug,
+                toolkit = %slug_toolkit,
+                %ref_id,
+                "[flows] connection-ref check: toolkit matches; id-existence check skipped (connections unavailable)"
+            );
+            continue;
+        };
+        // The id must belong to a connection OF THIS TOOLKIT — not merely
+        // exist somewhere. The transcript bug was a real TIKTOK connection id
+        // stamped onto a `composio:twitter:` ref: the id exists globally, but
+        // it is not a Twitter account, so it must still be rejected.
+        let id_exists = conns.iter().any(|c| {
+            c.toolkit
+                .as_deref()
+                .is_some_and(|t| t.eq_ignore_ascii_case(&slug_toolkit))
+                && parse_composio_connection_ref(&c.connection_ref)
+                    .is_some_and(|(_, cid)| cid.eq_ignore_ascii_case(ref_id))
+        });
+        if id_exists {
+            tracing::debug!(
+                target: "flows",
+                node = %node.id,
+                %slug,
+                toolkit = %slug_toolkit,
+                %ref_id,
+                matched = true,
+                "[flows] connection-ref check: ref resolves to a real connected account — ok"
+            );
+            continue;
+        }
+        // Unknown id. Name the right ref for this toolkit if one exists.
+        match first_connection_ref_for_toolkit(conns, &slug_toolkit) {
+            Some(r) => {
+                tracing::debug!(
+                    target: "flows",
+                    node = %node.id,
+                    %slug,
+                    toolkit = %slug_toolkit,
+                    %ref_id,
+                    matched = false,
+                    "[flows] connection-ref check: unknown id; toolkit has a different connected account — rejecting"
+                );
+                errors.push(format!(
+                    "Node '{}': `connection_ref` `{conn_ref}` does not match any connected \
+                     `{slug_toolkit}` account — did you mean `{r}`? Call list_flow_connections and \
+                     copy a `connection_ref` value verbatim.",
+                    node.id
+                ));
+            }
+            None => {
+                tracing::debug!(
+                    target: "flows",
+                    node = %node.id,
+                    %slug,
+                    toolkit = %slug_toolkit,
+                    %ref_id,
+                    matched = false,
+                    "[flows] connection-ref check: no connected account for this toolkit — rejecting"
+                );
+                errors.push(format!(
+                    "Node '{}': `connection_ref` `{conn_ref}` names a `{slug_toolkit}` account, but \
+                     no `{slug_toolkit}` account is connected — connect one with composio_connect \
+                     (or ask the user to), then use its `connection_ref`.",
+                    node.id
+                ));
+            }
+        }
+    }
+    errors
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Required-arg resolvability gate (issue B18)
 // ─────────────────────────────────────────────────────────────────────────────
 //
@@ -1348,13 +1632,19 @@ const REQUIRED_ARG_NULL_CHECK_TIMEOUT_SECS: u64 = 15;
 /// check only ever adds a diagnostic the sandbox actually observed.
 pub(crate) async fn validate_required_arg_resolvability(graph: &WorkflowGraph) -> Vec<String> {
     use crate::openhuman::flows::builder_tools::CapturingObserver;
-    use crate::openhuman::tinyflows::caps::SchemaAwareMockAgentRunner;
+    use crate::openhuman::tinyflows::caps::{SchemaAwareMockAgentRunner, SchemaAwareMockLlm};
 
     let Ok(compiled) = tinyflows::compiler::compile(graph) else {
         return Vec::new();
     };
 
-    let caps = tinyflows::caps::mock::mock_capabilities_with_agent(SchemaAwareMockAgentRunner);
+    let mut caps = tinyflows::caps::mock::mock_capabilities_with_agent(SchemaAwareMockAgentRunner);
+    // Same fix as `DryRunWorkflowTool`: a plain agent node (no `agent_ref`)
+    // routes to the `llm` slot, not the runner above, so the vendored `MockLlm`
+    // echo would fail its `output_parser.schema` sub-port and make this gate
+    // reject a correct graph (which is why `propose_workflow` was rejecting
+    // valid graphs). The schema-aware mock LLM honors the schema instead.
+    caps.llm = Arc::new(SchemaAwareMockLlm);
 
     let observer = Arc::new(CapturingObserver::default());
     let observer_dyn: Arc<dyn tinyflows::observability::RunObserver> = observer.clone();
@@ -1423,6 +1713,34 @@ pub(crate) async fn validate_required_arg_resolvability(graph: &WorkflowGraph) -
                     expression = %diag.expression,
                     "[flows] required-arg resolvability check: trigger-scoped null in empty \
                      mock run — not rejecting"
+                );
+                continue;
+            }
+            // A null bound to the OUTPUT of an upstream Composio `tool_call`
+            // node is UNVERIFIABLE in this echo sandbox — the mock renders a
+            // Composio `tool_call` as `{tool, args, connection}` and can NEVER
+            // produce its real output fields (`.item.json.data.<field>`), so a
+            // downstream binding to one resolves `null` here even when the
+            // wiring is perfectly correct. Hard-rejecting it (WS6) would block
+            // a possibly-correct graph from ever being proposed — the exact
+            // false-negative the transcript audit caught. Downgrade to a
+            // debug-logged skip; `dry_run_workflow` remains the surface that
+            // reports it (as an `unverifiable` diagnostic the agent can act on
+            // via get_tool_contract / get_tool_output_sample).
+            if let Some(upstream) =
+                composio_tool_call_upstream_ref(&diag.expression, graph, &step.node_id)
+            {
+                tracing::debug!(
+                    target: "flows",
+                    node = %step.node_id,
+                    %slug,
+                    %field,
+                    upstream = %upstream,
+                    expression = %diag.expression,
+                    "[flows] required-arg resolvability check: arg binds to a Composio \
+                     tool_call's output — UNVERIFIABLE in the echo sandbox (the mock cannot \
+                     produce real tool output fields), not rejecting; dry_run_workflow \
+                     reports it instead"
                 );
                 continue;
             }
@@ -1539,6 +1857,72 @@ fn is_trigger_scoped_expression(
         .filter(|e| e.to_node == node_id)
         .peekable();
     predecessors.peek().is_some() && predecessors.all(|e| e.from_node == trigger_id)
+}
+
+/// If a null-resolved config expression on `node_id` is bound to the OUTPUT of
+/// an upstream **Composio `tool_call`** node (a `tool_call` whose `slug` is a
+/// real Composio action — not `=`-derived, not native `oh:`), returns that
+/// upstream node's id; otherwise `None`.
+///
+/// The dry-run / gate sandbox renders a Composio `tool_call` as a deterministic
+/// echo (`{tool, args, connection}`) and can NEVER produce its real output
+/// fields, so a downstream binding to `.item.json.data.<field>` off such a node
+/// resolves `null` in the sandbox **even when the wiring is correct** — the
+/// binding is UNVERIFIABLE here, not necessarily broken. Callers use this to
+/// tell that honest-uncertainty case apart from a genuinely broken binding
+/// (one wired to an `agent` / `transform` / `code` / trigger upstream, whose
+/// real output the sandbox DOES produce, so a null there IS a real bug).
+///
+/// Handles both addressing forms the engine can trace:
+/// - explicit `=nodes.<id>...` / `=.nodes["<id>"]...` (parsed via
+///   [`explicit_nodes_ref`]), and
+/// - implicit `=item...` / `=items...`, resolved against `node_id`'s direct
+///   predecessor — but only when there is exactly ONE incoming edge, so an
+///   ambiguous fan-in is never mis-attributed to a single upstream node.
+///
+/// Anything else (a `=run...` trigger reference, a jq expression not rooted at
+/// one of the above, or a reference to a non-`tool_call` / native / dynamic
+/// node) returns `None`.
+pub(crate) fn composio_tool_call_upstream_ref<'a>(
+    expr: &str,
+    graph: &'a WorkflowGraph,
+    node_id: &str,
+) -> Option<&'a str> {
+    let referenced_id: String = if let Some(id) = explicit_nodes_ref(expr) {
+        id.to_string()
+    } else {
+        let body = expr.strip_prefix('=').unwrap_or(expr).trim();
+        let body = body.strip_prefix('.').unwrap_or(body);
+        let is_item_scoped = body == "item"
+            || body.starts_with("item.")
+            || body.starts_with("item[")
+            || body == "items"
+            || body.starts_with("items.")
+            || body.starts_with("items[");
+        if !is_item_scoped {
+            return None;
+        }
+        let mut preds = graph
+            .edges
+            .iter()
+            .filter(|e| e.to_node == node_id)
+            .map(|e| e.from_node.as_str());
+        let first = preds.next()?;
+        if preds.next().is_some() {
+            // Ambiguous fan-in — cannot attribute the null to one upstream node.
+            return None;
+        }
+        first.to_string()
+    };
+    let node = graph.nodes.iter().find(|n| n.id == referenced_id)?;
+    if node.kind != NodeKind::ToolCall {
+        return None;
+    }
+    let slug = node.config.get("slug").and_then(Value::as_str)?;
+    if slug.starts_with('=') || slug.starts_with("oh:") {
+        return None;
+    }
+    Some(node.id.as_str())
 }
 
 /// Validates a candidate graph without persisting it — the same
