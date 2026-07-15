@@ -4240,3 +4240,189 @@ async fn compute_required_connections_skips_native_and_http_nodes() {
         "native oh: and http_request need no connection: {required:?}"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Builder convergence fix — trail-off backstop (`flows_build`'s terminal-state
+// guarantee: every turn ends in a proposal or a real question, never silence).
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn builder_tool_call(
+    id: &str,
+    name: &str,
+) -> crate::openhuman::inference::provider::ConversationMessage {
+    use crate::openhuman::inference::provider::{ConversationMessage, ToolCall};
+    ConversationMessage::AssistantToolCalls {
+        text: None,
+        tool_calls: vec![ToolCall {
+            id: id.to_string(),
+            name: name.to_string(),
+            arguments: "{}".to_string(),
+            extra_content: None,
+        }],
+        reasoning_content: None,
+        extra_metadata: None,
+    }
+}
+
+fn builder_tool_result(
+    call_id: &str,
+    content: &str,
+) -> crate::openhuman::inference::provider::ConversationMessage {
+    use crate::openhuman::inference::provider::{ConversationMessage, ToolResultMessage};
+    ConversationMessage::ToolResults(vec![ToolResultMessage {
+        tool_call_id: call_id.to_string(),
+        content: content.to_string(),
+    }])
+}
+
+#[test]
+fn text_looks_like_question_detects_trailing_question_mark() {
+    assert!(text_looks_like_question(
+        "Which Slack channel should I post to?"
+    ));
+    assert!(text_looks_like_question("Which channel?\n"));
+    // Trailing markdown/punctuation noise after the '?' shouldn't defeat it.
+    assert!(text_looks_like_question("Which channel should I use?\""));
+    // A trailing blank line after the question is still detected (the last
+    // NON-BLANK line is what's checked).
+    assert!(text_looks_like_question(
+        "Which channel should I post to?\n\n"
+    ));
+}
+
+/// A question followed by a further trailing sentence on its own line
+/// ("...channel?\n\nLet me know!") is an accepted false negative — the
+/// heuristic is deliberately conservative (see the function doc). Pin that
+/// this case is NOT detected so a future "improvement" doesn't silently
+/// change the accepted trade-off without a matching design review.
+#[test]
+fn text_looks_like_question_accepts_false_negative_on_trailing_pleasantry() {
+    assert!(!text_looks_like_question(
+        "Which channel should I post to?\n\nLet me know!"
+    ));
+}
+
+#[test]
+fn text_looks_like_question_rejects_status_dumps_and_silence() {
+    assert!(!text_looks_like_question(
+        "## Done so far\n- Checked connections\n- Verified contracts"
+    ));
+    assert!(!text_looks_like_question(""));
+    assert!(!text_looks_like_question("   "));
+    assert!(!text_looks_like_question("I'll continue working on this."));
+}
+
+/// The terminal-state guarantee's core invariant: whatever `build_trail_off_fallback`
+/// returns, it must ALWAYS read as a question — the user is never left with
+/// silence, regardless of what (if anything) the tool history contains.
+#[test]
+fn build_trail_off_fallback_always_yields_a_question() {
+    let fallback = build_trail_off_fallback(&[]);
+    assert!(
+        text_looks_like_question(&fallback),
+        "fallback with no tool history must still be a question: {fallback}"
+    );
+    assert!(!fallback.trim().is_empty());
+}
+
+#[test]
+fn build_trail_off_fallback_surfaces_last_dry_run_blocker() {
+    let history = vec![
+        builder_tool_call("call_1", "dry_run_workflow"),
+        builder_tool_result(
+            "call_1",
+            r#"{"ok": false, "null_resolutions": [{"node_id": "send", "path": "args.channel"}]}"#,
+        ),
+    ];
+    let fallback = build_trail_off_fallback(&history);
+    assert!(
+        text_looks_like_question(&fallback),
+        "blocker fallback must still end in a question: {fallback}"
+    );
+    assert!(
+        fallback.contains("null_resolutions"),
+        "fallback should surface the actual dry-run blocker, got: {fallback}"
+    );
+}
+
+#[test]
+fn build_trail_off_fallback_surfaces_gate_rejection_error_text() {
+    let history = vec![
+        builder_tool_call("call_1", "propose_workflow"),
+        builder_tool_result(
+            "call_1",
+            "propose_workflow rejected: tool slug 'slack:not_a_real_action' does not exist",
+        ),
+    ];
+    let fallback = build_trail_off_fallback(&history);
+    assert!(text_looks_like_question(&fallback));
+    assert!(fallback.contains("does not exist"));
+}
+
+#[test]
+fn build_trail_off_fallback_ignores_unrelated_read_tool_output() {
+    // A plain-text result from a tool OUTSIDE the builder authoring belt (e.g.
+    // a read-only history lookup) must never be misattributed as the blocker
+    // — this stays tool-agnostic within the authoring belt, not "any tool".
+    let history = vec![
+        builder_tool_call("call_1", "get_flow_history"),
+        builder_tool_result("call_1", "no prior revisions found"),
+    ];
+    let fallback = build_trail_off_fallback(&history);
+    assert!(text_looks_like_question(&fallback));
+    assert!(
+        !fallback.contains("no prior revisions found"),
+        "must not surface an unrelated read-tool's output as the blocker: {fallback}"
+    );
+}
+
+#[test]
+fn build_trail_off_fallback_ignores_a_successful_proposal_payload() {
+    let history = vec![
+        builder_tool_call("call_1", "propose_workflow"),
+        builder_tool_result(
+            "call_1",
+            r#"{"type": "workflow_proposal", "name": "demo", "graph": {}}"#,
+        ),
+    ];
+    let fallback = build_trail_off_fallback(&history);
+    assert!(text_looks_like_question(&fallback));
+    assert!(!fallback.contains("workflow_proposal"));
+}
+
+#[test]
+fn build_trail_off_fallback_picks_the_most_recent_blocker() {
+    // Two dry-run failures in the history: the fallback should describe the
+    // LAST one (the one the agent was still stuck on), not the first.
+    let history = vec![
+        builder_tool_call("call_1", "dry_run_workflow"),
+        builder_tool_result("call_1", r#"{"ok": false, "errors": ["first issue"]}"#),
+        builder_tool_call("call_2", "dry_run_workflow"),
+        builder_tool_result("call_2", r#"{"ok": false, "errors": ["second issue"]}"#),
+    ];
+    let fallback = build_trail_off_fallback(&history);
+    assert!(fallback.contains("second issue"));
+    assert!(!fallback.contains("first issue"));
+}
+
+/// Regression for review feedback (chatgpt-codex-connector, PR #4887): a
+/// dry-run failure that the agent goes on to FIX later in the same turn
+/// (a later `{"ok": true}` from the same authoring belt) must not be
+/// resurfaced as "here's where I got stuck" — that failure is already
+/// resolved. The scan must stop at the most recent authoring-belt result,
+/// not keep walking backward past a success to an older, stale blocker.
+#[test]
+fn build_trail_off_fallback_does_not_resurface_a_resolved_blocker() {
+    let history = vec![
+        builder_tool_call("call_1", "dry_run_workflow"),
+        builder_tool_result("call_1", r#"{"ok": false, "errors": ["first issue"]}"#),
+        builder_tool_call("call_2", "dry_run_workflow"),
+        builder_tool_result("call_2", r#"{"ok": true, "warnings": []}"#),
+    ];
+    let fallback = build_trail_off_fallback(&history);
+    assert!(
+        !fallback.contains("first issue"),
+        "must not surface an already-resolved blocker: {fallback}"
+    );
+    assert!(text_looks_like_question(&fallback));
+}
