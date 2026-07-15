@@ -266,8 +266,8 @@ const HAL_DARK: Theme = {
     'content-faint': '130 96 96',
     ...RED_RAMP,
     // Deepen the resting primary (was `230 40 40`) so the white button label
-    // clears AA (4.5:1 → 5.2:1); active/hover use 600/400 which already pass, and
-    // accent text uses the lighter 300/400 shades, so the red identity holds.
+    // clears AA (4.5:1 → 5.2:1). The active fill (primary-600) also clears it,
+    // and accent text uses the lighter 300/400 shades, so the red identity holds.
     'primary-500': '214 30 30',
   },
   gradient: { canvas: 'radial-gradient(circle at 50% 16%, rgb(84 10 10), rgb(8 4 4) 56%)' },
