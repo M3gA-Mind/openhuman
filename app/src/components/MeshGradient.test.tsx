@@ -10,8 +10,13 @@ const gradientMock = vi.hoisted(() => {
   // Shared play flag, mirroring the real `Gradient.conf.playing`, so the
   // component's double-schedule guard (`shouldAnimate === playing`) is exercised.
   const conf = { playing: false };
+  // `state.mesh` mirrors `Gradient.mesh`: truthy once a WebGL context is
+  // acquired, `undefined` on no-GPU/headless. The component only calls play()
+  // when it is set (#3524); a getter lets a test flip it before events fire.
+  const state: { mesh: unknown } = { mesh: {} };
   return {
     conf,
+    state,
     disconnect: vi.fn(),
     initGradient: vi.fn(),
     pause: vi.fn(() => {
@@ -24,6 +29,9 @@ const gradientMock = vi.hoisted(() => {
     Gradient: vi.fn(function MockGradient() {
       return {
         conf,
+        get mesh() {
+          return state.mesh;
+        },
         disconnect: gradientMock.disconnect,
         initGradient: gradientMock.initGradient,
         pause: gradientMock.pause,
@@ -45,6 +53,7 @@ describe('<MeshGradient />', () => {
     gradientMock.pause.mockClear();
     gradientMock.play.mockClear();
     gradientMock.conf.playing = false;
+    gradientMock.state.mesh = {}; // default: WebGL mesh initialized OK
     // Default to a visible, focused window so the gradient animates unless a
     // test says otherwise.
     vi.spyOn(document, 'hasFocus').mockReturnValue(true);
@@ -146,5 +155,36 @@ describe('<MeshGradient />', () => {
     });
     expect(gradientMock.play).toHaveBeenCalledTimes(1);
     expect(gradientMock.conf.playing).toBe(true);
+  });
+
+  it('never resumes when the WebGL mesh failed to initialize (no-GPU/Tauri, #3524)', () => {
+    // Simulate a gradient whose connect() couldn't get a GL context: no `mesh`
+    // was ever built, yet the real lib leaves `conf.playing` truthy. play() must
+    // stay suppressed so the animation loop never dereferences the missing mesh.
+    gradientMock.state.mesh = undefined;
+    gradientMock.conf.playing = true;
+
+    const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    renderWithProviders(
+      <ThemeProvider>
+        <MeshGradient />
+      </ThemeProvider>
+    );
+    act(() => {
+      flushAnimationFrames();
+    });
+
+    // Blur then refocus — the resume path must NOT call play() without a mesh
+    // (previously this crashed on the next animation frame).
+    hasFocus.mockReturnValue(false);
+    act(() => {
+      window.dispatchEvent(new Event('blur'));
+    });
+    hasFocus.mockReturnValue(true);
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+
+    expect(gradientMock.play).not.toHaveBeenCalled();
   });
 });

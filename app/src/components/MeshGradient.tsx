@@ -65,8 +65,17 @@ export default function MeshGradient() {
       const playing = gradient.conf?.playing ?? false;
       if (shouldAnimate === playing) return;
       try {
-        if (shouldAnimate) gradient.play();
-        else gradient.pause();
+        // Only (re)start once the WebGL mesh actually initialized. On a no-GPU /
+        // headless environment `connect()` leaves `conf.playing` truthy without
+        // ever creating `mesh`, so resuming here would schedule `animate`, which
+        // dereferences `mesh.material` on the next frame and throws — exactly the
+        // environment this component is meant to tolerate (#3524). `pause()` is
+        // always safe (it just clears the flag / cancels any rAF).
+        if (shouldAnimate) {
+          if (gradient.mesh) gradient.play();
+        } else {
+          gradient.pause();
+        }
       } catch {
         // Play-state control is best-effort.
       }
