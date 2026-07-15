@@ -70,8 +70,17 @@ impl EventHandler for BackgroundDeliveryHandler {
                 busy().lock().expect("busy poisoned").remove(session_id);
                 schedule_delivery(session_id.clone(), Duration::from_millis(300));
             }
-            DomainEvent::SubagentCompleted { parent_session, .. } => {
-                // Debounce so a burst of completions batches into a single turn.
+            // Any subagent terminal state — completed, failed, or awaiting-user —
+            // can arrive after the parent turn already went idle. Schedule a
+            // debounced drain for all three so the pending result is delivered
+            // promptly instead of sitting until some unrelated later turn. Only
+            // `SubagentCompleted` used to trigger a drain, so a failure (or an
+            // awaiting-user pause) after the parent turn went idle left the chat
+            // stuck on the original "Accepted" response (#4896). Debounce so a
+            // burst batches into a single turn.
+            DomainEvent::SubagentCompleted { parent_session, .. }
+            | DomainEvent::SubagentFailed { parent_session, .. }
+            | DomainEvent::SubagentAwaitingUser { parent_session, .. } => {
                 schedule_delivery(parent_session.clone(), DEBOUNCE);
             }
             _ => {}
@@ -303,5 +312,49 @@ mod tests {
         })
         .await;
         assert!(!is_busy(&sid));
+    }
+
+    #[tokio::test]
+    async fn handler_accepts_every_subagent_terminal_event() {
+        // #4896 regression: a subagent that finishes after the parent turn is
+        // idle must still schedule a drain. Previously only `SubagentCompleted`
+        // was matched, so `SubagentFailed` / `SubagentAwaitingUser` fell through
+        // to `_ => {}` and their pending results were never delivered. The
+        // handler must now accept all three terminal events (each schedules a
+        // debounced drain via the shared arm); the drain behaviour itself is
+        // covered by the `plan_delivery` tests above.
+        let h = BackgroundDeliveryHandler;
+        let sid = "bd-subagent-terminal".to_string();
+        let events = [
+            DomainEvent::SubagentCompleted {
+                parent_session: sid.clone(),
+                task_id: "t".into(),
+                agent_id: "a".into(),
+                elapsed_ms: 0,
+                output_chars: 0,
+                iterations: 0,
+            },
+            DomainEvent::SubagentFailed {
+                parent_session: sid.clone(),
+                task_id: "t".into(),
+                agent_id: "a".into(),
+                error: "boom".into(),
+            },
+            DomainEvent::SubagentAwaitingUser {
+                parent_session: sid.clone(),
+                task_id: "t".into(),
+                agent_id: "a".into(),
+                question: "?".into(),
+            },
+        ];
+        for ev in events {
+            h.handle(&ev).await;
+            // A subagent terminal event schedules delivery for the parent but
+            // must never mark the parent session itself busy.
+            assert!(
+                !is_busy(&sid),
+                "subagent terminal event must not mark parent busy"
+            );
+        }
     }
 }
