@@ -314,47 +314,64 @@ mod tests {
         assert!(!is_busy(&sid));
     }
 
-    #[tokio::test]
-    async fn handler_accepts_every_subagent_terminal_event() {
-        // #4896 regression: a subagent that finishes after the parent turn is
-        // idle must still schedule a drain. Previously only `SubagentCompleted`
-        // was matched, so `SubagentFailed` / `SubagentAwaitingUser` fell through
-        // to `_ => {}` and their pending results were never delivered. The
-        // handler must now accept all three terminal events (each schedules a
-        // debounced drain via the shared arm); the drain behaviour itself is
-        // covered by the `plan_delivery` tests above.
+    #[tokio::test(start_paused = true)]
+    async fn every_subagent_terminal_event_schedules_a_drain() {
+        // #4896 regression: EVERY subagent terminal event must schedule a drain
+        // for the parent — not just `SubagentCompleted`. Before the fix,
+        // `SubagentFailed` / `SubagentAwaitingUser` fell through to `_ => {}`, so
+        // a failure/pause recorded after the parent turn went idle was never
+        // delivered. Prove behaviour, not just acceptance: queue a headless
+        // result (no thread → drains without a delivery sink) per session, fire
+        // the event, advance past the debounce, and assert the pending item was
+        // consumed. The paused clock elapses the debounce with no wall-clock wait.
         let h = BackgroundDeliveryHandler;
-        let sid = "bd-subagent-terminal".to_string();
-        let events = [
-            DomainEvent::SubagentCompleted {
-                parent_session: sid.clone(),
-                task_id: "t".into(),
-                agent_id: "a".into(),
-                elapsed_ms: 0,
-                output_chars: 0,
-                iterations: 0,
-            },
-            DomainEvent::SubagentFailed {
-                parent_session: sid.clone(),
-                task_id: "t".into(),
-                agent_id: "a".into(),
-                error: "boom".into(),
-            },
-            DomainEvent::SubagentAwaitingUser {
-                parent_session: sid.clone(),
-                task_id: "t".into(),
-                agent_id: "a".into(),
-                question: "?".into(),
-            },
-        ];
-        for ev in events {
-            h.handle(&ev).await;
-            // A subagent terminal event schedules delivery for the parent but
-            // must never mark the parent session itself busy.
-            assert!(
-                !is_busy(&sid),
-                "subagent terminal event must not mark parent busy"
-            );
+
+        background_completions::record_completion("bd-term-completed", "t", "a", "s", None);
+        background_completions::record_completion("bd-term-failed", "t", "a", "s", None);
+        background_completions::record_completion("bd-term-awaiting", "t", "a", "s", None);
+
+        h.handle(&DomainEvent::SubagentCompleted {
+            parent_session: "bd-term-completed".into(),
+            task_id: "t".into(),
+            agent_id: "a".into(),
+            elapsed_ms: 0,
+            output_chars: 0,
+            iterations: 0,
+        })
+        .await;
+        h.handle(&DomainEvent::SubagentFailed {
+            parent_session: "bd-term-failed".into(),
+            task_id: "t".into(),
+            agent_id: "a".into(),
+            error: "boom".into(),
+        })
+        .await;
+        h.handle(&DomainEvent::SubagentAwaitingUser {
+            parent_session: "bd-term-awaiting".into(),
+            task_id: "t".into(),
+            agent_id: "a".into(),
+            question: "?".into(),
+        })
+        .await;
+
+        // Advance the virtual clock past the debounce so every scheduled drain
+        // runs; the headless `try_deliver` completes synchronously (no sink).
+        tokio::time::sleep(DEBOUNCE + Duration::from_millis(50)).await;
+        for _ in 0..8 {
+            tokio::task::yield_now().await;
         }
+
+        assert!(
+            !background_completions::has_pending("bd-term-completed"),
+            "SubagentCompleted must schedule a drain that consumes the pending result"
+        );
+        assert!(
+            !background_completions::has_pending("bd-term-failed"),
+            "SubagentFailed must schedule a drain (regression #4896)"
+        );
+        assert!(
+            !background_completions::has_pending("bd-term-awaiting"),
+            "SubagentAwaitingUser must schedule a drain (regression #4896)"
+        );
     }
 }
