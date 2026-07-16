@@ -305,6 +305,30 @@ pub async fn run_gmail_backfill(
         .map_err(|error| SourcePipelineFailure::without_usage(error.to_string()))
 }
 
+/// Composio toolkit slugs that have a native memory-sync pipeline in
+/// [`build_pipeline`] — the authoritative "can actually ingest into memory" set.
+///
+/// This MUST stay in lockstep with the registered memory-sync providers
+/// (`memory_sync::composio::all_composio_sync_providers`): the
+/// `memory_sources.supported_toolkits` RPC advertises the provider registry, and
+/// the `connection_created` auto-register gates on it, so any divergence
+/// reintroduces the "connection reports ACTIVE but silently never ingests"
+/// failure this guards against (#4957). The registry↔pipeline equality is pinned
+/// by `composio_syncable_set_matches_provider_registry` in the tests below, and
+/// the arms of the `match` in [`build_pipeline`] map 1:1 to these slugs.
+pub fn syncable_composio_toolkits() -> &'static [&'static str] {
+    &["clickup", "github", "gmail", "linear", "notion", "slack"]
+}
+
+/// Whether `toolkit` has a native memory-sync pipeline (case-insensitive).
+/// Callers deciding *whether to offer/register* a Composio source should prefer
+/// the provider registry (`get_composio_sync_provider`) so there is a single
+/// advertised source of truth; this mirror exists for the sync layer itself.
+pub fn is_composio_toolkit_syncable(toolkit: &str) -> bool {
+    let slug = toolkit.trim().to_ascii_lowercase();
+    syncable_composio_toolkits().iter().any(|&s| s == slug.as_str())
+}
+
 fn build_pipeline(
     source: &MemorySourceEntry,
     config: &Config,
@@ -338,6 +362,13 @@ fn build_pipeline(
         .map(str::trim)
         .filter(|connection_id| !connection_id.is_empty())
         .ok_or_else(|| "composio source missing connection_id".to_string())?;
+    // Fail closed *before* resolving credentials/client for any toolkit without a
+    // native pipeline. This keeps the unsupported-toolkit error identical to the
+    // match's fallback while making the syncable set a single, testable gate that
+    // stays pinned to the provider registry (#4957).
+    if !is_composio_toolkit_syncable(&toolkit) {
+        return Err(format!("tinycortex sync does not support toolkit '{toolkit}'"));
+    }
     let composio = composio_config(config)?;
     memory_config.sync.composio = Some(composio.clone());
     let client = ComposioClient::new(composio);
@@ -520,5 +551,65 @@ fn stage_name(stage: SyncStage) -> &'static str {
         SyncStage::Ingesting => "ingesting",
         SyncStage::Completed => "completed",
         SyncStage::Failed => "failed",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_composio_toolkit_syncable, syncable_composio_toolkits};
+    use crate::openhuman::memory_sync::composio::{
+        all_composio_sync_providers, get_composio_sync_provider,
+        init_default_composio_sync_providers,
+    };
+
+    /// The advertised set (`memory_sources.supported_toolkits`, sourced from the
+    /// provider registry) and the syncable set (`build_pipeline`) must not
+    /// diverge: a toolkit that is advertised but has no pipeline reports ACTIVE
+    /// and then silently never ingests — the exact defect of #4957.
+    ///
+    /// Both directions are asserted. Sibling `registry` unit tests register
+    /// throwaway `test_dummy_*` / empty-slug providers into the same
+    /// process-global registry, so real providers are matched by excluding those
+    /// fixtures rather than by raw set-equality (which would be order-flaky).
+    #[test]
+    fn advertised_and_syncable_toolkit_sets_cannot_diverge() {
+        init_default_composio_sync_providers();
+
+        // Every syncable toolkit must have a registered provider — otherwise it
+        // could never be advertised or auto-registered in the first place.
+        for &slug in syncable_composio_toolkits() {
+            assert!(
+                get_composio_sync_provider(slug).is_some(),
+                "syncable toolkit `{slug}` has no registered memory-sync provider"
+            );
+        }
+
+        // Every registered (non-fixture) provider must be syncable. This is the
+        // #4957 direction: advertising a provider that `build_pipeline` rejects
+        // is the silent failure we guard against.
+        for provider in all_composio_sync_providers() {
+            let slug = provider.toolkit_slug();
+            if slug.is_empty() || slug.starts_with("test_dummy") {
+                continue; // sibling registry-test fixtures, not real providers
+            }
+            assert!(
+                is_composio_toolkit_syncable(slug),
+                "toolkit `{slug}` is advertised by the provider registry but has no \
+                 build_pipeline arm — it would report ACTIVE and silently fail to sync (#4957)"
+            );
+        }
+    }
+
+    /// Locks the reported prod failures (googlecalendar / googlesheets) as
+    /// non-syncable, and pins case-insensitive/trimming behaviour.
+    #[test]
+    fn is_composio_toolkit_syncable_classifies_known_slugs() {
+        assert!(!is_composio_toolkit_syncable("googlecalendar"));
+        assert!(!is_composio_toolkit_syncable("googlesheets"));
+        assert!(!is_composio_toolkit_syncable("discord"));
+        assert!(!is_composio_toolkit_syncable(""));
+        assert!(is_composio_toolkit_syncable("gmail"));
+        assert!(is_composio_toolkit_syncable("Gmail"));
+        assert!(is_composio_toolkit_syncable("  slack "));
     }
 }

@@ -637,26 +637,19 @@ impl EventHandler for ComposioConnectionCreatedSubscriber {
                 );
             } else {
                 let Some(provider) = get_provider(&toolkit) else {
-                    tracing::debug!(
+                    // No native memory-sync provider → this toolkit cannot ingest
+                    // into memory. Do NOT auto-register it as a memory source: a
+                    // source that reports ACTIVE and then fails every sync with
+                    // "tinycortex sync does not support toolkit" is a silent lie
+                    // to the user (#4957). The connection stays a valid agent-tool
+                    // integration; it simply never becomes a memory source until a
+                    // pipeline lands (tracked per-toolkit in #4958+). The cache
+                    // refresh above already ran for every toolkit.
+                    tracing::info!(
                         toolkit = %toolkit,
-                        "[composio:bus] no provider registered for toolkit; cache refreshed, no provider hook to dispatch"
+                        connection_id = %connection_id,
+                        "[composio:bus] no memory-sync provider for toolkit; skipping memory_sources auto-register (not syncable, #4957)"
                     );
-                    // Still fall through to auto-register below.
-                    let label = format!("{toolkit} connection");
-                    if let Err(e) = crate::openhuman::memory_sources::upsert_composio_source(
-                        &toolkit,
-                        &connection_id,
-                        &label,
-                    )
-                    .await
-                    {
-                        tracing::warn!(
-                            toolkit = %toolkit,
-                            connection_id = %connection_id,
-                            error = %e,
-                            "[composio:bus] memory_sources auto-register failed (non-fatal)"
-                        );
-                    }
                     return;
                 };
 
@@ -698,9 +691,23 @@ impl EventHandler for ComposioConnectionCreatedSubscriber {
                 }
             }
 
-            // Auto-register this connection in the memory_sources registry so
-            // it appears in the unified sources list regardless of whether the
-            // initial sync ran.
+            // Auto-register this connection in the memory_sources registry so it
+            // appears in the unified sources list regardless of whether the
+            // initial sync ran — but ONLY for toolkits that can actually sync.
+            // The provider registry is the single source of truth shared with the
+            // `memory_sources.supported_toolkits` RPC; gating here (the same check
+            // used above) means a toolkit with no pipeline never surfaces as a
+            // memory source that would silently fail every sync (#4957). This also
+            // guards the onboarding-incomplete path, which reaches here without
+            // evaluating the provider branch above.
+            if get_provider(&toolkit).is_none() {
+                tracing::info!(
+                    toolkit = %toolkit,
+                    connection_id = %connection_id,
+                    "[composio:bus] no memory-sync provider for toolkit; skipping memory_sources auto-register (not syncable, #4957)"
+                );
+                return;
+            }
             let label = format!("{toolkit} connection");
             if let Err(e) = crate::openhuman::memory_sources::upsert_composio_source(
                 &toolkit,
