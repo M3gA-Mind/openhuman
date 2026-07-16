@@ -650,12 +650,37 @@ pub async fn get_data_paths() -> Result<RpcOutcome<serde_json::Value>, String> {
 /// `user_id` is expected to be non-empty and pre-trimmed (the controller
 /// enforces this); an empty id would resolve to the bare `users/` parent, which
 /// the caller must never delete.
+///
+/// **Security:** `user_id` is caller-controlled (it arrives over `/rpc` and via
+/// the Tauri `reset_local_data` command, whose renderer runs untrusted webview
+/// content), and the returned `current_openhuman_dir` is handed straight to
+/// `remove_dir_all`. An absolute id (`/etc`) or one with `..` / separators would
+/// let `Path::join` resolve a delete target OUTSIDE `<root>/users/<id>`. We
+/// therefore reject anything that isn't a single plain path segment and, as
+/// defense in depth, verify the resolved dir is a direct child of `users/`.
 pub async fn get_data_paths_for_user(
     user_id: &str,
 ) -> Result<RpcOutcome<serde_json::Value>, String> {
+    if !is_plain_user_id(user_id) {
+        return Err(format!(
+            "refusing to resolve data paths for unsafe user id {user_id:?}: must be a single path segment with no separators, `.` or `..`"
+        ));
+    }
     let default_openhuman_dir = default_openhuman_dir();
     let current_openhuman_dir =
         crate::openhuman::config::user_openhuman_dir(&default_openhuman_dir, user_id);
+    // Defense in depth: the resolved user dir MUST be a direct child of
+    // `<root>/users`. Catches any platform-specific `join` quirk (e.g. a
+    // Windows drive-relative id) that slipped past the string check above,
+    // before the path reaches `remove_dir_all`.
+    let users_root = default_openhuman_dir.join("users");
+    if current_openhuman_dir.parent() != Some(users_root.as_path()) {
+        return Err(format!(
+            "refusing to resolve data paths: resolved dir {} is not a direct child of {}",
+            current_openhuman_dir.display(),
+            users_root.display()
+        ));
+    }
     let active_workspace_marker = active_workspace_marker_path(&default_openhuman_dir);
     let active_user_marker =
         crate::openhuman::config::active_user_marker_path(&default_openhuman_dir);
@@ -677,6 +702,17 @@ pub async fn get_data_paths_for_user(
             default_openhuman_dir.display()
         )],
     ))
+}
+
+/// True when `user_id` is a single plain path segment safe to join onto the
+/// `users/` root: non-empty, not `.`/`..`, and free of path separators or NUL.
+/// Rejecting everything else keeps [`get_data_paths_for_user`] (and the
+/// `remove_dir_all` it feeds) from escaping `<root>/users/<id>`.
+fn is_plain_user_id(user_id: &str) -> bool {
+    !user_id.is_empty()
+        && user_id != "."
+        && user_id != ".."
+        && !user_id.contains(['/', '\\', '\0'])
 }
 
 #[cfg(test)]
@@ -782,6 +818,20 @@ mod loader_io_chain_tests {
             current_norm.starts_with(default_norm.as_str()),
             "current dir ({current}) must live under the shared root ({default})"
         );
+    }
+
+    // #4950 hardening: `user_id` is caller-controlled (arrives over /rpc and via
+    // the Tauri reset command) and flows into remove_dir_all, so traversal or
+    // absolute ids must be rejected outright rather than resolving a delete
+    // target outside `<root>/users/<id>`.
+    #[tokio::test]
+    async fn get_data_paths_for_user_rejects_unsafe_ids() {
+        for bad in ["..", ".", "../escape", "/etc", "a/b", "a\\b", ""] {
+            assert!(
+                get_data_paths_for_user(bad).await.is_err(),
+                "unsafe user id {bad:?} must be rejected"
+            );
+        }
     }
 
     // A directory at the config path is corruption, not a transient/denied read:
