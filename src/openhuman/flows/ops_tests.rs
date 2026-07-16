@@ -4337,6 +4337,77 @@ async fn flows_create_schedule_outbound_creates_disabled_and_approval() {
     );
 }
 
+#[tokio::test]
+async fn flows_update_forces_require_approval_when_adding_side_effect_nodes() {
+    // Compound bypass fix, half 2: `flows_create`'s Rule 2 (force
+    // require_approval when the graph gains an outbound side-effect node)
+    // must also re-apply on `flows_update` — a flow that starts read-only and
+    // is later edited to add a Composio/http_request/code node must not be
+    // able to keep require_approval=false just because the update path never
+    // re-checked.
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let created = flows_create(&config, "demo".to_string(), trigger_only_graph(), false)
+        .await
+        .unwrap();
+    assert!(
+        !created.value.require_approval,
+        "a trigger-only graph must not force require_approval on create"
+    );
+
+    let updated = flows_update(
+        &config,
+        &created.value.id,
+        None,
+        Some(tool_call_graph()),
+        Some(false),
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        updated.value.require_approval,
+        "flows_update must force require_approval when the replacement graph adds an outbound \
+         side-effect node (tool_call), even though the caller passed false"
+    );
+    assert!(
+        updated
+            .logs
+            .iter()
+            .any(|l| l.contains("require_approval forced to true")),
+        "flows_update must loudly log the forced require_approval: {:?}",
+        updated.logs
+    );
+}
+
+#[tokio::test]
+async fn flows_update_does_not_force_require_approval_on_readonly_graph() {
+    let tmp = TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let created = flows_create(&config, "demo".to_string(), trigger_only_graph(), false)
+        .await
+        .unwrap();
+    assert!(!created.value.require_approval);
+
+    // Name-only update — no graph change, no side-effect nodes.
+    let updated = flows_update(
+        &config,
+        &created.value.id,
+        Some("renamed".to_string()),
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        !updated.value.require_approval,
+        "a name-only update to a read-only graph must not force require_approval"
+    );
+}
+
 // ── graph_has_outbound_side_effect / trigger_is_automatic helper tests ────
 
 #[test]

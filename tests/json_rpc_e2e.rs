@@ -12862,6 +12862,103 @@ async fn json_rpc_flows_lifecycle_round_trip() {
     rpc_join.abort();
 }
 
+/// JSON-RPC regression for the Rule 2 compound-bypass fix (C1): `flows_update`
+/// must re-derive `require_approval` from the *effective* graph, not trust the
+/// caller's raw toggle. This is the RPC-layer counterpart to the direct-API
+/// tests `flows_update_forces_require_approval_when_adding_side_effect_nodes`
+/// / `flows_update_does_not_force_require_approval_on_readonly_graph` in
+/// `src/openhuman/flows/ops_tests.rs` — same rule, exercised through the
+/// `openhuman.flows_update` controller (schema + handler wiring), not just
+/// the `ops::flows_update` fn directly.
+#[cfg(feature = "flows")]
+#[tokio::test]
+async fn json_rpc_flows_update_forces_require_approval_on_side_effect_graph() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let (rpc_base, _tmp, api_join, rpc_join, _guards) = boot_flows_rpc_env().await;
+
+    // 1. Create a trigger-only (read-only) flow with require_approval: false.
+    let create = post_json_rpc(
+        &rpc_base,
+        9401,
+        "openhuman.flows_create",
+        json!({
+            "name": "rpc-rule2-demo",
+            "graph": {
+                "name": "trigger-only",
+                "nodes": [ { "id": "t", "kind": "trigger", "name": "Trigger" } ],
+                "edges": []
+            },
+            "require_approval": false
+        }),
+    )
+    .await;
+    let flow = peel_logs_envelope(assert_no_jsonrpc_error(&create, "flows_create"));
+    let flow_id = flow
+        .get("id")
+        .and_then(Value::as_str)
+        .expect("flow id in create result")
+        .to_string();
+    assert_eq!(
+        flow.get("require_approval").and_then(Value::as_bool),
+        Some(false),
+        "a trigger-only graph must not force require_approval on create"
+    );
+
+    // 2. Update to a graph with an outbound Composio tool_call node, still
+    // passing require_approval: false — the RPC handler must force it to
+    // true rather than trust the caller's toggle.
+    let update = post_json_rpc(
+        &rpc_base,
+        9402,
+        "openhuman.flows_update",
+        json!({
+            "id": flow_id,
+            "graph": {
+                "name": "with-tool-call",
+                "nodes": [
+                    { "id": "t", "kind": "trigger", "name": "Trigger" },
+                    {
+                        "id": "post",
+                        "kind": "tool_call",
+                        "name": "Post",
+                        "config": { "slug": "SLACK_SEND_MESSAGE", "args": { "channel": "general" } }
+                    }
+                ],
+                "edges": [ { "from_node": "t", "to_node": "post" } ]
+            },
+            "require_approval": false
+        }),
+    )
+    .await;
+    let updated = peel_logs_envelope(assert_no_jsonrpc_error(&update, "flows_update"));
+    assert_eq!(
+        updated.get("require_approval").and_then(Value::as_bool),
+        Some(true),
+        "flows_update over JSON-RPC must force require_approval=true when the \
+         replacement graph adds an outbound side-effect node, even though the \
+         caller passed false"
+    );
+
+    // 3. The forced value must also be what's persisted, not just what's
+    // echoed back in the update response.
+    let get = post_json_rpc(
+        &rpc_base,
+        9403,
+        "openhuman.flows_get",
+        json!({ "id": flow_id }),
+    )
+    .await;
+    let persisted = peel_logs_envelope(assert_no_jsonrpc_error(&get, "flows_get"));
+    assert_eq!(
+        persisted.get("require_approval").and_then(Value::as_bool),
+        Some(true),
+        "the forced require_approval must be persisted, not just returned"
+    );
+
+    api_join.abort();
+    rpc_join.abort();
+}
+
 /// Flow Scout suggestion-lifecycle methods over JSON-RPC (no LLM involved):
 /// `flows_list_suggestions` starts empty, and `flows_dismiss_suggestion` /
 /// `flows_mark_suggestion_built` on an unknown id resolve cleanly and report

@@ -1616,6 +1616,7 @@ async fn resolve_composio_account(
 /// // approval when a trigger-driven run's tool/http config contains `=`-exprs.
 pub struct OpenHumanTools {
     pub config: Arc<Config>,
+    pub security: Arc<SecurityPolicy>,
 }
 
 /// Prefix marking a `tool_call` node's slug as a NATIVE OpenHuman tool (the
@@ -2562,18 +2563,13 @@ impl ToolInvoker for OpenHumanTools {
                 ));
             }
 
-            let security = SecurityPolicy::from_config(
-                &self.config.autonomy,
-                &self.config.workspace_dir,
-                &self.config.action_dir,
-            );
             let class = crate::openhuman::runtime_node::ops::classify_tool_call(
                 &self.config,
                 tool_name,
                 &args,
             )
             .map_err(EngineError::Capability)?;
-            let tier_decision = enforce_node_tier_gate(&security, class, "tool_call")?;
+            let tier_decision = enforce_node_tier_gate(&self.security, class, "tool_call")?;
             let summary = crate::openhuman::approval::summarize_action(tool_name, &args);
             let redacted = crate::openhuman::approval::redact_args(&args);
             let (outcome, _request_id) =
@@ -2601,6 +2597,23 @@ impl ToolInvoker for OpenHumanTools {
             });
         }
 
+        // Autonomy-tier gate (Phase 2): a Composio action reaches a
+        // third-party API over the network, so it is Network-class — same
+        // class as `http_request`. A read-only run `Block`s here and never
+        // reaches curation, the preflight, or the approval gate;
+        // Supervised/Full fall through to `gate_call_for_tier` below. Runs
+        // BEFORE the curation check (unlike the pre-fix behavior) so a
+        // read-only tier can never even probe which slugs are curated.
+        let tier_decision =
+            enforce_node_tier_gate(&self.security, CommandClass::Network, "tool_call")?;
+        tracing::debug!(
+            target: "flows",
+            %slug,
+            ?tier_decision,
+            tier = ?self.security.autonomy,
+            "[flows] tool_call: composio node tier gate evaluated"
+        );
+
         // Curation + scope gate — hard allowlist (see [`is_curated_flow_tool`]'s
         // doc for why this differs from the general agent tool-call path).
         // Runs before anything else — a rejected slug never reaches the
@@ -2623,22 +2636,24 @@ impl ToolInvoker for OpenHumanTools {
         // provider or asks the user to approve a call that cannot succeed.
         preflight_composio_args(&self.config, slug, &args).await?;
 
-        // Approval gate (see the struct doc). Mirrors
-        // `tinyagents/middleware.rs::ApprovalSecurityMiddleware::wrap_tool`'s
-        // shape exactly: compute summary/redacted args only when a gate is
-        // installed, deny short-circuits before any composio call, allow
-        // records an audit id to close out after the call resolves.
-        let mut audit_id: Option<String> = None;
-        if let Some(gate) = crate::openhuman::approval::ApprovalGate::try_global() {
-            let summary = crate::openhuman::approval::summarize_action(slug, &args);
-            let redacted = crate::openhuman::approval::redact_args(&args);
-            let (outcome, request_id) = gate.intercept_audited(slug, &summary, redacted).await;
-            match outcome {
-                crate::openhuman::approval::GateOutcome::Deny { reason } => {
-                    return Err(EngineError::Capability(reason));
-                }
-                crate::openhuman::approval::GateOutcome::Allow => audit_id = request_id,
-            }
+        // Approval gate (see the struct doc). Mirrors `OpenHumanHttp::request`'s
+        // shape exactly: `gate_call_for_tier` is what actually performs the
+        // `Prompt` round-trip — it escalates a Supervised `Prompt` decision
+        // into a forced approval regardless of the flow's own
+        // `require_approval` toggle (Codex P1), same as the `http_request` and
+        // `code` node paths. Deny short-circuits before any composio call;
+        // Allow records an audit id to close out after the call resolves.
+        let summary = crate::openhuman::approval::summarize_action(slug, &args);
+        let redacted = crate::openhuman::approval::redact_args(&args);
+        let (outcome, audit_id) = gate_call_for_tier(tier_decision, slug, &summary, redacted).await;
+        if let crate::openhuman::approval::GateOutcome::Deny { reason } = outcome {
+            tracing::warn!(
+                target: "flows",
+                %slug,
+                ?tier_decision,
+                "[flows] tool_call: approval gate denied before Composio dispatch"
+            );
+            return Err(EngineError::Capability(reason));
         }
 
         let kind = create_composio_client(&self.config)
@@ -3277,6 +3292,7 @@ pub fn build_capabilities(config: Arc<Config>, state_namespace: impl Into<String
         }),
         tools: Arc::new(OpenHumanTools {
             config: config.clone(),
+            security: security.clone(),
         }),
         http: Arc::new(OpenHumanHttp {
             security: security.clone(),
@@ -4161,6 +4177,35 @@ mod tests {
             .request(request, None)
             .await
             .expect_err("read-only http_request node must be blocked");
+        if let EngineError::Capability(msg) = err {
+            assert!(
+                msg.contains(POLICY_BLOCKED_MARKER),
+                "expected a policy-blocked refusal, got: {msg}"
+            );
+        } else {
+            panic!("expected EngineError::Capability");
+        }
+    }
+
+    /// End-to-end at the adapter: a Composio `tool_call` node under a
+    /// read-only tier is refused BEFORE it ever reaches the curation gate or
+    /// any Composio dispatch — closes the compound bypass where the Composio
+    /// branch of `OpenHumanTools::invoke` reached `intercept_audited` without
+    /// ever consulting the autonomy tier, unlike the native `oh:`,
+    /// `http_request`, and `code` node paths, which all gate on tier first.
+    #[tokio::test]
+    async fn composio_tool_call_blocks_under_readonly_tier() {
+        use crate::openhuman::security::AutonomyLevel;
+
+        let tools = OpenHumanTools {
+            config: Arc::new(Config::default()),
+            security: Arc::new(policy(AutonomyLevel::ReadOnly)),
+        };
+
+        let err = tools
+            .invoke("SLACK_SEND_MESSAGE", json!({}), None)
+            .await
+            .expect_err("read-only tier must block a Composio tool_call node before dispatch");
         if let EngineError::Capability(msg) = err {
             assert!(
                 msg.contains(POLICY_BLOCKED_MARKER),
