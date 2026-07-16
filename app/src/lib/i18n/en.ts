@@ -742,6 +742,7 @@ const en: TranslationMap = {
   'chat.typeMessage': 'How can I help you today?',
   'chat.send': 'Send message',
   'chat.stopGeneration': 'Stop generating',
+  'chat.stoppedByUser': 'Stopped',
   'chat.parallelBranchHint': 'Type a parallel branch: ⌘/Ctrl+Enter to send',
   'chat.followupHint':
     'Queue a follow-up: sent after this reply · ⌘/Ctrl+Enter for a parallel branch',

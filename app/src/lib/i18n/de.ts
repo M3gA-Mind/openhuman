@@ -981,6 +981,7 @@ const messages: TranslationMap = {
   'chat.typeMessage': 'Wie kann ich dir heute helfen?',
   'chat.send': 'Nachricht senden',
   'chat.stopGeneration': 'Generierung stoppen',
+  'chat.stoppedByUser': 'Gestoppt',
   'chat.parallelBranchHint': 'Parallelen Zweig eingeben: ⌘/Strg+Enter zum Senden',
   'chat.followupHint':
     'Folgenachricht einreihen: wird nach dieser Antwort gesendet · ⌘/Strg+Enter für parallelen Zweig',
