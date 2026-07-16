@@ -665,7 +665,9 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
       store!.dispatch(
         setTurnTimelinesForThread({
           threadId: thread.id,
-          timelines: { 'req-1': [{ id: 'tc-1', name: 'read_file', round: 0, status: 'success' }] },
+          timelines: {
+            'req-1': [{ id: 'tc-1', name: 'read_file', round: 0, seq: 0, status: 'success' }],
+          },
         })
       );
     });
@@ -1567,7 +1569,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
         store!.dispatch(
           setToolTimelineForThread({
             threadId: thread.id,
-            entries: [{ id: 'tl-1', name: 'web_fetch', round: 1, status: 'running' }],
+            entries: [{ id: 'tl-1', name: 'web_fetch', round: 1, seq: 0, status: 'running' }],
           })
         );
       });
@@ -1703,7 +1705,7 @@ describe('Conversations — smoke render (#1123 welcome-lock removal)', () => {
         store!.dispatch(
           setToolTimelineForThread({
             threadId: 'some-other-thread',
-            entries: [{ id: 'other-1', name: 'web_fetch', round: 1, status: 'running' }],
+            entries: [{ id: 'other-1', name: 'web_fetch', round: 1, seq: 0, status: 'running' }],
           })
         );
       });
@@ -2091,11 +2093,12 @@ describe('Conversations — agent task insights panel anchoring (#3717 Bug 2)', 
         setToolTimelineForThread({
           threadId: thread.id,
           entries: [
-            { id: 'tl-1', name: 'web_fetch', round: 1, status: 'success' },
+            { id: 'tl-1', name: 'web_fetch', round: 1, seq: 0, status: 'success' },
             {
               id: 'sa-1',
               name: 'subagent:researcher',
               round: 1,
+              seq: 0,
               status: 'running',
               subagent: { taskId: 'task-1', agentId: 'researcher', toolCalls: [] },
             },
@@ -2187,7 +2190,7 @@ describe('Conversations — agent task insights panel anchoring (#3717 Bug 2)', 
       store!.dispatch(
         setToolTimelineForThread({
           threadId: thread.id,
-          entries: [{ id: 'tl-1', name: 'web_fetch', round: 1, status: 'success' }],
+          entries: [{ id: 'tl-1', name: 'web_fetch', round: 1, seq: 0, status: 'success' }],
         })
       );
     });
@@ -2243,7 +2246,7 @@ describe('Conversations — agent task insights panel anchoring (#3717 Bug 2)', 
       store!.dispatch(
         setToolTimelineForThread({
           threadId: thread.id,
-          entries: [{ id: 'tl-1', name: 'web_fetch', round: 1, status: 'running' }],
+          entries: [{ id: 'tl-1', name: 'web_fetch', round: 1, seq: 0, status: 'running' }],
         })
       );
     });
@@ -2364,7 +2367,7 @@ describe('Conversations — agent task insights panel anchoring (#3717 Bug 2)', 
       store!.dispatch(
         setToolTimelineForThread({
           threadId: thread.id,
-          entries: [{ id: 'tl-1', name: 'web_fetch', round: 1, status: 'cancelled' }],
+          entries: [{ id: 'tl-1', name: 'web_fetch', round: 1, seq: 0, status: 'cancelled' }],
         })
       );
     });
