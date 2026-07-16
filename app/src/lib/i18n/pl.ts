@@ -7378,6 +7378,26 @@ const messages: TranslationMap = {
   'flows.delete.confirm': 'Usuń',
   'flows.delete.deleting': 'Usuwanie…',
   'flows.canvas.renameLabel': 'Zmień nazwę przepływu pracy',
+  'memorySources.codingSessions.title': 'Sesje agentów programistycznych',
+  'memorySources.codingSessions.description':
+    'Zamień decyzje i poprawki z Codex oraz Claude Code w prywatną pamięć persony.',
+  'memorySources.codingSessions.ingest': 'Wczytaj nowe sesje',
+  'memorySources.codingSessions.ingesting': 'Wczytywanie…',
+  'memorySources.codingSessions.claude': 'Historia Claude Code',
+  'memorySources.codingSessions.codex': 'Codex',
+  'memorySources.codingSessions.counts': '{files} sesji · {evidence} wypowiedzi użytkownika',
+  'memorySources.codingSessions.notFound': 'Nie znaleziono lokalnej historii',
+  'memorySources.codingSessions.scanning': 'Skanowanie lokalnej historii sesji…',
+  'memorySources.codingSessions.truncated':
+    'Skanowanie ograniczono do pierwszych 1000 plików sesji.',
+  'memorySources.codingSessions.complete': 'Sesje programistyczne wczytane',
+  'memorySources.codingSessions.completeMessage':
+    '{processed} sesji utworzyło {observations} obserwacji persony.',
+  'memorySources.codingSessions.partialFailure':
+    'Nie udało się przetworzyć {failed} sesji, a {processed} przetworzono. Uruchom import ponownie, aby spróbować jeszcze raz.',
+  'memorySources.codingSessions.moreRemaining':
+    'Osiągnięto limit sesji w partii. Uruchom import ponownie, aby kontynuować wczytywanie historii.',
+  'memorySources.codingSessions.failed': 'Nie udało się wczytać sesji programistycznych',
   'flows.canvas.sidePanelToggle': 'Panel boczny',
   'flows.canvas.legendTab': 'Ręczny',
 

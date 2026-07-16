@@ -7408,6 +7408,27 @@ const messages: TranslationMap = {
   'flows.delete.confirm': 'Elimina',
   'flows.delete.deleting': 'Eliminazione…',
   'flows.canvas.renameLabel': 'Rinomina flusso di lavoro',
+  'memorySources.codingSessions.title': 'Sessioni degli agenti di programmazione',
+  'memorySources.codingSessions.description':
+    'Trasforma decisioni e correzioni di Codex e Claude Code in memoria privata della persona.',
+  'memorySources.codingSessions.ingest': 'Acquisisci nuove sessioni',
+  'memorySources.codingSessions.ingesting': 'Acquisizione…',
+  'memorySources.codingSessions.claude': 'Cronologia Claude Code',
+  'memorySources.codingSessions.codex': 'Codex',
+  'memorySources.codingSessions.counts': '{files} sessioni · {evidence} interventi umani',
+  'memorySources.codingSessions.notFound': 'Nessuna cronologia locale trovata',
+  'memorySources.codingSessions.scanning': 'Scansione della cronologia locale…',
+  'memorySources.codingSessions.truncated':
+    'La scansione è stata limitata ai primi 1.000 file di sessione.',
+  'memorySources.codingSessions.complete': 'Sessioni di programmazione acquisite',
+  'memorySources.codingSessions.completeMessage':
+    '{processed} sessioni hanno prodotto {observations} osservazioni della persona.',
+  'memorySources.codingSessions.partialFailure':
+    '{failed} sessioni non sono riuscite mentre {processed} sono state elaborate. Avvia di nuovo l’acquisizione per riprovare.',
+  'memorySources.codingSessions.moreRemaining':
+    'È stato raggiunto il limite di sessioni del batch. Avvia di nuovo l’acquisizione per continuare a importare la cronologia.',
+  'memorySources.codingSessions.failed':
+    'Acquisizione delle sessioni di programmazione non riuscita',
   'flows.canvas.sidePanelToggle': 'Pannello laterale',
   'flows.canvas.legendTab': 'Manuale',
 

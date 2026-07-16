@@ -6869,6 +6869,25 @@ const messages: TranslationMap = {
   'flows.delete.confirm': '删除',
   'flows.delete.deleting': '正在删除…',
   'flows.canvas.renameLabel': '重命名工作流',
+  'memorySources.codingSessions.title': '编程智能体会话',
+  'memorySources.codingSessions.description':
+    '将 Codex 和 Claude Code 中的决策与纠正转化为私有人格记忆。',
+  'memorySources.codingSessions.ingest': '摄取新会话',
+  'memorySources.codingSessions.ingesting': '正在摄取…',
+  'memorySources.codingSessions.claude': '克劳德代码',
+  'memorySources.codingSessions.codex': 'Codex',
+  'memorySources.codingSessions.counts': '{files} 个会话 · {evidence} 条证据',
+  'memorySources.codingSessions.notFound': '未找到本地历史记录',
+  'memorySources.codingSessions.scanning': '正在扫描本地会话历史…',
+  'memorySources.codingSessions.truncated': '扫描仅限前 1,000 个会话文件。',
+  'memorySources.codingSessions.complete': '编程会话已摄取',
+  'memorySources.codingSessions.completeMessage':
+    '{processed} 个会话生成了 {observations} 条人格观察。',
+  'memorySources.codingSessions.partialFailure':
+    '{processed} 个会话已处理，{failed} 个失败。请再次运行摄取以重试。',
+  'memorySources.codingSessions.moreRemaining':
+    '已达到本批次的会话上限。请再次运行摄取以继续导入历史记录。',
+  'memorySources.codingSessions.failed': '编程会话摄取失败',
   'flows.canvas.sidePanelToggle': '侧边栏',
   'flows.canvas.legendTab': '手动',
 

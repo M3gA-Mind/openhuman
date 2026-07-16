@@ -131,13 +131,11 @@ impl Agent {
         };
 
         let mut streamed_text = String::new();
-        let mut streamed_deltas = Vec::new();
         let mut completed = None;
         while let Some(item) = stream.next().await {
             match item {
                 ModelStreamItem::MessageDelta(delta) if !delta.text.is_empty() => {
                     streamed_text.push_str(&delta.text);
-                    streamed_deltas.push(delta.text);
                 }
                 ModelStreamItem::Completed(response) => completed = Some(response),
                 ModelStreamItem::Failed(error) => {
@@ -157,52 +155,84 @@ impl Agent {
         };
         let usage = crate::openhuman::tinyagents::model::usage_info_from_response(&response);
         let text = response.text();
-        let checkpoint = if !text.trim().is_empty() {
-            text
-        } else if response.tool_calls().is_empty() {
-            streamed_text.clone()
-        } else {
-            String::new()
+        // Tools are disabled for wrap-up calls, but text-protocol models can
+        // still ignore that instruction. Parse through the active dispatcher
+        // so XML/JSON and registry-backed P-Format calls are all rejected. The
+        // completed response and buffered deltas are checked independently:
+        // some providers only preserve one of those representations.
+        let parsed_call_count = |candidate: &str| {
+            self.tool_dispatcher
+                .parse_response(&ChatResponse {
+                    text: Some(candidate.to_string()),
+                    ..ChatResponse::default()
+                })
+                .1
+                .len()
         };
-        if !checkpoint.trim().is_empty() {
-            let mut provider_response = ChatResponse {
-                text: Some(checkpoint.clone()),
-                tool_calls: Vec::new(),
-                usage: None,
-                reasoning_content: None,
-            };
-            let (_, mut prompt_tool_calls) =
-                self.tool_dispatcher.parse_response(&provider_response);
-            if streamed_text != checkpoint {
-                provider_response.text = Some(streamed_text);
-                let (_, streamed_tool_calls) =
-                    self.tool_dispatcher.parse_response(&provider_response);
-                prompt_tool_calls.extend(streamed_tool_calls);
-            }
-            if !prompt_tool_calls.is_empty() {
-                tracing::warn!(
-                    parsed_tool_calls = prompt_tool_calls.len(),
-                    "[agent::session] wrap-up model returned a prompt-formatted tool call; using deterministic fallback"
-                );
-                return (String::new(), usage);
-            }
-            tracing::debug!(
-                checkpoint_chars = checkpoint.chars().count(),
-                buffered_deltas = streamed_deltas.len(),
+        let parsed_response_calls = parsed_call_count(&text);
+        let parsed_stream_calls = if streamed_text == text {
+            parsed_response_calls
+        } else {
+            parsed_call_count(&streamed_text)
+        };
+        let native_tool_calls = response.tool_calls().len();
+        let attempted_tool_call =
+            native_tool_calls > 0 || parsed_response_calls > 0 || parsed_stream_calls > 0;
+        let checkpoint = if attempted_tool_call {
+            tracing::warn!(
+                model = effective_model,
                 iteration = iteration_for_stream,
-                "[agent::session] wrap-up checkpoint validation passed"
+                native_tool_calls,
+                parsed_response_calls,
+                parsed_stream_calls,
+                "[agent::session] wrap-up attempted a tool call; using deterministic fallback"
             );
+            String::new()
+        } else if !text.trim().is_empty() {
+            tracing::debug!(
+                model = effective_model,
+                iteration = iteration_for_stream,
+                text_len = text.len(),
+                "[agent::session] wrap-up selected completed response text"
+            );
+            text
+        } else {
+            tracing::debug!(
+                model = effective_model,
+                iteration = iteration_for_stream,
+                text_len = streamed_text.len(),
+                "[agent::session] wrap-up selected buffered stream text"
+            );
+            streamed_text
+        };
+        // Hold wrap-up deltas until protocol validation completes. Otherwise a
+        // rejected XML/P-Format tool call briefly renders in chat even though
+        // the caller subsequently replaces it with a deterministic fallback.
+        if !checkpoint.is_empty() {
             if let Some(sink) = &self.on_progress {
-                for delta in streamed_deltas {
-                    let _ = sink
-                        .send(AgentProgress::TextDelta {
-                            delta,
-                            iteration: iteration_for_stream,
-                        })
-                        .await;
+                if let Err(error) = sink
+                    .send(AgentProgress::TextDelta {
+                        delta: checkpoint.clone(),
+                        iteration: iteration_for_stream,
+                    })
+                    .await
+                {
+                    tracing::debug!(
+                        model = effective_model,
+                        iteration = iteration_for_stream,
+                        error = %error,
+                        "[agent::session] wrap-up progress sink closed"
+                    );
                 }
             }
         }
+        tracing::debug!(
+            model = effective_model,
+            iteration = iteration_for_stream,
+            checkpoint_len = checkpoint.len(),
+            used_deterministic_fallback = attempted_tool_call,
+            "[agent::session] wrap-up checkpoint selection complete"
+        );
         (checkpoint, usage)
     }
 

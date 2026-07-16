@@ -7482,6 +7482,26 @@ const messages: TranslationMap = {
   'flows.delete.confirm': 'Löschen',
   'flows.delete.deleting': 'Wird gelöscht…',
   'flows.canvas.renameLabel': 'Workflow umbenennen',
+  'memorySources.codingSessions.title': 'Coding-Agent-Sitzungen',
+  'memorySources.codingSessions.description':
+    'Verwandle Entscheidungen und Korrekturen aus Codex und Claude Code in private Persona-Erinnerungen.',
+  'memorySources.codingSessions.ingest': 'Neue Sitzungen einlesen',
+  'memorySources.codingSessions.ingesting': 'Wird eingelesen…',
+  'memorySources.codingSessions.claude': 'Claude-Code-Verlauf',
+  'memorySources.codingSessions.codex': 'Codex',
+  'memorySources.codingSessions.counts': '{files} Sitzungen · {evidence} menschliche Beiträge',
+  'memorySources.codingSessions.notFound': 'Kein lokaler Verlauf gefunden',
+  'memorySources.codingSessions.scanning': 'Lokaler Sitzungsverlauf wird durchsucht…',
+  'memorySources.codingSessions.truncated':
+    'Der Scan wurde auf die ersten 1.000 Sitzungsdateien begrenzt.',
+  'memorySources.codingSessions.complete': 'Coding-Sitzungen eingelesen',
+  'memorySources.codingSessions.completeMessage':
+    '{processed} Sitzungen ergaben {observations} Persona-Beobachtungen.',
+  'memorySources.codingSessions.partialFailure':
+    '{failed} Sitzungen sind fehlgeschlagen, während {processed} verarbeitet wurden. Starten Sie das Einlesen erneut.',
+  'memorySources.codingSessions.moreRemaining':
+    'Das Sitzungslimit für diesen Durchlauf wurde erreicht. Starten Sie das Einlesen erneut, um den Import fortzusetzen.',
+  'memorySources.codingSessions.failed': 'Einlesen der Coding-Sitzungen fehlgeschlagen',
   'flows.canvas.sidePanelToggle': 'Seitenleiste',
   'flows.canvas.legendTab': 'Manuell',
 

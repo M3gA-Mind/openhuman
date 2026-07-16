@@ -7420,6 +7420,26 @@ const messages: TranslationMap = {
   'flows.delete.confirm': 'Eliminar',
   'flows.delete.deleting': 'Eliminando…',
   'flows.canvas.renameLabel': 'Cambiar el nombre del flujo de trabajo',
+  'memorySources.codingSessions.title': 'Sesiones de agentes de programación',
+  'memorySources.codingSessions.description':
+    'Convierte tus decisiones y correcciones de Codex y Claude Code en memoria privada de personalidad.',
+  'memorySources.codingSessions.ingest': 'Ingerir sesiones nuevas',
+  'memorySources.codingSessions.ingesting': 'Ingiriendo…',
+  'memorySources.codingSessions.claude': 'Historial de Claude Code',
+  'memorySources.codingSessions.codex': 'Codex',
+  'memorySources.codingSessions.counts': '{files} sesiones · {evidence} intervenciones humanas',
+  'memorySources.codingSessions.notFound': 'No se encontró historial local',
+  'memorySources.codingSessions.scanning': 'Buscando historial local de sesiones…',
+  'memorySources.codingSessions.truncated':
+    'El análisis se limitó a los primeros 1000 archivos de sesión.',
+  'memorySources.codingSessions.complete': 'Sesiones de programación ingeridas',
+  'memorySources.codingSessions.completeMessage':
+    '{processed} sesiones produjeron {observations} observaciones de personalidad.',
+  'memorySources.codingSessions.partialFailure':
+    'Fallaron {failed} sesiones mientras se procesaron {processed}. Ejecuta la ingesta de nuevo para reintentarlas.',
+  'memorySources.codingSessions.moreRemaining':
+    'Se alcanzó el límite de sesiones del lote. Ejecuta la ingesta de nuevo para seguir importando tu historial.',
+  'memorySources.codingSessions.failed': 'Falló la ingesta de sesiones de programación',
   'flows.canvas.sidePanelToggle': 'Panel lateral',
   'flows.canvas.legendTab': 'Manual',
 

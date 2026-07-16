@@ -2851,7 +2851,7 @@ fn seeded_slack_send_message_contract_with_schema() -> ToolContract {
         output_fields: vec![],
         output_schema: None,
         primary_array_path: None,
-        is_curated: true,
+        is_curated: false,
     }
 }
 

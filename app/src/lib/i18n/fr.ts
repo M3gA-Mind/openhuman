@@ -7455,6 +7455,26 @@ const messages: TranslationMap = {
   'flows.delete.confirm': 'Supprimer',
   'flows.delete.deleting': 'Suppression…',
   'flows.canvas.renameLabel': 'Renommer le workflow',
+  'memorySources.codingSessions.title': 'Sessions d’agents de programmation',
+  'memorySources.codingSessions.description':
+    'Transformez vos décisions et corrections Codex et Claude Code en mémoire de persona privée.',
+  'memorySources.codingSessions.ingest': 'Ingérer les nouvelles sessions',
+  'memorySources.codingSessions.ingesting': 'Ingestion…',
+  'memorySources.codingSessions.claude': 'Historique Claude Code',
+  'memorySources.codingSessions.codex': 'Codex',
+  'memorySources.codingSessions.counts': '{files} sessions · {evidence} interventions humaines',
+  'memorySources.codingSessions.notFound': 'Aucun historique local trouvé',
+  'memorySources.codingSessions.scanning': 'Analyse de l’historique local…',
+  'memorySources.codingSessions.truncated':
+    'L’analyse a été limitée aux 1 000 premiers fichiers de session.',
+  'memorySources.codingSessions.complete': 'Sessions de programmation ingérées',
+  'memorySources.codingSessions.completeMessage':
+    '{processed} sessions ont produit {observations} observations de persona.',
+  'memorySources.codingSessions.partialFailure':
+    '{failed} sessions ont échoué tandis que {processed} ont été traitées. Relancez l’ingestion pour réessayer.',
+  'memorySources.codingSessions.moreRemaining':
+    'La limite de sessions du lot a été atteinte. Relancez l’ingestion pour continuer à importer votre historique.',
+  'memorySources.codingSessions.failed': 'Échec de l’ingestion des sessions de programmation',
   'flows.canvas.sidePanelToggle': 'Panneau latéral',
   'flows.canvas.legendTab': 'Manuel',
 

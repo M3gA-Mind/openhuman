@@ -7350,6 +7350,25 @@ const messages: TranslationMap = {
   'flows.delete.confirm': 'Удалить',
   'flows.delete.deleting': 'Удаление…',
   'flows.canvas.renameLabel': 'Переименовать рабочий процесс',
+  'memorySources.codingSessions.title': 'Сеансы агентов программирования',
+  'memorySources.codingSessions.description':
+    'Превратите решения и исправления из Codex и Claude Code в приватную память персоны.',
+  'memorySources.codingSessions.ingest': 'Загрузить новые сеансы',
+  'memorySources.codingSessions.ingesting': 'Загрузка…',
+  'memorySources.codingSessions.claude': 'Клод Код',
+  'memorySources.codingSessions.codex': 'Codex',
+  'memorySources.codingSessions.counts': 'Сеансы: {files} · Сообщения пользователя: {evidence}',
+  'memorySources.codingSessions.notFound': 'Локальная история не найдена',
+  'memorySources.codingSessions.scanning': 'Сканирование локальной истории…',
+  'memorySources.codingSessions.truncated': 'Сканирование ограничено первыми 1000 файлами сеансов.',
+  'memorySources.codingSessions.complete': 'Сеансы программирования загружены',
+  'memorySources.codingSessions.completeMessage':
+    'Обработано сеансов: {processed}; наблюдений персоны: {observations}.',
+  'memorySources.codingSessions.partialFailure':
+    'Не удалось обработать сеансов: {failed}; обработано: {processed}. Запустите загрузку ещё раз для повтора.',
+  'memorySources.codingSessions.moreRemaining':
+    'Достигнут лимит сеансов в пакете. Запустите загрузку ещё раз, чтобы продолжить импорт истории.',
+  'memorySources.codingSessions.failed': 'Не удалось загрузить сеансы программирования',
   'flows.canvas.sidePanelToggle': 'Боковая панель',
   'flows.canvas.legendTab': 'Вручную',
 

@@ -7180,6 +7180,25 @@ const messages: TranslationMap = {
   'flows.delete.confirm': '삭제',
   'flows.delete.deleting': '삭제 중…',
   'flows.canvas.renameLabel': '워크플로 이름 바꾸기',
+  'memorySources.codingSessions.title': '코딩 에이전트 세션',
+  'memorySources.codingSessions.description':
+    'Codex와 Claude Code의 결정 및 수정 사항을 비공개 페르소나 메모리로 변환합니다.',
+  'memorySources.codingSessions.ingest': '새 세션 수집',
+  'memorySources.codingSessions.ingesting': '수집 중…',
+  'memorySources.codingSessions.claude': '클로드 코드',
+  'memorySources.codingSessions.codex': 'Codex',
+  'memorySources.codingSessions.counts': '세션 {files}개 · 사용자 입력 {evidence}개',
+  'memorySources.codingSessions.notFound': '로컬 기록을 찾지 못했습니다',
+  'memorySources.codingSessions.scanning': '로컬 세션 기록을 검색하는 중…',
+  'memorySources.codingSessions.truncated': '스캔이 처음 1,000개 세션 파일로 제한되었습니다.',
+  'memorySources.codingSessions.complete': '코딩 세션 수집 완료',
+  'memorySources.codingSessions.completeMessage':
+    '세션 {processed}개에서 페르소나 관찰 {observations}개를 만들었습니다.',
+  'memorySources.codingSessions.partialFailure':
+    '세션 {processed}개를 처리하는 동안 {failed}개가 실패했습니다. 다시 시도하려면 수집을 다시 실행하세요.',
+  'memorySources.codingSessions.moreRemaining':
+    '세션 배치 한도에 도달했습니다. 기록 가져오기를 계속하려면 수집을 다시 실행하세요.',
+  'memorySources.codingSessions.failed': '코딩 세션 수집 실패',
   'flows.canvas.sidePanelToggle': '사이드 패널',
   'flows.canvas.legendTab': '수동',
 
