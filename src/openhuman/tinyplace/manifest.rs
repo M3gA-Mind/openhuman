@@ -2496,6 +2496,87 @@ pub(crate) fn handle_tinyplace_registry_assign_primary(
     })
 }
 
+/// Transfer one of the wallet's handles to another tiny.place identity
+/// (gift / account move, #4929). DESTRUCTIVE and irreversible for the sender:
+/// on success the recipient becomes the sole owner of `name`.
+///
+/// The recipient is given as a `recipient` handle (with or without a leading
+/// @) — we resolve it to the recipient's `cryptoId` + `publicKey` via
+/// `registry.get`, so the caller never has to know raw key material and an
+/// unresolvable recipient fails **closed** before anything is signed. The
+/// SDK attaches the owning wallet's signature over the transfer payload, so
+/// the backend only lets a caller transfer a handle their *own* wallet owns.
+///
+/// Fails closed: if the recipient can't be resolved, carries no public key, or
+/// the post-transfer read-back doesn't show the new owner, this returns an
+/// error rather than reporting a success that may not have landed.
+pub(crate) fn handle_tinyplace_registry_transfer(params: Map<String, Value>) -> ControllerFuture {
+    Box::pin(async move {
+        let name = req_str(&params, "name")?
+            .trim()
+            .trim_start_matches('@')
+            .to_string();
+        if name.is_empty() {
+            return Err("missing required param 'name'".to_string());
+        }
+        let recipient = req_str(&params, "recipient")?
+            .trim()
+            .trim_start_matches('@')
+            .to_string();
+        if recipient.is_empty() {
+            return Err("missing required param 'recipient'".to_string());
+        }
+        // Never log the handle or recipient — both are user-identifying.
+        log::debug!("{LOG_PREFIX} registry_transfer requested");
+
+        let client = global_state().client().await?;
+
+        // Resolve the recipient handle to its identity so we have a verified
+        // cryptoId + publicKey. An unknown recipient fails closed here. We query
+        // with the `@`-prefixed form, matching the proven availability path
+        // (`useHandleAvailability` → registry.get(`@handle`)).
+        let availability = client
+            .registry
+            .get(&format!("@{recipient}"))
+            .await
+            .map_err(map_err)?;
+        let recipient_identity = availability
+            .identity
+            .ok_or("recipient handle is not registered on tiny.place")?;
+        let recipient_crypto_id = recipient_identity.crypto_id.trim().to_string();
+        let recipient_public_key = recipient_identity.public_key.trim().to_string();
+        if recipient_crypto_id.is_empty() || recipient_public_key.is_empty() {
+            return Err(
+                "recipient identity is missing key material; cannot transfer safely".to_string(),
+            );
+        }
+        log::debug!("{LOG_PREFIX} registry_transfer recipient resolved");
+
+        let request = tinyplace::types::IdentityTransferRequest {
+            crypto_id: recipient_crypto_id.clone(),
+            public_key: recipient_public_key,
+            ..Default::default()
+        };
+        let identity = client
+            .registry
+            .transfer(&name, request)
+            .await
+            .map_err(map_err)?;
+
+        // Read-back confirmation: the returned identity must now be owned by the
+        // recipient. If it isn't, treat the transfer as failed rather than
+        // reporting a success the backend didn't actually apply.
+        if identity.crypto_id.trim() != recipient_crypto_id {
+            log::warn!("{LOG_PREFIX} registry_transfer read-back mismatch; treating as failed");
+            return Err(
+                "handle transfer could not be confirmed; the handle was not reassigned".to_string(),
+            );
+        }
+        log::debug!("{LOG_PREFIX} registry_transfer confirmed");
+        to_value(serde_json::json!({ "identity": identity }))
+    })
+}
+
 // ── Users email verification ────────────────────────────────────────────────
 
 pub(crate) fn handle_tinyplace_users_start_email_verification(
@@ -5276,6 +5357,28 @@ mod tests {
         params.insert("username".to_string(), Value::String("   ".to_string()));
         let err = block_on(handle_tinyplace_registry_register(params)).unwrap_err();
         assert!(err.contains("username"), "got: {err}");
+    }
+
+    /// #4929: transfer rejects a missing/blank `name` or `recipient` before any
+    /// client/network work — the destructive path never runs on bad input.
+    #[test]
+    fn transfer_requires_name_and_recipient() {
+        // Missing name.
+        let err = block_on(handle_tinyplace_registry_transfer(Map::new())).unwrap_err();
+        assert!(err.contains("name"), "got: {err}");
+
+        // Name present, recipient missing.
+        let mut params = Map::new();
+        params.insert("name".to_string(), Value::String("alpha".to_string()));
+        let err = block_on(handle_tinyplace_registry_transfer(params)).unwrap_err();
+        assert!(err.contains("recipient"), "got: {err}");
+
+        // Name present, recipient blank → still rejected.
+        let mut params = Map::new();
+        params.insert("name".to_string(), Value::String("alpha".to_string()));
+        params.insert("recipient".to_string(), Value::String("   ".to_string()));
+        let err = block_on(handle_tinyplace_registry_transfer(params)).unwrap_err();
+        assert!(err.contains("recipient"), "got: {err}");
     }
 
     /// Buy handlers reject a missing/blank `id` before any client/network work.

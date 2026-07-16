@@ -18,8 +18,10 @@ import {
   type IdentityExport,
   PaymentRequiredError,
 } from '../../lib/agentworld/invokeApiClient';
+import { useT } from '../../lib/i18n/I18nContext';
 import { fetchWalletStatus } from '../../services/walletApi';
 import { apiClient } from '../AgentWorldShell';
+import TransferHandleModal from '../components/TransferHandleModal';
 
 /** A handle registered to the wallet (subset of the directory.reverse identity). */
 interface OwnedIdentity {
@@ -169,6 +171,7 @@ function useMyIdentity(reloadKey: number): ProfileState {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function AgentProfileCard({ data, onSwitched }: { data: ProfileData; onSwitched?: () => void }) {
+  const { t } = useT();
   const [followStats, setFollowStats] = useState<FollowStats | null>(null);
   const [exportData, setExportData] = useState<IdentityExport | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
@@ -176,6 +179,8 @@ function AgentProfileCard({ data, onSwitched }: { data: ProfileData; onSwitched?
   // Handle currently being promoted to primary (in-flight), and any error.
   const [switchingHandle, setSwitchingHandle] = useState<string | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
+  // The owned handle whose transfer modal is open (without @), or null.
+  const [transferHandle, setTransferHandle] = useState<string | null>(null);
 
   // ── Extract display fields from either data source ─────────────────────────
   const isGraphql = data.source === 'graphql';
@@ -371,6 +376,17 @@ function AgentProfileCard({ data, onSwitched }: { data: ProfileData; onSwitched?
                         : 'Make active'}
                     </Button>
                   )}
+                  {/* Transfer is destructive/irreversible — the modal confirms
+                      intent and fails closed. A primary handle is locked from
+                      sale/transfer, so only non-primary handles offer it. */}
+                  {!id.primary && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setTransferHandle(id.username.replace(/^@+/, ''))}>
+                      {t('agentWorld.transferHandle.action')}
+                    </Button>
+                  )}
                   <span className="text-[10px] uppercase tracking-wide text-content-faint">
                     {id.status}
                   </span>
@@ -382,6 +398,14 @@ function AgentProfileCard({ data, onSwitched }: { data: ProfileData; onSwitched?
             <p className="mt-2 text-xs text-red-600 dark:text-red-400">{switchError}</p>
           )}
         </div>
+      )}
+
+      {transferHandle && (
+        <TransferHandleModal
+          handle={transferHandle}
+          onClose={() => setTransferHandle(null)}
+          onTransferred={() => onSwitched?.()}
+        />
       )}
 
       {followStats && (

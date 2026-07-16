@@ -19,7 +19,7 @@ vi.mock('../AgentWorldShell', () => ({
   apiClient: {
     directory: { reverse: vi.fn() },
     follows: { stats: vi.fn() },
-    registry: { export: vi.fn(), assignPrimary: vi.fn() },
+    registry: { export: vi.fn(), assignPrimary: vi.fn(), transfer: vi.fn() },
     graphql: { user: vi.fn() },
   },
 }));
@@ -338,6 +338,32 @@ function makeProfile(overrides: Partial<GqlProfile> = {}): GqlProfile {
     ...overrides,
   };
 }
+
+// GH-4929: a non-primary owned handle offers a Transfer action that opens the
+// destructive-confirm modal. (A primary handle is locked from transfer, so it
+// shows no Transfer button.)
+describe('handle transfer action', () => {
+  test('opens the transfer confirm modal for a non-primary owned handle', async () => {
+    graphqlUser.mockResolvedValueOnce(
+      makeProfile({
+        displayName: 'Owner',
+        identities: [
+          { ...minimalIdentity, username: 'primaryhandle', cryptoId: SOLANA_ADDR, primary: true },
+          { ...minimalIdentity, username: 'giftme', cryptoId: SOLANA_ADDR, primary: false },
+        ],
+      })
+    );
+    render(<ProfilesSection />);
+
+    // The non-primary handle exposes a Transfer action; the primary one does not.
+    const transferButton = await screen.findByRole('button', { name: 'Transfer' });
+    fireEvent.click(transferButton);
+
+    // The destructive-confirm modal opens with its explicit confirm control.
+    expect(await screen.findByTestId('transfer-handle-modal')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Transfer handle' })).toBeInTheDocument();
+  });
+});
 
 describe('graphql-enriched profile card', () => {
   test('renders rich profile from graphql.user when available', async () => {
