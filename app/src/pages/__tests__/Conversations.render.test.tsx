@@ -2379,6 +2379,71 @@ describe('Conversations — agent task insights panel anchoring (#3717 Bug 2)', 
     });
     expect(await screen.findByTestId('agent-task-insights')).toBeInTheDocument();
   });
+
+  it('remounts the standalone insights fallback (resetting its sticky disclosure) when switching between two proactive-only threads (#4944)', async () => {
+    // Neither thread has a user message (e.g. a proactive-only run), so the
+    // panel renders through the standalone fallback slot at the bottom of the
+    // message list — not the per-message anchor keyed by `msg.id` — which is
+    // the exact slot that previously had no key of its own.
+    const threadA = makeThread({ id: 'proactive-a', title: 'Proactive A' });
+    const threadB = makeThread({ id: 'proactive-b', title: 'Proactive B' });
+    mockGetThreads.mockResolvedValue({ threads: [threadA, threadB], count: 2 });
+
+    let store: ReturnType<typeof buildStore> | undefined;
+    await act(async () => {
+      store = await renderConversations({
+        thread: {
+          ...emptyThreadState,
+          threads: [threadA, threadB],
+          selectedThreadId: threadA.id,
+          messagesByThreadId: { [threadA.id]: [], [threadB.id]: [] },
+        },
+        socket: socketState('connected'),
+      });
+    });
+
+    // Thread A: a settled (non-running) timeline, so the group defaults to
+    // collapsed.
+    await act(async () => {
+      store!.dispatch(
+        setToolTimelineForThread({
+          threadId: threadA.id,
+          entries: [{ id: 'a-1', name: 'web_fetch', round: 1, status: 'success' }],
+        })
+      );
+    });
+
+    const panelA = await screen.findByTestId('agent-task-insights');
+    expect((panelA as HTMLDetailsElement).open).toBe(false);
+
+    // The user manually expands it — this is the sticky per-instance
+    // `userOverrideOpen` state from #4942 that must not leak across threads.
+    const summaryA = panelA.querySelector('summary');
+    expect(summaryA).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(summaryA!);
+    });
+    expect((panelA as HTMLDetailsElement).open).toBe(true);
+
+    // Switch straight to a second proactive-only thread with its own settled
+    // timeline.
+    await act(async () => {
+      store!.dispatch(setSelectedThread(threadB.id));
+      store!.dispatch(
+        setToolTimelineForThread({
+          threadId: threadB.id,
+          entries: [{ id: 'b-1', name: 'send_email', round: 1, status: 'success' }],
+        })
+      );
+    });
+
+    const panelB = await screen.findByTestId('agent-task-insights');
+    // Keyed by `selectedThreadId ?? 'none'`: switching threads remounts the
+    // `ToolTimelineBlock` instead of reusing the same instance, so thread B's
+    // panel starts collapsed again rather than inheriting thread A's
+    // manually-opened disclosure state.
+    expect((panelB as HTMLDetailsElement).open).toBe(false);
+  });
 });
 
 describe('Conversations — open-session resume (View work)', () => {
