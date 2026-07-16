@@ -709,10 +709,7 @@ pub async fn get_data_paths_for_user(
 /// Rejecting everything else keeps [`get_data_paths_for_user`] (and the
 /// `remove_dir_all` it feeds) from escaping `<root>/users/<id>`.
 fn is_plain_user_id(user_id: &str) -> bool {
-    !user_id.is_empty()
-        && user_id != "."
-        && user_id != ".."
-        && !user_id.contains(['/', '\\', '\0'])
+    !user_id.is_empty() && user_id != "." && user_id != ".." && !user_id.contains(['/', '\\', '\0'])
 }
 
 #[cfg(test)]
