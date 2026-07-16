@@ -878,13 +878,32 @@ function InboxPanel() {
     void apiClient.streams
       .start('inbox')
       .then(res => {
-        if (!cancelled) streamRef.current = res.streamId;
+        // Same resolved-after-cancel guard as the DM thread stream: if the
+        // panel unmounted before `start` resolved, stop the stream we just
+        // opened instead of leaking it.
+        if (cancelled) {
+          void apiClient.streams.stop(res.streamId).catch(err => {
+            log(
+              '[messaging] inbox stream stop-after-cancel failed (%s): %s',
+              res.streamId,
+              String(err)
+            );
+          });
+          return;
+        }
+        streamRef.current = res.streamId;
       })
-      .catch(() => {});
+      .catch(err => {
+        log('[messaging] inbox stream start failed: %s', String(err));
+      });
     return () => {
       cancelled = true;
       if (streamRef.current !== null) {
-        void apiClient.streams.stop(streamRef.current).catch(() => {});
+        const stopId = streamRef.current;
+        void apiClient.streams.stop(stopId).catch(err => {
+          log('[messaging] inbox stream stop failed (%s): %s', stopId, String(err));
+        });
+        streamRef.current = null;
       }
     };
   }, []);
@@ -1124,7 +1143,20 @@ function useDirectMessages(peerId: string, missingBundleMessage: string) {
     void apiClient.streams
       .start('inbox')
       .then(res => {
-        if (cancelled) return;
+        // If the effect was already torn down (peer change / unmount) before
+        // `start` resolved, our cleanup ran with `streamRef.current` still
+        // null and never stopped this stream. Stop it now so a rapid peer
+        // switch can't orphan a live backend subscription.
+        if (cancelled) {
+          void apiClient.streams.stop(res.streamId).catch(err => {
+            log(
+              '[messaging] dm inbox stream stop-after-cancel failed (%s): %s',
+              res.streamId,
+              String(err)
+            );
+          });
+          return;
+        }
         streamRef.current = res.streamId;
         log('[messaging] dm inbox stream started: %s', res.streamId);
       })
@@ -1134,7 +1166,10 @@ function useDirectMessages(peerId: string, missingBundleMessage: string) {
     return () => {
       cancelled = true;
       if (streamRef.current !== null) {
-        void apiClient.streams.stop(streamRef.current).catch(() => {});
+        const stopId = streamRef.current;
+        void apiClient.streams.stop(stopId).catch(err => {
+          log('[messaging] dm inbox stream stop failed (%s): %s', stopId, String(err));
+        });
         streamRef.current = null;
       }
     };

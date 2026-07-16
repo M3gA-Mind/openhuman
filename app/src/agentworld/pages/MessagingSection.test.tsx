@@ -1099,10 +1099,13 @@ describe('open DM real-time stream', () => {
 
     const callsBefore = vi.mocked(apiClient.messages.list).mock.calls.length;
 
-    // A peer message lands on the relay inbox stream.
+    // A peer message lands on the relay inbox stream. Keep `status` unchanged
+    // (idle) so this asserts the *event* drives the refetch — not a
+    // connection-status transition to 'connected' (which would let the test
+    // pass even if the impl only refetched on status change).
     mockUseTinyplaceStream.mockReturnValue({
       messages: [{ stream_id: 'inbox', kind: 'message', message: {} }],
-      status: 'connected',
+      status: 'idle',
       clearMessages: vi.fn(),
     });
     rerender(<MessagingSection />);
@@ -1124,6 +1127,54 @@ describe('open DM real-time stream', () => {
     render(<MessagingSection />);
     await openDm(user);
     expect(await screen.findByTestId('dm-live-indicator')).toBeInTheDocument();
+  });
+
+  test('stops the inbox stream it started when the DM thread is closed', async () => {
+    const user = userEvent.setup();
+    render(<MessagingSection />);
+    await openDm(user);
+    // The thread subscribed to a stream…
+    await waitFor(() => expect(apiClient.streams.start).toHaveBeenCalledWith('inbox'));
+
+    // …and closing it (Back) must tear that subscription down with the
+    // started stream id, not leak it.
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await waitFor(() => expect(apiClient.streams.stop).toHaveBeenCalledWith('inbox'));
+  });
+
+  test('stops the inbox stream on unmount', async () => {
+    const user = userEvent.setup();
+    const { unmount } = render(<MessagingSection />);
+    await openDm(user);
+    await waitFor(() => expect(apiClient.streams.start).toHaveBeenCalledWith('inbox'));
+
+    unmount();
+    await waitFor(() => expect(apiClient.streams.stop).toHaveBeenCalledWith('inbox'));
+  });
+
+  test('stops the old stream and starts a fresh one when switching peers', async () => {
+    const user = userEvent.setup();
+    render(<MessagingSection />);
+    await openDm(user);
+    await waitFor(() => expect(apiClient.streams.start).toHaveBeenCalledWith('inbox'));
+    const startsForFirstPeer = vi.mocked(apiClient.streams.start).mock.calls.length;
+
+    // Leave this peer: the old stream must be stopped…
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await waitFor(() => expect(apiClient.streams.stop).toHaveBeenCalledWith('inbox'));
+
+    // …and opening a different peer must open a NEW subscription rather than
+    // reuse the stale one.
+    const recipient = screen.getByPlaceholderText(/Recipient @handle/);
+    await user.clear(recipient);
+    await user.type(recipient, 'peerOther');
+    await user.click(screen.getByRole('button', { name: 'Open DM' }));
+    await screen.findByTestId('dm-empty-state');
+    await waitFor(() =>
+      expect(vi.mocked(apiClient.streams.start).mock.calls.length).toBeGreaterThan(
+        startsForFirstPeer
+      )
+    );
   });
 });
 
