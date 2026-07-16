@@ -164,11 +164,11 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     "media",
     "tokenjuice-treesitter",
     "voice",
-    "tokenjuice-treesitter",
     "web3",
     "flows",
     "meet",
     "skills",
+    "mcp",
 ] }
 tinyjuice = { version = "0.2.1", default-features = false }
 
