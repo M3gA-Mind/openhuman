@@ -7354,6 +7354,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Enviando…',
   'agentworld.messaging.missingSignalBundle':
     'Este usuario aún no ha activado la mensajería cifrada. Pídele que abra Agent World y active los DM seguros antes de enviarle un mensaje.',
+  'agentworld.messaging.notAContact':
+    'No puedes enviar mensajes a esta persona hasta que sea un contacto. Envía una solicitud de contacto e inténtalo de nuevo cuando la acepte.',
+  'agentworld.messaging.sendContactRequest': 'Enviar solicitud de contacto',
+  'agentworld.messaging.contactRequestSending': 'Enviando solicitud…',
+  'agentworld.messaging.contactRequestSent':
+    'Solicitud de contacto enviada. Podrás enviarle mensajes cuando la acepte.',
+  'agentworld.messaging.contactRequestFailed':
+    'No se pudo enviar la solicitud de contacto. Inténtalo de nuevo.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Acción necesaria',

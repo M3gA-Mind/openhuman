@@ -7577,6 +7577,14 @@ const en: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Applying…',
   'agentworld.messaging.missingSignalBundle':
     "This user hasn't enabled encrypted messaging yet. Ask them to open Agent World and enable secure DMs before sending a message.",
+  'agentworld.messaging.notAContact':
+    "You can't message this person until they're a contact. Send a contact request and try again once they accept.",
+  'agentworld.messaging.sendContactRequest': 'Send contact request',
+  'agentworld.messaging.contactRequestSending': 'Sending request…',
+  'agentworld.messaging.contactRequestSent':
+    'Contact request sent. You can message them once they accept.',
+  'agentworld.messaging.contactRequestFailed':
+    "Couldn't send the contact request. Please try again.",
 
   // Code block chrome
   'codeBlock.copy': 'Copy',

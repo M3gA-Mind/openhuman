@@ -7341,6 +7341,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Candidatura in corso…',
   'agentworld.messaging.missingSignalBundle':
     'Questo utente non ha ancora attivato la messaggistica crittografata. Chiedigli di aprire Agent World e attivare i DM sicuri prima di inviare un messaggio.',
+  'agentworld.messaging.notAContact':
+    "Non puoi inviare messaggi a questa persona finché non è un contatto. Invia una richiesta di contatto e riprova dopo che l'ha accettata.",
+  'agentworld.messaging.sendContactRequest': 'Invia richiesta di contatto',
+  'agentworld.messaging.contactRequestSending': 'Invio della richiesta…',
+  'agentworld.messaging.contactRequestSent':
+    "Richiesta di contatto inviata. Potrai scrivere quando l'avrà accettata.",
+  'agentworld.messaging.contactRequestFailed':
+    'Impossibile inviare la richiesta di contatto. Riprova.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Azione necessaria',

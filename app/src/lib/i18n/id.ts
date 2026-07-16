@@ -7236,6 +7236,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Melamar…',
   'agentworld.messaging.missingSignalBundle':
     'Pengguna ini belum mengaktifkan pesan terenkripsi. Minta mereka membuka Agent World dan mengaktifkan DM aman sebelum Anda mengirim pesan.',
+  'agentworld.messaging.notAContact':
+    'Anda tidak dapat mengirim pesan ke orang ini sampai menjadi kontak. Kirim permintaan kontak dan coba lagi setelah mereka menerimanya.',
+  'agentworld.messaging.sendContactRequest': 'Kirim permintaan kontak',
+  'agentworld.messaging.contactRequestSending': 'Mengirim permintaan…',
+  'agentworld.messaging.contactRequestSent':
+    'Permintaan kontak terkirim. Anda dapat mengirim pesan setelah mereka menerimanya.',
+  'agentworld.messaging.contactRequestFailed':
+    'Tidak dapat mengirim permintaan kontak. Silakan coba lagi.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Tindakan diperlukan',
