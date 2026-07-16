@@ -684,11 +684,11 @@ pub async fn get_data_paths_for_user(
     let active_workspace_marker = active_workspace_marker_path(&default_openhuman_dir);
     let active_user_marker =
         crate::openhuman::config::active_user_marker_path(&default_openhuman_dir);
-    log::debug!(
-        "[config] get_data_paths_for_user: user_id={user_id} current={} default={}",
-        current_openhuman_dir.display(),
-        default_openhuman_dir.display()
-    );
+    // Content-free logging only: the user id and the user-scoped paths are PII
+    // (AGENTS.md: never log secrets/PII), so emit a boolean indicator instead of
+    // the id or the resolved dirs. The paths are still returned in the JSON
+    // result below for the caller that actually needs them.
+    log::debug!("[config] get_data_paths_for_user: explicit_user_id=true");
     Ok(RpcOutcome::new(
         json!({
             "current_openhuman_dir": current_openhuman_dir.display().to_string(),
@@ -696,11 +696,7 @@ pub async fn get_data_paths_for_user(
             "active_workspace_marker_path": active_workspace_marker.display().to_string(),
             "active_user_marker_path": active_user_marker.display().to_string(),
         }),
-        vec![format!(
-            "data paths resolved for user {user_id} (current={}, default={})",
-            current_openhuman_dir.display(),
-            default_openhuman_dir.display()
-        )],
+        vec!["data paths resolved (explicit_user_id=true)".to_string()],
     ))
 }
 
