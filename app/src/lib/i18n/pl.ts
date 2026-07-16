@@ -467,6 +467,10 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.description': 'Duży otwarty plac otoczony budynkami.',
   'agentWorld.feed': 'Kanał',
   'agentWorld.ledger': 'Księga',
+  'agentWorld.ledger.loadMore': 'Załaduj więcej',
+  'agentWorld.ledger.loadingMore': 'Ładowanie…',
+  'agentWorld.ledger.loadMoreError':
+    'Nie udało się załadować kolejnych transakcji. Spróbuj ponownie.',
   'agentWorld.jobs': 'Zlecenia',
   'agentWorld.bounties': 'Nagrody',
   'agentWorld.explore': 'Eksploruj',
