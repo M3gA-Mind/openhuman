@@ -29,9 +29,11 @@ import {
   type LikeResult,
   PaymentRequiredError,
 } from '../../lib/agentworld/invokeApiClient';
+import { useT } from '../../lib/i18n/I18nContext';
 import { fetchWalletStatus } from '../../services/walletApi';
 import { apiClient } from '../AgentWorldShell';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useTinyplaceStream } from '../hooks/useTinyplaceStream';
 import { relativeTime } from './relativeTime';
 
 const log = debug('agentworld:feed');
@@ -597,7 +599,20 @@ export default function FeedSection() {
   const [postPendingDelete, setPostPendingDelete] = useState<GqlPost | null>(null);
   const [deletingPost, setDeletingPost] = useState(false);
 
+  const { t } = useT();
   const { agentId: myAgentId, configured: walletConfigured } = useWalletResolution();
+
+  // ── Real-time feed updates (#4926) ─────────────────────────────────────────
+  // The SDK exposes a per-feed WebSocket stream (`feeds::stream`); core wires it
+  // as the `feed` StreamKind. We subscribe to the viewer's OWN feed while this
+  // panel is mounted and re-fetch the home feed whenever an event arrives, so
+  // new posts/comments/likes on the viewer's feed surface without a manual
+  // refresh (mirrors the inbox/DM live-update pattern — see #4988). The
+  // aggregated home feed has no server-side WS topic, so followed-author posts
+  // still arrive on the next fetch; this covers the viewer's own feed activity.
+  const feedStreamId = myAgentId ? `feed:${myAgentId}` : undefined;
+  const { messages: streamMessages, status: streamStatus } = useTinyplaceStream(feedStreamId);
+  const feedStreamRef = useRef<string | null>(null);
 
   // ── Hydrate follow state from the server ───────────────────────────────────
   // The home feed doesn't carry "am I following this author?", so seed the
@@ -756,12 +771,58 @@ export default function FeedSection() {
 
   // ── Refetch feed ───────────────────────────────────────────────────────────
 
-  const refetchFeed = () => {
+  const refetchFeed = useCallback(() => {
     void apiClient.graphql.homeFeed({ limit: 50, includeSelf: true }).then(result => {
       const items = sortedHomeFeedItems(result);
       setFeedState({ status: 'ok', items });
     });
-  };
+  }, []);
+
+  // ── Start / stop the viewer's own feed stream ──────────────────────────────
+  // Open the stream while a resolved wallet is present; stop it on unmount /
+  // identity change. Failures are non-fatal — the feed still works via the
+  // mount fetch + explicit refetches, just without live push. Mirrors the
+  // InboxPanel/DM stream lifecycle (start-after-cancel guard included) so a
+  // rapid identity change can't orphan a live backend subscription (#4926).
+  useEffect(() => {
+    if (!myAgentId) return;
+    let cancelled = false;
+    void apiClient.streams
+      .start('feed', myAgentId)
+      .then(res => {
+        if (cancelled) {
+          void apiClient.streams.stop(res.streamId).catch(err => {
+            log('feed stream stop-after-cancel failed (%s): %s', res.streamId, String(err));
+          });
+          return;
+        }
+        feedStreamRef.current = res.streamId;
+        log('feed stream started: %s', res.streamId);
+      })
+      .catch(err => {
+        log('feed stream start failed: %s', String(err));
+      });
+    return () => {
+      cancelled = true;
+      if (feedStreamRef.current !== null) {
+        const stopId = feedStreamRef.current;
+        void apiClient.streams.stop(stopId).catch(err => {
+          log('feed stream stop failed (%s): %s', stopId, String(err));
+        });
+        feedStreamRef.current = null;
+      }
+    };
+  }, [myAgentId]);
+
+  // Re-fetch the home feed whenever a new feed stream event arrives. The event
+  // itself isn't inspected — any activity on the viewer's feed just triggers a
+  // refresh (fires on new messages only, not on refetchFeed identity changes).
+  useEffect(() => {
+    if (!myAgentId || streamMessages.length === 0) return;
+    log('feed stream event -> refetching home feed');
+    refetchFeed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamMessages.length]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -837,6 +898,16 @@ export default function FeedSection() {
 
   return (
     <PanelScaffold description="Social feed">
+      {streamStatus === 'connected' && (
+        <div className="mb-2 flex justify-end">
+          <span
+            data-testid="feed-live-indicator"
+            className="inline-flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+            {t('agentworld.feed.live', 'Live')}
+          </span>
+        </div>
+      )}
       {myAgentId && feedState.status === 'ok' && (
         <FeedComposer myAgentId={myAgentId} onPostCreated={refetchFeed} />
       )}
