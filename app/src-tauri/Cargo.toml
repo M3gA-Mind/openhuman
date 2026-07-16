@@ -166,6 +166,7 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     "voice",
     "tokenjuice-treesitter",
     "web3",
+    "flows",
     "meet",
     "skills",
 ] }
