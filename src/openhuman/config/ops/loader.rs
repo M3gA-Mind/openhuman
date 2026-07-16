@@ -634,6 +634,51 @@ pub async fn get_data_paths() -> Result<RpcOutcome<serde_json::Value>, String> {
     ))
 }
 
+/// Like [`get_data_paths`], but resolves the current data dir directly from an
+/// explicit `user_id` (`~/.openhuman/users/<user_id>`) instead of the
+/// active-user marker.
+///
+/// Root cause of #4950 ("Clear App Data does nothing"): the GUI clear flow
+/// signs the user out *before* it asks the Tauri shell which directory to
+/// delete. Signing out (`auth_clear_session`) removes `active_user.toml`, so a
+/// marker-based resolution here falls back to the pre-login `users/local` dir —
+/// the reset then deletes an empty directory and leaves the signed-in user's
+/// memory / conversations / cron / thread history under `users/<id>` fully
+/// intact. Passing the id the UI already holds pins the deletion to the correct
+/// user regardless of marker state, so the clear actually clears.
+///
+/// `user_id` is expected to be non-empty and pre-trimmed (the controller
+/// enforces this); an empty id would resolve to the bare `users/` parent, which
+/// the caller must never delete.
+pub async fn get_data_paths_for_user(
+    user_id: &str,
+) -> Result<RpcOutcome<serde_json::Value>, String> {
+    let default_openhuman_dir = default_openhuman_dir();
+    let current_openhuman_dir =
+        crate::openhuman::config::user_openhuman_dir(&default_openhuman_dir, user_id);
+    let active_workspace_marker = active_workspace_marker_path(&default_openhuman_dir);
+    let active_user_marker =
+        crate::openhuman::config::active_user_marker_path(&default_openhuman_dir);
+    log::debug!(
+        "[config] get_data_paths_for_user: user_id={user_id} current={} default={}",
+        current_openhuman_dir.display(),
+        default_openhuman_dir.display()
+    );
+    Ok(RpcOutcome::new(
+        json!({
+            "current_openhuman_dir": current_openhuman_dir.display().to_string(),
+            "default_openhuman_dir": default_openhuman_dir.display().to_string(),
+            "active_workspace_marker_path": active_workspace_marker.display().to_string(),
+            "active_user_marker_path": active_user_marker.display().to_string(),
+        }),
+        vec![format!(
+            "data paths resolved for user {user_id} (current={}, default={})",
+            current_openhuman_dir.display(),
+            default_openhuman_dir.display()
+        )],
+    ))
+}
+
 #[cfg(test)]
 mod model_registry_seed_tests {
     use super::*;
@@ -698,6 +743,43 @@ mod model_registry_seed_tests {
 #[cfg(test)]
 mod loader_io_chain_tests {
     use super::*;
+
+    // Regression for #4950 ("Clear App Data does nothing"). The GUI clear flow
+    // signs the user out — removing `active_user.toml` — *before* it asks which
+    // directory to delete, so a marker-based resolution falls back to the
+    // pre-login `users/local` dir and leaves the real user's data behind.
+    // `get_data_paths_for_user` must pin `current_openhuman_dir` to the explicit
+    // id's `users/<id>` slice, independent of any marker/env state.
+    #[tokio::test]
+    async fn get_data_paths_for_user_scopes_current_dir_to_explicit_id() {
+        let outcome = get_data_paths_for_user("clear-me-4950").await.unwrap();
+
+        let current = outcome
+            .value
+            .get("current_openhuman_dir")
+            .and_then(|v| v.as_str())
+            .expect("current_openhuman_dir present");
+        // Normalize Windows separators so the suffix check is platform-agnostic.
+        assert!(
+            current.replace('\\', "/").ends_with("users/clear-me-4950"),
+            "current dir must be scoped to the explicit user id, got {current}"
+        );
+
+        // Resolution must be genuinely user-scoped, not the shared root — the
+        // reset must never `remove_dir_all` the root that holds sibling users.
+        let default = outcome
+            .value
+            .get("default_openhuman_dir")
+            .and_then(|v| v.as_str())
+            .expect("default_openhuman_dir present");
+        assert_ne!(current, default, "current dir must differ from the shared root");
+        let current_norm = current.replace('\\', "/");
+        let default_norm = default.replace('\\', "/");
+        assert!(
+            current_norm.starts_with(default_norm.as_str()),
+            "current dir ({current}) must live under the shared root ({default})"
+        );
+    }
 
     // A directory at the config path is corruption, not a transient/denied read:
     // the read site fails it fast with distinct wording, and the observability
