@@ -150,12 +150,15 @@ cef = { version = "=146.4.1", default-features = false }
 # - `media` — re-registers the `media_generate_*` agent tools that #4804 moved
 #   behind `#[cfg(feature = "media")]`; it sheds no deps, so this only restores
 #   the pre-gate desktop tool surface.
+# - `web3` — keeps the wallet/web3/x402 domains and their agent tools in the
+#   desktop build while allowing slim builds to omit the crypto-only deps.
 #
 # `tokenjuice-treesitter` is the remaining un-forwarded default — tracked in
 # #4918, deliberately not bundled here because dropping it may be intentional.
 openhuman_core = { path = "../..", package = "openhuman", default-features = false, features = [
     "media",
     "voice",
+    "web3",
 ] }
 tinyjuice = { version = "0.2.1", default-features = false }
 
