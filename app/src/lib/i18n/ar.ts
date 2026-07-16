@@ -3386,6 +3386,13 @@ const messages: TranslationMap = {
   'channels.telegram.remoteControlTitle': 'جهاز التحكم عن بعد (Telegram)',
   'channels.telegram.remoteControlBody':
     'من دردشة Telegram المسموح بها، أرسل /الحالة، /الجلسات، /جديد، أو /مساعدة. لا يزال توجيه النموذج يستخدم /model و /models.',
+  'channels.connectHelp.title': 'كيفية الاتصال',
+  'channels.connectHelp.discord':
+    'اختر طريقة أدناه: اربط حسابك عبر OpenHuman، أو ثبّت البوت باستخدام OAuth، أو الصق رمز البوت الخاص بك من بوابة مطوري Discord.',
+  'channels.connectHelp.telegram':
+    'اختر طريقة أدناه: راسل بوت OpenHuman المُدار لربطه، أو الصق رمز البوت الخاص بك من @BotFather.',
+  'channels.connectHelp.slackNote':
+    'تبحث عن Slack؟ يتصل Slack كتطبيق من خلال الاتصالات → OAuth، وليس كقناة مراسلة هنا.',
   'channels.web.displayName': 'الويب',
   'channels.web.description': 'الدردشة عبر واجهة مستخدم الويب المضمنة.',
   'channels.web.authMode.managed_dm.description': 'استخدم دردشة الويب المضمنة - لا يلزم الإعداد.',

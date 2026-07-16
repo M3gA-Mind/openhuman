@@ -3493,6 +3493,13 @@ const messages: TranslationMap = {
   'channels.telegram.remoteControlTitle': 'Удаленное управление (Telegram)',
   'channels.telegram.remoteControlBody':
     'Из разрешенного чата Telegram отправьте /status, /sessions, /new или /help. В маршрутизации моделей по-прежнему используются /model и /models.',
+  'channels.connectHelp.title': 'Как подключить',
+  'channels.connectHelp.discord':
+    'Выберите способ ниже: привяжите аккаунт через OpenHuman, установите бота через OAuth или вставьте собственный токен бота из портала разработчика Discord.',
+  'channels.connectHelp.telegram':
+    'Выберите способ ниже: напишите управляемому боту OpenHuman, чтобы привязать его, или вставьте собственный токен бота от @BotFather.',
+  'channels.connectHelp.slackNote':
+    'Ищете Slack? Slack подключается как приложение в разделе Подключения → OAuth, а не как канал сообщений здесь.',
   'channels.web.displayName': 'Интернет',
   'channels.web.description': 'Общайтесь через встроенный веб-интерфейс.',
   'channels.web.authMode.managed_dm.description':

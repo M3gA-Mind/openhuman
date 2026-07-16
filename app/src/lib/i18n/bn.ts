@@ -3464,6 +3464,13 @@ const messages: TranslationMap = {
   'channels.telegram.remoteControlTitle': 'রিমোট কন্ট্রোল (Telegram)',
   'channels.telegram.remoteControlBody':
     'একটি অনুমোদিত Telegram চ্যাট থেকে, /status, /sessions, /new, অথবা /help পাঠান। মডেল রাউটিং এখনও /মডেল এবং /মডেল ব্যবহার করে।',
+  'channels.connectHelp.title': 'কীভাবে সংযুক্ত করবেন',
+  'channels.connectHelp.discord':
+    'নিচে একটি পদ্ধতি বেছে নিন: OpenHuman-এর মাধ্যমে আপনার অ্যাকাউন্ট লিঙ্ক করুন, OAuth দিয়ে বট ইনস্টল করুন, অথবা Discord ডেভেলপার পোর্টাল থেকে আপনার নিজের বট টোকেন পেস্ট করুন।',
+  'channels.connectHelp.telegram':
+    'নিচে একটি পদ্ধতি বেছে নিন: লিঙ্ক করতে ম্যানেজড OpenHuman বটে বার্তা পাঠান, অথবা @BotFather থেকে আপনার নিজের বট টোকেন পেস্ট করুন।',
+  'channels.connectHelp.slackNote':
+    'Slack খুঁজছেন? Slack এখানে মেসেজিং চ্যানেল হিসেবে নয়, সংযোগ → OAuth-এ একটি অ্যাপ হিসেবে সংযুক্ত হয়।',
   'channels.web.displayName': 'ওয়েব',
   'channels.web.description': 'বিল্ট-ইন ওয়েব UI এর মাধ্যমে চ্যাট করুন।',
   'channels.web.authMode.managed_dm.description':

@@ -3564,6 +3564,13 @@ const messages: TranslationMap = {
   'channels.telegram.remoteControlTitle': 'Fernsteuerung (Telegram)',
   'channels.telegram.remoteControlBody':
     'Senden Sie von einem zulässigen Telegram-Chat aus /status, /sessions, /new oder /help. Das Modellrouting verwendet weiterhin /model und /models.',
+  'channels.connectHelp.title': 'So verbindest du',
+  'channels.connectHelp.discord':
+    'Wähle unten eine Methode: verknüpfe dein Konto über OpenHuman, installiere den Bot per OAuth oder füge deinen eigenen Bot-Token aus dem Discord-Entwicklerportal ein.',
+  'channels.connectHelp.telegram':
+    'Wähle unten eine Methode: schreibe dem verwalteten OpenHuman-Bot, um ihn zu verknüpfen, oder füge deinen eigenen Bot-Token von @BotFather ein.',
+  'channels.connectHelp.slackNote':
+    'Du suchst Slack? Slack wird als App unter Verbindungen → OAuth verbunden, nicht als Messaging-Kanal hier.',
   'channels.web.displayName': 'Web',
   'channels.web.description': 'Chatte über die integrierte Web-Oberfläche.',
   'channels.web.authMode.managed_dm.description':

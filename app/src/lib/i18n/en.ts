@@ -3879,6 +3879,15 @@ const en: TranslationMap = {
   'channels.telegram.remoteControlBody':
     'From an allowed Telegram chat, send /status, /sessions, /new, or /help. Model routing still uses /model and /models.',
 
+  // Connect help (in-app guidance so users do not have to ask the agent for the path)
+  'channels.connectHelp.title': 'How to connect',
+  'channels.connectHelp.discord':
+    'Pick a method below: link your account via OpenHuman, install the bot with OAuth, or paste your own bot token from the Discord developer portal.',
+  'channels.connectHelp.telegram':
+    'Pick a method below: message the managed OpenHuman bot to link it, or paste your own bot token from @BotFather.',
+  'channels.connectHelp.slackNote':
+    'Looking for Slack? Slack connects as an app under Connections → OAuth, not as a messaging channel here.',
+
   // Web
   'channels.web.displayName': 'Web',
   'channels.web.description': 'Chat via the built-in web UI.',

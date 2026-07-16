@@ -376,3 +376,48 @@ fn github_repo_memory_source_reports_github_destination() {
         privacy.destinations
     );
 }
+
+/// #4884: capability `how_to` breadcrumbs are user-facing and searchable, and
+/// the agent paraphrases them. Guard against the stale navigation paths that
+/// sent users to menus that do not exist (`Settings > Connections`,
+/// `Settings > Messaging Channels`, `Settings > Automation & Channels`). The
+/// real destinations live under the top-level Connections page.
+#[test]
+fn catalog_how_to_uses_connections_nav_not_legacy_settings_paths() {
+    const LEGACY: [&str; 6] = [
+        "Settings > Connections",
+        "Settings → Connections",
+        "Settings > Messaging Channels",
+        "Settings → Messaging Channels",
+        "Settings > Automation & Channels",
+        "Settings → Automation & Channels",
+    ];
+    for capability in all_capabilities() {
+        for legacy in LEGACY {
+            assert!(
+                !capability.how_to.contains(legacy),
+                "capability `{}` how_to still points at the removed `{legacy}` path: {}",
+                capability.id,
+                capability.how_to
+            );
+        }
+    }
+
+    // Spot-check the corrected channel + Composio breadcrumbs.
+    let how_to = |id: &str| {
+        all_capabilities()
+            .iter()
+            .find(|c| c.id == id)
+            .unwrap_or_else(|| panic!("missing capability `{id}`"))
+            .how_to
+    };
+    assert_eq!(
+        how_to("channels.connect_platform"),
+        "Connections > Channels"
+    );
+    assert_eq!(
+        how_to("intelligence.slack_memory_ingest"),
+        "Connections > OAuth > Slack"
+    );
+    assert_eq!(how_to("workflows.connect_google"), "Connections > OAuth");
+}

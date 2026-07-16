@@ -3480,6 +3480,13 @@ const messages: TranslationMap = {
   'channels.telegram.remoteControlTitle': 'Kendali jarak jauh (Telegram)',
   'channels.telegram.remoteControlBody':
     'Dari obrolan Telegram yang diizinkan, kirim /status, /sessions, /new, atau /help. Perutean model masih menggunakan /model dan /models.',
+  'channels.connectHelp.title': 'Cara menghubungkan',
+  'channels.connectHelp.discord':
+    'Pilih metode di bawah: tautkan akun Anda lewat OpenHuman, pasang bot dengan OAuth, atau tempel token bot Anda sendiri dari portal developer Discord.',
+  'channels.connectHelp.telegram':
+    'Pilih metode di bawah: kirim pesan ke bot OpenHuman terkelola untuk menautkannya, atau tempel token bot Anda sendiri dari @BotFather.',
+  'channels.connectHelp.slackNote':
+    'Mencari Slack? Slack terhubung sebagai aplikasi di Koneksi → OAuth, bukan sebagai saluran pesan di sini.',
   'channels.web.displayName': 'Web',
   'channels.web.description': 'Mengobrol melalui UI web bawaan.',
   'channels.web.authMode.managed_dm.description':

@@ -3428,6 +3428,13 @@ const messages: TranslationMap = {
   'channels.telegram.remoteControlTitle': '원격 제어(Telegram)',
   'channels.telegram.remoteControlBody':
     '허용된 Telegram 채팅에서 /status, /sessions, /new 또는 /help를 보냅니다. 모델 라우팅은 여전히 ​​/model 및 /models를 사용합니다.',
+  'channels.connectHelp.title': '연결 방법',
+  'channels.connectHelp.discord':
+    '아래에서 방법을 선택하세요: OpenHuman으로 계정 연결, OAuth로 봇 설치, 또는 Discord 개발자 포털에서 발급한 봇 토큰 붙여넣기.',
+  'channels.connectHelp.telegram':
+    '아래에서 방법을 선택하세요: 관리형 OpenHuman 봇에 메시지를 보내 연결하거나, @BotFather에서 발급한 봇 토큰을 붙여넣으세요.',
+  'channels.connectHelp.slackNote':
+    'Slack을 찾으세요? Slack은 여기서 메시징 채널이 아니라 연결 → OAuth에서 앱으로 연결됩니다.',
   'channels.web.displayName': '웹',
   'channels.web.description': '내장된 웹 UI를 통해 채팅합니다.',
   'channels.web.authMode.managed_dm.description':
