@@ -358,6 +358,99 @@ describe('ToolTimelineBlock — agentic task insights surface', () => {
     expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
   });
 
+  // Regression coverage for "Agentic task insights keeps collapsing on every
+  // new feedback": the workflow copilot keeps ONE `ToolTimelineBlock` mounted
+  // for the life of a thread, appending each new turn's entries onto the same
+  // `entries` prop (see `WorkflowCopilotPanel`/`useWorkflowBuilderChat`) — it
+  // never remounts the block per turn. Before the fix, the outer group's
+  // `open` was driven purely by `isRunning || expandAllRows`, so every time a
+  // turn settled (running → not running) the group snapped shut regardless of
+  // anything the user had done, discarding a manual expand made moments
+  // earlier. These tests simulate that same "new turn's entries land on an
+  // already-mounted block" shape via `rerender` rather than remounting.
+  describe('agentic task insights — sticky user expand/collapse across turns', () => {
+    it('keeps an explicit user expand across a new turn that starts and settles', () => {
+      const turn1Settled: ToolTimelineEntry[] = [
+        { id: 't1', name: 'web_search', round: 1, status: 'success' },
+      ];
+      const { rerender } = renderInStore(<ToolTimelineBlock entries={turn1Settled} />);
+      // Default: settled and collapsed (unchanged behaviour).
+      expect(screen.getByTestId('agent-task-insights')).not.toHaveAttribute('open');
+
+      // The user manually expands it.
+      fireEvent.click(screen.getByText('Agentic task insights'));
+      expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
+
+      // A new turn/feedback starts streaming onto the SAME mounted block.
+      const turn2Running: ToolTimelineEntry[] = [
+        ...turn1Settled,
+        { id: 't2', name: 'file_read', round: 2, status: 'running' },
+      ];
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={turn2Running} />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
+
+      // ...and settles. Without the fix this is exactly where it would
+      // involuntarily re-collapse, wiping out the user's choice.
+      const turn2Settled: ToolTimelineEntry[] = [
+        ...turn1Settled,
+        { id: 't2', name: 'file_read', round: 2, status: 'success' },
+      ];
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={turn2Settled} />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
+    });
+
+    it('leaves the default open-while-running/collapsed-when-settled behaviour unchanged absent any user interaction', () => {
+      const running: ToolTimelineEntry[] = [
+        { id: 'r', name: 'web_search', round: 1, status: 'running' },
+      ];
+      const { rerender } = renderInStore(<ToolTimelineBlock entries={running} />);
+      expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
+
+      const settled: ToolTimelineEntry[] = [
+        { id: 'r', name: 'web_search', round: 1, status: 'success' },
+      ];
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={settled} />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).not.toHaveAttribute('open');
+    });
+
+    it('also persists an explicit user collapse across a new turn (does not force it back open)', () => {
+      const turn1Running: ToolTimelineEntry[] = [
+        { id: 't1', name: 'web_search', round: 1, status: 'running' },
+      ];
+      const { rerender } = renderInStore(<ToolTimelineBlock entries={turn1Running} />);
+      expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
+
+      // The user collapses it while a turn is still running.
+      fireEvent.click(screen.getByText('Agentic task insights'));
+      expect(screen.getByTestId('agent-task-insights')).not.toHaveAttribute('open');
+
+      // A new turn starts running — the auto rule alone would force it back
+      // open, but the user's explicit collapse must win.
+      const turn2Running: ToolTimelineEntry[] = [
+        { id: 't1', name: 'web_search', round: 1, status: 'success' },
+        { id: 't2', name: 'file_read', round: 2, status: 'running' },
+      ];
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={turn2Running} />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).not.toHaveAttribute('open');
+    });
+  });
+
   it('renders the tool result output inside the expanded row', () => {
     const entries: ToolTimelineEntry[] = [
       {
