@@ -4,7 +4,7 @@
  *
  * We mock the apiClient and fetchWalletStatus so no actual RPC calls are made.
  */
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -1057,6 +1057,73 @@ describe('inbox stream lifecycle', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Inbox' }));
     await screen.findByText(/Your inbox is empty/i);
     expect(screen.queryByTestId('inbox-live-indicator')).not.toBeInTheDocument();
+  });
+});
+
+// ── Open DM real-time stream (#4928) ────────────────────────────────────────────
+
+describe('open DM real-time stream', () => {
+  beforeEach(() => {
+    vi.mocked(apiClient.messages.list).mockResolvedValue({ messages: [] });
+    vi.mocked(apiClient.directory.resolve).mockResolvedValue({
+      identity: { cryptoId: 'resolved-crypto-id' },
+    });
+    vi.mocked(apiClient.streams.start).mockResolvedValue({ streamId: 'inbox' });
+    // Default hook mock: idle (no live push yet).
+    mockUseTinyplaceStream.mockReturnValue({
+      messages: [],
+      status: 'idle',
+      clearMessages: vi.fn(),
+    });
+  });
+
+  async function openDm(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(screen.getByPlaceholderText(/Recipient @handle/), 'peerLive');
+    await user.click(screen.getByRole('button', { name: 'Open DM' }));
+    // Empty thread settled → the DM view is mounted and the mount fetch is done.
+    await screen.findByTestId('dm-empty-state');
+  }
+
+  test('starts the inbox stream while a DM thread is open', async () => {
+    const user = userEvent.setup();
+    render(<MessagingSection />);
+    await openDm(user);
+    // Before the fix nothing in the DM-only surface subscribed to a stream.
+    expect(apiClient.streams.start).toHaveBeenCalledWith('inbox');
+  });
+
+  test('refetches the open thread when an inbox stream event arrives (no manual refresh)', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<MessagingSection />);
+    await openDm(user);
+
+    const callsBefore = vi.mocked(apiClient.messages.list).mock.calls.length;
+
+    // A peer message lands on the relay inbox stream.
+    mockUseTinyplaceStream.mockReturnValue({
+      messages: [{ stream_id: 'inbox', kind: 'message', message: {} }],
+      status: 'connected',
+      clearMessages: vi.fn(),
+    });
+    rerender(<MessagingSection />);
+
+    // The open thread re-fetches on its own. Fails before the fix (the DM view
+    // only fetched on mount + after send), passes after.
+    await waitFor(() => {
+      expect(vi.mocked(apiClient.messages.list).mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
+
+  test('shows the Live indicator once the DM stream is connected', async () => {
+    mockUseTinyplaceStream.mockReturnValue({
+      messages: [],
+      status: 'connected',
+      clearMessages: vi.fn(),
+    });
+    const user = userEvent.setup();
+    render(<MessagingSection />);
+    await openDm(user);
+    expect(await screen.findByTestId('dm-live-indicator')).toBeInTheDocument();
   });
 });
 

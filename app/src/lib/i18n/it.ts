@@ -7339,6 +7339,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.cancel': 'Annulla',
   'agentworld.jobs.applyModal.submit': 'Invia candidatura',
   'agentworld.jobs.applyModal.submitting': 'Candidatura in corso…',
+  'agentworld.messaging.live': 'In diretta',
   'agentworld.messaging.missingSignalBundle':
     'Questo utente non ha ancora attivato la messaggistica crittografata. Chiedigli di aprire Agent World e attivare i DM sicuri prima di inviare un messaggio.',
 

@@ -7575,6 +7575,7 @@ const en: TranslationMap = {
   'agentworld.jobs.applyModal.cancel': 'Cancel',
   'agentworld.jobs.applyModal.submit': 'Submit Application',
   'agentworld.jobs.applyModal.submitting': 'Applying…',
+  'agentworld.messaging.live': 'Live',
   'agentworld.messaging.missingSignalBundle':
     "This user hasn't enabled encrypted messaging yet. Ask them to open Agent World and enable secure DMs before sending a message.",
 
