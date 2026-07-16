@@ -1123,7 +1123,10 @@ mod tests {
     #[tokio::test]
     async fn handle_get_data_paths_scopes_to_explicit_user_id() {
         let mut params = Map::new();
-        params.insert("user_id".to_string(), Value::String("clear-me-4950".to_string()));
+        params.insert(
+            "user_id".to_string(),
+            Value::String("clear-me-4950".to_string()),
+        );
 
         let value = handle_get_data_paths(params).await.unwrap();
         // `get_data_paths_for_user` attaches a log, so the outcome is wrapped as

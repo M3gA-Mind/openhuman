@@ -772,7 +772,10 @@ mod loader_io_chain_tests {
             .get("default_openhuman_dir")
             .and_then(|v| v.as_str())
             .expect("default_openhuman_dir present");
-        assert_ne!(current, default, "current dir must differ from the shared root");
+        assert_ne!(
+            current, default,
+            "current dir must differ from the shared root"
+        );
         let current_norm = current.replace('\\', "/");
         let default_norm = default.replace('\\', "/");
         assert!(
