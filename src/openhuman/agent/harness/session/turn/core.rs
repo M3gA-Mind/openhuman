@@ -332,6 +332,23 @@ fn tool_records_from_conversation(
     records
 }
 
+/// Rewrite the **trailing** assistant `Chat` message in `history` to `text`,
+/// keeping the persisted transcript and the next turn's KV-cache prefix
+/// consistent with a repaired required-output reply (issue #4117). Only the last
+/// row is touched — when the tail is not an assistant `Chat` (defensive; a clean
+/// finish, a cap checkpoint, and the #4093 close all end on one) a fresh
+/// assistant message is appended rather than mutating an older entry.
+fn replace_last_assistant_reply(history: &mut Vec<ConversationMessage>, text: &str) {
+    match history.last_mut() {
+        Some(ConversationMessage::Chat(chat)) if chat.role == "assistant" => {
+            chat.content = text.to_string();
+        }
+        _ => history.push(ConversationMessage::Chat(ChatMessage::assistant(
+            text.to_string(),
+        ))),
+    }
+}
+
 fn render_agent_context_status_note(sources: &[harness::AgentContextPreparedSource]) -> String {
     let sources = if sources.is_empty() {
         "the OpenHuman harness".to_string()
@@ -1372,6 +1389,42 @@ impl Agent {
             final_answer
         } else {
             outcome.text.clone()
+        };
+
+        // Enforce the required structured-output contract (issue #4117) on the
+        // accepted reply — for ALL of the branches above (normal finish, cap
+        // checkpoint, #4093 synthesized close), since each delivers a reply
+        // downstream parsing depends on. When this agent must emit a JSON block
+        // every turn and the reply omitted it, validate-and-repair before the
+        // turn is accepted, reconciling with streaming (append-only when a live
+        // stream is attached, replace otherwise — see `enforce_required_output`).
+        // The trailing assistant message is rewritten to match, and the repair
+        // call's usage is folded into the turn accounting. `required_output`
+        // defaults to `None`, so existing agents are entirely unaffected.
+        let reply = if let Some(contract) = self.config.required_output.clone() {
+            match self
+                .enforce_required_output(
+                    &reply,
+                    &contract,
+                    effective_model,
+                    outcome.model_calls as u32 + 1,
+                )
+                .await
+            {
+                Some((repaired, repair_usage)) => {
+                    if let Some(u) = repair_usage {
+                        input_tokens += u.input_tokens;
+                        output_tokens += u.output_tokens;
+                        cached_input_tokens += u.cached_input_tokens;
+                        charged_amount_usd += u.charged_amount_usd;
+                    }
+                    replace_last_assistant_reply(&mut self.history, &repaired);
+                    repaired
+                }
+                None => reply,
+            }
+        } else {
+            reply
         };
         self.trim_history();
 
