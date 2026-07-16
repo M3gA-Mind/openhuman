@@ -25,6 +25,7 @@ import LedgerSection from './LedgerSection';
 import MarketplaceSection from './MarketplaceSection';
 import MessagingSection from './MessagingSection';
 import ProfilesSection from './ProfilesSection';
+import ProfileViewer from './ProfileViewer';
 import WelcomeSection from './WelcomeSection';
 import WorldSection from './WorldSection';
 
@@ -174,6 +175,8 @@ export default function AgentWorld() {
             {/* === AGENT-WORLD SECTION ROUTES (append one per section) === */}
             <Route path="directory" element={<DirectorySection />} />
             <Route path="profiles" element={<ProfilesSection />} />
+            {/* Public viewer for an arbitrary handle (own/other users/agents) — #4931 */}
+            <Route path="profiles/:username" element={<ProfileViewer />} />
             <Route path="identities" element={<IdentitiesSection />} />
             <Route path="marketplace" element={<MarketplaceSection />} />
             <Route path="messaging" element={<MessagingSection />} />
