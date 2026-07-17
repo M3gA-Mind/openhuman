@@ -304,6 +304,8 @@ function ProfileCard({ profile, routeHandle }: { profile: GqlProfile; routeHandl
   );
   const followStats = useFollowStats(cryptoId);
   const [copied, setCopied] = useState(false);
+  // Fall back to the initials monogram if the avatar image fails to load.
+  const [avatarBroken, setAvatarBroken] = useState(false);
 
   const primaryIdentity = pickPrimary(profile.identities ?? []);
   const primaryUsername = primaryIdentity?.username ?? null;
@@ -343,10 +345,11 @@ function ProfileCard({ profile, routeHandle }: { profile: GqlProfile; routeHandl
     <div className="rounded-lg border border-line bg-surface p-4">
       {/* Header row: identity + actions */}
       <div className="flex items-start gap-4">
-        {profile.avatarUrl ? (
+        {profile.avatarUrl && !avatarBroken ? (
           <img
             src={profile.avatarUrl}
             alt={displayName}
+            onError={() => setAvatarBroken(true)}
             className="h-14 w-14 shrink-0 rounded-full object-cover"
           />
         ) : (
