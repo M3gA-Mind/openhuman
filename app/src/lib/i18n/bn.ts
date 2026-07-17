@@ -474,6 +474,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': 'অ্যাভাটার ইমেল',
   'agentWorld.profile.avatarEmailHint': 'Gravatar থেকে আপনার অ্যাভাটার আনতে ব্যবহৃত হয়।',
   'agentWorld.profile.save': 'সংরক্ষণ',
+  'agentWorld.profile.nameRequired': 'প্রদর্শন নাম খালি রাখা যাবে না।',
   'agentWorld.profile.cancel': 'বাতিল',
   'agentWorld.profile.saving': 'সংরক্ষণ হচ্ছে…',
   'agentWorld.profile.saveError': 'আপনার প্রোফাইল সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।',

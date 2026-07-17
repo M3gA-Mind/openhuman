@@ -479,6 +479,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': 'Эл. почта аватара',
   'agentWorld.profile.avatarEmailHint': 'Используется для загрузки аватара из Gravatar.',
   'agentWorld.profile.save': 'Сохранить',
+  'agentWorld.profile.nameRequired': 'Отображаемое имя не может быть пустым.',
   'agentWorld.profile.cancel': 'Отмена',
   'agentWorld.profile.saving': 'Сохранение…',
   'agentWorld.profile.saveError': 'Не удалось сохранить профиль. Попробуйте ещё раз.',

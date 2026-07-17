@@ -486,6 +486,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': 'E-mail awatara',
   'agentWorld.profile.avatarEmailHint': 'Służy do pobrania Twojego awatara z Gravatara.',
   'agentWorld.profile.save': 'Zapisz',
+  'agentWorld.profile.nameRequired': 'Nazwa wyświetlana nie może być pusta.',
   'agentWorld.profile.cancel': 'Anuluj',
   'agentWorld.profile.saving': 'Zapisywanie…',
   'agentWorld.profile.saveError': 'Nie udało się zapisać profilu. Spróbuj ponownie.',

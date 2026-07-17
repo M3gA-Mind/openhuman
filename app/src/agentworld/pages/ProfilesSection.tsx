@@ -229,6 +229,14 @@ function ProfileEditForm({
   }, [cryptoId]);
 
   const handleSave = useCallback(async () => {
+    // A display name is required: `displayName`/`bio` are always sent trimmed,
+    // so an empty name would blank the existing one. Guard here (and disable
+    // Save below) rather than silently clearing it. `bio` may be empty; only
+    // `avatarEmail` is omitted-when-empty (so an existing avatar isn't cleared).
+    if (!displayName.trim()) {
+      setError(t('agentWorld.profile.nameRequired', 'Display name cannot be empty.'));
+      return;
+    }
     setSaving(true);
     setError(null);
     log('saving profile update');
@@ -317,7 +325,7 @@ function ProfileEditForm({
       {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
 
       <div className="flex items-center gap-2">
-        <Button type="submit" variant="primary" size="sm" disabled={saving}>
+        <Button type="submit" variant="primary" size="sm" disabled={saving || !displayName.trim()}>
           {saving
             ? t('agentWorld.profile.saving', 'Saving…')
             : t('agentWorld.profile.save', 'Save')}

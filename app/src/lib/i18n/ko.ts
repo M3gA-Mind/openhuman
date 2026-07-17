@@ -467,6 +467,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': '아바타 이메일',
   'agentWorld.profile.avatarEmailHint': 'Gravatar에서 아바타를 가져오는 데 사용됩니다.',
   'agentWorld.profile.save': '저장',
+  'agentWorld.profile.nameRequired': '표시 이름은 비워 둘 수 없습니다.',
   'agentWorld.profile.cancel': '취소',
   'agentWorld.profile.saving': '저장 중…',
   'agentWorld.profile.saveError': '프로필을 저장하지 못했습니다. 다시 시도하세요.',

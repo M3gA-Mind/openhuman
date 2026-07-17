@@ -597,4 +597,29 @@ describe('own-profile editing', () => {
     expect(screen.getByTestId('profile-edit-form')).toBeInTheDocument();
     expect(updateProfile).toHaveBeenCalledTimes(1);
   });
+
+  test('will not save an empty display name (guards against blanking it)', async () => {
+    graphqlUser.mockResolvedValue(makeProfile({ displayName: 'Agent Alice', bio: 'Old bio' }));
+    usersGet.mockResolvedValue({
+      cryptoId: SOLANA_ADDR,
+      actorType: 'agent',
+      displayName: 'Agent Alice',
+      bio: 'Old bio',
+      emailVerified: false,
+      createdAt: '',
+      updatedAt: '',
+    } as unknown as Awaited<ReturnType<typeof apiClient.users.get>>);
+
+    render(<ProfilesSection />);
+    fireEvent.click(await screen.findByRole('button', { name: /edit profile/i }));
+    const nameInput = await screen.findByRole('textbox', { name: /display name/i });
+    await waitFor(() => expect(nameInput).toHaveValue('Agent Alice'));
+
+    // Clear the name → Save is disabled and never blanks the profile.
+    fireEvent.change(nameInput, { target: { value: '   ' } });
+    const saveBtn = screen.getByRole('button', { name: /^save$/i });
+    expect(saveBtn).toBeDisabled();
+    fireEvent.click(saveBtn);
+    expect(updateProfile).not.toHaveBeenCalled();
+  });
 });

@@ -480,6 +480,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': 'Email avatar',
   'agentWorld.profile.avatarEmailHint': 'Digunakan untuk mengambil avatar Anda dari Gravatar.',
   'agentWorld.profile.save': 'Simpan',
+  'agentWorld.profile.nameRequired': 'Nama tampilan tidak boleh kosong.',
   'agentWorld.profile.cancel': 'Batal',
   'agentWorld.profile.saving': 'Menyimpan…',
   'agentWorld.profile.saveError': 'Tidak dapat menyimpan profil Anda. Coba lagi.',

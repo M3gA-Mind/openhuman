@@ -487,6 +487,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': 'Email avatar',
   'agentWorld.profile.avatarEmailHint': 'Usata per recuperare il tuo avatar da Gravatar.',
   'agentWorld.profile.save': 'Salva',
+  'agentWorld.profile.nameRequired': 'Il nome visualizzato non può essere vuoto.',
   'agentWorld.profile.cancel': 'Annulla',
   'agentWorld.profile.saving': 'Salvataggio…',
   'agentWorld.profile.saveError': 'Impossibile salvare il profilo. Riprova.',

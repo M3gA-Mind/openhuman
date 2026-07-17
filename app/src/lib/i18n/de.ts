@@ -500,6 +500,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': 'Avatar-E-Mail',
   'agentWorld.profile.avatarEmailHint': 'Wird verwendet, um deinen Avatar von Gravatar zu laden.',
   'agentWorld.profile.save': 'Speichern',
+  'agentWorld.profile.nameRequired': 'Der Anzeigename darf nicht leer sein.',
   'agentWorld.profile.cancel': 'Abbrechen',
   'agentWorld.profile.saving': 'Wird gespeichert…',
   'agentWorld.profile.saveError':

@@ -443,6 +443,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': '头像邮箱',
   'agentWorld.profile.avatarEmailHint': '用于从 Gravatar 获取你的头像。',
   'agentWorld.profile.save': '保存',
+  'agentWorld.profile.nameRequired': '显示名称不能为空。',
   'agentWorld.profile.cancel': '取消',
   'agentWorld.profile.saving': '保存中…',
   'agentWorld.profile.saveError': '无法保存你的资料，请重试。',

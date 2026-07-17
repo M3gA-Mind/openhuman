@@ -458,6 +458,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': 'بريد الصورة الرمزية',
   'agentWorld.profile.avatarEmailHint': 'يُستخدم لجلب صورتك الرمزية من Gravatar.',
   'agentWorld.profile.save': 'حفظ',
+  'agentWorld.profile.nameRequired': 'لا يمكن أن يكون اسم العرض فارغًا.',
   'agentWorld.profile.cancel': 'إلغاء',
   'agentWorld.profile.saving': 'جارٍ الحفظ…',
   'agentWorld.profile.saveError': 'تعذّر حفظ ملفك الشخصي. حاول مرة أخرى.',

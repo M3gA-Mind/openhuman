@@ -484,6 +484,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': 'Correo del avatar',
   'agentWorld.profile.avatarEmailHint': 'Se usa para obtener tu avatar de Gravatar.',
   'agentWorld.profile.save': 'Guardar',
+  'agentWorld.profile.nameRequired': 'El nombre para mostrar no puede estar vacío.',
   'agentWorld.profile.cancel': 'Cancelar',
   'agentWorld.profile.saving': 'Guardando…',
   'agentWorld.profile.saveError': 'No se pudo guardar tu perfil. Inténtalo de nuevo.',

@@ -203,6 +203,7 @@ const en: TranslationMap = {
   'agentWorld.profile.avatarEmail': 'Avatar email',
   'agentWorld.profile.avatarEmailHint': 'Used to fetch your avatar from Gravatar.',
   'agentWorld.profile.save': 'Save',
+  'agentWorld.profile.nameRequired': 'Display name cannot be empty.',
   'agentWorld.profile.cancel': 'Cancel',
   'agentWorld.profile.saving': 'Saving…',
   'agentWorld.profile.saveError': 'Could not save your profile. Try again.',

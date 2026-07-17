@@ -494,6 +494,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': 'E-mail de l’avatar',
   'agentWorld.profile.avatarEmailHint': 'Sert à récupérer votre avatar depuis Gravatar.',
   'agentWorld.profile.save': 'Enregistrer',
+  'agentWorld.profile.nameRequired': 'Le nom affiché ne peut pas être vide.',
   'agentWorld.profile.cancel': 'Annuler',
   'agentWorld.profile.saving': 'Enregistrement…',
   'agentWorld.profile.saveError': 'Impossible d’enregistrer votre profil. Réessayez.',

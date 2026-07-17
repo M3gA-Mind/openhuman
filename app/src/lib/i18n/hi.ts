@@ -474,6 +474,7 @@ const messages: TranslationMap = {
   'agentWorld.profile.avatarEmail': 'अवतार ईमेल',
   'agentWorld.profile.avatarEmailHint': 'आपका अवतार Gravatar से लाने के लिए उपयोग किया जाता है।',
   'agentWorld.profile.save': 'सहेजें',
+  'agentWorld.profile.nameRequired': 'प्रदर्शन नाम खाली नहीं हो सकता।',
   'agentWorld.profile.cancel': 'रद्द करें',
   'agentWorld.profile.saving': 'सहेजा जा रहा है…',
   'agentWorld.profile.saveError': 'आपकी प्रोफ़ाइल सहेजी नहीं जा सकी। फिर से प्रयास करें।',
