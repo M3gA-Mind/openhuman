@@ -15,6 +15,7 @@ import FlowCanvasPage, {
   asCopilotBuildSeed,
   asCopilotPrefillSeed,
   FlowCanvasDraftPage,
+  formatRunError,
   isPlaceholderTitle,
 } from '../FlowCanvasPage';
 
@@ -23,12 +24,14 @@ const updateFlow = vi.hoisted(() => vi.fn());
 const createFlow = vi.hoisted(() => vi.fn());
 const validateFlow = vi.hoisted(() => vi.fn());
 const listFlowConnections = vi.hoisted(() => vi.fn());
+const runFlow = vi.hoisted(() => vi.fn());
 vi.mock('../../services/api/flowsApi', () => ({
   getFlow,
   updateFlow,
   createFlow,
   validateFlow,
   listFlowConnections,
+  runFlow,
 }));
 
 // Stub the copilot panel: it drives the real chat runtime (redux + socket),
@@ -95,6 +98,7 @@ describe('FlowCanvasPage', () => {
     createFlow.mockReset();
     validateFlow.mockReset();
     listFlowConnections.mockReset();
+    runFlow.mockReset();
     validateFlow.mockResolvedValue({ valid: true, errors: [], warnings: [] });
     listFlowConnections.mockResolvedValue([]);
     updateFlow.mockResolvedValue(makeFlow());
@@ -144,6 +148,93 @@ describe('FlowCanvasPage', () => {
 
     await waitFor(() => expect(screen.getByTestId('flow-canvas-error')).toBeInTheDocument());
     expect(screen.getByText('core unreachable')).toBeInTheDocument();
+  });
+
+  describe('run-error banner (#flows-canvas-error-banner)', () => {
+    // Run always goes through the header icon → confirm popup → accept, same
+    // as a real user flow (see `handleRun` wiring around `confirmAction`).
+    // Two `fireEvent.click`s in a row: the first (Run) synchronously opens
+    // the confirm popup via a plain `useState` setter, so no flush is needed
+    // between them.
+    function clickRun() {
+      fireEvent.click(screen.getByTestId('flow-canvas-run'));
+      fireEvent.click(screen.getByTestId('flow-action-confirm-accept'));
+    }
+
+    it('renders the run-error banner (trimmed) without covering undo/redo, and lets it be dismissed', async () => {
+      getFlow.mockResolvedValue(makeFlow());
+      runFlow.mockRejectedValue(
+        new Error(
+          'capability error: graph error: capability error: code node exited non-zero (timed_out=false):'
+        )
+      );
+      renderAtFlowId('test-id');
+      await waitFor(() => expect(screen.getByTestId('flow-canvas')).toBeInTheDocument());
+
+      clickRun();
+
+      const banner = await screen.findByTestId('flow-canvas-run-error');
+      // The raw nested "capability error: graph error: capability error: "
+      // wrapper prefixes are stripped — only the innermost tail remains.
+      expect(banner).toHaveTextContent('code node exited non-zero (timed_out=false)');
+      expect(banner).not.toHaveTextContent('graph error');
+
+      // Regression for the overlap bug: the banner sits at top-14, well
+      // below the canvas's own top-3 undo/redo controls, and both remain
+      // present/interactive rather than one covering the other.
+      expect(banner.parentElement).toHaveClass('top-14');
+      expect(screen.getByTestId('flow-editor-undo')).toBeInTheDocument();
+      expect(screen.getByTestId('flow-editor-redo')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('flow-canvas-run-error-dismiss'));
+      expect(screen.queryByTestId('flow-canvas-run-error')).not.toBeInTheDocument();
+    });
+
+    it('auto-dismisses the run-error banner after the timeout, and restarts the timer on a new error', async () => {
+      getFlow.mockResolvedValue(makeFlow());
+      runFlow.mockRejectedValue(new Error('capability error: boom'));
+      renderAtFlowId('test-id');
+      await waitFor(() => expect(screen.getByTestId('flow-canvas')).toBeInTheDocument());
+
+      // Switch to fake timers only now — the load above already went through
+      // `waitFor` (real timers); the run/timeout portion below only needs
+      // fake macrotasks plus microtask flushes for the rejected `runFlow`
+      // promise, matching the FlowRunsDrawer.test.tsx fake-timer precedent.
+      vi.useFakeTimers();
+      try {
+        clickRun();
+        await act(async () => {
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        expect(screen.getByTestId('flow-canvas-run-error')).toBeInTheDocument();
+
+        // Not yet at the 12s mark — banner is still up.
+        await act(async () => {
+          vi.advanceTimersByTime(11_000);
+        });
+        expect(screen.getByTestId('flow-canvas-run-error')).toBeInTheDocument();
+
+        // A new failure before the old timer fires resets the clock rather
+        // than stacking on top of it.
+        clickRun();
+        await act(async () => {
+          await Promise.resolve();
+          await Promise.resolve();
+        });
+        await act(async () => {
+          vi.advanceTimersByTime(11_000);
+        });
+        expect(screen.getByTestId('flow-canvas-run-error')).toBeInTheDocument();
+
+        await act(async () => {
+          vi.advanceTimersByTime(2_000);
+        });
+        expect(screen.queryByTestId('flow-canvas-run-error')).not.toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('ignores a stale response for a superseded id after navigating to a new one', async () => {
@@ -526,6 +617,28 @@ describe('isPlaceholderTitle', () => {
   it('does not treat a user-chosen or description-derived name as a placeholder', () => {
     expect(isPlaceholderTitle('My flow', 'New workflow')).toBe(false);
     expect(isPlaceholderTitle('Standup reminder', 'New workflow')).toBe(false);
+  });
+});
+
+describe('formatRunError', () => {
+  it('strips repeated nested "<word> error: " wrapper prefixes down to the innermost tail', () => {
+    expect(
+      formatRunError(
+        'capability error: graph error: capability error: code node exited non-zero (timed_out=false):'
+      )
+    ).toBe('code node exited non-zero (timed_out=false)');
+  });
+
+  it('leaves a message with no wrapper prefix unchanged', () => {
+    expect(formatRunError('flow has no trigger node')).toBe('flow has no trigger node');
+  });
+
+  it('drops a bare trailing colon left over from a single, unstripped wrapper label', () => {
+    expect(formatRunError('capability error:')).toBe('capability error');
+  });
+
+  it('falls back to the original message rather than returning an empty string', () => {
+    expect(formatRunError(':')).toBe(':');
   });
 });
 

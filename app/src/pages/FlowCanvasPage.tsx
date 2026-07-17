@@ -146,6 +146,9 @@ export function asCopilotRepairSeed(state: unknown): CopilotRepairSeed | null {
 
 const log = createDebug('app:flows:canvas');
 
+/** How long the run-error banner stays up before it auto-dismisses. */
+const RUN_ERROR_AUTO_DISMISS_MS = 12_000;
+
 /** Which panel (if any) the canvas side rail shows. Driven by the header toggle. */
 type SidePanel = 'copilot' | 'legend' | null;
 
@@ -157,6 +160,28 @@ type LoadState =
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Run-start failures bubble up through several `thiserror`-wrapped tinyflows
+ * layers, each re-tagging the one beneath it (e.g. "capability error: graph
+ * error: capability error: code node exited non-zero (timed_out=false):").
+ * The nesting is meaningless to the user — strip repeated "<word> error: "
+ * wrapper prefixes so only the innermost, actionable tail is shown. Scoped
+ * to the run-error banner only (`handleRun`'s catch); other error surfaces
+ * in this file keep the raw message since their shapes differ. Pure and
+ * exported for direct unit testing without rendering `FlowEditor`.
+ */
+export function formatRunError(message: string): string {
+  const wrapperPrefix = /^\w+\s+error:\s*/i;
+  let rest = message;
+  let match = wrapperPrefix.exec(rest);
+  while (match && match[0].length < rest.length) {
+    rest = rest.slice(match[0].length);
+    match = wrapperPrefix.exec(rest);
+  }
+  const trimmed = rest.replace(/:\s*$/, '').trim();
+  return trimmed || message.trim();
 }
 
 /**
@@ -763,6 +788,17 @@ function FlowEditor({
     }
   }, [flowId]);
 
+  // Auto-dismiss the run-error banner so a stale failure doesn't linger
+  // forever over the canvas. Re-runs (and thus restarts the timer) whenever
+  // `runError` changes — including a new failure replacing an old one, since
+  // `handleRun` always routes through `setRunError(null)` before setting the
+  // next message, so a later error is always a distinct effect run.
+  useEffect(() => {
+    if (!runError) return;
+    const timer = setTimeout(() => setRunError(null), RUN_ERROR_AUTO_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, [runError]);
+
   // Return to wherever the user came from rather than always the list. React
   // Router stamps the initial history entry with key 'default', so when this
   // page was the first thing loaded (deep link / fresh load) there's nothing to
@@ -968,12 +1004,44 @@ function FlowEditor({
           />
 
           {runError && (
-            <div className="pointer-events-none absolute inset-x-3 top-3 z-20 flex justify-center">
+            // top-14 (not top-3) so this never overlaps the canvas's own
+            // top-right undo/redo controls, which sit at top-3; max-w-md
+            // caps how wide a long nested error can grow. When the legend
+            // palette is open it also docks at top-14/right-3 (w-48), so we
+            // pull the banner's right edge in past it (right-56) rather than
+            // centering across the full width, which would let a long
+            // message reach under the palette and swallow its clicks.
+            <div
+              className={`pointer-events-none absolute left-3 top-14 z-20 flex justify-center ${
+                sidePanel === 'legend' ? 'right-56' : 'right-3'
+              }`}>
               <div
                 role="alert"
                 data-testid="flow-canvas-run-error"
-                className="pointer-events-auto rounded-xl border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700 dark:border-coral-500/30 dark:bg-coral-500/10 dark:text-coral-300">
-                {t('flows.editor.runFailed')}: {runError}
+                className="pointer-events-auto flex w-full max-w-md items-start gap-2 rounded-xl border border-coral-200 bg-coral-50 px-3 py-2 text-xs text-coral-700 dark:border-coral-500/30 dark:bg-coral-500/10 dark:text-coral-300">
+                <span className="flex-1">
+                  {t('flows.editor.runFailed')}: {formatRunError(runError)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setRunError(null)}
+                  aria-label={t('common.dismiss')}
+                  title={t('common.dismiss')}
+                  data-testid="flow-canvas-run-error-dismiss"
+                  className="flex-shrink-0 text-coral-500 hover:text-coral-700 dark:text-coral-300 dark:hover:text-coral-100">
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
               </div>
             </div>
           )}
