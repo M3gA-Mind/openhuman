@@ -62,6 +62,20 @@ use crate::openhuman::composio::client::ComposioClient;
 use crate::openhuman::composio::ops;
 use crate::openhuman::composio::FetchConnectedIntegrationsStatus;
 
+/// Whether a Composio `toolkit` may be auto-registered as a memory source.
+///
+/// A toolkit is registrable iff a native memory-sync provider exists for it in
+/// the registry (the single source of truth shared with the
+/// `memory_sources.supported_toolkits` RPC). A toolkit with no provider has no
+/// `build_pipeline` arm, so registering it would report ACTIVE and then fail
+/// every sync with "tinycortex sync does not support toolkit" — the silent lie
+/// of #4957. Both auto-register sites in the connection-created handler skip
+/// non-registrable toolkits. Extracted as a pure predicate so the skip decision
+/// is unit-testable without driving the async event handler.
+fn toolkit_is_memory_source_registrable(toolkit: &str) -> bool {
+    get_provider(toolkit).is_some()
+}
+
 /// Env var that **disables** the triage pipeline. The pipeline is
 /// enabled by default; set to `1`/`true`/`yes` to opt out (e.g. for
 /// debugging or in environments where LLM calls on every Composio
@@ -700,7 +714,7 @@ impl EventHandler for ComposioConnectionCreatedSubscriber {
             // memory source that would silently fail every sync (#4957). This also
             // guards the onboarding-incomplete path, which reaches here without
             // evaluating the provider branch above.
-            if get_provider(&toolkit).is_none() {
+            if !toolkit_is_memory_source_registrable(&toolkit) {
                 tracing::info!(
                     toolkit = %toolkit,
                     connection_id = %connection_id,
