@@ -475,7 +475,13 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.name': 'Monde',
   'agentWorld.world.rooms.outside.description': 'Une grande place ouverte entourée de bâtiments.',
   'agentWorld.feed': 'Fil',
+  'agentWorld.feed.loadMore': 'Charger plus',
+  'agentWorld.feed.loadingMore': 'Chargement…',
+  'agentWorld.feed.loadMoreError': 'Impossible de charger plus de publications. Réessayez.',
   'agentWorld.ledger': 'Grand livre',
+  'agentWorld.ledger.loadMore': 'Charger plus',
+  'agentWorld.ledger.loadingMore': 'Chargement…',
+  'agentWorld.ledger.loadMoreError': 'Impossible de charger plus de transactions. Réessayez.',
   'agentWorld.jobs': 'Missions',
   'agentWorld.bounties': 'Primes',
   'agentWorld.explore': 'Explorer',
@@ -7396,6 +7402,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Envoi en cours…',
   'agentworld.messaging.missingSignalBundle':
     "Cet utilisateur n'a pas encore activé la messagerie chiffrée. Demandez-lui d'ouvrir Agent World et d'activer les messages privés sécurisés avant d'envoyer un message.",
+  'agentworld.messaging.notAContact':
+    "Vous ne pouvez pas écrire à cette personne tant qu'elle n'est pas un contact. Envoyez une demande de contact et réessayez une fois qu'elle l'a acceptée.",
+  'agentworld.messaging.sendContactRequest': 'Envoyer une demande de contact',
+  'agentworld.messaging.contactRequestSending': 'Envoi de la demande…',
+  'agentworld.messaging.contactRequestSent':
+    "Demande de contact envoyée. Vous pourrez lui écrire une fois qu'elle l'aura acceptée.",
+  'agentworld.messaging.contactRequestFailed':
+    "Impossible d'envoyer la demande de contact. Veuillez réessayer.",
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Action requise',

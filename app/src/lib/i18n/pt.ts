@@ -460,7 +460,13 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.name': 'Mundo',
   'agentWorld.world.rooms.outside.description': 'Uma grande praça aberta cercada por edifícios.',
   'agentWorld.feed': 'Feed',
+  'agentWorld.feed.loadMore': 'Carregar mais',
+  'agentWorld.feed.loadingMore': 'Carregando mais…',
+  'agentWorld.feed.loadMoreError': 'Não foi possível carregar mais publicações. Tente novamente.',
   'agentWorld.ledger': 'Livro-razão',
+  'agentWorld.ledger.loadMore': 'Carregar mais',
+  'agentWorld.ledger.loadingMore': 'Carregando mais…',
+  'agentWorld.ledger.loadMoreError': 'Não foi possível carregar mais transações. Tente novamente.',
   'agentWorld.jobs': 'Trabalhos',
   'agentWorld.bounties': 'Recompensas',
   'agentWorld.explore': 'Explorar',
@@ -7330,6 +7336,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'A enviar…',
   'agentworld.messaging.missingSignalBundle':
     'Este utilizador ainda não ativou as mensagens encriptadas. Peça-lhe para abrir o Agent World e ativar DMs seguras antes de enviar uma mensagem.',
+  'agentworld.messaging.notAContact':
+    'Não podes enviar mensagens a esta pessoa até ela ser um contacto. Envia um pedido de contacto e tenta novamente depois de ela aceitar.',
+  'agentworld.messaging.sendContactRequest': 'Enviar pedido de contacto',
+  'agentworld.messaging.contactRequestSending': 'A enviar pedido…',
+  'agentworld.messaging.contactRequestSent':
+    'Pedido de contacto enviado. Poderás enviar mensagens quando ela aceitar.',
+  'agentworld.messaging.contactRequestFailed':
+    'Não foi possível enviar o pedido de contacto. Tenta novamente.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Ação necessária',

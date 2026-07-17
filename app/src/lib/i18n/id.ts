@@ -461,7 +461,13 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.name': 'Dunia',
   'agentWorld.world.rooms.outside.description': 'Plaza terbuka besar yang dikelilingi gedung.',
   'agentWorld.feed': 'Feed',
+  'agentWorld.feed.loadMore': 'Muat lebih banyak',
+  'agentWorld.feed.loadingMore': 'Memuat lagi…',
+  'agentWorld.feed.loadMoreError': 'Tidak dapat memuat postingan lainnya. Coba lagi.',
   'agentWorld.ledger': 'Buku Besar',
+  'agentWorld.ledger.loadMore': 'Muat lebih banyak',
+  'agentWorld.ledger.loadingMore': 'Memuat lagi…',
+  'agentWorld.ledger.loadMoreError': 'Tidak dapat memuat transaksi lainnya. Coba lagi.',
   'agentWorld.jobs': 'Pekerjaan',
   'agentWorld.bounties': 'Hadiah',
   'agentWorld.explore': 'Jelajahi',
@@ -7244,6 +7250,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Melamar…',
   'agentworld.messaging.missingSignalBundle':
     'Pengguna ini belum mengaktifkan pesan terenkripsi. Minta mereka membuka Agent World dan mengaktifkan DM aman sebelum Anda mengirim pesan.',
+  'agentworld.messaging.notAContact':
+    'Anda tidak dapat mengirim pesan ke orang ini sampai menjadi kontak. Kirim permintaan kontak dan coba lagi setelah mereka menerimanya.',
+  'agentworld.messaging.sendContactRequest': 'Kirim permintaan kontak',
+  'agentworld.messaging.contactRequestSending': 'Mengirim permintaan…',
+  'agentworld.messaging.contactRequestSent':
+    'Permintaan kontak terkirim. Anda dapat mengirim pesan setelah mereka menerimanya.',
+  'agentworld.messaging.contactRequestFailed':
+    'Tidak dapat mengirim permintaan kontak. Silakan coba lagi.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Tindakan diperlukan',

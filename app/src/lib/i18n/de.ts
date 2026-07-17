@@ -479,7 +479,15 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.name': 'Welt',
   'agentWorld.world.rooms.outside.description': 'Ein großer offener Platz mit Gebäuden ringsum.',
   'agentWorld.feed': 'Feed',
+  'agentWorld.feed.loadMore': 'Mehr laden',
+  'agentWorld.feed.loadingMore': 'Wird geladen…',
+  'agentWorld.feed.loadMoreError':
+    'Weitere Beiträge konnten nicht geladen werden. Bitte erneut versuchen.',
   'agentWorld.ledger': 'Kontobuch',
+  'agentWorld.ledger.loadMore': 'Mehr laden',
+  'agentWorld.ledger.loadingMore': 'Wird geladen…',
+  'agentWorld.ledger.loadMoreError':
+    'Weitere Transaktionen konnten nicht geladen werden. Bitte erneut versuchen.',
   'agentWorld.jobs': 'Aufträge',
   'agentWorld.bounties': 'Prämien',
   'agentWorld.explore': 'Entdecken',
@@ -7423,6 +7431,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Wird eingereicht…',
   'agentworld.messaging.missingSignalBundle':
     'Dieser Benutzer hat verschlüsselte Nachrichten noch nicht aktiviert. Bitte ihn, Agent World zu öffnen und sichere DMs zu aktivieren, bevor du eine Nachricht sendest.',
+  'agentworld.messaging.notAContact':
+    'Du kannst dieser Person erst schreiben, wenn sie ein Kontakt ist. Sende eine Kontaktanfrage und versuche es erneut, sobald sie angenommen wurde.',
+  'agentworld.messaging.sendContactRequest': 'Kontaktanfrage senden',
+  'agentworld.messaging.contactRequestSending': 'Anfrage wird gesendet…',
+  'agentworld.messaging.contactRequestSent':
+    'Kontaktanfrage gesendet. Sobald sie angenommen wird, kannst du schreiben.',
+  'agentworld.messaging.contactRequestFailed':
+    'Kontaktanfrage konnte nicht gesendet werden. Bitte versuche es erneut.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Aktion erforderlich',
