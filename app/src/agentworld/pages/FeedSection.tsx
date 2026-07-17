@@ -25,16 +25,27 @@ import Button from '../../components/ui/Button';
 import {
   type GqlComment,
   type GqlHomeFeedItem,
+  type GqlHomeFeedResult,
   type GqlPost,
   type LikeResult,
   PaymentRequiredError,
 } from '../../lib/agentworld/invokeApiClient';
+import { useT } from '../../lib/i18n/I18nContext';
 import { fetchWalletStatus } from '../../services/walletApi';
 import { apiClient } from '../AgentWorldShell';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { relativeTime } from './relativeTime';
 
 const log = debug('agentworld:feed');
+
+/**
+ * Home-feed items fetched per page (also the initial page size). The
+ * `tinyplace_graphql_home_feed` RPC accepts `limit`/`offset`
+ * (`src/openhuman/tinyplace/manifest.rs`), so the feed is loaded a page at a
+ * time and extended via an offset-based "Load more" control. A page shorter
+ * than this size means the feed is exhausted (`hasMore=false`).
+ */
+export const FEED_PAGE_SIZE = 50;
 
 // ── State types ───────────────────────────────────────────────────────────────
 
@@ -43,7 +54,41 @@ type FeedState =
   | { status: 'wallet_unconfigured' }
   | { status: 'payment_required'; challenge: unknown }
   | { status: 'error'; message: string }
-  | { status: 'ok'; items: GqlHomeFeedItem[] };
+  | {
+      status: 'ok';
+      items: GqlHomeFeedItem[];
+      // Server-side cursor, in request units: how many rows to skip on the next
+      // page. Advances by FEED_PAGE_SIZE per fetch, decoupled from the client
+      // item count so dedupe never desyncs the offset.
+      nextOffset: number;
+      // A full page came back, so more items may exist.
+      hasMore: boolean;
+      // A "Load more" fetch is in flight.
+      loadingMore: boolean;
+      // Non-null when the most recent "Load more" fetch failed (existing items
+      // stay visible; the user can retry).
+      moreError: string | null;
+    };
+
+/**
+ * Build the first-page `ok` state from a home-feed result. Used by the initial
+ * fetch and by every post-mutation refetch (compose / delete), all of which
+ * reset pagination to page one. `hasMore` is derived from the raw returned page
+ * length so a full page signals that older items may still be reachable.
+ */
+function firstPageFeedState(result: GqlHomeFeedResult | null | undefined): FeedState {
+  const items = sortedHomeFeedItems(result);
+  const received = Array.isArray(result?.items) ? result.items.length : 0;
+  const hasMore = received >= FEED_PAGE_SIZE;
+  return {
+    status: 'ok',
+    items,
+    nextOffset: FEED_PAGE_SIZE,
+    hasMore,
+    loadingMore: false,
+    moreError: null,
+  };
+}
 
 /**
  * Result of resolving the local wallet on mount.
@@ -588,6 +633,7 @@ function CommentRow({
 // ── FeedSection (main export) ─────────────────────────────────────────────────
 
 export default function FeedSection() {
+  const { t } = useT();
   const [feedState, setFeedState] = useState<FeedState>({ status: 'loading' });
   const [followState, setFollowState] = useState<Record<string, boolean>>({});
   const [followLoading, setFollowLoading] = useState<Record<string, boolean>>({});
@@ -598,6 +644,17 @@ export default function FeedSection() {
   const [deletingPost, setDeletingPost] = useState(false);
 
   const { agentId: myAgentId, configured: walletConfigured } = useWalletResolution();
+
+  // Guards async setState after unmount. The initial fetch effect uses its own
+  // `cancelled` flag; "Load more" fetches outlive no single effect, so they read
+  // this ref instead.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // ── Hydrate follow state from the server ───────────────────────────────────
   // The home feed doesn't carry "am I following this author?", so seed the
@@ -654,18 +711,24 @@ export default function FeedSection() {
     // one they just created via the composer) never appear. Without this the
     // composer looks broken: Post succeeds server-side but the refetch can't
     // show it (#4059).
+    log('loading first feed page', { limit: FEED_PAGE_SIZE });
     void apiClient.graphql
-      .homeFeed({ limit: 50, includeSelf: true })
+      .homeFeed({ limit: FEED_PAGE_SIZE, offset: 0, includeSelf: true })
       .then(result => {
         if (cancelled) return;
-        const items = sortedHomeFeedItems(result);
-        setFeedState({ status: 'ok', items });
+        const next = firstPageFeedState(result);
+        log('loaded first feed page', {
+          received: Array.isArray(result?.items) ? result.items.length : 0,
+          hasMore: next.status === 'ok' ? next.hasMore : false,
+        });
+        setFeedState(next);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         if (err instanceof PaymentRequiredError) {
           setFeedState({ status: 'payment_required', challenge: err.challenge });
         } else {
+          log('first feed page failed', { error: String(err) });
           setFeedState({ status: 'error', message: String(err) });
         }
       });
@@ -674,6 +737,54 @@ export default function FeedSection() {
       cancelled = true;
     };
   }, [walletConfigured]);
+
+  // ── Fetch the next page and append it ──────────────────────────────────────
+  // `offset` is passed in from the rendered 'ok' state so the cursor stays a
+  // pure function of pages requested. Reentry is prevented by disabling the
+  // button while `loadingMore` is set.
+  const loadMore = useCallback((offset: number) => {
+    log('loading more feed items', { offset, limit: FEED_PAGE_SIZE });
+    setFeedState(prev =>
+      prev.status === 'ok' ? { ...prev, loadingMore: true, moreError: null } : prev
+    );
+
+    void apiClient.graphql
+      .homeFeed({ limit: FEED_PAGE_SIZE, offset, includeSelf: true })
+      .then(result => {
+        if (!mountedRef.current) return;
+        const page = Array.isArray(result?.items) ? result.items : [];
+        const hasMore = page.length >= FEED_PAGE_SIZE;
+        setFeedState(prev => {
+          if (prev.status !== 'ok') return prev;
+          // Dedupe by postId: if items shifted between page fetches the overlap
+          // must not produce duplicate React keys or double-counted posts.
+          const seen = new Set(prev.items.map(item => item.post.postId));
+          const fresh = page.filter(item => !seen.has(item.post.postId));
+          const merged = sortedHomeFeedItems({ items: [...prev.items, ...fresh] });
+          log('appended feed items', {
+            received: page.length,
+            fresh: fresh.length,
+            total: merged.length,
+            hasMore,
+          });
+          return {
+            status: 'ok',
+            items: merged,
+            nextOffset: offset + FEED_PAGE_SIZE,
+            hasMore,
+            loadingMore: false,
+            moreError: null,
+          };
+        });
+      })
+      .catch((err: unknown) => {
+        if (!mountedRef.current) return;
+        log('load more feed failed', { error: String(err) });
+        setFeedState(prev =>
+          prev.status === 'ok' ? { ...prev, loadingMore: false, moreError: String(err) } : prev
+        );
+      });
+  }, []);
 
   // ── Follow / Unfollow ──────────────────────────────────────────────────────
 
@@ -741,11 +852,13 @@ export default function FeedSection() {
       .then(({ ok }) => {
         if (!ok) throw new Error('Post deletion was not accepted by the backend');
         // Return the refresh promise so its rejection reaches `.catch` (rather
-        // than resolving the delete as "done" before the feed is reloaded).
-        return apiClient.graphql.homeFeed({ limit: 50, includeSelf: true }).then(result => {
-          const items = sortedHomeFeedItems(result);
-          setFeedState({ status: 'ok', items });
-        });
+        // than resolving the delete as "done" before the feed is reloaded). A
+        // mutation invalidates offsets, so reset pagination to the first page.
+        return apiClient.graphql
+          .homeFeed({ limit: FEED_PAGE_SIZE, offset: 0, includeSelf: true })
+          .then(result => {
+            setFeedState(firstPageFeedState(result));
+          });
       })
       .catch(err => console.error('[FeedSection] delete post failed:', err))
       .finally(() => {
@@ -756,11 +869,13 @@ export default function FeedSection() {
 
   // ── Refetch feed ───────────────────────────────────────────────────────────
 
+  // A fresh compose invalidates offsets, so reset pagination to the first page.
   const refetchFeed = () => {
-    void apiClient.graphql.homeFeed({ limit: 50, includeSelf: true }).then(result => {
-      const items = sortedHomeFeedItems(result);
-      setFeedState({ status: 'ok', items });
-    });
+    void apiClient.graphql
+      .homeFeed({ limit: FEED_PAGE_SIZE, offset: 0, includeSelf: true })
+      .then(result => {
+        setFeedState(firstPageFeedState(result));
+      });
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -812,9 +927,10 @@ export default function FeedSection() {
       />
     );
   } else {
+    const { items, hasMore, loadingMore, moreError, nextOffset } = feedState;
     body = (
       <div className="space-y-3">
-        {feedState.items.map(item => (
+        {items.map(item => (
           <PostCard
             key={item.post.postId}
             item={item}
@@ -831,6 +947,24 @@ export default function FeedSection() {
             onDeletePost={handleDeletePost}
           />
         ))}
+
+        {moreError && (
+          <p className="text-center text-xs text-red-600 dark:text-red-400">
+            {t('agentWorld.feed.loadMoreError')}
+          </p>
+        )}
+
+        {hasMore && (
+          <div className="flex justify-center">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={loadingMore}
+              onClick={() => loadMore(nextOffset)}>
+              {loadingMore ? t('agentWorld.feed.loadingMore') : t('agentWorld.feed.loadMore')}
+            </Button>
+          </div>
+        )}
       </div>
     );
   }

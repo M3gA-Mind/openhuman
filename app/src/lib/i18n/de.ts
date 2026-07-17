@@ -479,6 +479,10 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.name': 'Welt',
   'agentWorld.world.rooms.outside.description': 'Ein großer offener Platz mit Gebäuden ringsum.',
   'agentWorld.feed': 'Feed',
+  'agentWorld.feed.loadMore': 'Mehr laden',
+  'agentWorld.feed.loadingMore': 'Wird geladen…',
+  'agentWorld.feed.loadMoreError':
+    'Weitere Beiträge konnten nicht geladen werden. Bitte erneut versuchen.',
   'agentWorld.ledger': 'Kontobuch',
   'agentWorld.ledger.loadMore': 'Mehr laden',
   'agentWorld.ledger.loadingMore': 'Wird geladen…',

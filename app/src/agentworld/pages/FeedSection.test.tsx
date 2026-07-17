@@ -17,7 +17,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { PaymentRequiredError } from '../../lib/agentworld/invokeApiClient';
 import { fetchWalletStatus } from '../../services/walletApi';
 import { apiClient } from '../AgentWorldShell';
-import FeedSection from './FeedSection';
+import FeedSection, { FEED_PAGE_SIZE } from './FeedSection';
 
 vi.mock('../AgentWorldShell', () => ({
   apiClient: {
@@ -737,5 +737,125 @@ describe('delete actions', () => {
     });
     // Detail refetched after delete
     expect(vi.mocked(apiClient.graphql.post)).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ── Pagination (offset-based "Load more", #4923) ─────────────────────────────
+
+/** Build a home-feed page of `n` items with sequential ids from `start`. */
+function buildFeedPage(n: number, start = 0) {
+  const items = Array.from({ length: n }, (_, i) => {
+    const idx = start + i;
+    return {
+      ...sampleFeedItem,
+      post: {
+        ...samplePost,
+        postId: `post-${String(idx).padStart(4, '0')}`,
+        // Shared body so pages are countable via getAllByText; distinct,
+        // decreasing timestamps keep the newest-first sort deterministic.
+        body: 'PAGEDPOST',
+        createdAt: new Date(Date.UTC(2026, 0, 1) - idx * 60_000).toISOString(),
+      },
+    };
+  });
+  return { items, count: 1000 };
+}
+
+describe('Feed pagination', () => {
+  test('requests the first page with limit + offset 0', async () => {
+    vi.mocked(apiClient.graphql.homeFeed).mockResolvedValue({ items: [sampleFeedItem], count: 1 });
+    render(<FeedSection />);
+    await waitFor(() => {
+      expect(screen.getByText(samplePost.body)).toBeInTheDocument();
+    });
+    expect(apiClient.graphql.homeFeed).toHaveBeenNthCalledWith(1, {
+      limit: FEED_PAGE_SIZE,
+      offset: 0,
+      includeSelf: true,
+    });
+  });
+
+  test('hides Load more when the first page is shorter than a full page', async () => {
+    vi.mocked(apiClient.graphql.homeFeed).mockResolvedValue(buildFeedPage(3));
+    render(<FeedSection />);
+    await waitFor(() => {
+      expect(screen.getAllByText('PAGEDPOST')).toHaveLength(3);
+    });
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  test('shows Load more when the first page fills the page size', async () => {
+    vi.mocked(apiClient.graphql.homeFeed).mockResolvedValue(buildFeedPage(FEED_PAGE_SIZE));
+    render(<FeedSection />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /load more/i })).toBeInTheDocument();
+    });
+  });
+
+  test('clicking Load more fetches the next offset, appends items, then stops', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.graphql.homeFeed)
+      .mockResolvedValueOnce(buildFeedPage(FEED_PAGE_SIZE, 0))
+      .mockResolvedValueOnce(buildFeedPage(3, FEED_PAGE_SIZE));
+
+    render(<FeedSection />);
+    await waitFor(() => {
+      expect(screen.getAllByText('PAGEDPOST')).toHaveLength(FEED_PAGE_SIZE);
+    });
+
+    await user.click(screen.getByRole('button', { name: /load more/i }));
+
+    // Second page appended (50 + 3 = 53) and the control disappears because the
+    // short page signals the feed is exhausted.
+    await waitFor(() => {
+      expect(screen.getAllByText('PAGEDPOST')).toHaveLength(FEED_PAGE_SIZE + 3);
+    });
+    expect(apiClient.graphql.homeFeed).toHaveBeenNthCalledWith(2, {
+      limit: FEED_PAGE_SIZE,
+      offset: FEED_PAGE_SIZE,
+      includeSelf: true,
+    });
+    expect(screen.queryByRole('button', { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  test('deduplicates overlapping items across pages', async () => {
+    const user = userEvent.setup();
+    // Second page repeats the last id of the first page (post-0049) plus new rows.
+    vi.mocked(apiClient.graphql.homeFeed)
+      .mockResolvedValueOnce(buildFeedPage(FEED_PAGE_SIZE, 0))
+      .mockResolvedValueOnce(buildFeedPage(FEED_PAGE_SIZE, FEED_PAGE_SIZE - 1));
+
+    render(<FeedSection />);
+    await waitFor(() => {
+      expect(screen.getAllByText('PAGEDPOST')).toHaveLength(FEED_PAGE_SIZE);
+    });
+
+    await user.click(screen.getByRole('button', { name: /load more/i }));
+
+    // 50 initial + 50 returned − 1 overlapping (post-0049) = 99 unique items.
+    await waitFor(() => {
+      expect(screen.getAllByText('PAGEDPOST')).toHaveLength(2 * FEED_PAGE_SIZE - 1);
+    });
+  });
+
+  test('keeps items and surfaces an error when Load more fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.graphql.homeFeed)
+      .mockResolvedValueOnce(buildFeedPage(FEED_PAGE_SIZE, 0))
+      .mockRejectedValueOnce(new Error('network failure'));
+
+    render(<FeedSection />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /load more/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /load more/i }));
+
+    // Existing items stay; an error message appears; the control remains for retry.
+    await waitFor(() => {
+      expect(screen.getByText(/could not load more posts/i)).toBeInTheDocument();
+    });
+    expect(screen.getAllByText('PAGEDPOST')).toHaveLength(FEED_PAGE_SIZE);
+    expect(screen.getByRole('button', { name: /load more/i })).toBeInTheDocument();
   });
 });
