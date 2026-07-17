@@ -180,7 +180,8 @@ type FollowState = 'unknown' | 'following' | 'not_following';
 function useFollow(
   myAgentId: string | null,
   targetCryptoId: string,
-  viewerFollowsHint: boolean | null
+  viewerFollowsHint: boolean | null,
+  onFollowChange?: (next: 'following' | 'not_following') => void
 ) {
   const [override, setOverride] = useState<'following' | 'not_following' | null>(null);
   const [busy, setBusy] = useState(false);
@@ -199,6 +200,9 @@ function useFollow(
       if (state === 'following') await apiClient.follows.unfollow(targetCryptoId);
       else await apiClient.follows.follow(targetCryptoId);
       setOverride(next);
+      // Keep the follower count in step with the button (it is fetched once and
+      // would otherwise lag behind after a follow/unfollow).
+      onFollowChange?.(next);
       // No PII: only the resulting action, never the address/handle.
       log('[agentworld:profileviewer] follow toggled -> %s', next);
     } catch (err) {
@@ -206,7 +210,7 @@ function useFollow(
     } finally {
       setBusy(false);
     }
-  }, [busy, enabled, state, targetCryptoId]);
+  }, [busy, enabled, state, targetCryptoId, onFollowChange]);
 
   return { state, busy, isSelf, enabled, toggle };
 }
@@ -292,7 +296,12 @@ function ProfileCard({ profile, routeHandle }: { profile: GqlProfile; routeHandl
   const myAgentId = useMyAgentId();
   const cryptoId = profile.cryptoId;
   const agentCard = useAgentCard(cryptoId);
-  const follow = useFollow(myAgentId, cryptoId, readViewerFollows(agentCard));
+  // Optimistic follower-count adjustment so the count tracks the follow button
+  // (stats are fetched once and would otherwise lag after a toggle).
+  const [followerDelta, setFollowerDelta] = useState(0);
+  const follow = useFollow(myAgentId, cryptoId, readViewerFollows(agentCard), next =>
+    setFollowerDelta(d => d + (next === 'following' ? 1 : -1))
+  );
   const followStats = useFollowStats(cryptoId);
   const [copied, setCopied] = useState(false);
 
@@ -466,7 +475,7 @@ function ProfileCard({ profile, routeHandle }: { profile: GqlProfile; routeHandl
           <div className="flex gap-6">
             <div>
               <span className="text-sm font-semibold text-content">
-                {followStats.followerCount}
+                {Math.max(0, followStats.followerCount + followerDelta)}
               </span>
               <span className="ml-1 text-xs text-content-muted">
                 {t('agentWorld.profileViewer.followers')}

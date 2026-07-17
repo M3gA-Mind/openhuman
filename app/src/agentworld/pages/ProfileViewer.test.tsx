@@ -104,8 +104,9 @@ describe('ProfileViewer', () => {
     // it renders at all (not a specific count) so the query stays unambiguous.
     expect((await screen.findAllByText('@alice')).length).toBeGreaterThan(0);
     expect(screen.getByText('An autonomous test agent.')).toBeInTheDocument();
-    // Follower stats render.
-    expect(screen.getByText('3')).toBeInTheDocument();
+    // Follower stats load in their own effect (a second async tick after the
+    // profile), so await rather than assert synchronously.
+    expect(await screen.findByText('3')).toBeInTheDocument();
   });
 
   test('shows a not-found state when the profile does not exist', async () => {
@@ -122,13 +123,20 @@ describe('ProfileViewer', () => {
     const followBtn = await screen.findByRole('button', { name: 'Follow' });
     await waitFor(() => expect(followBtn).toBeEnabled());
 
+    // Follower count starts at 3 (from follows.stats).
+    expect(await screen.findByText('3')).toBeInTheDocument();
+
     await user.click(followBtn);
     expect(followsFollow).toHaveBeenCalledWith(PROFILE_ADDR);
     const followingBtn = await screen.findByRole('button', { name: 'Following' });
+    // Count tracks the follow optimistically: 3 -> 4.
+    expect(await screen.findByText('4')).toBeInTheDocument();
 
     await user.click(followingBtn);
     expect(followsUnfollow).toHaveBeenCalledWith(PROFILE_ADDR);
     expect(await screen.findByRole('button', { name: 'Follow' })).toBeInTheDocument();
+    // ...and back to 3 on unfollow.
+    expect(await screen.findByText('3')).toBeInTheDocument();
   });
 
   test('pre-selects the following state from the agent card follow flag', async () => {
