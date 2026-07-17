@@ -882,14 +882,43 @@ export default function FeedSection() {
 
   // ── Refetch feed ───────────────────────────────────────────────────────────
 
-  // A fresh compose/stream event invalidates offsets, so reset pagination to the
-  // first page (matches the delete/compose refetch path). `useCallback` keeps a
-  // stable identity for the stream-event effect below.
+  // A fresh compose/delete invalidates offsets, so reset pagination to the first
+  // page. `useCallback` keeps a stable identity for the callers below.
   const refetchFeed = useCallback(() => {
     void apiClient.graphql
       .homeFeed({ limit: FEED_PAGE_SIZE, offset: 0, includeSelf: true })
       .then(result => {
         setFeedState(firstPageFeedState(result));
+      });
+  }, []);
+
+  // Reconcile a live feed event WITHOUT collapsing pagination. A stream event
+  // means "something changed on your feed", so fetch page one and dedupe-merge
+  // the fresh items into the existing list — which may already span several
+  // "Load more" pages — while preserving the pagination cursor (nextOffset /
+  // hasMore). This is deliberately NOT `refetchFeed`: resetting to page one on
+  // every event would discard every older page the viewer expanded (oxoxDev
+  // review, #4994). New items sort to the top; already-loaded pages stay put.
+  const mergeLiveFeedUpdate = useCallback(() => {
+    void apiClient.graphql
+      .homeFeed({ limit: FEED_PAGE_SIZE, offset: 0, includeSelf: true })
+      .then(result => {
+        if (!mountedRef.current) return;
+        const page = Array.isArray(result?.items) ? result.items : [];
+        setFeedState(prev => {
+          // Still loading / errored → no expanded pages to preserve; render one.
+          if (prev.status !== 'ok') return firstPageFeedState(result);
+          const seen = new Set(prev.items.map(item => item.post.postId));
+          const fresh = page.filter(item => !seen.has(item.post.postId));
+          if (fresh.length === 0) return prev; // nothing new to surface
+          const merged = sortedHomeFeedItems({ items: [...prev.items, ...fresh] });
+          log('live feed event merged', { fresh: fresh.length, total: merged.length });
+          return { ...prev, items: merged };
+        });
+      })
+      .catch((err: unknown) => {
+        if (!mountedRef.current) return;
+        log('live feed merge failed: %s', String(err));
       });
   }, []);
 
@@ -929,15 +958,20 @@ export default function FeedSection() {
     };
   }, [myAgentId]);
 
-  // Re-fetch the home feed whenever a new feed stream event arrives. The event
-  // itself isn't inspected — any activity on the viewer's feed just triggers a
-  // refresh (fires on new messages only, not on refetchFeed identity changes).
+  // Reconcile the open feed whenever a new stream event arrives. Key the effect
+  // on the NEWEST message's identity, not `streamMessages.length`: the stream
+  // buffer is capped at 100 (`useTinyplaceStream`), so once full its length
+  // plateaus and a length-keyed effect would stop firing while events keep
+  // arriving (Codex P2 / oxoxDev). The buffer appends a fresh object per event
+  // (`[...prev.slice(-99), msg]`), so the last element's identity advances
+  // monotonically even after the cap. Merge (not reset) so expanded pages stay.
+  const lastStreamMessage =
+    streamMessages.length > 0 ? streamMessages[streamMessages.length - 1] : null;
   useEffect(() => {
-    if (!myAgentId || streamMessages.length === 0) return;
-    log('feed stream event -> refetching home feed');
-    refetchFeed();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamMessages.length]);
+    if (!myAgentId || !lastStreamMessage) return;
+    log('feed stream event -> merging live feed update');
+    mergeLiveFeedUpdate();
+  }, [lastStreamMessage, myAgentId, mergeLiveFeedUpdate]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
