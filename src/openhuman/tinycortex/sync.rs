@@ -326,7 +326,9 @@ pub fn syncable_composio_toolkits() -> &'static [&'static str] {
 /// advertised source of truth; this mirror exists for the sync layer itself.
 pub fn is_composio_toolkit_syncable(toolkit: &str) -> bool {
     let slug = toolkit.trim().to_ascii_lowercase();
-    syncable_composio_toolkits().iter().any(|&s| s == slug.as_str())
+    syncable_composio_toolkits()
+        .iter()
+        .any(|&s| s == slug.as_str())
 }
 
 fn build_pipeline(
@@ -367,7 +369,9 @@ fn build_pipeline(
     // match's fallback while making the syncable set a single, testable gate that
     // stays pinned to the provider registry (#4957).
     if !is_composio_toolkit_syncable(&toolkit) {
-        return Err(format!("tinycortex sync does not support toolkit '{toolkit}'"));
+        return Err(format!(
+            "tinycortex sync does not support toolkit '{toolkit}'"
+        ));
     }
     let composio = composio_config(config)?;
     memory_config.sync.composio = Some(composio.clone());
