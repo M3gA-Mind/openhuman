@@ -353,8 +353,7 @@ fn is_google_gsi_popup(url: &Url) -> bool {
     url.query_pairs().any(|(key, value)| {
         let k = key.to_ascii_lowercase();
         let v = value.to_ascii_lowercase();
-        (k == "ux_mode" && v == "popup")
-            || (k == "display" && v == "popup")
+        ((k == "ux_mode" || k == "display") && v == "popup")
             || k == "gsiwebsdk"
             || (k == "redirect_uri" && v == "gis_transform")
     })
