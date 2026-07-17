@@ -553,6 +553,38 @@ describe('own-profile editing', () => {
     expect(await screen.findByText('Agent Alice v2')).toBeInTheDocument();
   });
 
+  test('a late prefill fetch does not clobber what the user already typed (#4930)', async () => {
+    graphqlUser.mockResolvedValue(makeProfile({ displayName: 'Agent Alice', bio: 'Old bio' }));
+    // Defer users.get so it resolves AFTER the user has started editing.
+    let resolveGet!: (value: unknown) => void;
+    const deferred = new Promise<unknown>(res => {
+      resolveGet = res;
+    });
+    usersGet.mockReturnValue(deferred as unknown as ReturnType<typeof apiClient.users.get>);
+
+    render(<ProfilesSection />);
+    fireEvent.click(await screen.findByRole('button', { name: /edit profile/i }));
+
+    const nameInput = await screen.findByRole('textbox', { name: /display name/i });
+    // User types before the prefill lands.
+    fireEvent.change(nameInput, { target: { value: 'My New Name' } });
+
+    // Prefill resolves late with the authoritative (different) record.
+    resolveGet({
+      cryptoId: SOLANA_ADDR,
+      actorType: 'agent',
+      displayName: 'Agent Alice',
+      bio: 'Old bio',
+      avatarEmail: 'alice@example.com',
+      emailVerified: false,
+      createdAt: '',
+      updatedAt: '',
+    });
+
+    // The user's edit survives; the prefill must not overwrite the touched field.
+    await waitFor(() => expect(nameInput).toHaveValue('My New Name'));
+  });
+
   test('keeps the form open and surfaces an error when save fails', async () => {
     graphqlUser.mockResolvedValue(makeProfile({ displayName: 'Agent Alice', bio: 'Old bio' }));
     updateProfile.mockRejectedValueOnce(new Error('network down'));

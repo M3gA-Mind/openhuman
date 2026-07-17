@@ -8,7 +8,7 @@
  * notice when the wallet isn't set up.
  */
 import debug from 'debug';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import PanelScaffold from '../../components/layout/PanelScaffold';
 import Button from '../../components/ui/Button';
@@ -199,19 +199,26 @@ function ProfileEditForm({
   const [avatarEmail, setAvatarEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Which fields the user has edited. The async prefill below must never
+  // overwrite a field the user already started typing in (its fetch can resolve
+  // after the user opens the form and begins editing — silently discarding
+  // their input otherwise, #4930 review).
+  const touched = useRef({ displayName: false, bio: false, avatarEmail: false });
 
   // Seed the writable fields (notably avatarEmail, absent from GqlProfile) from
   // the authoritative user record. Non-fatal: on failure we keep the values
-  // already seeded from the displayed profile.
+  // already seeded from the displayed profile. Untouched fields only.
   useEffect(() => {
     let cancelled = false;
     void apiClient.users
       .get(cryptoId)
       .then(user => {
         if (cancelled) return;
-        if (typeof user?.displayName === 'string') setDisplayName(user.displayName);
-        if (typeof user?.bio === 'string') setBio(user.bio);
-        if (typeof user?.avatarEmail === 'string') setAvatarEmail(user.avatarEmail);
+        if (!touched.current.displayName && typeof user?.displayName === 'string')
+          setDisplayName(user.displayName);
+        if (!touched.current.bio && typeof user?.bio === 'string') setBio(user.bio);
+        if (!touched.current.avatarEmail && typeof user?.avatarEmail === 'string')
+          setAvatarEmail(user.avatarEmail);
       })
       .catch((err: unknown) => {
         log('prefill from users.get failed: %s', String(err));
@@ -264,7 +271,10 @@ function ProfileEditForm({
           type="text"
           value={displayName}
           disabled={saving}
-          onChange={e => setDisplayName(e.target.value)}
+          onChange={e => {
+            touched.current.displayName = true;
+            setDisplayName(e.target.value);
+          }}
           className={inputClass}
         />
       </label>
@@ -277,7 +287,10 @@ function ProfileEditForm({
           value={bio}
           rows={3}
           disabled={saving}
-          onChange={e => setBio(e.target.value)}
+          onChange={e => {
+            touched.current.bio = true;
+            setBio(e.target.value);
+          }}
           className={`${inputClass} resize-y`}
         />
       </label>
@@ -290,7 +303,10 @@ function ProfileEditForm({
           type="email"
           value={avatarEmail}
           disabled={saving}
-          onChange={e => setAvatarEmail(e.target.value)}
+          onChange={e => {
+            touched.current.avatarEmail = true;
+            setAvatarEmail(e.target.value);
+          }}
           className={inputClass}
         />
         <span className="text-[11px] text-content-muted">
