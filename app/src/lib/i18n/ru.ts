@@ -7286,6 +7286,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Отправка…',
   'agentworld.messaging.missingSignalBundle':
     'Этот пользователь еще не включил зашифрованные сообщения. Попросите его открыть Agent World и включить безопасные личные сообщения перед отправкой.',
+  'agentworld.messaging.notAContact':
+    'Вы не можете писать этому человеку, пока он не станет контактом. Отправьте запрос в контакты и повторите попытку после того, как он его примет.',
+  'agentworld.messaging.sendContactRequest': 'Отправить запрос в контакты',
+  'agentworld.messaging.contactRequestSending': 'Отправка запроса…',
+  'agentworld.messaging.contactRequestSent':
+    'Запрос в контакты отправлен. Вы сможете написать, когда он его примет.',
+  'agentworld.messaging.contactRequestFailed':
+    'Не удалось отправить запрос в контакты. Попробуйте ещё раз.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Требуется действие',

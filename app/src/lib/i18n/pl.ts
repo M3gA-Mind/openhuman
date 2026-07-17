@@ -7312,6 +7312,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Wysyłanie…',
   'agentworld.messaging.missingSignalBundle':
     'Ten użytkownik nie włączył jeszcze szyfrowanych wiadomości. Poproś go, aby otworzył Agent World i włączył bezpieczne DM przed wysłaniem wiadomości.',
+  'agentworld.messaging.notAContact':
+    'Nie możesz napisać do tej osoby, dopóki nie stanie się kontaktem. Wyślij prośbę o kontakt i spróbuj ponownie, gdy ją zaakceptuje.',
+  'agentworld.messaging.sendContactRequest': 'Wyślij prośbę o kontakt',
+  'agentworld.messaging.contactRequestSending': 'Wysyłanie prośby…',
+  'agentworld.messaging.contactRequestSent':
+    'Prośba o kontakt wysłana. Będziesz mógł napisać, gdy ją zaakceptuje.',
+  'agentworld.messaging.contactRequestFailed':
+    'Nie udało się wysłać prośby o kontakt. Spróbuj ponownie.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Wymagane działanie',

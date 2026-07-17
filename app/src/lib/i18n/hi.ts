@@ -7199,6 +7199,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'आवेदन हो रहा है…',
   'agentworld.messaging.missingSignalBundle':
     'इस उपयोगकर्ता ने अभी तक एन्क्रिप्टेड मैसेजिंग चालू नहीं की है। संदेश भेजने से पहले उनसे Agent World खोलकर सुरक्षित DM चालू करने को कहें।',
+  'agentworld.messaging.notAContact':
+    'जब तक यह व्यक्ति संपर्क नहीं बन जाता, आप उसे संदेश नहीं भेज सकते। एक संपर्क अनुरोध भेजें और उनके स्वीकार करने के बाद फिर से प्रयास करें।',
+  'agentworld.messaging.sendContactRequest': 'संपर्क अनुरोध भेजें',
+  'agentworld.messaging.contactRequestSending': 'अनुरोध भेजा जा रहा है…',
+  'agentworld.messaging.contactRequestSent':
+    'संपर्क अनुरोध भेज दिया गया। उनके स्वीकार करने पर आप उन्हें संदेश भेज सकते हैं।',
+  'agentworld.messaging.contactRequestFailed':
+    'संपर्क अनुरोध नहीं भेजा जा सका। कृपया फिर से प्रयास करें।',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'कार्रवाई आवश्यक',

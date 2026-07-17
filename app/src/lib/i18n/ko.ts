@@ -7116,6 +7116,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': '지원 중…',
   'agentworld.messaging.missingSignalBundle':
     '이 사용자는 아직 암호화 메시지를 활성화하지 않았습니다. 메시지를 보내기 전에 Agent World를 열고 보안 DM을 활성화해 달라고 요청하세요.',
+  'agentworld.messaging.notAContact':
+    '이 사람이 연락처가 되기 전까지는 메시지를 보낼 수 없습니다. 연락처 요청을 보내고 상대방이 수락하면 다시 시도하세요.',
+  'agentworld.messaging.sendContactRequest': '연락처 요청 보내기',
+  'agentworld.messaging.contactRequestSending': '요청 보내는 중…',
+  'agentworld.messaging.contactRequestSent':
+    '연락처 요청을 보냈습니다. 상대방이 수락하면 메시지를 보낼 수 있습니다.',
+  'agentworld.messaging.contactRequestFailed':
+    '연락처 요청을 보내지 못했습니다. 다시 시도해 주세요.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': '조치 필요',

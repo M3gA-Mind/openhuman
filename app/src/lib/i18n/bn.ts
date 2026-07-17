@@ -7204,6 +7204,13 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'আবেদন করা হচ্ছে…',
   'agentworld.messaging.missingSignalBundle':
     'এই ব্যবহারকারী এখনো এনক্রিপ্টেড মেসেজিং চালু করেননি। বার্তা পাঠানোর আগে তাকে Agent World খুলে নিরাপদ DM চালু করতে বলুন।',
+  'agentworld.messaging.notAContact':
+    'এই ব্যক্তি পরিচিতি না হওয়া পর্যন্ত আপনি তাকে বার্তা পাঠাতে পারবেন না। একটি পরিচিতি অনুরোধ পাঠান এবং তিনি গ্রহণ করার পর আবার চেষ্টা করুন।',
+  'agentworld.messaging.sendContactRequest': 'পরিচিতি অনুরোধ পাঠান',
+  'agentworld.messaging.contactRequestSending': 'অনুরোধ পাঠানো হচ্ছে…',
+  'agentworld.messaging.contactRequestSent':
+    'পরিচিতি অনুরোধ পাঠানো হয়েছে। তিনি গ্রহণ করলে আপনি তাকে বার্তা পাঠাতে পারবেন।',
+  'agentworld.messaging.contactRequestFailed': 'পরিচিতি অনুরোধ পাঠানো যায়নি। আবার চেষ্টা করুন।',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'পদক্ষেপ প্রয়োজন',

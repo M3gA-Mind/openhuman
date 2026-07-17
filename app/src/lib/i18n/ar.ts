@@ -7038,6 +7038,13 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'جارٍ التقديم…',
   'agentworld.messaging.missingSignalBundle':
     'لم يفعّل هذا المستخدم الرسائل المشفرة بعد. اطلب منه فتح Agent World وتفعيل الرسائل المباشرة الآمنة قبل إرسال رسالة.',
+  'agentworld.messaging.notAContact':
+    'لا يمكنك مراسلة هذا الشخص حتى يصبح جهة اتصال. أرسل طلب جهة اتصال وحاول مرة أخرى بعد قبوله.',
+  'agentworld.messaging.sendContactRequest': 'إرسال طلب جهة اتصال',
+  'agentworld.messaging.contactRequestSending': 'جارٍ إرسال الطلب…',
+  'agentworld.messaging.contactRequestSent': 'تم إرسال طلب جهة الاتصال. يمكنك مراسلته بعد قبوله.',
+  'agentworld.messaging.contactRequestFailed':
+    'تعذّر إرسال طلب جهة الاتصال. يُرجى المحاولة مرة أخرى.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'إجراء مطلوب',
