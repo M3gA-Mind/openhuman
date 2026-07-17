@@ -1,5 +1,5 @@
 import createDebug from 'debug';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import WorktreeActions from '../../../components/worktree/WorktreeActions';
 import { useT } from '../../../lib/i18n/I18nContext';
@@ -499,6 +499,26 @@ export function ToolTimelineBlock({
   // turn), so a plain `useState` already survives every turn it needs to.
   const [userOverrideOpen, setUserOverrideOpen] = useState<boolean | null>(null);
 
+  // Whether *any* entry is currently running — computed here (ahead of the
+  // `entries.length === 0` early return below) purely so the reset effect
+  // that follows is an unconditional hook call every render; order doesn't
+  // matter for this existence check, unlike `latestRunningEntryId` further
+  // down, which needs the seq-sorted order to pick a specific "latest" row.
+  const isRunning = entries.some(entry => entry.status === 'running');
+
+  // Reset the user's manual open/close override on the running→settled edge
+  // (a turn just finished) so the auto-collapse applies to the just-settled
+  // turn. The override only sticks WITHIN a turn — preventing involuntary
+  // mid-feedback collapse (#4942) — not permanently across turns.
+  const prevIsRunningRef = useRef(false);
+  useEffect(() => {
+    if (prevIsRunningRef.current && !isRunning) {
+      log('agent-task-insights: turn settled (running→done), resetting user override');
+      setUserOverrideOpen(null);
+    }
+    prevIsRunningRef.current = isRunning;
+  }, [isRunning]);
+
   if (entries.length === 0) return null;
 
   // The rows + the parent's streaming response — shared by both the collapsible
@@ -513,7 +533,6 @@ export function ToolTimelineBlock({
   // but sorts earlier (e.g. seq [2, 0, 1]) gets treated as "latest" and the
   // wrong step stays expanded/linked in compact chat mode.
   const latestRunningEntryId = [...ordered].reverse().find(entry => entry.status === 'running')?.id;
-  const isRunning = latestRunningEntryId != null;
 
   const titleLabel = (
     <span className="text-[13px] font-medium text-content-muted">
