@@ -54,7 +54,9 @@ export default function TransferHandleModal({
       onClose();
     } catch (err) {
       // Fail closed: keep the dialog open, show why, report no success.
-      debug('[agentworld:identity] handle transfer failed: %s', String(err));
+      // Log only the status (no raw error — it can carry backend/SDK detail);
+      // the raw message still surfaces in the UI via setError.
+      debug('[agentworld:identity] handle transfer failed');
       setError(String(err));
       setSubmitting(false);
     }

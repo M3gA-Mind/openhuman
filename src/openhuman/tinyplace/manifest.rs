@@ -2531,6 +2531,23 @@ pub(crate) fn handle_tinyplace_registry_transfer(params: Map<String, Value>) -> 
 
         let client = global_state().client().await?;
 
+        // Defense-in-depth for a destructive action: a primary (active) handle
+        // must not be transferable. The UI hides the action for primary handles,
+        // but a direct JSON-RPC caller bypasses that — so reject it server-side
+        // too. Transferring the wallet's active identity would orphan it, and a
+        // primary handle is locked from sale, so this keeps the two consistent.
+        let own = client
+            .registry
+            .get(&format!("@{name}"))
+            .await
+            .map_err(map_err)?;
+        if own.identity.as_ref().and_then(|i| i.primary) == Some(true) {
+            log::warn!("{LOG_PREFIX} registry_transfer rejected: handle is primary");
+            return Err(
+                "cannot transfer your primary handle; unassign it as primary first".to_string(),
+            );
+        }
+
         // Resolve the recipient handle to its identity so we have a verified
         // cryptoId + publicKey. An unknown recipient fails closed here. We query
         // with the `@`-prefixed form, matching the proven availability path
@@ -5365,6 +5382,14 @@ mod tests {
     fn transfer_requires_name_and_recipient() {
         // Missing name.
         let err = block_on(handle_tinyplace_registry_transfer(Map::new())).unwrap_err();
+        assert!(err.contains("name"), "got: {err}");
+
+        // A bare "@" normalizes to an empty name and is rejected before any
+        // client/network work (the destructive path never runs).
+        let mut params = Map::new();
+        params.insert("name".to_string(), Value::String("@".to_string()));
+        params.insert("recipient".to_string(), Value::String("bravo".to_string()));
+        let err = block_on(handle_tinyplace_registry_transfer(params)).unwrap_err();
         assert!(err.contains("name"), "got: {err}");
 
         // Name present, recipient missing.

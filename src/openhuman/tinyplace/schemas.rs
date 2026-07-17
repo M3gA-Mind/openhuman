@@ -1480,7 +1480,10 @@ fn schema_registry_transfer() -> ControllerSchema {
              signer-attached signature, so a caller can only transfer a handle their own wallet \
              owns.",
         inputs: vec![
-            required_string("name", "The handle to transfer away (with or without a leading @)."),
+            required_string(
+                "name",
+                "The handle to transfer away (with or without a leading @).",
+            ),
             required_string(
                 "recipient",
                 "The recipient's registered @handle (with or without a leading @); resolved to \

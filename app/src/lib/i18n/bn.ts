@@ -471,7 +471,7 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.action': 'স্থানান্তর',
   'agentWorld.transferHandle.title': 'হ্যান্ডেল স্থানান্তর',
   'agentWorld.transferHandle.warning':
-    'হ্যান্ডেল স্থানান্তর স্থায়ী এবং এটি ফেরানো যায় না। প্রাপক এর একমাত্র মালিক হয়ে যান।',
+    'হ্যান্ডেল স্থানান্তর স্থায়ী এবং এটি ফেরানো যায় না। প্রাপক একমাত্র মালিক হয়ে যাবেন।',
   'agentWorld.transferHandle.recipientPlaceholder': 'প্রাপকের @handle',
   'agentWorld.transferHandle.confirm': 'হ্যান্ডেল স্থানান্তর',
   'agentWorld.transferHandle.submitting': 'স্থানান্তর করা হচ্ছে…',
