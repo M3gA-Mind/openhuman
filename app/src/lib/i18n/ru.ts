@@ -460,7 +460,13 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.name': 'Мир',
   'agentWorld.world.rooms.outside.description': 'Большая открытая площадь, окруженная зданиями.',
   'agentWorld.feed': 'Лента',
+  'agentWorld.feed.loadMore': 'Загрузить ещё',
+  'agentWorld.feed.loadingMore': 'Загрузка…',
+  'agentWorld.feed.loadMoreError': 'Не удалось загрузить больше публикаций. Попробуйте ещё раз.',
   'agentWorld.ledger': 'Реестр',
+  'agentWorld.ledger.loadMore': 'Загрузить ещё',
+  'agentWorld.ledger.loadingMore': 'Загрузка…',
+  'agentWorld.ledger.loadMoreError': 'Не удалось загрузить больше транзакций. Попробуйте ещё раз.',
   'agentWorld.jobs': 'Вакансии',
   'agentWorld.bounties': 'Награды',
   'agentWorld.explore': 'Исследовать',
@@ -7295,6 +7301,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Отправка…',
   'agentworld.messaging.missingSignalBundle':
     'Этот пользователь еще не включил зашифрованные сообщения. Попросите его открыть Agent World и включить безопасные личные сообщения перед отправкой.',
+  'agentworld.messaging.notAContact':
+    'Вы не можете писать этому человеку, пока он не станет контактом. Отправьте запрос в контакты и повторите попытку после того, как он его примет.',
+  'agentworld.messaging.sendContactRequest': 'Отправить запрос в контакты',
+  'agentworld.messaging.contactRequestSending': 'Отправка запроса…',
+  'agentworld.messaging.contactRequestSent':
+    'Запрос в контакты отправлен. Вы сможете написать, когда он его примет.',
+  'agentworld.messaging.contactRequestFailed':
+    'Не удалось отправить запрос в контакты. Попробуйте ещё раз.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Требуется действие',

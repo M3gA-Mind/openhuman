@@ -366,6 +366,28 @@ pub(crate) fn graph_has_outbound_side_effect(graph: &WorkflowGraph) -> bool {
     })
 }
 
+/// Shared Rule 2 enforcement (issue B29, and its `flows_update` compound-bypass
+/// closure): forces `require_approval` to `true` when `graph` contains an
+/// outbound side-effect node, no matter what the caller asked for. Used by both
+/// [`flows_create`] and [`flows_update`] so a flow can never persist
+/// `require_approval: false` alongside a `tool_call` / `http_request` / `code`
+/// node — on create OR on a later edit that *adds* such a node to a
+/// previously-read-only graph.
+///
+/// Returns `(effective_require_approval, was_forced)`: `was_forced` is `true`
+/// only when the caller's own toggle was `false` but a side-effect node
+/// required the override — callers use it to decide whether to emit the
+/// loud "forced to true" log/result note.
+pub(crate) fn enforce_side_effect_approval(
+    graph: &WorkflowGraph,
+    caller_require_approval: bool,
+) -> (bool, bool) {
+    let has_side_effect = graph_has_outbound_side_effect(graph);
+    let effective_require_approval = caller_require_approval || has_side_effect;
+    let was_forced = has_side_effect && !caller_require_approval;
+    (effective_require_approval, was_forced)
+}
+
 /// Whether `graph` has anything for [`flows_run`] to actually *do* — i.e. at
 /// least one non-`trigger` node **reachable from the trigger** by following
 /// directed edges. A graph made of nothing but a bare `trigger` node (or a
@@ -2178,9 +2200,9 @@ pub async fn flows_create(
 
     // Rule 2: any outbound side-effect node forces require_approval, no
     // matter what the caller asked for.
-    let has_side_effect = graph_has_outbound_side_effect(&graph);
-    let effective_require_approval = require_approval || has_side_effect;
-    if has_side_effect && !require_approval {
+    let (effective_require_approval, side_effect_forced) =
+        enforce_side_effect_approval(&graph, require_approval);
+    if side_effect_forced {
         tracing::info!(
             target: "flows",
             %name,
@@ -2218,7 +2240,7 @@ pub async fn flows_create(
              Enable it explicitly (flows_set_enabled) when you are ready for it to fire."
         ));
     }
-    if effective_require_approval && !require_approval {
+    if side_effect_forced {
         logs.push(
             "require_approval forced to true because the graph contains outbound side-effect \
              nodes (tool_call / http_request / code)."
@@ -2638,7 +2660,31 @@ pub async fn flows_update(
         "[flows] flows_update: auto-trigger disarm decision inputs"
     );
 
-    tracing::debug!(target: "flows", flow_id = %id, has_expected = expected_version.is_some(), "[flows] flows_update: persisting changes");
+    // Rule 2 analogue (compound-bypass closure): re-apply the same outbound
+    // side-effect check `flows_create` applies on save — via the shared
+    // [`enforce_side_effect_approval`] helper — so an update that *adds* a
+    // tool_call/http_request/code node to a previously read-only graph can
+    // never persist `require_approval: false` just because the update path
+    // trusted the caller's toggle unconditionally.
+    let (effective_require_approval, side_effect_forced) =
+        enforce_side_effect_approval(&graph, new_require_approval);
+    if side_effect_forced {
+        tracing::info!(
+            target: "flows",
+            flow_id = %id,
+            "[flows] flows_update: forcing require_approval=true — graph contains outbound \
+             side-effect node(s) (tool_call / http_request / code)"
+        );
+    }
+
+    tracing::debug!(
+        target: "flows",
+        flow_id = %id,
+        has_expected = expected_version.is_some(),
+        require_approval = effective_require_approval,
+        side_effect_forced,
+        "[flows] flows_update: persisting changes"
+    );
     // `enabled_override` is threaded into the same guarded UPDATE as the
     // graph/name/require_approval write (see `store::update_flow_graph`)
     // rather than a follow-up `flows_set_enabled` call, so the disarm can
@@ -2648,7 +2694,7 @@ pub async fn flows_update(
         id,
         new_name,
         graph,
-        new_require_approval,
+        effective_require_approval,
         enabled_override,
         expected_version.as_deref(),
     )
@@ -2680,6 +2726,13 @@ pub async fn flows_update(
             "Flow was auto-disabled because its trigger changed from manual to automatic \
              (schedule / app_event / webhook). Enable it explicitly (flows_set_enabled) once \
              you've reviewed the new trigger."
+                .to_string(),
+        );
+    }
+    if side_effect_forced {
+        logs.push(
+            "require_approval forced to true because the graph contains outbound side-effect \
+             nodes (tool_call / http_request / code)."
                 .to_string(),
         );
     }

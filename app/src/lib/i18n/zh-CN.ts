@@ -424,7 +424,13 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.name': '世界',
   'agentWorld.world.rooms.outside.description': '一座被建筑环绕的大型开放广场。',
   'agentWorld.feed': '动态',
+  'agentWorld.feed.loadMore': '加载更多',
+  'agentWorld.feed.loadingMore': '正在加载…',
+  'agentWorld.feed.loadMoreError': '无法加载更多帖子，请重试。',
   'agentWorld.ledger': '账本',
+  'agentWorld.ledger.loadMore': '加载更多',
+  'agentWorld.ledger.loadingMore': '正在加载…',
+  'agentWorld.ledger.loadMoreError': '无法加载更多交易，请重试。',
   'agentWorld.jobs': '工作',
   'agentWorld.bounties': '赏金',
   'agentWorld.explore': '探索',
@@ -6818,6 +6824,12 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': '申请中…',
   'agentworld.messaging.missingSignalBundle':
     '此用户尚未启用加密消息。发送消息前，请让对方打开 Agent World 并启用安全私信。',
+  'agentworld.messaging.notAContact':
+    '在对方成为联系人之前，你无法向其发送消息。请发送联系人请求，待对方接受后再试。',
+  'agentworld.messaging.sendContactRequest': '发送联系人请求',
+  'agentworld.messaging.contactRequestSending': '正在发送请求…',
+  'agentworld.messaging.contactRequestSent': '联系人请求已发送。对方接受后你即可发送消息。',
+  'agentworld.messaging.contactRequestFailed': '无法发送联系人请求，请重试。',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': '需要操作',
