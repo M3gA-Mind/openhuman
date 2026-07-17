@@ -146,8 +146,25 @@ impl Tool for MemoryHybridSearchTool {
         )
         .map_err(|e| anyhow::anyhow!("memory_hybrid_search: open store failed: {e}"))?;
 
+        // Self-echo guard (agent-agnostic, mirrors `UnifiedMemory::recall`):
+        // exclude documents auto-saved for the ambient chat thread (set by
+        // the web channel around the turn) so a search issued mid-turn
+        // never retrieves the very request that triggered it. `None`
+        // outside a chat turn — unchanged behavior for cron/CLI/tests.
+        let exclude_session_id =
+            crate::openhuman::inference::provider::thread_context::current_thread_id();
+        if let Some(ref excluded) = exclude_session_id {
+            log::debug!(
+                "[tool][memory_hybrid_search] applying same-session exclusion exclude_session_id={excluded}"
+            );
+        }
         let hits = memory
-            .query_namespace_hits(&parsed.namespace, &parsed.query, limit)
+            .query_namespace_hits_excluding_session(
+                &parsed.namespace,
+                &parsed.query,
+                limit,
+                exclude_session_id.as_deref(),
+            )
             .await
             .map_err(|e| anyhow::anyhow!("memory_hybrid_search: query failed: {e}"))?;
 
