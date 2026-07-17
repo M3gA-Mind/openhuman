@@ -28,8 +28,14 @@
 use std::collections::HashSet;
 use std::sync::Mutex;
 
-use crate::openhuman::composio::providers::toolkit_from_slug;
 use crate::openhuman::config::Config;
+// The live-contract lookup is sourced from the flows/tinyflows caps catalog,
+// which is compiled out when the `flows` feature is off (#4912). The gate then
+// simply has no fuller contract to surface and always proceeds, so the import
+// and the lookup/format helpers below are gated in lockstep.
+#[cfg(feature = "flows")]
+use crate::openhuman::composio::providers::toolkit_from_slug;
+#[cfg(feature = "flows")]
 use crate::openhuman::tinyflows::caps::{fetch_live_toolkit_catalog, ToolContract};
 
 /// Per-agent-turn record of which action contracts have already been surfaced
@@ -95,32 +101,39 @@ pub async fn consult(gate: &ContractGate, config: &Config, action_slug: &str) ->
         return GateDecision::Proceed;
     }
 
-    match lookup_contract(config, action_slug).await {
-        Some(contract) => {
-            tracing::debug!(
-                target: "composio",
-                slug = %action_slug,
-                has_input_schema = contract.input_schema.is_some(),
-                required_arg_count = contract.required_args.len(),
-                "[composio][contract-gate] surfacing full contract before first execute"
-            );
-            GateDecision::Surface(format_contract(action_slug, &contract))
-        }
-        None => {
-            tracing::debug!(
-                target: "composio",
-                slug = %action_slug,
-                "[composio][contract-gate] no live contract available; proceeding without gating"
-            );
-            GateDecision::Proceed
-        }
+    // The live catalog lives in the flows/tinyflows caps layer. With `flows`
+    // compiled out there is no catalog source, so the gate can never surface a
+    // fuller contract and always proceeds (the per-action tool still runs; it
+    // just does not get the pre-execute contract nudge).
+    #[cfg(feature = "flows")]
+    if let Some(contract) = lookup_contract(config, action_slug).await {
+        tracing::debug!(
+            target: "composio",
+            slug = %action_slug,
+            has_input_schema = contract.input_schema.is_some(),
+            required_arg_count = contract.required_args.len(),
+            "[composio][contract-gate] surfacing full contract before first execute"
+        );
+        return GateDecision::Surface(format_contract(action_slug, &contract));
     }
+
+    // `config` is only consulted through the flows-gated lookup above.
+    #[cfg(not(feature = "flows"))]
+    let _ = config;
+
+    tracing::debug!(
+        target: "composio",
+        slug = %action_slug,
+        "[composio][contract-gate] no live contract available; proceeding without gating"
+    );
+    GateDecision::Proceed
 }
 
 /// Resolve the full live contract for `action_slug` from the process-cached
 /// live toolkit catalog. Returns `None` when the toolkit can't be derived, the
 /// catalog can't be fetched (unconfigured / offline — `fetch_live_toolkit_catalog`
 /// degrades to `None`), or the action isn't in it.
+#[cfg(feature = "flows")]
 async fn lookup_contract(config: &Config, action_slug: &str) -> Option<ToolContract> {
     let toolkit = toolkit_from_slug(action_slug)?;
     let contracts = fetch_live_toolkit_catalog(config, &toolkit).await?;
@@ -131,6 +144,7 @@ async fn lookup_contract(config: &Config, action_slug: &str) -> Option<ToolContr
 
 /// Render the contract into a compact instruction for the model. Contains only
 /// the provider's own action description + JSON schema — no user data / PII.
+#[cfg(feature = "flows")]
 fn format_contract(action_slug: &str, contract: &ToolContract) -> String {
     let mut out = format!(
         "Before running `{action_slug}`, read its full contract below and then re-issue \
@@ -176,6 +190,8 @@ fn format_contract(action_slug: &str, contract: &ToolContract) -> String {
     out
 }
 
-#[cfg(test)]
+// The gate's unit tests seed the flows/tinyflows live-catalog cache, so they
+// only compile and run with the `flows` feature on.
+#[cfg(all(test, feature = "flows"))]
 #[path = "contract_gate_tests.rs"]
 mod tests;

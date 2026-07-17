@@ -520,6 +520,9 @@ mod tests {
         );
     }
 
+    // Seeds the flows/tinyflows live-catalog cache, so it only builds with the
+    // `flows` feature on (the gate degrades to a no-op when flows is off).
+    #[cfg(feature = "flows")]
     #[tokio::test]
     async fn contract_gate_surfaces_full_contract_then_proceeds_on_retry() {
         // Regression for #4853: the FIRST per-action execute this turn must
