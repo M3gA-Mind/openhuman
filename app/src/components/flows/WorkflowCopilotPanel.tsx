@@ -157,6 +157,7 @@ export default function WorkflowCopilotPanel({
   const {
     threadId,
     sending,
+    turnActive,
     proposal,
     capped,
     displayMessages,
@@ -529,6 +530,7 @@ export default function WorkflowCopilotPanel({
             <ToolTimelineBlock
               entries={toolTimeline}
               liveResponse={hasLiveText ? liveResponseText : undefined}
+              turnActive={turnActive}
             />
           </div>
         )}

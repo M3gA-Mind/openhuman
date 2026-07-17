@@ -581,6 +581,148 @@ describe('ToolTimelineBlock — agentic task insights surface', () => {
     });
   });
 
+  // #5008 shipped the reset-on-settle fix using the `isRunning` true→false
+  // edge, but that edge fires once PER SUB-AGENT within a single turn (each
+  // subagent_spawned/subagent_completed pair toggles `isRunning`), not once
+  // per turn — so on a multi-sub-agent turn the panel's override reset (and
+  // its auto-collapse) fired repeatedly, flickering the panel open/closed
+  // as each sub-agent came and went. `turnActive` — sourced from
+  // `inferenceTurnLifecycleByThread`, the same lifecycle the chat threads
+  // page uses for `isSending` — transitions exactly once per USER TURN, so
+  // passing it in makes the reset track the turn instead of any single
+  // sub-agent.
+  describe('with turnActive prop', () => {
+    it('does not reset the user override while turnActive stays true across multiple isRunning toggles, only resetting (and auto-collapsing) when turnActive itself goes false', () => {
+      const subagentARunning: ToolTimelineEntry[] = [
+        { id: 'a', name: 'subagent:researcher', round: 1, seq: 0, status: 'running' },
+      ];
+      const { rerender } = renderInStore(
+        <ToolTimelineBlock entries={subagentARunning} turnActive />
+      );
+      // Sub-agent A running, turn active → auto-open (no override yet).
+      expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
+
+      // Sub-agent A settles: `isRunning` flips true→false, but the whole
+      // TURN is still active. Pre-fix this alone would have reset the
+      // (nonexistent, still null) override — here there's nothing to reset,
+      // but the auto rule alone already collapses it (autoOpen tracks
+      // `isRunning`, unchanged by this fix).
+      const subagentASettled: ToolTimelineEntry[] = [
+        { id: 'a', name: 'subagent:researcher', round: 1, seq: 0, status: 'success' },
+      ];
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={subagentASettled} turnActive />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).not.toHaveAttribute('open');
+
+      // The user manually expands it while the turn is still in flight.
+      fireEvent.click(screen.getByText('Agentic task insights'));
+      expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
+
+      // Sub-agent B spawns: `isRunning` flips false→true again. Still one
+      // turn (`turnActive` unchanged) — the user's override must hold.
+      const subagentBRunning: ToolTimelineEntry[] = [
+        ...subagentASettled,
+        { id: 'b', name: 'subagent:coder', round: 1, seq: 1, status: 'running' },
+      ];
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={subagentBRunning} turnActive />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
+
+      // Sub-agent B settles: `isRunning` flips true→false a second time
+      // within the SAME turn. This is exactly the edge that used to reset
+      // the override and cause the flicker (#5008 regression) — with
+      // `turnActive` supplied it must NOT reset; the user's expand sticks.
+      const subagentBSettled: ToolTimelineEntry[] = [
+        ...subagentASettled,
+        { id: 'b', name: 'subagent:coder', round: 1, seq: 1, status: 'success' },
+      ];
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={subagentBSettled} turnActive />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
+
+      // Only when the TURN itself ends (`turnActive` true→false) does the
+      // override reset — the panel then auto-collapses since the run is done.
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={subagentBSettled} turnActive={false} />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).not.toHaveAttribute('open');
+    });
+
+    it('keeps a mid-turn manual collapse intact across a sub-agent settling, only reopening per the auto rule once turnActive ends', () => {
+      const subagentARunning: ToolTimelineEntry[] = [
+        { id: 'a', name: 'subagent:researcher', round: 1, seq: 0, status: 'running' },
+      ];
+      const { rerender } = renderInStore(
+        <ToolTimelineBlock entries={subagentARunning} turnActive />
+      );
+      expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
+
+      // The user explicitly collapses it while sub-agent A is still running.
+      fireEvent.click(screen.getByText('Agentic task insights'));
+      expect(screen.getByTestId('agent-task-insights')).not.toHaveAttribute('open');
+
+      // Sub-agent A settles, sub-agent B spawns and settles too — all within
+      // the same turn (`turnActive` stays true throughout). None of these
+      // `isRunning` toggles may reopen the panel against the user's choice.
+      const afterSubagentB: ToolTimelineEntry[] = [
+        { id: 'a', name: 'subagent:researcher', round: 1, seq: 0, status: 'success' },
+        { id: 'b', name: 'subagent:coder', round: 1, seq: 1, status: 'running' },
+      ];
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={afterSubagentB} turnActive />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).not.toHaveAttribute('open');
+
+      const bothSettled: ToolTimelineEntry[] = [
+        { id: 'a', name: 'subagent:researcher', round: 1, seq: 0, status: 'success' },
+        { id: 'b', name: 'subagent:coder', round: 1, seq: 1, status: 'success' },
+      ];
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={bothSettled} turnActive />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).not.toHaveAttribute('open');
+
+      // The turn ends — override resets; auto rule (settled, not running)
+      // keeps it collapsed, same outcome but for the right reason now.
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={bothSettled} turnActive={false} />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).not.toHaveAttribute('open');
+
+      // Both sides of that transition read "collapsed", which a STALE `false`
+      // override would also produce — prove the override actually reset (not
+      // just that it happened to still agree with the auto rule) by starting
+      // a brand-new turn: the auto rule alone (isRunning) should now govern,
+      // reopening the panel with no further user interaction.
+      const newTurnRunning: ToolTimelineEntry[] = [
+        { id: 'c', name: 'subagent:researcher', round: 2, seq: 0, status: 'running' },
+      ];
+      rerender(
+        <Provider store={store}>
+          <ToolTimelineBlock entries={newTurnRunning} turnActive />
+        </Provider>
+      );
+      expect(screen.getByTestId('agent-task-insights')).toHaveAttribute('open');
+    });
+  });
+
   it('renders the tool result output inside the expanded row', () => {
     const entries: ToolTimelineEntry[] = [
       {

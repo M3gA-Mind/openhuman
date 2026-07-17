@@ -1983,6 +1983,15 @@ const Conversations = ({
             entries={selectedThreadToolTimeline}
             onViewDetails={openScopedDetail}
             onViewWholeRun={openWholeRunSource}
+            // Reuse `isSending` rather than a raw `in` membership check on
+            // `inferenceTurnLifecycleByThread`: that map also carries
+            // `'interrupted'` entries (a turn that crashed mid-flight in a
+            // PRIOR core process, written by `hydrateRuntimeFromSnapshot` on
+            // cold boot) which have no live driver and must NOT read as an
+            // active turn, or stale disclosure state leaks into a later
+            // retry. `isSending` already excludes it (only `'started'` /
+            // `'streaming'`, same as this component's own live-turn checks).
+            turnActive={isSending}
           />
         ) : (
           // Transcript-only turn: reasoning/narration was streamed but no tool
