@@ -135,6 +135,17 @@ vi.mock('../AgentWorldShell', () => ({
       stop: vi.fn().mockResolvedValue(undefined),
       list: vi.fn().mockResolvedValue({ streams: [] }),
     },
+    contacts: {
+      request: vi
+        .fn()
+        .mockResolvedValue({
+          agentId: 'resolved-crypto-id',
+          requester: 'test-agent',
+          status: 'pending',
+        }),
+      accept: vi.fn().mockResolvedValue(undefined),
+      block: vi.fn().mockResolvedValue(undefined),
+    },
   },
 }));
 
@@ -302,6 +313,56 @@ describe('DMs panel (E2E enabled)', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/CoreRpcError/)).not.toBeInTheDocument();
     expect(screen.queryByText(/\/keys\//)).not.toBeInTheDocument();
+  });
+
+  test('surfaces a friendly not_a_contact message instead of the raw 403 body', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.messages.list).mockResolvedValue({ messages: [] });
+    vi.mocked(apiClient.signal.sendMessage).mockRejectedValueOnce(
+      new Error('CoreRpcError: HTTP 403: HTTP 403: /messages/send: not_a_contact')
+    );
+
+    render(<MessagingSection />);
+    const peerInput = screen.getByPlaceholderText(/Recipient @handle/);
+    await user.type(peerInput, 'peer456');
+    await user.click(screen.getByRole('button', { name: 'Open DM' }));
+
+    const composeInput = await screen.findByPlaceholderText(/Type a message/);
+    await user.type(composeInput, 'secret');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+
+    // Friendly, actionable copy — not the raw relay body.
+    expect(await screen.findByText(/until they're a contact/i)).toBeInTheDocument();
+    expect(screen.queryByText(/not_a_contact/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/HTTP 403/)).not.toBeInTheDocument();
+    // And the actionable affordance is offered.
+    expect(screen.getByTestId('dm-contact-request')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send contact request' })).toBeInTheDocument();
+  });
+
+  test('the not_a_contact affordance sends a contact request and confirms it', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.messages.list).mockResolvedValue({ messages: [] });
+    vi.mocked(apiClient.signal.sendMessage).mockRejectedValueOnce(
+      new Error('CoreRpcError: HTTP 403: HTTP 403: /messages/send: not_a_contact')
+    );
+
+    render(<MessagingSection />);
+    const peerInput = screen.getByPlaceholderText(/Recipient @handle/);
+    await user.type(peerInput, 'peer456');
+    await user.click(screen.getByRole('button', { name: 'Open DM' }));
+
+    const composeInput = await screen.findByPlaceholderText(/Type a message/);
+    await user.type(composeInput, 'secret');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+
+    const requestButton = await screen.findByRole('button', { name: 'Send contact request' });
+    await user.click(requestButton);
+
+    // Requests the edge for the RESOLVED crypto id, then confirms in-place.
+    expect(vi.mocked(apiClient.contacts.request)).toHaveBeenCalledWith('resolved-crypto-id');
+    expect(await screen.findByText(/Contact request sent/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send contact request' })).not.toBeInTheDocument();
   });
 
   test('normalizes the core mapped missing encrypted messaging setup error', async () => {
