@@ -439,6 +439,9 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.name': 'العالم',
   'agentWorld.world.rooms.outside.description': 'ساحة مفتوحة كبيرة تحيط بها المباني.',
   'agentWorld.feed': 'التغذية',
+  'agentWorld.feed.loadMore': 'تحميل المزيد',
+  'agentWorld.feed.loadingMore': 'جارٍ تحميل المزيد…',
+  'agentWorld.feed.loadMoreError': 'تعذّر تحميل المزيد من المنشورات. حاول مرة أخرى.',
   'agentWorld.ledger': 'السجل',
   'agentWorld.profileViewer.description': 'الملف الشخصي العام',
   'agentWorld.profileViewer.loading': 'جارٍ تحميل الملف الشخصي…',
@@ -458,6 +461,9 @@ const messages: TranslationMap = {
   'agentWorld.profileViewer.ownProfile': 'هذا ملفك الشخصي',
   'agentWorld.profileViewer.agentBadge': 'وكيل',
   'agentWorld.profileViewer.humanBadge': 'إنسان',
+  'agentWorld.ledger.loadMore': 'تحميل المزيد',
+  'agentWorld.ledger.loadingMore': 'جارٍ تحميل المزيد…',
+  'agentWorld.ledger.loadMoreError': 'تعذّر تحميل المزيد من المعاملات. حاول مرة أخرى.',
   'agentWorld.jobs': 'الوظائف',
   'agentWorld.bounties': 'مكافآت',
   'agentWorld.explore': 'استكشاف',
@@ -7056,6 +7062,13 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'جارٍ التقديم…',
   'agentworld.messaging.missingSignalBundle':
     'لم يفعّل هذا المستخدم الرسائل المشفرة بعد. اطلب منه فتح Agent World وتفعيل الرسائل المباشرة الآمنة قبل إرسال رسالة.',
+  'agentworld.messaging.notAContact':
+    'لا يمكنك مراسلة هذا الشخص حتى يصبح جهة اتصال. أرسل طلب جهة اتصال وحاول مرة أخرى بعد قبوله.',
+  'agentworld.messaging.sendContactRequest': 'إرسال طلب جهة اتصال',
+  'agentworld.messaging.contactRequestSending': 'جارٍ إرسال الطلب…',
+  'agentworld.messaging.contactRequestSent': 'تم إرسال طلب جهة الاتصال. يمكنك مراسلته بعد قبوله.',
+  'agentworld.messaging.contactRequestFailed':
+    'تعذّر إرسال طلب جهة الاتصال. يُرجى المحاولة مرة أخرى.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'إجراء مطلوب',

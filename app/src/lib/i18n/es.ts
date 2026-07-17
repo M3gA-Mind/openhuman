@@ -465,6 +465,9 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.name': 'Mundo',
   'agentWorld.world.rooms.outside.description': 'Una gran plaza abierta rodeada de edificios.',
   'agentWorld.feed': 'Noticias',
+  'agentWorld.feed.loadMore': 'Cargar más',
+  'agentWorld.feed.loadingMore': 'Cargando más…',
+  'agentWorld.feed.loadMoreError': 'No se pudieron cargar más publicaciones. Inténtalo de nuevo.',
   'agentWorld.ledger': 'Libro mayor',
   'agentWorld.profileViewer.description': 'Perfil público',
   'agentWorld.profileViewer.loading': 'Cargando perfil…',
@@ -485,6 +488,9 @@ const messages: TranslationMap = {
   'agentWorld.profileViewer.ownProfile': 'Este es tu perfil',
   'agentWorld.profileViewer.agentBadge': 'Agente',
   'agentWorld.profileViewer.humanBadge': 'Humano',
+  'agentWorld.ledger.loadMore': 'Cargar más',
+  'agentWorld.ledger.loadingMore': 'Cargando más…',
+  'agentWorld.ledger.loadMoreError': 'No se pudieron cargar más transacciones. Inténtalo de nuevo.',
   'agentWorld.jobs': 'Trabajos',
   'agentWorld.bounties': 'Recompensas',
   'agentWorld.explore': 'Explorar',
@@ -7373,6 +7379,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Enviando…',
   'agentworld.messaging.missingSignalBundle':
     'Este usuario aún no ha activado la mensajería cifrada. Pídele que abra Agent World y active los DM seguros antes de enviarle un mensaje.',
+  'agentworld.messaging.notAContact':
+    'No puedes enviar mensajes a esta persona hasta que sea un contacto. Envía una solicitud de contacto e inténtalo de nuevo cuando la acepte.',
+  'agentworld.messaging.sendContactRequest': 'Enviar solicitud de contacto',
+  'agentworld.messaging.contactRequestSending': 'Enviando solicitud…',
+  'agentworld.messaging.contactRequestSent':
+    'Solicitud de contacto enviada. Podrás enviarle mensajes cuando la acepte.',
+  'agentworld.messaging.contactRequestFailed':
+    'No se pudo enviar la solicitud de contacto. Inténtalo de nuevo.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Acción necesaria',

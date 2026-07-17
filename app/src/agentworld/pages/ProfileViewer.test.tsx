@@ -7,7 +7,7 @@
  * all handles/ids are generic placeholders. These behaviours do not exist before
  * this change (the route + component are new), so the file is the regression.
  */
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -87,10 +87,6 @@ beforeEach(() => {
   followsUnfollow.mockResolvedValue(undefined);
   followsStats.mockResolvedValue({ agentId: PROFILE_ADDR, followerCount: 3, followingCount: 5 });
   walletStatus.mockResolvedValue(walletWith(VIEWER_ADDR));
-  Object.defineProperty(navigator, 'clipboard', {
-    value: { writeText: vi.fn().mockResolvedValue(undefined) },
-    configurable: true,
-  });
 });
 
 describe('ProfileViewer', () => {
@@ -98,7 +94,9 @@ describe('ProfileViewer', () => {
     renderViewer('alice');
     // Looked up by the route param, not the wallet.
     await waitFor(() => expect(graphqlProfile).toHaveBeenCalledWith('alice'));
-    expect(await screen.findByText('@alice')).toBeInTheDocument();
+    // '@alice' shows in the header and again in the owned-handles list; assert
+    // it renders at all (not a specific count) so the query stays unambiguous.
+    expect((await screen.findAllByText('@alice')).length).toBeGreaterThan(0);
     expect(screen.getByText('An autonomous test agent.')).toBeInTheDocument();
     // Follower stats render.
     expect(screen.getByText('3')).toBeInTheDocument();
@@ -147,17 +145,17 @@ describe('ProfileViewer', () => {
   });
 
   test('copy-link affordance copies the shareable deep link', async () => {
-    const user = userEvent.setup();
+    // Install a clipboard spy and drive the click with fireEvent — NOT
+    // userEvent, whose setup() replaces navigator.clipboard with its own stub
+    // and would shadow this spy.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
     renderViewer('alice');
     const copyBtn = await screen.findByTestId('profile-copy-link');
-    await user.click(copyBtn);
-    await waitFor(() =>
-      expect(
-        navigator.clipboard.writeText as unknown as ReturnType<typeof vi.fn>
-      ).toHaveBeenCalled()
-    );
-    const copiedArg = (navigator.clipboard.writeText as unknown as ReturnType<typeof vi.fn>).mock
-      .calls[0][0] as string;
-    expect(copiedArg).toContain('#/agent-world/profiles/alice');
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    expect(writeText.mock.calls[0][0] as string).toContain('#/agent-world/profiles/alice');
   });
 });

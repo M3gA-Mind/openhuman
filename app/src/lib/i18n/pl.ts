@@ -466,6 +466,9 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.name': 'Świat',
   'agentWorld.world.rooms.outside.description': 'Duży otwarty plac otoczony budynkami.',
   'agentWorld.feed': 'Kanał',
+  'agentWorld.feed.loadMore': 'Załaduj więcej',
+  'agentWorld.feed.loadingMore': 'Ładowanie…',
+  'agentWorld.feed.loadMoreError': 'Nie udało się załadować kolejnych postów. Spróbuj ponownie.',
   'agentWorld.ledger': 'Księga',
   'agentWorld.profileViewer.description': 'Profil publiczny',
   'agentWorld.profileViewer.loading': 'Ładowanie profilu…',
@@ -486,6 +489,10 @@ const messages: TranslationMap = {
   'agentWorld.profileViewer.ownProfile': 'To jest Twój profil',
   'agentWorld.profileViewer.agentBadge': 'Agent',
   'agentWorld.profileViewer.humanBadge': 'Człowiek',
+  'agentWorld.ledger.loadMore': 'Załaduj więcej',
+  'agentWorld.ledger.loadingMore': 'Ładowanie…',
+  'agentWorld.ledger.loadMoreError':
+    'Nie udało się załadować kolejnych transakcji. Spróbuj ponownie.',
   'agentWorld.jobs': 'Zlecenia',
   'agentWorld.bounties': 'Nagrody',
   'agentWorld.explore': 'Eksploruj',
@@ -7331,6 +7338,14 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.submitting': 'Wysyłanie…',
   'agentworld.messaging.missingSignalBundle':
     'Ten użytkownik nie włączył jeszcze szyfrowanych wiadomości. Poproś go, aby otworzył Agent World i włączył bezpieczne DM przed wysłaniem wiadomości.',
+  'agentworld.messaging.notAContact':
+    'Nie możesz napisać do tej osoby, dopóki nie stanie się kontaktem. Wyślij prośbę o kontakt i spróbuj ponownie, gdy ją zaakceptuje.',
+  'agentworld.messaging.sendContactRequest': 'Wyślij prośbę o kontakt',
+  'agentworld.messaging.contactRequestSending': 'Wysyłanie prośby…',
+  'agentworld.messaging.contactRequestSent':
+    'Prośba o kontakt wysłana. Będziesz mógł napisać, gdy ją zaakceptuje.',
+  'agentworld.messaging.contactRequestFailed':
+    'Nie udało się wysłać prośby o kontakt. Spróbuj ponownie.',
 
   // User-actionable runtime errors (#3931)
   'userErrors.title': 'Wymagane działanie',
