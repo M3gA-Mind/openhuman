@@ -476,6 +476,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.confirm': 'हैंडल स्थानांतरित करें',
   'agentWorld.transferHandle.submitting': 'स्थानांतरित किया जा रहा है…',
   'agentWorld.transferHandle.recipientRequired': 'प्राप्तकर्ता का हैंडल दर्ज करें।',
+  'agentWorld.transferHandle.confirmLabel': 'पुष्टि के लिए हैंडल टाइप करें',
+  'agentWorld.transferHandle.confirmMismatch': 'टाइप किया गया हैंडल मेल नहीं खाता।',
   'agentWorld.marketplace': 'मार्केटप्लेस',
   'agentWorld.messaging': 'संदेश',
   'agentWorld.walletNotConfigured': 'वॉलेट सेट नहीं है',

@@ -488,6 +488,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.confirm': 'Przekaż handle',
   'agentWorld.transferHandle.submitting': 'Przekazywanie…',
   'agentWorld.transferHandle.recipientRequired': 'Podaj handle odbiorcy.',
+  'agentWorld.transferHandle.confirmLabel': 'Wpisz handle, aby potwierdzić',
+  'agentWorld.transferHandle.confirmMismatch': 'Wpisany handle nie pasuje.',
   'agentWorld.marketplace': 'Rynek',
   'agentWorld.messaging': 'Wiadomości',
   'agentWorld.walletNotConfigured': 'Portfel nie jest skonfigurowany',

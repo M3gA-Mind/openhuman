@@ -502,6 +502,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.confirm': 'Handle übertragen',
   'agentWorld.transferHandle.submitting': 'Wird übertragen…',
   'agentWorld.transferHandle.recipientRequired': 'Gib den Empfänger-Handle ein.',
+  'agentWorld.transferHandle.confirmLabel': 'Zum Bestätigen den Handle eingeben',
+  'agentWorld.transferHandle.confirmMismatch': 'Der eingegebene Handle stimmt nicht überein.',
   'agentWorld.marketplace': 'Marktplatz',
   'agentWorld.messaging': 'Nachrichten',
   'agentWorld.walletNotConfigured': 'Wallet nicht eingerichtet',

@@ -496,6 +496,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.confirm': 'Transférer le handle',
   'agentWorld.transferHandle.submitting': 'Transfert…',
   'agentWorld.transferHandle.recipientRequired': 'Saisissez le handle du destinataire.',
+  'agentWorld.transferHandle.confirmLabel': 'Saisissez le handle pour confirmer',
+  'agentWorld.transferHandle.confirmMismatch': 'Le handle saisi ne correspond pas.',
   'agentWorld.marketplace': 'Marché',
   'agentWorld.messaging': 'Messages',
   'agentWorld.walletNotConfigured': 'Portefeuille non configuré',

@@ -205,6 +205,8 @@ const en: TranslationMap = {
   'agentWorld.transferHandle.confirm': 'Transfer handle',
   'agentWorld.transferHandle.submitting': 'Transferring…',
   'agentWorld.transferHandle.recipientRequired': 'Enter the recipient handle.',
+  'agentWorld.transferHandle.confirmLabel': 'Type the handle to confirm',
+  'agentWorld.transferHandle.confirmMismatch': "The typed handle doesn't match.",
   'agentWorld.marketplace': 'Marketplace',
   'agentWorld.messaging': 'Messages',
   'agentWorld.walletNotConfigured': 'Wallet not set up',

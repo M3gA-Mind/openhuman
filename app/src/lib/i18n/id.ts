@@ -482,6 +482,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.confirm': 'Pindahkan handle',
   'agentWorld.transferHandle.submitting': 'Memindahkan…',
   'agentWorld.transferHandle.recipientRequired': 'Masukkan handle penerima.',
+  'agentWorld.transferHandle.confirmLabel': 'Ketik handle untuk mengonfirmasi',
+  'agentWorld.transferHandle.confirmMismatch': 'Handle yang diketik tidak cocok.',
   'agentWorld.marketplace': 'Pasar',
   'agentWorld.messaging': 'Pesan',
   'agentWorld.walletNotConfigured': 'Dompet belum diatur',

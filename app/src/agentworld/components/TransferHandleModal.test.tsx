@@ -42,12 +42,30 @@ describe('TransferHandleModal', () => {
     expect(screen.getByTestId('transfer-handle-confirm')).toBeDisabled();
   });
 
+  test('keeps confirm disabled until the exact handle is re-typed', async () => {
+    const user = userEvent.setup();
+    setup();
+    const confirmBtn = screen.getByTestId('transfer-handle-confirm');
+    // A recipient alone is not enough for a destructive action.
+    await user.type(screen.getByPlaceholderText(/Recipient @handle/i), 'bravo');
+    expect(confirmBtn).toBeDisabled();
+    // A wrong handle keeps it disabled.
+    await user.type(screen.getByTestId('transfer-handle-confirm-input'), 'wrong');
+    expect(confirmBtn).toBeDisabled();
+    // The exact handle (case- and @-insensitive) enables it.
+    await user.clear(screen.getByTestId('transfer-handle-confirm-input'));
+    await user.type(screen.getByTestId('transfer-handle-confirm-input'), '@ALPHA');
+    expect(confirmBtn).toBeEnabled();
+  });
+
   test('confirming transfers to the resolved recipient, then closes on success', async () => {
     const user = userEvent.setup();
     transfer.mockResolvedValueOnce({ identity: { username: 'alpha' } as never });
     const { onClose, onTransferred } = setup();
 
     await user.type(screen.getByPlaceholderText(/Recipient @handle/i), '@bravo');
+    // The irreversible action is gated behind re-typing the handle.
+    await user.type(screen.getByTestId('transfer-handle-confirm-input'), '@alpha');
     await user.click(screen.getByTestId('transfer-handle-confirm'));
 
     // Leading @ is stripped before the RPC; handle passed through verbatim.
@@ -63,6 +81,7 @@ describe('TransferHandleModal', () => {
     const { onClose, onTransferred } = setup();
 
     await user.type(screen.getByPlaceholderText(/Recipient @handle/i), 'bravo');
+    await user.type(screen.getByTestId('transfer-handle-confirm-input'), 'alpha');
     await user.click(screen.getByTestId('transfer-handle-confirm'));
 
     await waitFor(() =>

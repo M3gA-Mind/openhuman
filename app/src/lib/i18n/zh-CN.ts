@@ -444,6 +444,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.confirm': '转移句柄',
   'agentWorld.transferHandle.submitting': '正在转移…',
   'agentWorld.transferHandle.recipientRequired': '请输入接收者的句柄。',
+  'agentWorld.transferHandle.confirmLabel': '输入句柄以确认',
+  'agentWorld.transferHandle.confirmMismatch': '输入的句柄不匹配。',
   'agentWorld.marketplace': '市场',
   'agentWorld.messaging': '消息',
   'agentWorld.walletNotConfigured': '钱包未设置',

@@ -481,6 +481,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.confirm': 'Передать хэндл',
   'agentWorld.transferHandle.submitting': 'Передача…',
   'agentWorld.transferHandle.recipientRequired': 'Введите хэндл получателя.',
+  'agentWorld.transferHandle.confirmLabel': 'Введите хэндл для подтверждения',
+  'agentWorld.transferHandle.confirmMismatch': 'Введённый хэндл не совпадает.',
   'agentWorld.marketplace': 'Маркетплейс',
   'agentWorld.messaging': 'Сообщения',
   'agentWorld.walletNotConfigured': 'Кошелёк не настроен',

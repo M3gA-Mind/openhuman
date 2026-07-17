@@ -469,6 +469,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.confirm': '핸들 이전',
   'agentWorld.transferHandle.submitting': '이전 중…',
   'agentWorld.transferHandle.recipientRequired': '수신자 핸들을 입력하세요.',
+  'agentWorld.transferHandle.confirmLabel': '확인하려면 핸들을 입력하세요',
+  'agentWorld.transferHandle.confirmMismatch': '입력한 핸들이 일치하지 않습니다.',
   'agentWorld.marketplace': '마켓플레이스',
   'agentWorld.messaging': '메시지',
   'agentWorld.walletNotConfigured': '지갑이 설정되지 않음',

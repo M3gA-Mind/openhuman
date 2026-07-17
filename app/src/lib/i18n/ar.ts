@@ -460,6 +460,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.confirm': 'نقل المعرّف',
   'agentWorld.transferHandle.submitting': 'جارٍ النقل…',
   'agentWorld.transferHandle.recipientRequired': 'أدخل معرّف المستلم.',
+  'agentWorld.transferHandle.confirmLabel': 'اكتب المعرّف للتأكيد',
+  'agentWorld.transferHandle.confirmMismatch': 'المعرّف المكتوب غير مطابق.',
   'agentWorld.marketplace': 'السوق',
   'agentWorld.messaging': 'الرسائل',
   'agentWorld.walletNotConfigured': 'المحفظة غير مُهيَّأة',

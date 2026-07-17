@@ -3,9 +3,10 @@
  *
  * A handle transfer is DESTRUCTIVE and irreversible for the sender: on success
  * the recipient becomes the handle's sole owner. So this modal states that
- * plainly, requires an explicit recipient and an explicit confirm click, and
- * fails **closed** — on any error it keeps the dialog open with the message and
- * never reports success. The core handler resolves the recipient @handle and
+ * plainly, requires an explicit recipient, requires the user to re-type the
+ * handle to confirm intent, and takes an explicit confirm click — and it fails
+ * **closed**: on any error it keeps the dialog open with the message and never
+ * reports success. The core handler resolves the recipient @handle and
  * read-back-confirms the new owner before this promise resolves, so a resolved
  * transfer means the reassignment actually landed.
  */
@@ -17,6 +18,7 @@ import { ModalShell } from '../../components/ui/ModalShell';
 import { useT } from '../../lib/i18n/I18nContext';
 import { apiClient } from '../AgentWorldShell';
 
+// Namespaced already ('agentworld:identity'), so messages carry no prefix.
 const debug = debugFactory('agentworld:identity');
 
 export interface TransferHandleModalProps {
@@ -27,6 +29,11 @@ export interface TransferHandleModalProps {
   onTransferred: () => void;
 }
 
+/** Normalize a handle for comparison: strip leading @, trim, lowercase. */
+function normalizeHandle(value: string): string {
+  return value.trim().replace(/^@+/, '').toLowerCase();
+}
+
 export default function TransferHandleModal({
   handle,
   onClose,
@@ -34,8 +41,13 @@ export default function TransferHandleModal({
 }: TransferHandleModalProps) {
   const { t } = useT();
   const [recipient, setRecipient] = useState('');
+  const [confirmText, setConfirmText] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleClean = handle.replace(/^@+/, '');
+  // Guard the irreversible action: the user must re-type the exact handle.
+  const confirmMatches = normalizeHandle(confirmText) === normalizeHandle(handleClean);
 
   const submit = useCallback(async () => {
     const target = recipient.trim().replace(/^@+/, '');
@@ -43,24 +55,30 @@ export default function TransferHandleModal({
       setError(t('agentWorld.transferHandle.recipientRequired'));
       return;
     }
+    // Belt-and-suspenders: the button is disabled without a match, but never
+    // execute a destructive transfer unless the typed confirmation matches.
+    if (!confirmMatches) {
+      setError(t('agentWorld.transferHandle.confirmMismatch'));
+      return;
+    }
     setSubmitting(true);
     setError(null);
     // Never log the handle or recipient — both identify a user.
-    debug('[agentworld:identity] handle transfer requested');
+    debug('handle transfer requested');
     try {
       await apiClient.registry.transfer(handle, target);
-      debug('[agentworld:identity] handle transfer confirmed');
+      debug('handle transfer confirmed');
       onTransferred();
       onClose();
     } catch (err) {
       // Fail closed: keep the dialog open, show why, report no success.
       // Log only the status (no raw error — it can carry backend/SDK detail);
       // the raw message still surfaces in the UI via setError.
-      debug('[agentworld:identity] handle transfer failed');
+      debug('handle transfer failed');
       setError(String(err));
       setSubmitting(false);
     }
-  }, [recipient, handle, t, onTransferred, onClose]);
+  }, [recipient, confirmMatches, handle, t, onTransferred, onClose]);
 
   return (
     <ModalShell
@@ -69,7 +87,7 @@ export default function TransferHandleModal({
       maxWidthClassName="max-w-sm"
       onClose={submitting ? () => undefined : onClose}>
       <div className="space-y-4" data-testid="transfer-handle-modal">
-        <p className="text-sm text-content">@{handle.replace(/^@+/, '')}</p>
+        <p className="text-sm text-content">@{handleClean}</p>
         <p className="text-xs text-red-600 dark:text-red-400">
           {t('agentWorld.transferHandle.warning')}
         </p>
@@ -87,6 +105,26 @@ export default function TransferHandleModal({
           className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-content placeholder-content-faint outline-none focus:border-primary-500"
         />
 
+        {/* Type-to-confirm guard for the irreversible action. */}
+        <div className="space-y-1">
+          <p className="text-xs text-content-muted">
+            {t('agentWorld.transferHandle.confirmLabel')}
+          </p>
+          <input
+            type="text"
+            value={confirmText}
+            onChange={e => {
+              setConfirmText(e.target.value);
+              setError(null);
+            }}
+            disabled={submitting}
+            placeholder={`@${handleClean}`}
+            aria-label={t('agentWorld.transferHandle.confirmLabel')}
+            data-testid="transfer-handle-confirm-input"
+            className="w-full rounded-md border border-line-strong bg-surface px-3 py-2 text-sm text-content placeholder-content-faint outline-none focus:border-primary-500"
+          />
+        </div>
+
         {error && (
           <p className="text-xs text-red-600 dark:text-red-400" data-testid="transfer-handle-error">
             {error}
@@ -102,7 +140,7 @@ export default function TransferHandleModal({
             size="sm"
             tone="danger"
             onClick={() => void submit()}
-            disabled={submitting || !recipient.trim()}
+            disabled={submitting || !recipient.trim() || !confirmMatches}
             data-testid="transfer-handle-confirm">
             {submitting
               ? t('agentWorld.transferHandle.submitting')
