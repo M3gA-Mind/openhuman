@@ -608,6 +608,37 @@ mod tests {
         }
     }
 
+    /// Before asking the user for a missing value, the builder must exhaust
+    /// self-resolution — recall, connections, tool catalog, and (for
+    /// runtime-only facts like the user's own platform handle) wiring a
+    /// lookup node — and only ask for genuine preferences, not resolvable
+    /// facts. This also guards that the existing "zero questions is still
+    /// the happy path" balance line survives: the rule must not turn into
+    /// "ask about everything".
+    #[test]
+    fn standing_prompt_teaches_resolution_first_self_resolution() {
+        const STANDING_PROMPT: &str = include_str!("prompt.md");
+
+        for rule in [
+            "asking is the last resort",
+            "Wire a runtime lookup",
+            "resolvable facts",
+            "genuine preferences",
+            "get authenticated user",
+            "what you already tried",
+            "zero questions is still the happy path",
+        ] {
+            assert!(
+                STANDING_PROMPT.contains(rule),
+                "standing prompt must teach the resolution-first rule `{rule}` — \
+                 before asking for any missing value, the builder must exhaust \
+                 self-resolution (recall, connections, tool catalog, runtime \
+                 lookup) and only ask for genuine preferences, while the \
+                 zero-questions happy path still holds"
+            );
+        }
+    }
+
     #[test]
     fn repair_includes_run_id_error_and_failing_nodes() {
         let mut r = req(BuildMode::Repair);
