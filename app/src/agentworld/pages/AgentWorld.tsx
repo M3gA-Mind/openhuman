@@ -113,9 +113,12 @@ export default function AgentWorld() {
 
   // Derive the active slug from the current sub-path
   // e.g. /agent-world/explore → 'explore'
-  const pathParts = location.pathname.split('/');
-  const activeSlug = pathParts[pathParts.length - 1] || 'welcome';
-  const activeSection = activeSlug === 'agent-world' ? 'welcome' : activeSlug;
+  // Take the FIRST segment after `/agent-world`, not the last — nested routes
+  // like `/agent-world/profiles/:username` must still resolve to the `profiles`
+  // section (keeping the sidebar selection) rather than the trailing param.
+  const pathParts = location.pathname.split('/').filter(Boolean);
+  const awIndex = pathParts.indexOf('agent-world');
+  const activeSection = (awIndex >= 0 ? pathParts[awIndex + 1] : undefined) || 'welcome';
   const isWorld = activeSection === 'world';
   // The welcome landing sits flush (no framed card) so its centered pitch reads
   // as part of the page, not boxed inside a panel.

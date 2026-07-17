@@ -460,6 +460,7 @@ const messages: TranslationMap = {
   'agentWorld.feed.loadMoreError': 'আরও পোস্ট লোড করা যায়নি। আবার চেষ্টা করুন।',
   'agentWorld.ledger': 'লেজার',
   'agentWorld.profileViewer.description': 'সর্বজনীন প্রোফাইল',
+  'agentWorld.profileViewer.agentCard': 'এজেন্ট কার্ড',
   'agentWorld.profileViewer.loading': 'প্রোফাইল লোড হচ্ছে…',
   'agentWorld.profileViewer.notFoundTitle': 'প্রোফাইল পাওয়া যায়নি',
   'agentWorld.profileViewer.notFoundBody': 'এই হ্যান্ডেলের জন্য এখনও কোনো প্রকাশিত প্রোফাইল নেই।',

@@ -19,18 +19,23 @@ import ProfileViewer from './ProfileViewer';
 
 vi.mock('../AgentWorldShell', () => ({
   apiClient: {
-    graphql: { profile: vi.fn() },
-    follows: { following: vi.fn(), follow: vi.fn(), unfollow: vi.fn(), stats: vi.fn() },
+    graphql: { profile: vi.fn(), agentCard: vi.fn() },
+    follows: { follow: vi.fn(), unfollow: vi.fn(), stats: vi.fn() },
   },
 }));
 vi.mock('../../services/walletApi', () => ({ fetchWalletStatus: vi.fn() }));
 
 const graphqlProfile = vi.mocked(apiClient.graphql.profile);
-const followsFollowing = vi.mocked(apiClient.follows.following);
+const graphqlAgentCard = vi.mocked(apiClient.graphql.agentCard);
 const followsFollow = vi.mocked(apiClient.follows.follow);
 const followsUnfollow = vi.mocked(apiClient.follows.unfollow);
 const followsStats = vi.mocked(apiClient.follows.stats);
 const walletStatus = vi.mocked(fetchWalletStatus);
+
+/** Agent card carrying the signer-aware follow flag the viewer reads. */
+function agentCardFollowing(viewerIsFollowing: boolean) {
+  return { agentId: PROFILE_ADDR, viewerIsFollowing };
+}
 
 const PROFILE_ADDR = 'ProfiLeSoLanaAddr00000000001';
 const VIEWER_ADDR = 'ViewerSoLanaAddr00000000002';
@@ -82,7 +87,8 @@ function renderViewer(username = 'alice') {
 beforeEach(() => {
   vi.clearAllMocks();
   graphqlProfile.mockResolvedValue(makeProfile());
-  followsFollowing.mockResolvedValue({ following: [] });
+  // Default: viewer does not follow this agent yet.
+  graphqlAgentCard.mockResolvedValue(agentCardFollowing(false));
   followsFollow.mockResolvedValue({ follower: VIEWER_ADDR, followee: PROFILE_ADDR, createdAt: '' });
   followsUnfollow.mockResolvedValue(undefined);
   followsStats.mockResolvedValue({ agentId: PROFILE_ADDR, followerCount: 3, followingCount: 5 });
@@ -125,14 +131,22 @@ describe('ProfileViewer', () => {
     expect(await screen.findByRole('button', { name: 'Follow' })).toBeInTheDocument();
   });
 
-  test('pre-selects the following state from the viewer follow graph', async () => {
-    followsFollowing.mockResolvedValue({
-      following: [{ follower: VIEWER_ADDR, followee: PROFILE_ADDR, createdAt: '' }],
-    });
+  test('pre-selects the following state from the agent card follow flag', async () => {
+    graphqlAgentCard.mockResolvedValue(agentCardFollowing(true));
     renderViewer('alice');
-    // Already-following → button shows Following without a click.
+    // viewerIsFollowing:true → button shows Following without a click.
     expect(await screen.findByRole('button', { name: 'Following' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Follow' })).not.toBeInTheDocument();
+  });
+
+  test('hides the follow button when the follow relationship is unknown', async () => {
+    // No agent card (e.g. a non-agent profile) → no follow flag → the button is
+    // hidden rather than defaulting to an inferred state.
+    graphqlAgentCard.mockResolvedValue(null);
+    renderViewer('alice');
+    await screen.findByTestId('profile-copy-link');
+    expect(screen.queryByRole('button', { name: 'Follow' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Following' })).not.toBeInTheDocument();
   });
 
   test('hides the follow button and marks self when viewing own profile', async () => {
@@ -140,8 +154,7 @@ describe('ProfileViewer', () => {
     renderViewer('alice');
     expect(await screen.findByText(/this is your profile/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Follow' })).not.toBeInTheDocument();
-    // Follow-state must never be fetched for one's own profile.
-    expect(followsFollowing).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Following' })).not.toBeInTheDocument();
   });
 
   test('copy-link affordance copies the shareable deep link', async () => {

@@ -444,6 +444,7 @@ const messages: TranslationMap = {
   'agentWorld.feed.loadMoreError': 'تعذّر تحميل المزيد من المنشورات. حاول مرة أخرى.',
   'agentWorld.ledger': 'السجل',
   'agentWorld.profileViewer.description': 'الملف الشخصي العام',
+  'agentWorld.profileViewer.agentCard': 'بطاقة الوكيل',
   'agentWorld.profileViewer.loading': 'جارٍ تحميل الملف الشخصي…',
   'agentWorld.profileViewer.notFoundTitle': 'الملف الشخصي غير موجود',
   'agentWorld.profileViewer.notFoundBody': 'لا يوجد ملف شخصي منشور لهذا المعرّف حتى الآن.',

@@ -466,6 +466,7 @@ const messages: TranslationMap = {
   'agentWorld.feed.loadMoreError': 'Tidak dapat memuat postingan lainnya. Coba lagi.',
   'agentWorld.ledger': 'Buku Besar',
   'agentWorld.profileViewer.description': 'Profil publik',
+  'agentWorld.profileViewer.agentCard': 'Kartu agen',
   'agentWorld.profileViewer.loading': 'Memuat profil…',
   'agentWorld.profileViewer.notFoundTitle': 'Profil tidak ditemukan',
   'agentWorld.profileViewer.notFoundBody': 'Belum ada profil yang dipublikasikan untuk handel ini.',

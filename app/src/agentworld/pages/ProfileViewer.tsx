@@ -4,9 +4,10 @@
  * Route: `/agent-world/profiles/:username`. Where `ProfilesSection` is hard-wired
  * to the connected wallet, this viewer renders any user's or agent's profile via
  * the already-plumbed read handlers: `graphql.profile(username)` (a rich
- * `GqlProfile` with identities/attestations/agent card) plus `follows.stats`.
- * It adds a follow / unfollow button (reusing `follows.follow` / `follows.unfollow`)
- * and a copy-link affordance so a profile is shareable.
+ * `GqlProfile`) and `graphql.agentCard(cryptoId)` (the agent card + the
+ * signer-aware `viewerIsFollowing` flag), plus `follows.stats`. It adds a
+ * follow / unfollow button (reusing `follows.follow` / `follows.unfollow`) and a
+ * copy-link affordance so a profile is shareable.
  *
  * Read-only. Profile EDITING lives in `ProfilesSection` and is tracked
  * separately (#4930); this component never mutates the viewed profile.
@@ -18,6 +19,7 @@ import { useParams } from 'react-router-dom';
 import PanelScaffold from '../../components/layout/PanelScaffold';
 import Button from '../../components/ui/Button';
 import {
+  type AgentCard,
   type FollowStats,
   type GqlAttestation,
   type GqlProfile,
@@ -32,15 +34,24 @@ const log = debug('agentworld:profileviewer');
 
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 
+/** Sanitized error label for diagnostics — an error NAME/kind only, never the
+ *  raw message (which may carry backend internals / PII). */
+function errorKind(err: unknown): string {
+  if (err instanceof PaymentRequiredError) return 'payment_required';
+  if (err instanceof Error) return err.name || 'Error';
+  return 'unknown';
+}
+
 function truncateCryptoId(cryptoId: string): string {
   if (cryptoId.length <= 12) return cryptoId;
   return `${cryptoId.slice(0, 6)}…${cryptoId.slice(-4)}`;
 }
 
+/** Format an ISO date using the runtime locale (never a hard-coded language). */
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 /** Pick the primary identity, else the first. */
@@ -48,18 +59,28 @@ function pickPrimary<T extends { primary?: boolean }>(identities: T[]): T | unde
   return identities.find(i => i.primary) ?? identities[0];
 }
 
+/** Read the signer-aware `viewerIsFollowing` flag off an agent card, if present. */
+function readViewerFollows(card: AgentCard | null): boolean | null {
+  const value = card?.['viewerIsFollowing'];
+  return typeof value === 'boolean' ? value : null;
+}
+
 /** Resolve the wallet's Solana address (the viewer's tiny.place cryptoId). */
 function useMyAgentId(): string | null {
   const [agentId, setAgentId] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
+    log('[agentworld:profileviewer] resolving wallet agent id');
     void fetchWalletStatus()
       .then(status => {
         if (cancelled) return;
         const solana = (status.accounts ?? []).find(a => a.chain === 'solana');
         if (solana?.address) setAgentId(solana.address);
+        else log('[agentworld:profileviewer] no solana wallet account; viewer is signed out');
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        if (!cancelled) log('[agentworld:profileviewer] wallet resolve failed: %s', errorKind(err));
+      });
     return () => {
       cancelled = true;
     };
@@ -72,119 +93,122 @@ function useMyAgentId(): string | null {
 type ViewerState =
   | { status: 'loading' }
   | { status: 'not_found' }
-  | { status: 'error'; message: string }
+  | { status: 'error' }
   | { status: 'ok'; profile: GqlProfile };
 
-/** Load the target handle's public profile. `null` from the server → not found. */
-function useProfile(username: string | undefined): ViewerState {
-  const [state, setState] = useState<ViewerState>({ status: 'loading' });
+/**
+ * Load the target handle's public profile, keyed by the normalized handle so a
+ * stale response for a previous handle can never surface the wrong profile. The
+ * effect never calls setState synchronously — the only state writes happen in
+ * the async resolve/reject, satisfying the repo's no-sync-setState-in-effect
+ * rule. `null` from the server → not found.
+ */
+function useProfile(handle: string): ViewerState {
+  const [entry, setEntry] = useState<{ key: string; state: ViewerState }>({
+    key: '',
+    state: { status: 'loading' },
+  });
 
   useEffect(() => {
-    const handle = (username ?? '').replace(/^@+/, '').trim();
-    if (!handle) {
-      setState({ status: 'not_found' });
-      return;
-    }
+    if (!handle) return;
     let cancelled = false;
-    setState({ status: 'loading' });
-    log('loading profile for handle');
+    log('[agentworld:profileviewer] loading profile');
     void apiClient.graphql
       .profile(handle)
       .then(profile => {
         if (cancelled) return;
-        if (!profile) {
-          log('profile not found');
-          setState({ status: 'not_found' });
-          return;
-        }
-        log('profile loaded');
-        setState({ status: 'ok', profile });
+        log('[agentworld:profileviewer] profile %s', profile ? 'loaded' : 'not found');
+        setEntry({
+          key: handle,
+          state: profile ? { status: 'ok', profile } : { status: 'not_found' },
+        });
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        // Public GraphQL profile reads are unauthenticated, so a payment
-        // challenge here is unexpected; surface it as a plain error either way.
-        const message =
-          err instanceof PaymentRequiredError ? 'Access requires payment.' : String(err);
-        log('profile load error: %s', message);
-        setState({ status: 'error', message });
+        log('[agentworld:profileviewer] profile load failed: %s', errorKind(err));
+        setEntry({ key: handle, state: { status: 'error' } });
       });
     return () => {
       cancelled = true;
     };
-  }, [username]);
+  }, [handle]);
 
-  return state;
+  if (!handle) return { status: 'not_found' };
+  // Until THIS handle's response lands, show loading — prevents a previous
+  // handle's profile (and its follow/share actions) from flashing.
+  return entry.key === handle ? entry.state : { status: 'loading' };
+}
+
+// ── Agent card (also carries the signer-aware follow flag) ───────────────────────
+
+/** Fetch the agent card for `cryptoId`. Returns `null` for non-agent profiles or
+ *  on failure — callers degrade to "unknown". */
+function useAgentCard(cryptoId: string): AgentCard | null {
+  const [card, setCard] = useState<AgentCard | null>(null);
+  useEffect(() => {
+    if (!cryptoId) return;
+    let cancelled = false;
+    log('[agentworld:profileviewer] loading agent card');
+    void apiClient.graphql
+      .agentCard(cryptoId)
+      .then(c => {
+        if (!cancelled) setCard(c);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled)
+          log('[agentworld:profileviewer] agent card load failed: %s', errorKind(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cryptoId]);
+  return card;
 }
 
 // ── Follow control ─────────────────────────────────────────────────────────────
 
 type FollowState = 'unknown' | 'following' | 'not_following';
 
-/** Loads the viewer's follow relationship to `targetCryptoId` (membership in the
- *  viewer's following list) and exposes an optimistic toggle. Returns `'unknown'`
- *  until resolved, and skips entirely for self / signed-out. */
-function useFollow(myAgentId: string | null, targetCryptoId: string) {
-  const [state, setState] = useState<FollowState>('unknown');
+/**
+ * Follow relationship for `targetCryptoId`, derived ONLY from the direct,
+ * signer-aware `viewerFollowsHint` (from the agent card). It never infers a
+ * relationship from partial or failed data: when the hint is absent it stays
+ * `'unknown'` and the button is hidden, rather than defaulting to "not
+ * following" and risking a follow() on an existing relationship. A user toggle
+ * takes optimistic precedence via `override`.
+ */
+function useFollow(
+  myAgentId: string | null,
+  targetCryptoId: string,
+  viewerFollowsHint: boolean | null
+) {
+  const [override, setOverride] = useState<'following' | 'not_following' | null>(null);
   const [busy, setBusy] = useState(false);
 
   const isSelf = myAgentId != null && myAgentId === targetCryptoId;
   const enabled = myAgentId != null && targetCryptoId !== '' && !isSelf;
-
-  useEffect(() => {
-    if (!enabled) {
-      setState('unknown');
-      return;
-    }
-    let cancelled = false;
-    void apiClient.follows
-      .following(myAgentId as string, { limit: 500 })
-      .then(res => {
-        if (cancelled) return;
-        const following = (res.following ?? []).some(f => f.followee === targetCryptoId);
-        setState(following ? 'following' : 'not_following');
-      })
-      .catch(() => {
-        // Degrade to not-following so the button is still usable.
-        if (!cancelled) setState('not_following');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, myAgentId, targetCryptoId]);
+  const state: FollowState =
+    override ??
+    (viewerFollowsHint == null ? 'unknown' : viewerFollowsHint ? 'following' : 'not_following');
 
   const toggle = useCallback(async () => {
-    if (busy || !enabled) return;
+    if (busy || !enabled || state === 'unknown') return;
     setBusy(true);
     const next = state === 'following' ? 'not_following' : 'following';
     try {
-      if (state === 'following') {
-        await apiClient.follows.unfollow(targetCryptoId);
-      } else {
-        await apiClient.follows.follow(targetCryptoId);
-      }
-      setState(next);
-      // No PII: log only the resulting action, never the address/handle.
-      log('follow toggled -> %s', next);
+      if (state === 'following') await apiClient.follows.unfollow(targetCryptoId);
+      else await apiClient.follows.follow(targetCryptoId);
+      setOverride(next);
+      // No PII: only the resulting action, never the address/handle.
+      log('[agentworld:profileviewer] follow toggled -> %s', next);
     } catch (err) {
-      log('follow toggle error: %s', String(err));
+      log('[agentworld:profileviewer] follow toggle failed: %s', errorKind(err));
     } finally {
       setBusy(false);
     }
   }, [busy, enabled, state, targetCryptoId]);
 
   return { state, busy, isSelf, enabled, toggle };
-}
-
-// ── Presentational bits ──────────────────────────────────────────────────────────
-
-function StatusBlock({ tone, title, body }: { tone: string; title: string; body?: string }) {
-  return (
-    <div className="flex h-64 flex-col items-center justify-center gap-2 text-center">
-      <p className={`text-base font-medium ${tone}`}>{title}</p>
-      {body && <p className="max-w-md text-sm text-content-muted">{body}</p>}
-    </div>
-  );
 }
 
 // ── Follow stats sub-hook ────────────────────────────────────────────────────────
@@ -199,7 +223,10 @@ function useFollowStats(cryptoId: string): FollowStats | null {
       .then(s => {
         if (!cancelled) setStats(s);
       })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        if (!cancelled)
+          log('[agentworld:profileviewer] follow stats load failed: %s', errorKind(err));
+      });
     return () => {
       cancelled = true;
     };
@@ -207,12 +234,24 @@ function useFollowStats(cryptoId: string): FollowStats | null {
   return stats;
 }
 
+// ── Presentational bits ──────────────────────────────────────────────────────────
+
+function StatusBlock({ tone, title, body }: { tone: string; title: string; body?: string }) {
+  return (
+    <div className="flex h-64 flex-col items-center justify-center gap-2 text-center">
+      <p className={`text-base font-medium ${tone}`}>{title}</p>
+      {body && <p className="max-w-md text-sm text-content-muted">{body}</p>}
+    </div>
+  );
+}
+
 // ── Main export ──────────────────────────────────────────────────────────────────
 
 export default function ProfileViewer() {
   const { username } = useParams<{ username: string }>();
   const { t } = useT();
-  const state = useProfile(username);
+  const routeHandle = (username ?? '').replace(/^@+/, '').trim();
+  const state = useProfile(routeHandle);
 
   let body: React.ReactNode;
   if (state.status === 'loading') {
@@ -230,15 +269,15 @@ export default function ProfileViewer() {
       />
     );
   } else if (state.status === 'error') {
+    // Generic, translated copy only — never the raw external error string.
     body = (
       <StatusBlock
         tone="text-red-600 dark:text-red-400"
         title={t('agentWorld.profileViewer.errorTitle')}
-        body={state.message}
       />
     );
   } else {
-    body = <ProfileCard profile={state.profile} />;
+    body = <ProfileCard profile={state.profile} routeHandle={routeHandle} />;
   }
 
   return (
@@ -248,11 +287,12 @@ export default function ProfileViewer() {
 
 // ── Profile card ─────────────────────────────────────────────────────────────────
 
-function ProfileCard({ profile }: { profile: GqlProfile }) {
+function ProfileCard({ profile, routeHandle }: { profile: GqlProfile; routeHandle: string }) {
   const { t } = useT();
   const myAgentId = useMyAgentId();
   const cryptoId = profile.cryptoId;
-  const follow = useFollow(myAgentId, cryptoId);
+  const agentCard = useAgentCard(cryptoId);
+  const follow = useFollow(myAgentId, cryptoId, readViewerFollows(agentCard));
   const followStats = useFollowStats(cryptoId);
   const [copied, setCopied] = useState(false);
 
@@ -268,21 +308,27 @@ function ProfileCard({ profile }: { profile: GqlProfile }) {
   const ownedIdentities: Identity[] = profile.identities ?? [];
   const actorType = profile.actorType ?? '';
   const isHuman = actorType.toLowerCase() === 'human';
+  const showFollow = follow.enabled && follow.state !== 'unknown';
+  // Read-only agent-card summary (only when it adds something over the profile).
+  const cardDescription = (agentCard?.description ?? '').trim();
 
   const copyLink = useCallback(() => {
-    // HashRouter deep link to this viewer. Built from the live location so it is
-    // correct regardless of host / base path.
+    // Build the deep link from the ROUTE handle (what the user actually
+    // navigated to), not from `identities`/`displayName` — those may be null or
+    // differ from the selected route, producing a link that does not resolve.
     const { origin, pathname } = window.location;
-    const link = `${origin}${pathname}#/agent-world/profiles/${encodeURIComponent(usernameClean)}`;
+    const link = `${origin}${pathname}#/agent-world/profiles/${encodeURIComponent(routeHandle)}`;
     void navigator.clipboard
       ?.writeText(link)
       .then(() => {
         setCopied(true);
-        log('copied share link');
+        log('[agentworld:profileviewer] copied share link');
         window.setTimeout(() => setCopied(false), 2000);
       })
-      .catch(() => {});
-  }, [usernameClean]);
+      .catch((err: unknown) => {
+        log('[agentworld:profileviewer] copy link failed: %s', errorKind(err));
+      });
+  }, [routeHandle]);
 
   return (
     <div className="rounded-lg border border-line bg-surface p-4">
@@ -336,11 +382,11 @@ function ProfileCard({ profile }: { profile: GqlProfile }) {
             <span className="text-[11px] text-content-faint">
               {t('agentWorld.profileViewer.ownProfile')}
             </span>
-          ) : follow.enabled ? (
+          ) : showFollow ? (
             <Button
               variant={follow.state === 'following' ? 'secondary' : 'primary'}
               size="sm"
-              disabled={follow.busy || follow.state === 'unknown'}
+              disabled={follow.busy}
               onClick={() => void follow.toggle()}>
               {follow.state === 'following'
                 ? t('agentWorld.profileViewer.following')
@@ -354,6 +400,15 @@ function ProfileCard({ profile }: { profile: GqlProfile }) {
           </Button>
         </div>
       </div>
+
+      {cardDescription && cardDescription !== (profile.bio ?? '').trim() && (
+        <div className="mt-4 border-t border-line pt-4">
+          <h4 className="mb-2 text-xs font-medium text-content">
+            {t('agentWorld.profileViewer.agentCard')}
+          </h4>
+          <p className="text-xs leading-relaxed text-content-secondary">{cardDescription}</p>
+        </div>
+      )}
 
       {skills.length > 0 && (
         <div className="mt-4 border-t border-line pt-4">

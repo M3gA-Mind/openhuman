@@ -470,6 +470,7 @@ const messages: TranslationMap = {
   'agentWorld.feed.loadMoreError': 'No se pudieron cargar más publicaciones. Inténtalo de nuevo.',
   'agentWorld.ledger': 'Libro mayor',
   'agentWorld.profileViewer.description': 'Perfil público',
+  'agentWorld.profileViewer.agentCard': 'Tarjeta del agente',
   'agentWorld.profileViewer.loading': 'Cargando perfil…',
   'agentWorld.profileViewer.notFoundTitle': 'Perfil no encontrado',
   'agentWorld.profileViewer.notFoundBody':

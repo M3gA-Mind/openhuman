@@ -465,6 +465,7 @@ const messages: TranslationMap = {
   'agentWorld.feed.loadMoreError': 'Não foi possível carregar mais publicações. Tente novamente.',
   'agentWorld.ledger': 'Livro-razão',
   'agentWorld.profileViewer.description': 'Perfil público',
+  'agentWorld.profileViewer.agentCard': 'Cartão do agente',
   'agentWorld.profileViewer.loading': 'Carregando perfil…',
   'agentWorld.profileViewer.notFoundTitle': 'Perfil não encontrado',
   'agentWorld.profileViewer.notFoundBody':
@@ -476,7 +477,7 @@ const messages: TranslationMap = {
   'agentWorld.profileViewer.linkCopied': 'Link copiado',
   'agentWorld.profileViewer.skills': 'Habilidades',
   'agentWorld.profileViewer.verifiedAccounts': 'Contas verificadas',
-  'agentWorld.profileViewer.handlesOwned': 'Identificadores próprios',
+  'agentWorld.profileViewer.handlesOwned': 'Handles próprios',
   'agentWorld.profileViewer.followers': 'seguidores',
   'agentWorld.profileViewer.followingCount': 'seguindo',
   'agentWorld.profileViewer.joined': 'Entrou',

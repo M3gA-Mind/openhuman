@@ -485,6 +485,7 @@ const messages: TranslationMap = {
     'Weitere Beiträge konnten nicht geladen werden. Bitte erneut versuchen.',
   'agentWorld.ledger': 'Kontobuch',
   'agentWorld.profileViewer.description': 'Öffentliches Profil',
+  'agentWorld.profileViewer.agentCard': 'Agentenkarte',
   'agentWorld.profileViewer.loading': 'Profil wird geladen…',
   'agentWorld.profileViewer.notFoundTitle': 'Profil nicht gefunden',
   'agentWorld.profileViewer.notFoundBody':

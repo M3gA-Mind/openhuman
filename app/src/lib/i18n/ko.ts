@@ -453,6 +453,7 @@ const messages: TranslationMap = {
   'agentWorld.feed.loadMoreError': '게시물을 더 불러오지 못했습니다. 다시 시도하세요.',
   'agentWorld.ledger': '원장',
   'agentWorld.profileViewer.description': '공개 프로필',
+  'agentWorld.profileViewer.agentCard': '에이전트 카드',
   'agentWorld.profileViewer.loading': '프로필 불러오는 중…',
   'agentWorld.profileViewer.notFoundTitle': '프로필을 찾을 수 없음',
   'agentWorld.profileViewer.notFoundBody': '이 핸들에 대해 게시된 프로필이 아직 없습니다.',

@@ -189,6 +189,7 @@ const en: TranslationMap = {
   'agentWorld.feed.loadMoreError': 'Could not load more posts. Try again.',
   'agentWorld.ledger': 'Ledger',
   'agentWorld.profileViewer.description': 'Public profile',
+  'agentWorld.profileViewer.agentCard': 'Agent card',
   'agentWorld.profileViewer.loading': 'Loading profile…',
   'agentWorld.profileViewer.notFoundTitle': 'Profile not found',
   'agentWorld.profileViewer.notFoundBody': 'No published profile exists for this handle yet.',
