@@ -12595,6 +12595,7 @@ async fn json_rpc_workflows_lifecycle_round_trip() {
 /// Shared boot for a flows E2E: isolates `HOME`, seeds a minimal config against
 /// a mock upstream, and stands up the core HTTP router. Returns the rpc base
 /// URL plus the join handles + tempdir the caller must keep alive/abort.
+#[cfg(feature = "flows")]
 async fn boot_flows_rpc_env() -> (
     String,
     tempfile::TempDir,
@@ -12627,6 +12628,7 @@ async fn boot_flows_rpc_env() -> (
 /// The smallest valid graph with a human-in-the-loop approval gate:
 /// `trigger → gate(requires_approval) → downstream`. A run pauses at `gate`;
 /// approving it via `flows_resume` runs `downstream`.
+#[cfg(feature = "flows")]
 fn approval_gated_graph_json() -> Value {
     json!({
         "name": "approval-gated",
@@ -12649,6 +12651,7 @@ fn approval_gated_graph_json() -> Value {
 /// cancel operates on a run id (checkpoint thread id), so we cancel a *fresh*
 /// parked run rather than the already-completed one (cancelling a terminal run
 /// is an error).
+#[cfg(feature = "flows")]
 #[tokio::test]
 async fn json_rpc_flows_lifecycle_round_trip() {
     let _env_lock = json_rpc_e2e_env_lock();
@@ -12859,12 +12862,110 @@ async fn json_rpc_flows_lifecycle_round_trip() {
     rpc_join.abort();
 }
 
+/// JSON-RPC regression for the Rule 2 compound-bypass fix (C1): `flows_update`
+/// must re-derive `require_approval` from the *effective* graph, not trust the
+/// caller's raw toggle. This is the RPC-layer counterpart to the direct-API
+/// tests `flows_update_forces_require_approval_when_adding_side_effect_nodes`
+/// / `flows_update_does_not_force_require_approval_on_readonly_graph` in
+/// `src/openhuman/flows/ops_tests.rs` — same rule, exercised through the
+/// `openhuman.flows_update` controller (schema + handler wiring), not just
+/// the `ops::flows_update` fn directly.
+#[cfg(feature = "flows")]
+#[tokio::test]
+async fn json_rpc_flows_update_forces_require_approval_on_side_effect_graph() {
+    let _env_lock = json_rpc_e2e_env_lock();
+    let (rpc_base, _tmp, api_join, rpc_join, _guards) = boot_flows_rpc_env().await;
+
+    // 1. Create a trigger-only (read-only) flow with require_approval: false.
+    let create = post_json_rpc(
+        &rpc_base,
+        9401,
+        "openhuman.flows_create",
+        json!({
+            "name": "rpc-rule2-demo",
+            "graph": {
+                "name": "trigger-only",
+                "nodes": [ { "id": "t", "kind": "trigger", "name": "Trigger" } ],
+                "edges": []
+            },
+            "require_approval": false
+        }),
+    )
+    .await;
+    let flow = peel_logs_envelope(assert_no_jsonrpc_error(&create, "flows_create"));
+    let flow_id = flow
+        .get("id")
+        .and_then(Value::as_str)
+        .expect("flow id in create result")
+        .to_string();
+    assert_eq!(
+        flow.get("require_approval").and_then(Value::as_bool),
+        Some(false),
+        "a trigger-only graph must not force require_approval on create"
+    );
+
+    // 2. Update to a graph with an outbound Composio tool_call node, still
+    // passing require_approval: false — the RPC handler must force it to
+    // true rather than trust the caller's toggle.
+    let update = post_json_rpc(
+        &rpc_base,
+        9402,
+        "openhuman.flows_update",
+        json!({
+            "id": flow_id,
+            "graph": {
+                "name": "with-tool-call",
+                "nodes": [
+                    { "id": "t", "kind": "trigger", "name": "Trigger" },
+                    {
+                        "id": "post",
+                        "kind": "tool_call",
+                        "name": "Post",
+                        "config": { "slug": "SLACK_SEND_MESSAGE", "args": { "channel": "general" } }
+                    }
+                ],
+                "edges": [ { "from_node": "t", "to_node": "post" } ]
+            },
+            "require_approval": false
+        }),
+    )
+    .await;
+    let updated = peel_logs_envelope(assert_no_jsonrpc_error(&update, "flows_update"));
+    assert_eq!(
+        updated.get("require_approval").and_then(Value::as_bool),
+        Some(true),
+        "flows_update over JSON-RPC must force require_approval=true when the \
+         replacement graph adds an outbound side-effect node, even though the \
+         caller passed false"
+    );
+
+    // 3. The forced value must also be what's persisted, not just what's
+    // echoed back in the update response.
+    let get = post_json_rpc(
+        &rpc_base,
+        9403,
+        "openhuman.flows_get",
+        json!({ "id": flow_id }),
+    )
+    .await;
+    let persisted = peel_logs_envelope(assert_no_jsonrpc_error(&get, "flows_get"));
+    assert_eq!(
+        persisted.get("require_approval").and_then(Value::as_bool),
+        Some(true),
+        "the forced require_approval must be persisted, not just returned"
+    );
+
+    api_join.abort();
+    rpc_join.abort();
+}
+
 /// Flow Scout suggestion-lifecycle methods over JSON-RPC (no LLM involved):
 /// `flows_list_suggestions` starts empty, and `flows_dismiss_suggestion` /
 /// `flows_mark_suggestion_built` on an unknown id resolve cleanly and report
 /// `false`. This pins that the four new controllers are registered and dispatch
 /// end-to-end (schema + handler wiring), independent of the agent-backed
 /// `flows_discover`, which needs a provider.
+#[cfg(feature = "flows")]
 #[tokio::test]
 async fn json_rpc_flows_suggestion_lifecycle_methods_are_wired() {
     let _env_lock = json_rpc_e2e_env_lock();
@@ -12935,6 +13036,7 @@ async fn json_rpc_flows_suggestion_lifecycle_methods_are_wired() {
 /// resolves to `chat-v1` on the managed backend while a **reasoning**-tier node
 /// resolves to `reasoning-v1` — letting the full-arc test assert the two nodes
 /// routed to distinct managed tiers.
+#[cfg(feature = "flows")]
 fn write_flows_tier_config(openhuman_dir: &Path, api_origin: &str) {
     let cfg = format!(
         r#"api_url = "{api_origin}"
@@ -12975,6 +13077,7 @@ compaction_enabled = false
 /// `trigger` feeds a reasoning-tier `planner` (structured `{plan, angle}`) into a
 /// chat-tier `drafter` that references `nodes.planner.item.json.plan`, then a
 /// `transform` shapes `{topic, plan, draft}`.
+#[cfg(feature = "flows")]
 fn opus_sonnet_demo_graph() -> Value {
     json!({
         "schema_version": 1,
@@ -13049,6 +13152,7 @@ fn opus_sonnet_demo_graph() -> Value {
 ///
 /// Runs on the agent-sized worker stack because the builder/scout turns and the
 /// agent-node run drive the full harness (deep async stacks).
+#[cfg(feature = "flows")]
 #[test]
 fn json_rpc_flows_full_arc_discover_build_create_run() {
     run_json_rpc_e2e_on_agent_stack(
@@ -13057,6 +13161,7 @@ fn json_rpc_flows_full_arc_discover_build_create_run() {
     );
 }
 
+#[cfg(feature = "flows")]
 async fn json_rpc_flows_full_arc_discover_build_create_run_inner() {
     let _env_lock = json_rpc_e2e_env_lock();
     // Drain the scripted-completion FIFO even if an assertion below panics, so a
@@ -13300,6 +13405,7 @@ async fn json_rpc_flows_full_arc_discover_build_create_run_inner() {
 /// edge (→ `downstream`) and an `error` edge (→ `recover`). Resuming with the
 /// gate in `rejections` routes the denied gate's error item to `recover`, and
 /// `downstream` must not run.
+#[cfg(feature = "flows")]
 #[tokio::test]
 async fn json_rpc_flows_resume_deny_routes_to_error_port() {
     let _env_lock = json_rpc_e2e_env_lock();
@@ -13388,6 +13494,7 @@ async fn json_rpc_flows_resume_deny_routes_to_error_port() {
 /// clean but returns a loud, non-fatal warning; a `schedule` trigger (which
 /// does fire) warns nothing; a graph with no trigger is `valid: false` with a
 /// structural error and no warnings.
+#[cfg(feature = "flows")]
 #[tokio::test]
 async fn json_rpc_flows_validate_reports_warnings_and_errors() {
     let _env_lock = json_rpc_e2e_env_lock();
@@ -13498,6 +13605,7 @@ async fn json_rpc_flows_validate_reports_warnings_and_errors() {
 /// becomes an annotated placeholder, and the approximations come back as
 /// warnings — all WITHOUT persisting (the returned payload is a graph, not a
 /// saved Flow row; `flows_list` stays empty afterwards).
+#[cfg(feature = "flows")]
 #[tokio::test]
 async fn json_rpc_flows_import_native_and_n8n() {
     let _env_lock = json_rpc_e2e_env_lock();
@@ -13609,6 +13717,7 @@ async fn json_rpc_flows_import_native_and_n8n() {
 /// fault-tolerance: the mock upstream has no connected-accounts route, so the
 /// Composio source fails and is tolerated (the RPC still returns the HTTP half
 /// rather than erroring).
+#[cfg(feature = "flows")]
 #[tokio::test]
 async fn json_rpc_flows_list_connections_aggregates_secret_free() {
     let _env_lock = json_rpc_e2e_env_lock();

@@ -135,6 +135,17 @@ vi.mock('../AgentWorldShell', () => ({
       stop: vi.fn().mockResolvedValue(undefined),
       list: vi.fn().mockResolvedValue({ streams: [] }),
     },
+    contacts: {
+      request: vi
+        .fn()
+        .mockResolvedValue({
+          agentId: 'resolved-crypto-id',
+          requester: 'test-agent',
+          status: 'pending',
+        }),
+      accept: vi.fn().mockResolvedValue(undefined),
+      block: vi.fn().mockResolvedValue(undefined),
+    },
   },
 }));
 
@@ -302,6 +313,56 @@ describe('DMs panel (E2E enabled)', () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/CoreRpcError/)).not.toBeInTheDocument();
     expect(screen.queryByText(/\/keys\//)).not.toBeInTheDocument();
+  });
+
+  test('surfaces a friendly not_a_contact message instead of the raw 403 body', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.messages.list).mockResolvedValue({ messages: [] });
+    vi.mocked(apiClient.signal.sendMessage).mockRejectedValueOnce(
+      new Error('CoreRpcError: HTTP 403: HTTP 403: /messages/send: not_a_contact')
+    );
+
+    render(<MessagingSection />);
+    const peerInput = screen.getByPlaceholderText(/Recipient @handle/);
+    await user.type(peerInput, 'peer456');
+    await user.click(screen.getByRole('button', { name: 'Open DM' }));
+
+    const composeInput = await screen.findByPlaceholderText(/Type a message/);
+    await user.type(composeInput, 'secret');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+
+    // Friendly, actionable copy — not the raw relay body.
+    expect(await screen.findByText(/until they're a contact/i)).toBeInTheDocument();
+    expect(screen.queryByText(/not_a_contact/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/HTTP 403/)).not.toBeInTheDocument();
+    // And the actionable affordance is offered.
+    expect(screen.getByTestId('dm-contact-request')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send contact request' })).toBeInTheDocument();
+  });
+
+  test('the not_a_contact affordance sends a contact request and confirms it', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.messages.list).mockResolvedValue({ messages: [] });
+    vi.mocked(apiClient.signal.sendMessage).mockRejectedValueOnce(
+      new Error('CoreRpcError: HTTP 403: HTTP 403: /messages/send: not_a_contact')
+    );
+
+    render(<MessagingSection />);
+    const peerInput = screen.getByPlaceholderText(/Recipient @handle/);
+    await user.type(peerInput, 'peer456');
+    await user.click(screen.getByRole('button', { name: 'Open DM' }));
+
+    const composeInput = await screen.findByPlaceholderText(/Type a message/);
+    await user.type(composeInput, 'secret');
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+
+    const requestButton = await screen.findByRole('button', { name: 'Send contact request' });
+    await user.click(requestButton);
+
+    // Requests the edge for the RESOLVED crypto id, then confirms in-place.
+    expect(vi.mocked(apiClient.contacts.request)).toHaveBeenCalledWith('resolved-crypto-id');
+    expect(await screen.findByText(/Contact request sent/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send contact request' })).not.toBeInTheDocument();
   });
 
   test('normalizes the core mapped missing encrypted messaging setup error', async () => {
@@ -1058,6 +1119,44 @@ describe('inbox stream lifecycle', () => {
     await screen.findByText(/Your inbox is empty/i);
     expect(screen.queryByTestId('inbox-live-indicator')).not.toBeInTheDocument();
   });
+
+  test('keeps rendering when the inbox stream fails to start (non-fatal)', async () => {
+    vi.mocked(apiClient.streams.start).mockRejectedValueOnce(new Error('stream boom'));
+    render(<MessagingSection tabs={TABS} />);
+    await userEvent.click(screen.getByRole('tab', { name: 'Inbox' }));
+    // The fetch path is independent of the stream, so the panel still settles.
+    await screen.findByText(/Your inbox is empty/i);
+    expect(apiClient.streams.start).toHaveBeenCalledWith('inbox');
+  });
+
+  test('swallows a stream stop failure on unmount', async () => {
+    vi.mocked(apiClient.streams.stop).mockRejectedValue(new Error('stop boom'));
+    const { unmount } = render(<MessagingSection tabs={TABS} />);
+    await userEvent.click(screen.getByRole('tab', { name: 'Inbox' }));
+    await screen.findByText(/Your inbox is empty/i);
+    await waitFor(() => expect(apiClient.streams.start).toHaveBeenCalledWith('inbox'));
+    unmount();
+    await waitFor(() => expect(apiClient.streams.stop).toHaveBeenCalledWith('inbox'));
+  });
+
+  test('stops a stream that resolves after the panel already unmounted', async () => {
+    let resolveStart!: (v: { streamId: string }) => void;
+    vi.mocked(apiClient.streams.start).mockReturnValueOnce(
+      new Promise<{ streamId: string }>(res => {
+        resolveStart = res;
+      })
+    );
+    const { unmount } = render(<MessagingSection tabs={TABS} />);
+    await userEvent.click(screen.getByRole('tab', { name: 'Inbox' }));
+    await screen.findByText(/Your inbox is empty/i);
+    await waitFor(() => expect(apiClient.streams.start).toHaveBeenCalledWith('inbox'));
+
+    // Unmount before `start` resolves: cleanup runs with streamRef still null.
+    unmount();
+    // The late resolution must stop the orphaned stream, not leak it.
+    resolveStart({ streamId: 'late-inbox' });
+    await waitFor(() => expect(apiClient.streams.stop).toHaveBeenCalledWith('late-inbox'));
+  });
 });
 
 // ── Open DM real-time stream (#4928) ────────────────────────────────────────────
@@ -1175,6 +1274,44 @@ describe('open DM real-time stream', () => {
         startsForFirstPeer
       )
     );
+  });
+
+  test('keeps the thread usable when the stream fails to start (non-fatal)', async () => {
+    vi.mocked(apiClient.streams.start).mockRejectedValueOnce(new Error('stream boom'));
+    const user = userEvent.setup();
+    render(<MessagingSection />);
+    // openDm settles on the mount fetch, which is independent of the stream.
+    await openDm(user);
+    expect(apiClient.streams.start).toHaveBeenCalledWith('inbox');
+  });
+
+  test('swallows a stream stop failure when the thread is closed', async () => {
+    vi.mocked(apiClient.streams.stop).mockRejectedValue(new Error('stop boom'));
+    const user = userEvent.setup();
+    render(<MessagingSection />);
+    await openDm(user);
+    await waitFor(() => expect(apiClient.streams.start).toHaveBeenCalledWith('inbox'));
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    await waitFor(() => expect(apiClient.streams.stop).toHaveBeenCalledWith('inbox'));
+  });
+
+  test('stops a stream that resolves after the thread already closed', async () => {
+    let resolveStart!: (v: { streamId: string }) => void;
+    vi.mocked(apiClient.streams.start).mockReturnValueOnce(
+      new Promise<{ streamId: string }>(res => {
+        resolveStart = res;
+      })
+    );
+    const user = userEvent.setup();
+    render(<MessagingSection />);
+    await openDm(user);
+    await waitFor(() => expect(apiClient.streams.start).toHaveBeenCalledWith('inbox'));
+
+    // Close the thread before `start` resolves: cleanup runs with streamRef null.
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    // The late resolution stops the orphaned stream rather than leaking it.
+    resolveStart({ streamId: 'late-dm' });
+    await waitFor(() => expect(apiClient.streams.stop).toHaveBeenCalledWith('late-dm'));
   });
 });
 
