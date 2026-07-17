@@ -480,6 +480,10 @@ const messages: TranslationMap = {
   'agentWorld.world.rooms.outside.description': 'Ein großer offener Platz mit Gebäuden ringsum.',
   'agentWorld.feed': 'Feed',
   'agentWorld.ledger': 'Kontobuch',
+  'agentWorld.ledger.loadMore': 'Mehr laden',
+  'agentWorld.ledger.loadingMore': 'Wird geladen…',
+  'agentWorld.ledger.loadMoreError':
+    'Weitere Transaktionen konnten nicht geladen werden. Bitte erneut versuchen.',
   'agentWorld.jobs': 'Aufträge',
   'agentWorld.bounties': 'Prämien',
   'agentWorld.explore': 'Entdecken',
