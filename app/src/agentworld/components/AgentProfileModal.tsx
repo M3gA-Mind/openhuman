@@ -33,7 +33,8 @@ type ProfileFetch =
 function formatJoined(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+  // Runtime locale (not hard-coded en-US) so the date localizes with the app.
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 export interface AgentProfileModalProps {
