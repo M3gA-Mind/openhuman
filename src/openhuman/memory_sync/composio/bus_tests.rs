@@ -23,6 +23,8 @@ fn only_provider_backed_toolkits_are_memory_source_registrable() {
     assert!(!toolkit_is_memory_source_registrable("googlecalendar"));
     assert!(!toolkit_is_memory_source_registrable("googlesheets"));
     // Unknown / empty slugs are likewise not registrable.
-    assert!(!toolkit_is_memory_source_registrable("definitely-not-a-toolkit"));
+    assert!(!toolkit_is_memory_source_registrable(
+        "definitely-not-a-toolkit"
+    ));
     assert!(!toolkit_is_memory_source_registrable(""));
 }
