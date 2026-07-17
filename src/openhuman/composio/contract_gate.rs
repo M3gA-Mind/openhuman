@@ -38,14 +38,17 @@ use crate::openhuman::composio::providers::toolkit_from_slug;
 #[cfg(feature = "flows")]
 use crate::openhuman::tinyflows::caps::{fetch_live_toolkit_catalog, ToolContract};
 
-/// Per-agent-turn record of which action contracts have already been surfaced
-/// to the model, so the gate blocks a given action at most once per turn.
+/// Record of which action contracts have already been surfaced to the model,
+/// so the gate blocks a given action at most once per gate instance.
 ///
 /// One [`ContractGate`] is held per [`super::action_tool::ComposioActionTool`]
 /// instance; those tools are constructed fresh per `integrations_agent` spawn
-/// and live for that spawn's tool loop, so "seen" is scoped to the turn without
-/// any task-local plumbing. Interior-mutable so the gate can record state
-/// through the tool's `&self` `execute`.
+/// and live for that spawn's tool loop. That loop is a single agent turn in the
+/// common case, so "seen" behaves as per-turn state without any task-local
+/// plumbing — but a long-lived spawn can span multiple turns, and this gate
+/// does NOT reset when the surfaced schema drops out of context via compaction
+/// (tracked as follow-up; see the module-level note). Interior-mutable so the
+/// gate can record state through the tool's `&self` `execute`.
 #[derive(Default)]
 pub struct ContractGate {
     seen: Mutex<HashSet<String>>,
@@ -58,7 +61,7 @@ impl ContractGate {
 
     /// Insert `slug` (normalised to upper-case) into the seen-set. Returns
     /// `true` when it was NOT already present — i.e. this is the first time the
-    /// gate has been consulted for this action this turn.
+    /// gate has been consulted for this action for this gate's lifetime.
     ///
     /// The lock is taken and released entirely within this call, so no guard is
     /// held across the caller's later `await`.
