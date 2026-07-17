@@ -192,6 +192,31 @@ impl Tool for ComposioActionTool {
             }
         }
 
+        // [#1710 Wave 4 / #4853] Reload the live config snapshot ONCE, up front,
+        // and use it for BOTH the contract-gate lookup and dispatch. A mid-session
+        // `composio.mode` / credential / workspace change must route the gate's
+        // live-catalog fetch and the actual execution through the SAME config;
+        // consulting the captured spawn-time `self.config` here would let the gate
+        // resolve (or skip) a contract against stale routing while dispatch used
+        // fresh routing. Anchored to this tool's original config path rather than
+        // re-resolving process-global `OPENHUMAN_WORKSPACE` (the tool is scoped to
+        // the user/workspace it was created for).
+        let live_config =
+            match config_rpc::reload_config_snapshot_with_timeout(self.config.as_ref()).await {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!(
+                        tool = %self.action_name,
+                        error = %e,
+                        "[composio] per-action execute: load_config failed"
+                    );
+                    return Ok(ToolResult::error(format!(
+                        "{}: failed to load live config: {e}",
+                        self.action_name
+                    )));
+                }
+            };
+
         // Contract gate (#4853): the per-action tool is built from the thin
         // spawn-time `list_tools` schema (often `{"type":"object"}` with no
         // field descriptions), so the model guesses argument formats — most
@@ -201,10 +226,8 @@ impl Tool for ComposioActionTool {
         // let the retry — now with the schema in context — execute. Degrades to
         // a normal execute whenever the contract can't be resolved (see
         // `contract_gate::consult`), so an unconfigured/offline client never
-        // blocks the action.
-        match super::contract_gate::consult(&self.gate, self.config.as_ref(), &self.action_name)
-            .await
-        {
+        // blocks the action. Uses `live_config` so gate routing matches dispatch.
+        match super::contract_gate::consult(&self.gate, &live_config, &self.action_name).await {
             super::contract_gate::GateDecision::Surface(contract) => {
                 tracing::info!(
                     tool = %self.action_name,
@@ -233,31 +256,11 @@ impl Tool for ComposioActionTool {
             &iana,
         );
 
-        // Resolve the client through the mode-aware factory on every
-        // call so a direct-mode toggle takes effect immediately
-        // (#1710). The pre-baked-client variant of this code routed all
-        // executions through the backend tinyhumans tenant regardless
-        // of mode — silently breaking direct mode for tool execution.
-        // [#1710 Wave 4] Reload config fresh per execute so a mid-session
-        // `composio.mode` toggle takes effect at the very next tool call.
-        // Anchor the reload to this tool's original config path rather
-        // than re-resolving process-global `OPENHUMAN_WORKSPACE`; the
-        // tool is scoped to the user/workspace it was created for.
-        let live_config =
-            match config_rpc::reload_config_snapshot_with_timeout(self.config.as_ref()).await {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!(
-                        tool = %self.action_name,
-                        error = %e,
-                        "[composio] per-action execute: load_config failed"
-                    );
-                    return Ok(ToolResult::error(format!(
-                        "{}: failed to load live config: {e}",
-                        self.action_name
-                    )));
-                }
-            };
+        // Resolve the client through the mode-aware factory on every call so a
+        // direct-mode toggle takes effect immediately (#1710), reusing the
+        // `live_config` snapshot reloaded above so the gate lookup and this
+        // dispatch share identical routing. The pre-baked-client variant routed
+        // all executions through the backend tinyhumans tenant regardless of mode.
         let kind = match create_composio_client(&live_config) {
             Ok(kind) => kind,
             Err(e) => {
