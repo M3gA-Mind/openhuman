@@ -648,10 +648,15 @@ mod tests {
         .expect("construct composio source");
 
         let config = Config::default();
-        let mut memory_config = tinycortex::memory::config::MemoryConfig::default();
+        let mut memory_config =
+            tinycortex::memory::config::MemoryConfig::new("/tmp/openhuman-test-ws");
 
-        let err = build_pipeline(&source, &config, &mut memory_config)
-            .expect_err("unsupported toolkit must be rejected");
+        // `build_pipeline` returns `Result<Arc<dyn SyncPipeline>, String>`; the
+        // Ok arm is not `Debug`, so match rather than `expect_err`.
+        let err = match build_pipeline(&source, &config, &mut memory_config) {
+            Ok(_) => panic!("unsupported toolkit must be rejected before config resolution"),
+            Err(e) => e,
+        };
         assert!(
             err.contains("does not support toolkit 'googlecalendar'"),
             "expected the unsupported-toolkit error (proving rejection precedes \
