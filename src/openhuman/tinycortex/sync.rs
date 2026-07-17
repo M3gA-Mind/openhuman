@@ -326,9 +326,7 @@ pub fn syncable_composio_toolkits() -> &'static [&'static str] {
 /// advertised source of truth; this mirror exists for the sync layer itself.
 pub fn is_composio_toolkit_syncable(toolkit: &str) -> bool {
     let slug = toolkit.trim().to_ascii_lowercase();
-    syncable_composio_toolkits()
-        .iter()
-        .any(|&s| s == slug.as_str())
+    syncable_composio_toolkits().contains(&slug.as_str())
 }
 
 fn build_pipeline(
@@ -560,10 +558,11 @@ fn stage_name(stage: SyncStage) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_composio_toolkit_syncable, syncable_composio_toolkits};
+    use super::{build_pipeline, is_composio_toolkit_syncable, syncable_composio_toolkits};
+    use crate::openhuman::config::Config;
+    use crate::openhuman::memory_sources::MemorySourceEntry;
     use crate::openhuman::memory_sync::composio::{
-        all_composio_sync_providers, get_composio_sync_provider,
-        init_default_composio_sync_providers,
+        get_composio_sync_provider, init_default_composio_sync_providers,
     };
 
     /// The advertised set (`memory_sources.supported_toolkits`, sourced from the
@@ -571,10 +570,10 @@ mod tests {
     /// diverge: a toolkit that is advertised but has no pipeline reports ACTIVE
     /// and then silently never ingests — the exact defect of #4957.
     ///
-    /// Both directions are asserted. Sibling `registry` unit tests register
-    /// throwaway `test_dummy_*` / empty-slug providers into the same
-    /// process-global registry, so real providers are matched by excluding those
-    /// fixtures rather than by raw set-equality (which would be order-flaky).
+    /// Both directions are asserted against an explicit built-in slug set. The
+    /// provider registry is process-global and sibling tests register throwaway
+    /// providers into it without unregistering, so walking it directly would be
+    /// order-flaky; pinning the built-in set keeps this deterministic.
     #[test]
     fn advertised_and_syncable_toolkit_sets_cannot_diverge() {
         init_default_composio_sync_providers();
@@ -588,20 +587,76 @@ mod tests {
             );
         }
 
-        // Every registered (non-fixture) provider must be syncable. This is the
-        // #4957 direction: advertising a provider that `build_pipeline` rejects
-        // is the silent failure we guard against.
-        for provider in all_composio_sync_providers() {
-            let slug = provider.toolkit_slug();
-            if slug.is_empty() || slug.starts_with("test_dummy") {
-                continue; // sibling registry-test fixtures, not real providers
-            }
+        // Every built-in provider shipped by `init_default_composio_sync_providers`
+        // must be syncable. This is the #4957 direction: advertising a provider
+        // that `build_pipeline` rejects is the silent failure we guard against.
+        //
+        // We pin the built-in slug set explicitly rather than walking
+        // `all_composio_sync_providers()`: that registry is process-global and
+        // sibling tests register throwaway providers into it that they never
+        // unregister (e.g. `provideronly` in composio/tools_tests.rs, `stub-no-active`
+        // in composio/identity.rs), so a raw registry walk fails nondeterministically
+        // depending on test execution order. A new built-in toolkit must be added to
+        // this list, to `syncable_composio_toolkits`, and to `build_pipeline` together
+        // — the assert_eq below fails loudly if the first two ever drift apart.
+        const BUILTIN_SYNC_PROVIDERS: &[&str] =
+            &["clickup", "github", "gmail", "linear", "notion", "slack"];
+
+        let mut builtin = BUILTIN_SYNC_PROVIDERS.to_vec();
+        builtin.sort_unstable();
+        let mut syncable = syncable_composio_toolkits().to_vec();
+        syncable.sort_unstable();
+        assert_eq!(
+            builtin, syncable,
+            "the built-in provider set and syncable set diverged — a provider is \
+             advertised without a matching `build_pipeline` arm, or vice versa (#4957)"
+        );
+
+        for &slug in BUILTIN_SYNC_PROVIDERS {
+            assert!(
+                get_composio_sync_provider(slug).is_some(),
+                "built-in provider `{slug}` is not registered by \
+                 init_default_composio_sync_providers"
+            );
             assert!(
                 is_composio_toolkit_syncable(slug),
-                "toolkit `{slug}` is advertised by the provider registry but has no \
-                 build_pipeline arm — it would report ACTIVE and silently fail to sync (#4957)"
+                "built-in provider `{slug}` is advertised but has no build_pipeline arm — \
+                 it would report ACTIVE and silently fail to sync (#4957)"
             );
         }
+    }
+
+    /// Behavioural regression for #4957: an unsupported Composio toolkit is
+    /// rejected by `build_pipeline` *before* any credential/client resolution.
+    ///
+    /// We hand it a default `Config` (no Composio auth configured). If the gate
+    /// ran AFTER config resolution we would get a config error ("backend bearer
+    /// token is not configured" / "direct API key is not configured"); instead
+    /// we must get the unsupported-toolkit error, proving the fail-closed
+    /// ordering that stops an unsyncable toolkit from ever reaching a pipeline.
+    #[test]
+    fn build_pipeline_rejects_unsupported_toolkit_before_resolving_config() {
+        // `googlecalendar` is a real Composio toolkit with no native pipeline —
+        // exactly the prod case from #4957.
+        let source: MemorySourceEntry = serde_json::from_value(serde_json::json!({
+            "id": "composio:googlecalendar:conn-1",
+            "kind": "composio",
+            "label": "googlecalendar connection",
+            "toolkit": "googlecalendar",
+            "connection_id": "conn-1",
+        }))
+        .expect("construct composio source");
+
+        let config = Config::default();
+        let mut memory_config = tinycortex::memory::config::MemoryConfig::default();
+
+        let err = build_pipeline(&source, &config, &mut memory_config)
+            .expect_err("unsupported toolkit must be rejected");
+        assert!(
+            err.contains("does not support toolkit 'googlecalendar'"),
+            "expected the unsupported-toolkit error (proving rejection precedes \
+             config resolution), got: {err}"
+        );
     }
 
     /// Locks the reported prod failures (googlecalendar / googlesheets) as
