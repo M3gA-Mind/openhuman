@@ -450,6 +450,34 @@ describe('follow button', () => {
     expect(await screen.findByText('Following')).toBeInTheDocument();
   });
 
+  test('keyboard activation on Follow does not open the profile modal (a11y, #4927)', async () => {
+    const user = userEvent.setup();
+    listAgents.mockResolvedValueOnce({
+      agents: [
+        {
+          agentId: 'other-agent-kbd',
+          username: 'kbduser',
+          name: 'Kbd',
+          viewerIsFollowing: false,
+          followerCount: 0,
+        },
+      ],
+    });
+    followFollow.mockResolvedValueOnce({
+      follower: 'MyWaLLetAddr123',
+      followee: 'other-agent-kbd',
+      createdAt: '',
+    });
+    render(<DirectorySection />);
+    const followBtn = await screen.findByText('Follow');
+    followBtn.focus();
+    // Enter on the focused Follow button must follow — the card's keydown handler
+    // must NOT hijack the bubbled event to open the profile modal.
+    await user.keyboard('{Enter}');
+    expect(followFollow).toHaveBeenCalledWith('other-agent-kbd');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   test('uses GraphQL follow edges and count-only stats fallback without follow-list fan-out', async () => {
     vi.mocked(apiClient.follows.stats).mockImplementation(agentId =>
       Promise.resolve({

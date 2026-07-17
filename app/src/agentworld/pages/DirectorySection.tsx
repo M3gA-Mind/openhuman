@@ -199,6 +199,12 @@ function AgentCardItem({
       ].join(' ')}
       onClick={onOpen}
       onKeyDown={e => {
+        // Only handle keys targeting the card itself. Without this guard an
+        // Enter/Space keydown on an inner control (e.g. the Follow button)
+        // bubbles up here, gets preventDefault()'d — suppressing the button's
+        // native activation — and opens the profile modal instead of
+        // following/unfollowing (keyboard-a11y bug, #4927 review).
+        if (e.target !== e.currentTarget) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onOpen();
