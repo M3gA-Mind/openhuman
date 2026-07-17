@@ -97,8 +97,10 @@ const DIRECTIVE_PROPOSE: &str =
 
 const DIRECTIVE_REVISE: &str = "Revise this tinyflows automation and return the revised proposal. Do not save \
      unless I explicitly ask you to (when I do, use save_workflow on the saved flow id), and never enable or \
-     disable anything. You may run_flow the SAVED flow to test it, but ONLY if I ask and only after you \
-     confirm with me first.";
+     disable anything. If I ask you to run/test the SAVED flow, follow the run_flow capability rule from \
+     your standing instructions: only run_flow it if that tool is on your belt and only after you confirm \
+     with me first; if it isn't on your belt, point me to the Run control in the Workflows UI instead of \
+     offering.";
 
 const DIRECTIVE_BUILD_PROPOSE_ONLY: &str = "Build this tinyflows automation END-TO-END and return the workflow \
      proposal. The flow already exists (created blank just now) — design the graph and verify it with \
@@ -135,8 +137,9 @@ pub fn render_prompt(req: &BuilderRequest) -> String {
             if let Some(flow_id) = req.flow_id.as_deref().filter(|s| !s.is_empty()) {
                 lines.push(String::new());
                 lines.push(format!(
-                    "This workflow is saved with flow id `{flow_id}` — if I ask you to run/test it, you \
-                     may run_flow that id, but confirm with me first."
+                    "This workflow is saved with flow id `{flow_id}` — if I ask you to run/test it, follow \
+                     the run_flow capability rule: only run_flow that id if the tool is on your belt and \
+                     I've confirmed first; otherwise point me to the Run control in the Workflows UI."
                 ));
             }
             lines.push(String::new());
@@ -246,6 +249,46 @@ mod tests {
         assert!(p.contains("```json"));
         assert!(p.contains("flow_42"));
         assert!(p.contains("add a Slack step"));
+    }
+
+    #[test]
+    fn revise_run_guidance_is_capability_conditional() {
+        // Regression: the revise-turn directive (and its per-turn flow_id
+        // note) used to unconditionally assert "you may run_flow" —
+        // contradicting the standing prompt's capability check (Bld §4),
+        // which hides run_flow/resume_flow_run/cancel_flow_run on the
+        // flows_build path (`FLOWS_BUILD_HIDDEN_TOOLS`). Because the
+        // per-turn brief is appended AFTER the standing prompt, an
+        // unconditional per-turn assertion would override the standing
+        // prompt's capability check and reproduce the offer-then-refuse bug
+        // the standing-prompt fix was meant to close. Both the mode-level
+        // directive and the flow_id-specific note must defer to the
+        // capability rule instead of asserting the tool is available.
+        let mut r = req(BuildMode::Revise);
+        r.flow_id = Some("flow_77".into());
+        let p = render_prompt(&r);
+
+        assert!(
+            p.contains("run_flow capability rule"),
+            "revise directive must defer to the run_flow capability rule rather than \
+             assert the tool is available"
+        );
+        assert!(
+            p.contains("Run control in the Workflows UI"),
+            "revise directive must point to the Workflows UI Run control as the \
+             off-the-belt fallback"
+        );
+
+        for banned in [
+            "You may run_flow the SAVED flow to test it, but ONLY if I ask",
+            "may run_flow that id, but confirm with me first.",
+        ] {
+            assert!(
+                !p.contains(banned),
+                "revise directive must not carry the stale unconditional run_flow \
+                 phrasing `{banned}`"
+            );
+        }
     }
 
     #[test]
@@ -359,6 +402,81 @@ mod tests {
              created flows are always born disabled (issue #6)"
         );
 
+        // Positive (Bld §4): run guidance is capability-conditional. `run_flow`
+        // (and resume/cancel) are hidden on the `flows_build` path, so the
+        // prompt must NOT unconditionally claim the builder can run a flow —
+        // it must first check whether the tool is on its belt and, when it is
+        // not, point the user to the Workflows UI Run control instead of
+        // offering-then-refusing (the confusing "want me to run it?" → "I
+        // don't have access" behavior).
+        assert!(
+            STANDING_PROMPT.contains("only if the tool is on your belt")
+                && STANDING_PROMPT.contains("never offer to run the flow")
+                && STANDING_PROMPT.contains("Workflows UI"),
+            "standing prompt must make run_flow capability-conditional: never offer to run \
+             when the tool is off the belt, and point the user to the Workflows UI Run \
+             control instead (Bld §4 offer-then-refuse)"
+        );
+
+        // Negative: the pre-fix heading ("ask first!") asserted run_flow was
+        // simply a confirm-before-use tool, with no capability check at all —
+        // it must not reappear (that's the exact offer-then-refuse regression
+        // Bld §4 closed).
+        assert!(
+            !STANDING_PROMPT.contains("`run_flow` (ask first!)"),
+            "standing prompt must not regress to the pre-Bld-§4 unconditional \
+             \"ask first!\" run_flow heading"
+        );
+
+        // Positive: the run_flow section must explicitly gate the real-run
+        // instructions behind the capability check, not just mention the
+        // check somewhere else in the doc — bind the assertion to the two
+        // halves of the actual contract (off-belt fallback, on-belt usage).
+        assert!(
+            STANDING_PROMPT
+                .contains("If you do **not** have a `run_flow` tool, never offer to run the flow"),
+            "standing prompt must state the off-belt fallback as a direct consequence \
+             of the capability check, not a generic nearby mention"
+        );
+        assert!(
+            STANDING_PROMPT
+                .contains("If you **do** have `run_flow`: once the user has **saved** a flow"),
+            "standing prompt must gate the on-belt run_flow usage behind the same \
+             capability check"
+        );
+
+        // Positive (CodeRabbit follow-up on Bld §4): `resume_flow_run` /
+        // `cancel_flow_run` get the identical capability-conditional
+        // treatment as `run_flow` — both are hidden alongside it on the
+        // `flows_build` path (`FLOWS_BUILD_HIDDEN_TOOLS`), so a fix that only
+        // gated `run_flow` while leaving these two unconditional would
+        // reopen the same offer-then-refuse bug one hop later.
+        assert!(
+            STANDING_PROMPT
+                .contains("those tools are on your belt** — `resume_flow_run` (approval-gated) or"),
+            "standing prompt must gate resume_flow_run/cancel_flow_run behind the \
+             same on-your-belt capability check as run_flow"
+        );
+        assert!(
+            STANDING_PROMPT.contains("(if they're not available, point the"),
+            "standing prompt must state the resume/cancel off-belt fallback condition"
+        );
+        assert!(
+            STANDING_PROMPT
+                .contains("user to the runs list in the Workflows UI instead of offering)."),
+            "standing prompt must point resume/cancel's off-belt fallback to the \
+             Workflows UI runs list, matching run_flow's UI fallback pattern"
+        );
+
+        // Negative: the pre-fix wording offered resume/cancel unconditionally
+        // right after `edit_workflow`, with no capability check in between —
+        // must not reappear.
+        assert!(
+            !STANDING_PROMPT.contains("patch with `edit_workflow`; `resume_flow_run`"),
+            "standing prompt must not regress to the pre-fix unconditional \
+             resume_flow_run/cancel_flow_run offer"
+        );
+
         // Positive: self-DM resolution — the prompt must teach the builder to
         // wire "DM me" onto the connection's own `platform_user_id`, not a
         // public channel (the #general/#team-product fallback bug).
@@ -460,6 +578,32 @@ mod tests {
                 "standing prompt's non-owner DM guidance must not hardcode \
                  the platform-specific `{banned}` — it must stay \
                  platform-agnostic (any messaging toolkit)"
+            );
+        }
+    }
+
+    /// The standing prompt must teach reply hygiene: no deliberation
+    /// narration, no draft-then-restate, lead with substance. Without these
+    /// the reasoning-tier model narrates its chain of thought in the visible
+    /// reply ("let me think… actually wait… let me reconsider") and restates
+    /// its questions twice in the same message. (The harness already keeps
+    /// real reasoning blocks out of the visible text — this is the model
+    /// choosing to narrate in its output, so a prompt rule is the fix.)
+    #[test]
+    fn standing_prompt_teaches_reply_hygiene() {
+        const STANDING_PROMPT: &str = include_str!("prompt.md");
+
+        for rule in [
+            "finished reply",
+            "No deliberation narration",
+            "No draft-then-restate",
+            "Lead with substance",
+        ] {
+            assert!(
+                STANDING_PROMPT.contains(rule),
+                "standing prompt must teach the reply-hygiene rule `{rule}` — the \
+                 reply is the finished answer, not a thinking scratchpad (no \
+                 deliberation narration, no draft-then-restate)"
             );
         }
     }
