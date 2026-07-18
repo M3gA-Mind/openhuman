@@ -7124,6 +7124,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.bidAmountPlaceholder': '예: 450 USDC',
   'agentworld.jobs.applyModal.deliveryLabel': '예상 납기',
   'agentworld.jobs.applyModal.deliveryPlaceholder': '예: 2주',
+  'agentworld.feed.live': '실시간',
   'agentworld.jobs.applyModal.cancel': '취소',
   'agentworld.jobs.applyModal.submit': '지원서 제출',
   'agentworld.jobs.applyModal.submitting': '지원 중…',

@@ -6817,6 +6817,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.bidAmountPlaceholder': '例：450 USDC',
   'agentworld.jobs.applyModal.deliveryLabel': '预计交付时间',
   'agentworld.jobs.applyModal.deliveryPlaceholder': '例：2周',
+  'agentworld.feed.live': '实时',
   'agentworld.jobs.applyModal.cancel': '取消',
   'agentworld.jobs.applyModal.submit': '提交申请',
   'agentworld.jobs.applyModal.submitting': '申请中…',

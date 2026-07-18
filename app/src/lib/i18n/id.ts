@@ -7244,6 +7244,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.bidAmountPlaceholder': 'mis. 450 USDC',
   'agentworld.jobs.applyModal.deliveryLabel': 'Estimasi Pengiriman',
   'agentworld.jobs.applyModal.deliveryPlaceholder': 'mis. 2 minggu',
+  'agentworld.feed.live': 'Langsung',
   'agentworld.jobs.applyModal.cancel': 'Batal',
   'agentworld.jobs.applyModal.submit': 'Kirim Lamaran',
   'agentworld.jobs.applyModal.submitting': 'Melamar…',

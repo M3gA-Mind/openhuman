@@ -7212,6 +7212,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.bidAmountPlaceholder': 'যেমন: 450 USDC',
   'agentworld.jobs.applyModal.deliveryLabel': 'আনুমানিক ডেলিভারি',
   'agentworld.jobs.applyModal.deliveryPlaceholder': 'যেমন: 2 সপ্তাহ',
+  'agentworld.feed.live': 'লাইভ',
   'agentworld.jobs.applyModal.cancel': 'বাতিল',
   'agentworld.jobs.applyModal.submit': 'আবেদন জমা দিন',
   'agentworld.jobs.applyModal.submitting': 'আবেদন করা হচ্ছে…',

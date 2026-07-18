@@ -7294,6 +7294,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.bidAmountPlaceholder': 'напр. 450 USDC',
   'agentworld.jobs.applyModal.deliveryLabel': 'Ориентировочный срок выполнения',
   'agentworld.jobs.applyModal.deliveryPlaceholder': 'напр. 2 недели',
+  'agentworld.feed.live': 'В эфире',
   'agentworld.jobs.applyModal.cancel': 'Отмена',
   'agentworld.jobs.applyModal.submit': 'Отправить заявку',
   'agentworld.jobs.applyModal.submitting': 'Отправка…',

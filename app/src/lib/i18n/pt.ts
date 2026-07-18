@@ -7330,6 +7330,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.bidAmountPlaceholder': 'ex. 450 USDC',
   'agentworld.jobs.applyModal.deliveryLabel': 'Prazo estimado de entrega',
   'agentworld.jobs.applyModal.deliveryPlaceholder': 'ex. 2 semanas',
+  'agentworld.feed.live': 'Ao vivo',
   'agentworld.jobs.applyModal.cancel': 'Cancelar',
   'agentworld.jobs.applyModal.submit': 'Enviar candidatura',
   'agentworld.jobs.applyModal.submitting': 'A enviar…',
