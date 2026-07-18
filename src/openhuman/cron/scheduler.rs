@@ -76,7 +76,7 @@ fn agent_error_to_user_message(err: &AgentError) -> &'static str {
             // contract, for clean notification-drawer rendering) names
             // the two highest-signal remedies — credits and model
             // configuration. The richer three-remedy copy lives on the
-            // chat-surface side (`channels/providers/web_errors.rs`'s
+            // chat-surface side (`web_chat/web_errors.rs`'s
             // empty_response arm) where there's no drawer-width limit.
             "Empty model response. Out of credits (Settings \u{2192} Billing) or try another model in Connections \u{2192} API keys \u{2192} LLM."
         }
@@ -764,15 +764,13 @@ fn permanent_halt_message(credits_exhausted: bool, budget_exhausted: bool) -> &'
 /// deep-link action even though no chat thread is active.
 fn publish_cron_user_error(kind: &str) {
     log::debug!("[cron] action=surface_user_error kind={kind}");
-    crate::openhuman::channels::providers::web::publish_web_channel_event(
-        crate::core::socketio::WebChannelEvent {
-            event: "user_error".to_string(),
-            client_id: "system".to_string(),
-            error_type: Some(kind.to_string()),
-            error_source: Some("cron".to_string()),
-            ..Default::default()
-        },
-    );
+    crate::openhuman::web_chat::publish_web_channel_event(crate::core::socketio::WebChannelEvent {
+        event: "user_error".to_string(),
+        client_id: "system".to_string(),
+        error_type: Some(kind.to_string()),
+        error_source: Some("cron".to_string()),
+        ..Default::default()
+    });
 }
 
 async fn process_due_jobs(config: &Config, security: &Arc<SecurityPolicy>, jobs: Vec<CronJob>) {

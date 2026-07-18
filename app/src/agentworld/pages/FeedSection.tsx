@@ -34,6 +34,7 @@ import { useT } from '../../lib/i18n/I18nContext';
 import { fetchWalletStatus } from '../../services/walletApi';
 import { apiClient } from '../AgentWorldShell';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useTinyplaceStream } from '../hooks/useTinyplaceStream';
 import { relativeTime } from './relativeTime';
 
 const log = debug('agentworld:feed');
@@ -645,6 +646,18 @@ export default function FeedSection() {
 
   const { agentId: myAgentId, configured: walletConfigured } = useWalletResolution();
 
+  // ── Real-time feed updates (#4926) ─────────────────────────────────────────
+  // The SDK exposes a per-feed WebSocket stream (`feeds::stream`); core wires it
+  // as the `feed` StreamKind. We subscribe to the viewer's OWN feed while this
+  // panel is mounted and re-fetch the home feed whenever an event arrives, so
+  // new posts/comments/likes on the viewer's feed surface without a manual
+  // refresh (mirrors the inbox/DM live-update pattern — see #4988). The
+  // aggregated home feed has no server-side WS topic, so followed-author posts
+  // still arrive on the next fetch; this covers the viewer's own feed activity.
+  const feedStreamId = myAgentId ? `feed:${myAgentId}` : undefined;
+  const { messages: streamMessages, status: streamStatus } = useTinyplaceStream(feedStreamId);
+  const feedStreamRef = useRef<string | null>(null);
+
   // Guards async setState after unmount. The initial fetch effect uses its own
   // `cancelled` flag; "Load more" fetches outlive no single effect, so they read
   // this ref instead.
@@ -869,14 +882,96 @@ export default function FeedSection() {
 
   // ── Refetch feed ───────────────────────────────────────────────────────────
 
-  // A fresh compose invalidates offsets, so reset pagination to the first page.
-  const refetchFeed = () => {
+  // A fresh compose/delete invalidates offsets, so reset pagination to the first
+  // page. `useCallback` keeps a stable identity for the callers below.
+  const refetchFeed = useCallback(() => {
     void apiClient.graphql
       .homeFeed({ limit: FEED_PAGE_SIZE, offset: 0, includeSelf: true })
       .then(result => {
         setFeedState(firstPageFeedState(result));
       });
-  };
+  }, []);
+
+  // Reconcile a live feed event WITHOUT collapsing pagination. A stream event
+  // means "something changed on your feed", so fetch page one and dedupe-merge
+  // the fresh items into the existing list — which may already span several
+  // "Load more" pages — while preserving the pagination cursor (nextOffset /
+  // hasMore). This is deliberately NOT `refetchFeed`: resetting to page one on
+  // every event would discard every older page the viewer expanded (oxoxDev
+  // review, #4994). New items sort to the top; already-loaded pages stay put.
+  const mergeLiveFeedUpdate = useCallback(() => {
+    void apiClient.graphql
+      .homeFeed({ limit: FEED_PAGE_SIZE, offset: 0, includeSelf: true })
+      .then(result => {
+        if (!mountedRef.current) return;
+        const page = Array.isArray(result?.items) ? result.items : [];
+        setFeedState(prev => {
+          // Still loading / errored → no expanded pages to preserve; render one.
+          if (prev.status !== 'ok') return firstPageFeedState(result);
+          const seen = new Set(prev.items.map(item => item.post.postId));
+          const fresh = page.filter(item => !seen.has(item.post.postId));
+          if (fresh.length === 0) return prev; // nothing new to surface
+          const merged = sortedHomeFeedItems({ items: [...prev.items, ...fresh] });
+          log('live feed event merged', { fresh: fresh.length, total: merged.length });
+          return { ...prev, items: merged };
+        });
+      })
+      .catch((err: unknown) => {
+        if (!mountedRef.current) return;
+        log('live feed merge failed: %s', String(err));
+      });
+  }, []);
+
+  // ── Start / stop the viewer's own feed stream ──────────────────────────────
+  // Open the stream while a resolved wallet is present; stop it on unmount /
+  // identity change. Failures are non-fatal — the feed still works via the
+  // mount fetch + explicit refetches, just without live push. Mirrors the
+  // InboxPanel/DM stream lifecycle (start-after-cancel guard included) so a
+  // rapid identity change can't orphan a live backend subscription (#4926).
+  useEffect(() => {
+    if (!myAgentId) return;
+    let cancelled = false;
+    void apiClient.streams
+      .start('feed', myAgentId)
+      .then(res => {
+        if (cancelled) {
+          void apiClient.streams.stop(res.streamId).catch(err => {
+            log('feed stream stop-after-cancel failed (%s): %s', res.streamId, String(err));
+          });
+          return;
+        }
+        feedStreamRef.current = res.streamId;
+        log('feed stream started: %s', res.streamId);
+      })
+      .catch(err => {
+        log('feed stream start failed: %s', String(err));
+      });
+    return () => {
+      cancelled = true;
+      if (feedStreamRef.current !== null) {
+        const stopId = feedStreamRef.current;
+        void apiClient.streams.stop(stopId).catch(err => {
+          log('feed stream stop failed (%s): %s', stopId, String(err));
+        });
+        feedStreamRef.current = null;
+      }
+    };
+  }, [myAgentId]);
+
+  // Reconcile the open feed whenever a new stream event arrives. Key the effect
+  // on the NEWEST message's identity, not `streamMessages.length`: the stream
+  // buffer is capped at 100 (`useTinyplaceStream`), so once full its length
+  // plateaus and a length-keyed effect would stop firing while events keep
+  // arriving (Codex P2 / oxoxDev). The buffer appends a fresh object per event
+  // (`[...prev.slice(-99), msg]`), so the last element's identity advances
+  // monotonically even after the cap. Merge (not reset) so expanded pages stay.
+  const lastStreamMessage =
+    streamMessages.length > 0 ? streamMessages[streamMessages.length - 1] : null;
+  useEffect(() => {
+    if (!myAgentId || !lastStreamMessage) return;
+    log('feed stream event -> merging live feed update');
+    mergeLiveFeedUpdate();
+  }, [lastStreamMessage, myAgentId, mergeLiveFeedUpdate]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -971,6 +1066,16 @@ export default function FeedSection() {
 
   return (
     <PanelScaffold description="Social feed">
+      {streamStatus === 'connected' && (
+        <div className="mb-2 flex justify-end">
+          <span
+            data-testid="feed-live-indicator"
+            className="inline-flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+            {t('agentworld.feed.live', 'Live')}
+          </span>
+        </div>
+      )}
       {myAgentId && feedState.status === 'ok' && (
         <FeedComposer myAgentId={myAgentId} onPostCreated={refetchFeed} />
       )}
