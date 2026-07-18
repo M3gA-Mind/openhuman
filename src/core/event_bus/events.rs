@@ -579,7 +579,7 @@ pub enum DomainEvent {
     /// flow-approval-surface, PR2/PR3). Unlike `ApprovalRequested`, this
     /// event carries no `thread_id`/`client_id` — a flow run has neither, so
     /// the generic chat-routed socket bridge
-    /// (`channels::providers::web::event_bus::ApprovalSurfaceSubscriber`)
+    /// (`web_chat::event_bus::ApprovalSurfaceSubscriber`)
     /// silently drops it (that gap was the original silent-deadlock bug).
     /// Published by `ApprovalGate::intercept_audited` alongside the existing
     /// `ApprovalRequested`, bridged by `core::socketio` directly to a
@@ -611,7 +611,7 @@ pub enum DomainEvent {
     ///
     /// Bridged to the `external_transfer_pending` web-channel socket event by
     /// `EgressSurfaceSubscriber` (defined in
-    /// `src/openhuman/channels/providers/web/event_bus.rs`) when the emitting
+    /// `src/openhuman/web_chat/event_bus.rs`) when the emitting
     /// turn carries chat routing. `thread_id` / `client_id` come from the
     /// ambient `APPROVAL_CHAT_CONTEXT` and are `None` for CLI / cron /
     /// background transfers (no chat surface to route to).
