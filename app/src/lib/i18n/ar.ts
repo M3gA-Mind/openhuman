@@ -4523,6 +4523,8 @@ const messages: TranslationMap = {
   'settings.ai.openRouterOauthDescription':
     'وقع مع OpenRouter وإستيراد مفتاح ×xxxxx متحكم به مستخدماً',
   'settings.ai.connecting': 'جارٍ الاتصال...',
+  'settings.ai.codexAuthButton': 'ربط Codex',
+  'settings.ai.codexAuthHelper': 'يستخدم تسجيل دخول Codex CLI الحالي من ~/.codex/auth.json.',
   'settings.ai.backgroundLoops': 'حلقات الخلفية',
   'settings.ai.backgroundLoopsDesc':
     'شاهدْ ما يَعْملُ بدون رسالةِ دردشةِ، يَتوقّفُ عملَ نبضات القلب، ويَتفحصُ مؤخراً دفترِ دفاترِ الإئتمانِ.',

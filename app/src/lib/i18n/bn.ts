@@ -4638,6 +4638,8 @@ const messages: TranslationMap = {
   'settings.ai.openRouterOauthDescription':
     'xqxqxx সহযোগে সাইন করুন এবং xqxyqx ব্যবহার করে একটি ব্যবহারকারী xxqx কী ইম্পোর্ট করুন',
   'settings.ai.connecting': 'সংযোগ করা হচ্ছে...',
+  'settings.ai.codexAuthButton': 'Codex সংযুক্ত করুন',
+  'settings.ai.codexAuthHelper': '~/.codex/auth.json থেকে বিদ্যমান Codex CLI লগইন ব্যবহার করে।',
   'settings.ai.backgroundLoops': 'ব্যাকগ্রাউন্ড লুপস',
   'settings.ai.backgroundLoopsDesc':
     'লক্ষ্য করুন যে, কোন আড্ডা ছাড়াই কি করা হয়, হার্টবিটের কাজ বিরতি দিন এবং সম্প্রতি ক্রেডিট কার্ড পরীক্ষা করুন ।',

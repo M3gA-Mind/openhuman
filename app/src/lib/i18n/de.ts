@@ -4769,6 +4769,9 @@ const messages: TranslationMap = {
   'settings.ai.openRouterOauthDescription':
     'Melden Sie sich mit OpenRouter an und importieren Sie einen benutzergesteuerten API-Schlüssel mit PKCE.',
   'settings.ai.connecting': 'Verbindung wird hergestellt...',
+  'settings.ai.codexAuthButton': 'Codex verbinden',
+  'settings.ai.codexAuthHelper':
+    'Verwendet die vorhandene Codex-CLI-Anmeldung aus ~/.codex/auth.json.',
   'settings.ai.backgroundLoops': 'Hintergrundschleifen',
   'settings.ai.backgroundLoopsDesc':
     'Sehen Sie, was ohne Chat-Nachricht läuft, pausieren Sie die Herzschlagarbeit und überprüfen Sie die letzten Kreditbuchzeilen.',

@@ -4653,6 +4653,8 @@ const messages: TranslationMap = {
   'settings.ai.openRouterOauthDescription':
     'Masuk dengan kunci OpenRouter dan impor sebuah user yang dikendalikan API menggunakan PKCE.',
   'settings.ai.connecting': 'Menghubungkan...',
+  'settings.ai.codexAuthButton': 'Hubungkan Codex',
+  'settings.ai.codexAuthHelper': 'Menggunakan login Codex CLI yang ada dari ~/.codex/auth.json.',
   'settings.ai.backgroundLoops': 'Perulangan latar belakang',
   'settings.ai.backgroundLoopsDesc':
     'Lihat apa yang berjalan tanpa pesan obrolan, jeda kerja detak jantung, dan memeriksa buku kas kredit baru-baru ini.',

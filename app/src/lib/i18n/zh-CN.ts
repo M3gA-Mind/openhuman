@@ -4387,6 +4387,8 @@ const messages: TranslationMap = {
   'settings.ai.openRouterOauthDescription':
     '使用 OpenRouter 登录，并通过 PKCE 导入由用户控制的 API 密钥。',
   'settings.ai.connecting': '正在连接...',
+  'settings.ai.codexAuthButton': '连接 Codex',
+  'settings.ai.codexAuthHelper': '使用来自 ~/.codex/auth.json 的现有 Codex CLI 登录。',
   'settings.ai.backgroundLoops': '背景循环',
   'settings.ai.backgroundLoopsDesc':
     '查看没有聊天消息时运行的内容，暂停心跳任务，并检查最近的额度账本行。',

@@ -4585,6 +4585,8 @@ const messages: TranslationMap = {
   'settings.ai.openRouterOauthDescription':
     'OpenRouter로 로그인하고 PKCE를 사용해 사용자가 제어하는 API 키를 가져옵니다.',
   'settings.ai.connecting': '연결 중...',
+  'settings.ai.codexAuthButton': 'Codex 연결',
+  'settings.ai.codexAuthHelper': '~/.codex/auth.json의 기존 Codex CLI 로그인을 사용합니다.',
   'settings.ai.backgroundLoops': '백그라운드 루프',
   'settings.ai.backgroundLoopsDesc':
     '채팅 메시지 없이 실행되는 항목을 확인하고, 하트비트 작업을 일시 중지하며, 최근 크레딧 원장 행을 검사합니다.',

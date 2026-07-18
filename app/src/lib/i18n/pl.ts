@@ -4707,6 +4707,8 @@ const messages: TranslationMap = {
   'settings.ai.openRouterOauthDescription':
     'Zaloguj się przez OpenRouter i zaimportuj kontrolowany przez użytkownika klucz API z użyciem PKCE.',
   'settings.ai.connecting': 'Łączenie...',
+  'settings.ai.codexAuthButton': 'Połącz Codex',
+  'settings.ai.codexAuthHelper': 'Używa istniejącego logowania Codex CLI z ~/.codex/auth.json.',
   'settings.ai.backgroundLoops': 'Pętle w tle',
   'settings.ai.backgroundLoopsDesc':
     'Zobacz, co działa bez wiadomości na czacie, wstrzymaj pracę heartbeat i sprawdź ostatnie wiersze księgi kredytów.',

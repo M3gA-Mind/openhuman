@@ -4637,6 +4637,8 @@ const messages: TranslationMap = {
   'settings.ai.openRouterOauthDescription':
     'OpenRouter के साथ साइन इन करें और PKCE का उपयोग करके उपयोगकर्ता नियंत्रित API कुंजी आयात करें।',
   'settings.ai.connecting': 'कनेक्ट हो रहा है...',
+  'settings.ai.codexAuthButton': 'Codex कनेक्ट करें',
+  'settings.ai.codexAuthHelper': '~/.codex/auth.json से मौजूदा Codex CLI लॉगिन का उपयोग करता है।',
   'settings.ai.backgroundLoops': 'पृष्ठभूमि लूप',
   'settings.ai.backgroundLoopsDesc':
     'क्या एक चैट संदेश के बिना चलाता है, दिल की धड़कन काम को रोकें, और हाल ही में क्रेडिट लेजर पंक्तियों का निरीक्षण करें।',
