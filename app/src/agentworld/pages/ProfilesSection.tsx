@@ -574,7 +574,7 @@ function AgentProfileCard({ data, onSwitched }: { data: ProfileData; onSwitched?
                   {/* Transfer is destructive/irreversible — the modal confirms
                       intent and fails closed. A primary handle is locked from
                       sale/transfer, so only non-primary handles offer it. */}
-                  {!id.primary && (
+                  {id.primary === false && (
                     <Button
                       variant="secondary"
                       size="sm"

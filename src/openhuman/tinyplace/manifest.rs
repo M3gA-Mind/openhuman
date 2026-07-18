@@ -2496,6 +2496,10 @@ pub(crate) fn handle_tinyplace_registry_assign_primary(
     })
 }
 
+fn transfer_allowed_by_primary_state(primary: Option<bool>) -> bool {
+    primary == Some(false)
+}
+
 /// Transfer one of the wallet's handles to another tiny.place identity
 /// (gift / account move, #4929). DESTRUCTIVE and irreversible for the sender:
 /// on success the recipient becomes the sole owner of `name`.
@@ -2541,10 +2545,13 @@ pub(crate) fn handle_tinyplace_registry_transfer(params: Map<String, Value>) -> 
             .get(&format!("@{name}"))
             .await
             .map_err(map_err)?;
-        if own.identity.as_ref().and_then(|i| i.primary) == Some(true) {
-            log::warn!("{LOG_PREFIX} registry_transfer rejected: handle is primary");
+        if !transfer_allowed_by_primary_state(own.identity.as_ref().and_then(|i| i.primary)) {
+            log::warn!(
+                "{LOG_PREFIX} registry_transfer rejected: handle is not explicitly non-primary"
+            );
             return Err(
-                "cannot transfer your primary handle; unassign it as primary first".to_string(),
+                "cannot transfer this handle unless it is explicitly marked non-primary"
+                    .to_string(),
             );
         }
 
@@ -5409,6 +5416,15 @@ mod tests {
         params.insert("recipient".to_string(), Value::String("   ".to_string()));
         let err = block_on(handle_tinyplace_registry_transfer(params)).unwrap_err();
         assert!(err.contains("recipient"), "got: {err}");
+    }
+
+    /// #4929: transfer eligibility fails closed when the registry omits the
+    /// primary flag; only an explicit `false` may reach the destructive path.
+    #[test]
+    fn transfer_requires_explicit_non_primary_state() {
+        assert!(!transfer_allowed_by_primary_state(None));
+        assert!(!transfer_allowed_by_primary_state(Some(true)));
+        assert!(transfer_allowed_by_primary_state(Some(false)));
     }
 
     /// Buy handlers reject a missing/blank `id` before any client/network work.

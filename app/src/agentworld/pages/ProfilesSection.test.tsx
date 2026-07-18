@@ -386,6 +386,19 @@ describe('handle transfer action', () => {
     expect(await screen.findByTestId('transfer-handle-modal')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Transfer handle' })).toBeInTheDocument();
   });
+
+  test('hides transfer unless a handle is explicitly non-primary', async () => {
+    graphqlUser.mockResolvedValueOnce(
+      makeProfile({
+        displayName: 'Owner',
+        identities: [{ ...minimalIdentity, username: 'unknownstate', cryptoId: SOLANA_ADDR }],
+      })
+    );
+    render(<ProfilesSection />);
+
+    expect(await screen.findByRole('button', { name: 'Make active' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Transfer' })).not.toBeInTheDocument();
+  });
 });
 
 describe('graphql-enriched profile card', () => {
