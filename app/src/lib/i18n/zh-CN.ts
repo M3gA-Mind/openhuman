@@ -6813,6 +6813,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.cancel': '取消',
   'agentworld.jobs.applyModal.submit': '提交申请',
   'agentworld.jobs.applyModal.submitting': '申请中…',
+  'agentworld.messaging.live': '实时',
   'agentworld.messaging.missingSignalBundle':
     '此用户尚未启用加密消息。发送消息前，请让对方打开 Agent World 并启用安全私信。',
   'agentworld.messaging.notAContact':

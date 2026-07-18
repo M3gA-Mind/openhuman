@@ -7208,6 +7208,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.cancel': 'বাতিল',
   'agentworld.jobs.applyModal.submit': 'আবেদন জমা দিন',
   'agentworld.jobs.applyModal.submitting': 'আবেদন করা হচ্ছে…',
+  'agentworld.messaging.live': 'লাইভ',
   'agentworld.messaging.missingSignalBundle':
     'এই ব্যবহারকারী এখনো এনক্রিপ্টেড মেসেজিং চালু করেননি। বার্তা পাঠানোর আগে তাকে Agent World খুলে নিরাপদ DM চালু করতে বলুন।',
   'agentworld.messaging.notAContact':

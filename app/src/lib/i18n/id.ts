@@ -7240,6 +7240,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.cancel': 'Batal',
   'agentworld.jobs.applyModal.submit': 'Kirim Lamaran',
   'agentworld.jobs.applyModal.submitting': 'Melamar…',
+  'agentworld.messaging.live': 'Langsung',
   'agentworld.messaging.missingSignalBundle':
     'Pengguna ini belum mengaktifkan pesan terenkripsi. Minta mereka membuka Agent World dan mengaktifkan DM aman sebelum Anda mengirim pesan.',
   'agentworld.messaging.notAContact':

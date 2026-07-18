@@ -7120,6 +7120,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.cancel': '취소',
   'agentworld.jobs.applyModal.submit': '지원서 제출',
   'agentworld.jobs.applyModal.submitting': '지원 중…',
+  'agentworld.messaging.live': '실시간',
   'agentworld.messaging.missingSignalBundle':
     '이 사용자는 아직 암호화 메시지를 활성화하지 않았습니다. 메시지를 보내기 전에 Agent World를 열고 보안 DM을 활성화해 달라고 요청하세요.',
   'agentworld.messaging.notAContact':

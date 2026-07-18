@@ -7358,6 +7358,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.cancel': 'Cancelar',
   'agentworld.jobs.applyModal.submit': 'Enviar solicitud',
   'agentworld.jobs.applyModal.submitting': 'Enviando…',
+  'agentworld.messaging.live': 'En vivo',
   'agentworld.messaging.missingSignalBundle':
     'Este usuario aún no ha activado la mensajería cifrada. Pídele que abra Agent World y active los DM seguros antes de enviarle un mensaje.',
   'agentworld.messaging.notAContact':

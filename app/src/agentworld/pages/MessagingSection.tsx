@@ -878,13 +878,32 @@ function InboxPanel() {
     void apiClient.streams
       .start('inbox')
       .then(res => {
-        if (!cancelled) streamRef.current = res.streamId;
+        // Same resolved-after-cancel guard as the DM thread stream: if the
+        // panel unmounted before `start` resolved, stop the stream we just
+        // opened instead of leaking it.
+        if (cancelled) {
+          void apiClient.streams.stop(res.streamId).catch(err => {
+            log(
+              '[messaging] inbox stream stop-after-cancel failed (%s): %s',
+              res.streamId,
+              String(err)
+            );
+          });
+          return;
+        }
+        streamRef.current = res.streamId;
       })
-      .catch(() => {});
+      .catch(err => {
+        log('[messaging] inbox stream start failed: %s', String(err));
+      });
     return () => {
       cancelled = true;
       if (streamRef.current !== null) {
-        void apiClient.streams.stop(streamRef.current).catch(() => {});
+        const stopId = streamRef.current;
+        void apiClient.streams.stop(stopId).catch(err => {
+          log('[messaging] inbox stream stop failed (%s): %s', stopId, String(err));
+        });
+        streamRef.current = null;
       }
     };
   }, []);
@@ -1067,6 +1086,14 @@ function useDirectMessages(peerId: string, errorMessages: DmErrorMessages) {
   const [errorKind, setErrorKind] = useState<DmErrorKind | null>(null);
   const [sending, setSending] = useState(false);
 
+  // Real-time updates for the open thread. Incoming DMs land in the relay
+  // inbox, so the `inbox` stream fires on every new message (the same signal
+  // InboxPanel uses to live-update unread counts). We mirror that here: start
+  // the stream while the thread is open and re-fetch when an event arrives, so
+  // a peer's message shows up without a manual refresh (see #4928).
+  const streamRef = useRef<string | null>(null);
+  const { messages: streamMessages, status: streamStatus } = useTinyplaceStream('inbox');
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -1143,7 +1170,60 @@ function useDirectMessages(peerId: string, errorMessages: DmErrorMessages) {
     void refresh();
   }, [refresh]);
 
-  return { messages, loading, error, errorKind, sending, send, refresh };
+  // Start the inbox stream while a DM thread is open; stop it on unmount /
+  // peer change. Failures are non-fatal — the thread still works via the
+  // mount fetch + post-send refresh, just without live push.
+  useEffect(() => {
+    let cancelled = false;
+    void apiClient.streams
+      .start('inbox')
+      .then(res => {
+        // If the effect was already torn down (peer change / unmount) before
+        // `start` resolved, our cleanup ran with `streamRef.current` still
+        // null and never stopped this stream. Stop it now so a rapid peer
+        // switch can't orphan a live backend subscription.
+        if (cancelled) {
+          void apiClient.streams.stop(res.streamId).catch(err => {
+            log(
+              '[messaging] dm inbox stream stop-after-cancel failed (%s): %s',
+              res.streamId,
+              String(err)
+            );
+          });
+          return;
+        }
+        streamRef.current = res.streamId;
+        log('[messaging] dm inbox stream started: %s', res.streamId);
+      })
+      .catch(err => {
+        log('[messaging] dm inbox stream start failed: %s', String(err));
+      });
+    return () => {
+      cancelled = true;
+      if (streamRef.current !== null) {
+        const stopId = streamRef.current;
+        void apiClient.streams.stop(stopId).catch(err => {
+          log('[messaging] dm inbox stream stop failed (%s): %s', stopId, String(err));
+        });
+        streamRef.current = null;
+      }
+    };
+  }, [peerId]);
+
+  // Re-fetch the open thread whenever a new inbox stream event arrives. The
+  // event isn't peer-scoped, so refresh() re-filters by peerId — an event for
+  // another peer simply yields no new rows for this thread (harmless).
+  useEffect(() => {
+    if (streamMessages.length > 0) {
+      log('[messaging] dm inbox stream event -> refreshing open thread');
+      void refresh();
+    }
+    // Mirror InboxPanel: fire on new stream messages only, not on refresh
+    // identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamMessages.length]);
+
+  return { messages, loading, error, errorKind, sending, send, refresh, streamStatus };
 }
 
 function ActiveDmView({
@@ -1174,7 +1254,7 @@ function ActiveDmView({
     }),
     [t]
   );
-  const { messages, loading, error, errorKind, sending, send } = useDirectMessages(
+  const { messages, loading, error, errorKind, sending, send, streamStatus } = useDirectMessages(
     peerId,
     errorMessages
   );
@@ -1216,6 +1296,14 @@ function ActiveDmView({
           Back
         </Button>
         <span className="text-sm font-medium text-content truncate">{peerId}</span>
+        {streamStatus === 'connected' ? (
+          <span
+            data-testid="dm-live-indicator"
+            className="inline-flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+            {t('agentworld.messaging.live', 'Live')}
+          </span>
+        ) : null}
         <span className="ml-auto flex items-center gap-1 text-[10px] text-green-600 dark:text-green-400">
           <svg
             className="h-3 w-3"

@@ -7042,6 +7042,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.cancel': 'إلغاء',
   'agentworld.jobs.applyModal.submit': 'إرسال الطلب',
   'agentworld.jobs.applyModal.submitting': 'جارٍ التقديم…',
+  'agentworld.messaging.live': 'مباشر',
   'agentworld.messaging.missingSignalBundle':
     'لم يفعّل هذا المستخدم الرسائل المشفرة بعد. اطلب منه فتح Agent World وتفعيل الرسائل المباشرة الآمنة قبل إرسال رسالة.',
   'agentworld.messaging.notAContact':

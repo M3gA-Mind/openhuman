@@ -7317,6 +7317,7 @@ const messages: TranslationMap = {
   'agentworld.jobs.applyModal.cancel': 'Anuluj',
   'agentworld.jobs.applyModal.submit': 'Wyślij aplikację',
   'agentworld.jobs.applyModal.submitting': 'Wysyłanie…',
+  'agentworld.messaging.live': 'Na żywo',
   'agentworld.messaging.missingSignalBundle':
     'Ten użytkownik nie włączył jeszcze szyfrowanych wiadomości. Poproś go, aby otworzył Agent World i włączył bezpieczne DM przed wysłaniem wiadomości.',
   'agentworld.messaging.notAContact':
