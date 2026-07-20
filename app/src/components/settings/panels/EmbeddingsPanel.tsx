@@ -311,15 +311,19 @@ const EmbeddingsPanel = ({ embedded = false }: EmbeddingsPanelProps = {}) => {
         confirm_wipe: false,
       });
       // Setup-time verification failed: the endpoint couldn't prove it can
-      // embed, so the config was NOT saved. Covers no `/embeddings` route
-      // (TAURI-RUST-5JR), LM Studio with no model loaded (TAURI-RUST-4P4), and
-      // any other probe failure/timeout. Keep the setup popup open and surface
-      // the actionable message so the user can fix it (load a model, correct the
-      // endpoint, …) and retry.
+      // embed, so the config was NOT saved. update_settings only ever returns an
+      // `error` for a verification failure or the dimension-wipe confirm, so any
+      // error code other than the wipe-confirm is a failed probe. Matching on the
+      // shape (rather than an explicit allow-list) means the differentiated #5017
+      // codes — EMBEDDINGS_MODEL_INCOMPATIBLE / _AUTH_FAILED / _ENDPOINT_UNREACHABLE
+      // / _DIMENSION_MISMATCH, plus _ENDPOINT_NO_API and _NO_MODEL_LOADED — all
+      // surface their actionable backend message instead of a new code being
+      // silently treated as a save. Keep the setup popup open so the user can fix
+      // it (pick an embeddings model, correct the key/endpoint, …) and retry.
       if (
-        result.error === 'EMBEDDINGS_ENDPOINT_NO_API' ||
-        result.error === 'EMBEDDINGS_NO_MODEL_LOADED' ||
-        result.error === 'EMBEDDINGS_VERIFICATION_FAILED'
+        typeof result.error === 'string' &&
+        result.error !== '' &&
+        result.error !== 'EMBEDDINGS_DIMENSION_CHANGE_REQUIRES_WIPE'
       ) {
         // `result.message`/`result.detail` are backend-emitted (already
         // context-specific); only the generic fallback is frontend-owned UI
