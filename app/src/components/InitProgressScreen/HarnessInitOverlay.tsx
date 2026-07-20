@@ -36,6 +36,7 @@ function readDismissedRun(): string | null {
   try {
     return window.sessionStorage.getItem(DISMISS_KEY);
   } catch {
+    log('sessionStorage read failed; treating run as not dismissed');
     return null;
   }
 }
@@ -44,8 +45,10 @@ function writeDismissedRun(key: string): void {
   dismissedRunMirror = key;
   try {
     window.sessionStorage.setItem(DISMISS_KEY, key);
+    log('dismissed run persisted to sessionStorage: %s', key);
   } catch {
     // Non-fatal: the module-level mirror still guards remounts this session.
+    log('sessionStorage unavailable; dismissed run %s held in module mirror only', key);
   }
 }
 
@@ -92,6 +95,10 @@ export default function HarnessInitOverlay() {
           // prior mount / before a reload), stay hidden and stop polling —
           // don't let a remount reopen the overlay (GH-5047).
           if (isRunDismissed(next)) {
+            log(
+              'warm poll: run %s already dismissed — staying hidden, stopping poll',
+              runKey(next)
+            );
             dismissedRef.current = true;
             setDismissed(true);
             return;
@@ -139,6 +146,7 @@ export default function HarnessInitOverlay() {
     // Hide the overlay and stop polling; the core keeps running init as a
     // background task regardless. Persist the dismissal for this run so a
     // remount/reload does not reopen it (GH-5047).
+    log('user dismissed overlay to background for run %s', runKey(snapshot));
     writeDismissedRun(runKey(snapshot));
     dismissedRef.current = true;
     setDismissed(true);

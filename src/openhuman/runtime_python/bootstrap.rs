@@ -268,6 +268,18 @@ fn probe_any_managed_install(cache_root: &Path) -> Option<ResolvedPython> {
     let entries = std::fs::read_dir(cache_root).ok()?;
     for entry in entries.flatten() {
         let path = entry.path();
+        // Reject symlinked cache entries before probing: `path.is_dir()` follows
+        // symlinks, so a link planted under `cache_root` could point the durable
+        // probe at a directory *outside* the cache root and have it reused as a
+        // trusted managed install. `entry.file_type()` reports the link itself
+        // (it does not follow), so skip anything symlinked; treat an unknown type
+        // as untrusted too. (The Node bootstrap gets equivalent protection from
+        // its `canonicalize` + `starts_with(cache_root)` guard.)
+        match entry.file_type() {
+            Ok(ft) if ft.is_symlink() => continue,
+            Ok(_) => {}
+            Err(_) => continue,
+        }
         if !path.is_dir() {
             continue;
         }
