@@ -147,6 +147,7 @@ import {
 import { formatTimelineEntry } from '../../utils/toolTimelineFormatting';
 import { ThreadList } from './threadList/ThreadList';
 import { buildThreadTimeline } from './timeline/selectors';
+import { ShareMessageButton } from '../share/ShareMessageButton';
 
 const CHAT_MODEL_HINT = 'hint:chat';
 /** Maximum trailing characters rendered in the live-streaming assistant
@@ -522,6 +523,11 @@ const Conversations = ({
       cancelled = true;
     };
   }, [agentProfiles, selectedAgentProfileId]);
+
+  // Display name for share cards (#5006): the active agent profile, or the
+  // product name when no named profile is selected.
+  const shareAgentName =
+    agentProfiles.find(p => p.id === selectedAgentProfileId)?.name ?? 'OpenHuman';
 
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   const composerFooterRef = useRef<HTMLDivElement>(null);
@@ -2587,6 +2593,14 @@ const Conversations = ({
                             </svg>
                           )}
                         </button>
+                        {msg.sender === 'agent' && (
+                          <ShareMessageButton
+                            content={parsedContent.text}
+                            agentName={shareAgentName}
+                            threadId={selectedThreadId ?? undefined}
+                            className={`absolute top-6 ${isAgentTextMode ? 'right-0' : '-right-8'}`}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>

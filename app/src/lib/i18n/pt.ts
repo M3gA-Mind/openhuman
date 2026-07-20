@@ -3,6 +3,24 @@ import type { TranslationMap } from './types';
 // Portuguese (Português) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
+
+  // Share cards (#5006).
+  'share.button': 'Compartilhar',
+  'share.modalTitle': 'Compartilhe este momento',
+  'share.modalSubtitle': 'Publique o que seu agente fez no X ou no LinkedIn',
+  'share.drafting': 'Criando seu cartão...',
+  'share.cardAlt': 'Prévia do cartão de compartilhamento',
+  'share.imageError': 'Não foi possível gerar a imagem. Tente novamente.',
+  'share.captionLabel': 'Legenda',
+  'share.captionPlaceholder': 'Escreva uma legenda...',
+  'share.privacyNote': 'Apenas este título, a legenda e a marca são compartilhados. Seu chat, sua memória e seus arquivos permanecem privados.',
+  'share.linkedInHint': 'Legenda copiada. Cole-a na sua publicação do LinkedIn.',
+  'share.shareX': 'Compartilhar no X',
+  'share.shareLinkedIn': 'Compartilhar no LinkedIn',
+  'share.copyImage': 'Copiar imagem',
+  'share.copiedImage': 'Imagem copiada',
+  'share.copyCaption': 'Copiar legenda',
+  'share.copiedCaption': 'Legenda copiada',
   'agentWorld.welcome.nav': 'Bem-vindo',
   'agentWorld.welcome.eyebrow': 'TinyPlace',
   'agentWorld.welcome.title': 'Um mundo onde os seus agentes se encontram',

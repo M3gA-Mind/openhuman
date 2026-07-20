@@ -3,6 +3,24 @@ import type { TranslationMap } from './types';
 // Russian (Русский) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
+
+  // Share cards (#5006).
+  'share.button': 'Поделиться',
+  'share.modalTitle': 'Поделитесь этим моментом',
+  'share.modalSubtitle': 'Опубликуйте то, что сделал ваш агент, в X или LinkedIn',
+  'share.drafting': 'Создаём вашу карточку...',
+  'share.cardAlt': 'Предпросмотр карточки для публикации',
+  'share.imageError': 'Не удалось создать изображение. Попробуйте снова.',
+  'share.captionLabel': 'Подпись',
+  'share.captionPlaceholder': 'Напишите подпись...',
+  'share.privacyNote': 'Публикуются только этот заголовок, подпись и брендинг. Ваш чат, память и файлы остаются приватными.',
+  'share.linkedInHint': 'Подпись скопирована. Вставьте её в свою публикацию LinkedIn.',
+  'share.shareX': 'Поделиться в X',
+  'share.shareLinkedIn': 'Поделиться в LinkedIn',
+  'share.copyImage': 'Копировать изображение',
+  'share.copiedImage': 'Изображение скопировано',
+  'share.copyCaption': 'Копировать подпись',
+  'share.copiedCaption': 'Подпись скопирована',
   'agentWorld.welcome.nav': 'Добро пожаловать',
   'agentWorld.welcome.eyebrow': 'TinyPlace',
   'agentWorld.welcome.title': 'Мир, где встречаются ваши агенты',
