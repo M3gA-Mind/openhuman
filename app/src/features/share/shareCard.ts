@@ -20,6 +20,8 @@ export const OCEAN = '#4A83DD';
 const OCEAN_DEEP = '#2C5AA8';
 const INK = '#0E1726';
 
+const LOG_PREFIX = '[share-card]';
+
 export interface ShareCardData {
   /** Punchy headline describing what the agent did. */
   headline: string;
@@ -85,15 +87,36 @@ export function wrapLines(text: string, maxChars: number, maxLines: number): str
 const HEADLINE_CHARS_PER_LINE = 26;
 const HEADLINE_MAX_LINES = 4;
 
+/** Localized fallbacks for {@link computeCardModel}. See `share.default*` in `en.ts`. */
+export interface ShareCardFallbacks {
+  /** Shown when `data.headline` is empty/blank. */
+  headline: string;
+  /** Shown when `data.agentName` is empty/blank. */
+  agentName: string;
+}
+
+/** English defaults, used when a caller doesn't pass locale-aware fallbacks (e.g. tests). */
+const DEFAULT_CARD_FALLBACKS: ShareCardFallbacks = {
+  headline: 'Look what my OpenHuman agent just did',
+  agentName: 'My agent',
+};
+
 /**
  * Builds the pure layout model for a card: wrapped headline lines plus the
  * normalised footer/stat fields. No canvas required.
+ *
+ * `fallbacks` should be sourced from `useT()` at the UI boundary so non-English
+ * users don't get English text on the card; it defaults to English for callers
+ * that don't have a locale (tests, non-UI callers).
  */
-export function computeCardModel(data: ShareCardData): ShareCardModel {
-  const headline = data.headline.trim() || 'Look what my OpenHuman agent just did';
+export function computeCardModel(
+  data: ShareCardData,
+  fallbacks: ShareCardFallbacks = DEFAULT_CARD_FALLBACKS
+): ShareCardModel {
+  const headline = data.headline.trim() || fallbacks.headline;
   return {
     headlineLines: wrapLines(headline, HEADLINE_CHARS_PER_LINE, HEADLINE_MAX_LINES),
-    agentName: data.agentName.trim() || 'My agent',
+    agentName: data.agentName.trim() || fallbacks.agentName,
     stat: data.stat?.trim() ? data.stat.trim() : null,
     brandUrl: data.brandUrl.trim(),
   };
@@ -130,8 +153,12 @@ const FONT_DISPLAY = '"Cabinet Grotesk", Inter, sans-serif';
  * Paints the full card onto a 2D context sized `CARD_WIDTH`×`CARD_HEIGHT`.
  * Pure with respect to `data` — same input paints the same pixels.
  */
-export function paintShareCard(ctx: CardPaintContext, data: ShareCardData): void {
-  const model = computeCardModel(data);
+export function paintShareCard(
+  ctx: CardPaintContext,
+  data: ShareCardData,
+  fallbacks: ShareCardFallbacks = DEFAULT_CARD_FALLBACKS
+): void {
+  const model = computeCardModel(data, fallbacks);
 
   // Background: ocean vertical gradient.
   const bg = ctx.createLinearGradient(0, 0, 0, CARD_HEIGHT);
@@ -216,20 +243,42 @@ function drawRoundedRect(
  * Renders the card into a real DOM canvas (sizing it and acquiring the 2D
  * context). Throws if the context can't be acquired. Browser/Tauri only.
  */
-export function renderShareCardToCanvas(canvas: HTMLCanvasElement, data: ShareCardData): void {
+export function renderShareCardToCanvas(
+  canvas: HTMLCanvasElement,
+  data: ShareCardData,
+  fallbacks: ShareCardFallbacks = DEFAULT_CARD_FALLBACKS
+): void {
+  console.debug(`${LOG_PREFIX} render start w=${CARD_WIDTH} h=${CARD_HEIGHT}`);
   canvas.width = CARD_WIDTH;
   canvas.height = CARD_HEIGHT;
   const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('2d canvas context unavailable');
-  paintShareCard(ctx as unknown as CardPaintContext, data);
+  if (!ctx) {
+    console.debug(`${LOG_PREFIX} render failed: no 2d context`);
+    throw new Error('2d canvas context unavailable');
+  }
+  try {
+    paintShareCard(ctx as unknown as CardPaintContext, data, fallbacks);
+    console.debug(`${LOG_PREFIX} render ok`);
+  } catch (err) {
+    console.debug(
+      `${LOG_PREFIX} render failed err_type=${err instanceof Error ? err.name : typeof err}`
+    );
+    throw err;
+  }
 }
 
 /** Serialises a canvas to a PNG blob. Rejects if encoding fails. */
 export function cardToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  console.debug(`${LOG_PREFIX} png export start`);
   return new Promise((resolve, reject) => {
     canvas.toBlob(blob => {
-      if (blob) resolve(blob);
-      else reject(new Error('canvas.toBlob returned null'));
+      if (blob) {
+        console.debug(`${LOG_PREFIX} png export ok bytes=${blob.size}`);
+        resolve(blob);
+      } else {
+        console.debug(`${LOG_PREFIX} png export failed: toBlob returned null`);
+        reject(new Error('canvas.toBlob returned null'));
+      }
     }, 'image/png');
   });
 }

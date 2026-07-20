@@ -83,4 +83,28 @@ describe('ShareCardModal', () => {
     await user.click(screen.getByText('Copy image'));
     await waitFor(() => expect(mocks.cardToPngBlob).toHaveBeenCalled());
   });
+
+  test('falls back to download when the clipboard image write rejects', async () => {
+    const user = userEvent.setup();
+    const write = vi.fn().mockRejectedValue(new Error('denied'));
+    vi.stubGlobal('ClipboardItem', class {} as unknown as typeof ClipboardItem);
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: { writeText: clipboardWriteText, write },
+    });
+    const createObjectURL = vi.fn().mockReturnValue('blob:mock');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
+
+    render(<ShareCardModal content="cleared the inbox" agentName="Tiny" onClose={vi.fn()} />);
+    await screen.findByLabelText('Caption');
+
+    await user.click(screen.getByText('Copy image'));
+    await waitFor(() => expect(write).toHaveBeenCalled());
+    // Rejected clipboard write should still fall through to the download path
+    // (createObjectURL) rather than only surfacing an image error.
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText('Image copied')).toBeInTheDocument());
+    expect(screen.queryByText("Couldn't generate the image. Try again.")).not.toBeInTheDocument();
+  });
 });

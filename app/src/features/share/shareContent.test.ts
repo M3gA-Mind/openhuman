@@ -23,6 +23,27 @@ describe('redactSensitive', () => {
     expect(redactSensitive('saved to /Users/jane/secret.txt')).not.toContain('jane');
   });
 
+  test('scrubs workspace/application-root paths, including a spaced filename', () => {
+    const out = redactSensitive('open /workspace/acme/private plan.txt now');
+    expect(out).toContain('[path]');
+    expect(out).not.toContain('acme');
+    expect(out).not.toContain('private plan');
+    // Prose after the path is left alone - the redaction shouldn't eat the sentence.
+    expect(out).toContain('now');
+  });
+
+  test('scrubs an unlabelled opaque base64-like secret', () => {
+    const secret = 'aA1bB2cC3dD4eE5fF6gG7hH8iI9jJ0kK1lL2';
+    const out = redactSensitive(`token=${secret} saved`);
+    expect(out).toContain('[redacted]');
+    expect(out).not.toContain(secret);
+  });
+
+  test('leaves plain prose and short tokens alone', () => {
+    const clean = 'Summarised three months of emails in twelve seconds';
+    expect(redactSensitive(clean)).toBe(clean);
+  });
+
   test('scrubs email addresses', () => {
     expect(redactSensitive('mail jane.doe@example.com now')).toContain('[email]');
   });
@@ -103,5 +124,16 @@ describe('buildShareCaption', () => {
   test('leaves headroom under the tweet limit', () => {
     const out = buildShareCaption('x'.repeat(400));
     expect(out.length).toBeLessThanOrEqual(TWEET_MAX - 30);
+  });
+
+  test('uses caller-supplied localized templates instead of English', () => {
+    const templates = {
+      emptyFallback: 'Mira lo que hizo mi agente.',
+      withHeadline: '{headline}. Hecho con mi agente OpenHuman.',
+    };
+    expect(buildShareCaption('Resumió mi bandeja', templates)).toBe(
+      'Resumió mi bandeja. Hecho con mi agente OpenHuman.'
+    );
+    expect(buildShareCaption('', templates)).toBe('Mira lo que hizo mi agente.');
   });
 });

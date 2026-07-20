@@ -3,17 +3,21 @@ import type { TranslationMap } from './types';
 // Italian (Italiano) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
-
   // Share cards (#5006).
   'share.button': 'Condividi',
   'share.modalTitle': 'Condividi questo momento',
   'share.modalSubtitle': 'Pubblica ciò che ha fatto il tuo agente su X o LinkedIn',
   'share.drafting': 'Creazione della tua scheda...',
   'share.cardAlt': 'Anteprima della scheda di condivisione',
-  'share.imageError': 'Impossibile generare l\'immagine. Riprova.',
+  'share.imageError': "Impossibile generare l'immagine. Riprova.",
   'share.captionLabel': 'Didascalia',
   'share.captionPlaceholder': 'Scrivi una didascalia...',
-  'share.privacyNote': 'Vengono condivisi solo questo titolo, la didascalia e il marchio. La tua chat, la memoria e i file restano privati.',
+  'share.privacyNote':
+    "Vengono condivisi solo il titolo, la didascalia, il nome dell'agente e il marchio. La tua chat, la memoria e i file restano privati.",
+  'share.defaultHeadline': 'Guarda cosa ha appena fatto il mio agente OpenHuman',
+  'share.defaultAgentName': 'Il mio agente',
+  'share.defaultCaption': 'Guarda cosa ha appena fatto il mio agente OpenHuman.',
+  'share.captionWithHeadline': '{headline}. Realizzato con il mio agente OpenHuman.',
   'share.linkedInHint': 'Didascalia copiata. Incollala nel tuo post su LinkedIn.',
   'share.shareX': 'Condividi su X',
   'share.shareLinkedIn': 'Condividi su LinkedIn',

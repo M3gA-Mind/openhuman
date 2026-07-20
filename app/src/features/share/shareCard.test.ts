@@ -47,6 +47,15 @@ describe('computeCardModel', () => {
     expect(model.agentName).toBe('My agent');
     expect(model.stat).toBeNull();
   });
+
+  test('uses caller-supplied localized fallbacks instead of English', () => {
+    const model = computeCardModel(
+      { headline: '  ', agentName: '', brandUrl: '' },
+      { headline: 'Mira lo que hizo mi agente', agentName: 'Mi agente' }
+    );
+    expect(model.headlineLines.join(' ')).toContain('Mira lo que hizo mi agente');
+    expect(model.agentName).toBe('Mi agente');
+  });
 });
 
 function makeMockCtx(): CardPaintContext & { texts: string[] } {

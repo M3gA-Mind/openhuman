@@ -3,7 +3,6 @@ import type { TranslationMap } from './types';
 // Spanish (Español) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
-
   // Share cards (#5006).
   'share.button': 'Compartir',
   'share.modalTitle': 'Comparte este momento',
@@ -13,7 +12,12 @@ const messages: TranslationMap = {
   'share.imageError': 'No se pudo generar la imagen. Inténtalo de nuevo.',
   'share.captionLabel': 'Descripción',
   'share.captionPlaceholder': 'Escribe una descripción...',
-  'share.privacyNote': 'Solo se comparten este titular, la descripción y la marca. Tu chat, tu memoria y tus archivos siguen siendo privados.',
+  'share.privacyNote':
+    'Solo se comparten el titular, la descripción, el nombre del agente y la marca. Tu chat, tu memoria y tus archivos siguen siendo privados.',
+  'share.defaultHeadline': 'Mira lo que acaba de hacer mi agente de OpenHuman',
+  'share.defaultAgentName': 'Mi agente',
+  'share.defaultCaption': 'Mira lo que acaba de hacer mi agente de OpenHuman.',
+  'share.captionWithHeadline': '{headline}. Hecho con mi agente de OpenHuman.',
   'share.linkedInHint': 'Descripción copiada. Pégala en tu publicación de LinkedIn.',
   'share.shareX': 'Compartir en X',
   'share.shareLinkedIn': 'Compartir en LinkedIn',

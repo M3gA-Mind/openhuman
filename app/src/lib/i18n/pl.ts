@@ -3,7 +3,6 @@ import type { TranslationMap } from './types';
 // Polish (Polski) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
-
   // Share cards (#5006).
   'share.button': 'Udostępnij',
   'share.modalTitle': 'Udostępnij tę chwilę',
@@ -13,7 +12,12 @@ const messages: TranslationMap = {
   'share.imageError': 'Nie udało się wygenerować obrazu. Spróbuj ponownie.',
   'share.captionLabel': 'Podpis',
   'share.captionPlaceholder': 'Napisz podpis...',
-  'share.privacyNote': 'Udostępniane są tylko ten nagłówek, podpis i oznaczenia marki. Twój czat, pamięć i pliki pozostają prywatne.',
+  'share.privacyNote':
+    'Udostępniamy tylko nagłówek, podpis, nazwę agenta i oznaczenia marki. Twój czat, pamięć i pliki pozostają prywatne.',
+  'share.defaultHeadline': 'Zobacz, co właśnie zrobił mój agent OpenHuman',
+  'share.defaultAgentName': 'Mój agent',
+  'share.defaultCaption': 'Zobacz, co właśnie zrobił mój agent OpenHuman.',
+  'share.captionWithHeadline': '{headline}. Stworzone przez mojego agenta OpenHuman.',
   'share.linkedInHint': 'Podpis skopiowany. Wklej go do swojego posta na LinkedIn.',
   'share.shareX': 'Udostępnij na X',
   'share.shareLinkedIn': 'Udostępnij na LinkedIn',

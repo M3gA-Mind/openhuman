@@ -3,7 +3,6 @@ import type { TranslationMap } from './types';
 // Bengali (বাংলা) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
-
   // Share cards (#5006).
   'share.button': 'শেয়ার',
   'share.modalTitle': 'এই মুহূর্তটি শেয়ার করুন',
@@ -13,7 +12,12 @@ const messages: TranslationMap = {
   'share.imageError': 'ছবিটি তৈরি করা যায়নি। আবার চেষ্টা করুন।',
   'share.captionLabel': 'ক্যাপশন',
   'share.captionPlaceholder': 'একটি ক্যাপশন লিখুন...',
-  'share.privacyNote': 'শুধু এই শিরোনাম, ক্যাপশন এবং ব্র্যান্ডিং শেয়ার করা হয়। আপনার চ্যাট, মেমরি এবং ফাইল ব্যক্তিগত থাকে।',
+  'share.privacyNote':
+    'শুধু শিরোনাম, ক্যাপশন, এজেন্টের নাম এবং ব্র্যান্ডিং শেয়ার করা হয়। আপনার চ্যাট, মেমরি এবং ফাইল ব্যক্তিগত থাকে।',
+  'share.defaultHeadline': 'দেখুন আমার OpenHuman এজেন্ট এইমাত্র কী করেছে',
+  'share.defaultAgentName': 'আমার এজেন্ট',
+  'share.defaultCaption': 'দেখুন আমার OpenHuman এজেন্ট এইমাত্র কী করেছে।',
+  'share.captionWithHeadline': '{headline}। আমার OpenHuman এজেন্ট দিয়ে তৈরি।',
   'share.linkedInHint': 'ক্যাপশন কপি করা হয়েছে। আপনার LinkedIn পোস্টে পেস্ট করুন।',
   'share.shareX': 'X-এ শেয়ার করুন',
   'share.shareLinkedIn': 'LinkedIn-এ শেয়ার করুন',

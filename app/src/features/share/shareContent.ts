@@ -36,10 +36,27 @@ const REDACTIONS: ReadonlyArray<{ re: RegExp; with: string }> = [
   { re: /\bBearer\s+[A-Za-z0-9._-]{12,}\b/gi, with: '[redacted]' },
   // AWS access key ids.
   { re: /\bAKIA[0-9A-Z]{16}\b/g, with: '[redacted]' },
-  // Long opaque hex/base64 runs (>= 32 chars) that look like secrets, not prose.
+  // Long opaque hex runs (>= 32 chars) that look like secrets, not prose.
   { re: /\b[A-Fa-f0-9]{32,}\b/g, with: '[redacted]' },
-  // POSIX absolute paths under common home/system roots.
-  { re: /(?:\/(?:Users|home|root|var|etc|tmp|private)\/)[^\s"'`)]+/g, with: '[path]' },
+  // Long opaque base64/base64url runs (>= 24 chars) that mix upper/lower/digit,
+  // e.g. an unlabelled webhook secret, JWT-like value, or provider key. This is
+  // intentionally last-resort and biased toward over-redaction: a stray
+  // camelCase identifier can trip it, but leaking a real secret onto a public
+  // card is the worse outcome. Requiring all three character classes keeps it
+  // from firing on plain hex (already caught above) or all-caps constants.
+  {
+    re: /\b(?=[A-Za-z0-9+/_-]{24,}={0,2}\b)(?=[A-Za-z0-9+/_-]*[A-Z])(?=[A-Za-z0-9+/_-]*[a-z])(?=[A-Za-z0-9+/_-]*[0-9])[A-Za-z0-9+/_-]{24,}={0,2}\b/g,
+    with: '[redacted]',
+  },
+  // POSIX absolute paths under common home/system/workspace/application roots.
+  // The optional trailing group covers a single space-separated filename token
+  // (e.g. "private plan.txt") without swallowing the rest of the sentence: it
+  // only fires when that token itself looks like a filename (has a dot
+  // extension), so normal prose following the path is left untouched.
+  {
+    re: /\/(?:Users|home|root|var|etc|tmp|private|workspace|opt|srv|app|data|mnt|Applications|Volumes)\/(?:[^\s"'`)/]+\/)*[^\s"'`)]+(?:[ \t][^\s"'`)]*\.[A-Za-z0-9]{1,8})?/g,
+    with: '[path]',
+  },
   // Windows absolute paths and UNC shares.
   { re: /[A-Za-z]:\\[^\s"'`)]+/g, with: '[path]' },
   { re: /\\\\[^\s"'`)]+/g, with: '[path]' },
@@ -127,16 +144,37 @@ export function sanitizeHeadline(raw: string): string {
   return truncateAtWord(cleaned.replace(/[.!?]+$/, ''), SHARE_HEADLINE_MAX);
 }
 
+/** Localized templates for {@link buildShareCaption}. See `share.default*` / `share.captionWithHeadline` in `en.ts`. */
+export interface ShareCaptionTemplates {
+  /** Shown when there's no usable headline. */
+  emptyFallback: string;
+  /** Template used when a headline is available; must contain a `{headline}` placeholder. */
+  withHeadline: string;
+}
+
+/** English defaults, used when a caller doesn't pass locale-aware templates (e.g. tests). */
+const DEFAULT_CAPTION_TEMPLATES: ShareCaptionTemplates = {
+  emptyFallback: 'Look what my OpenHuman agent just did.',
+  withHeadline: '{headline}. Made with my OpenHuman agent.',
+};
+
 /**
  * Builds the default social caption seeded from a headline. The card carries
  * the branding, so the caption stays short and leaves room for the link the
  * share-intent appends. The user can edit this before posting.
+ *
+ * `templates` should be sourced from `useT()` at the UI boundary so non-English
+ * users don't get an English caption; it defaults to English for callers that
+ * don't have a locale (tests, non-UI callers).
  */
-export function buildShareCaption(headline: string): string {
+export function buildShareCaption(
+  headline: string,
+  templates: ShareCaptionTemplates = DEFAULT_CAPTION_TEMPLATES
+): string {
   const clean = headline.trim();
   const base = clean
-    ? `${clean}. Made with my OpenHuman agent.`
-    : 'Look what my OpenHuman agent just did.';
+    ? templates.withHeadline.replace('{headline}', clean)
+    : templates.emptyFallback;
   const capped = truncateAtWord(base, TWEET_MAX - 30); // headroom for the link.
   if (capped !== base) {
     console.debug(`${LOG_PREFIX} caption truncated len=${base.length}`);

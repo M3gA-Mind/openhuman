@@ -3,7 +3,6 @@ import type { TranslationMap } from './types';
 // Arabic (العربية) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
-
   // Share cards (#5006).
   'share.button': 'مشاركة',
   'share.modalTitle': 'شارك هذه اللحظة',
@@ -13,7 +12,12 @@ const messages: TranslationMap = {
   'share.imageError': 'تعذّر إنشاء الصورة. حاول مرة أخرى.',
   'share.captionLabel': 'التعليق',
   'share.captionPlaceholder': 'اكتب تعليقًا...',
-  'share.privacyNote': 'تتم مشاركة هذا العنوان والتعليق والعلامة التجارية فقط. تبقى محادثتك وذاكرتك وملفاتك خاصة.',
+  'share.privacyNote':
+    'تتم مشاركة العنوان والتعليق واسم الوكيل والعلامة التجارية فقط. تبقى محادثتك وذاكرتك وملفاتك خاصة.',
+  'share.defaultHeadline': 'شاهد ما فعله وكيل OpenHuman الخاص بي للتو',
+  'share.defaultAgentName': 'وكيلي',
+  'share.defaultCaption': 'شاهد ما فعله وكيل OpenHuman الخاص بي للتو.',
+  'share.captionWithHeadline': '{headline}. تم الإنجاز بواسطة وكيل OpenHuman الخاص بي.',
   'share.linkedInHint': 'تم نسخ التعليق. الصقه في منشورك على LinkedIn.',
   'share.shareX': 'المشاركة على X',
   'share.shareLinkedIn': 'المشاركة على LinkedIn',

@@ -145,9 +145,9 @@ import {
   openhumanVoiceTts,
 } from '../../utils/tauriCommands';
 import { formatTimelineEntry } from '../../utils/toolTimelineFormatting';
+import { ShareMessageButton } from '../share/ShareMessageButton';
 import { ThreadList } from './threadList/ThreadList';
 import { buildThreadTimeline } from './timeline/selectors';
-import { ShareMessageButton } from '../share/ShareMessageButton';
 
 const CHAT_MODEL_HINT = 'hint:chat';
 /** Maximum trailing characters rendered in the live-streaming assistant

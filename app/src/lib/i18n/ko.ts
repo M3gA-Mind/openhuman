@@ -3,7 +3,6 @@ import type { TranslationMap } from './types';
 // Korean (한국어) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
-
   // Share cards (#5006).
   'share.button': '공유',
   'share.modalTitle': '이 순간을 공유하세요',
@@ -13,7 +12,12 @@ const messages: TranslationMap = {
   'share.imageError': '이미지를 생성할 수 없습니다. 다시 시도하세요.',
   'share.captionLabel': '캡션',
   'share.captionPlaceholder': '캡션을 작성하세요...',
-  'share.privacyNote': '이 제목, 캡션, 브랜딩만 공유됩니다. 대화, 메모리, 파일은 비공개로 유지됩니다.',
+  'share.privacyNote':
+    '제목, 캡션, 에이전트 이름, 브랜딩만 공유됩니다. 대화, 메모리, 파일은 비공개로 유지됩니다.',
+  'share.defaultHeadline': '내 OpenHuman 에이전트가 방금 한 일을 확인해 보세요',
+  'share.defaultAgentName': '내 에이전트',
+  'share.defaultCaption': '내 OpenHuman 에이전트가 방금 한 일을 확인해 보세요.',
+  'share.captionWithHeadline': '{headline}. 제 OpenHuman 에이전트와 함께 만들었습니다.',
   'share.linkedInHint': '캡션이 복사되었습니다. LinkedIn 게시물에 붙여넣으세요.',
   'share.shareX': 'X에 공유',
   'share.shareLinkedIn': 'LinkedIn에 공유',

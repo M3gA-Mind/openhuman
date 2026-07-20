@@ -6,8 +6,14 @@ import { ModalShell } from '../../components/ui/ModalShell';
 import { useT } from '../../lib/i18n/I18nContext';
 import { openUrl } from '../../utils/openUrl';
 import { draftShareHeadline } from './shareCaption';
-import { CARD_HEIGHT, CARD_WIDTH, cardToPngBlob, renderShareCardToCanvas } from './shareCard';
-import { buildShareCaption } from './shareContent';
+import {
+  CARD_HEIGHT,
+  CARD_WIDTH,
+  cardToPngBlob,
+  renderShareCardToCanvas,
+  type ShareCardFallbacks,
+} from './shareCard';
+import { buildShareCaption, type ShareCaptionTemplates } from './shareContent';
 import { buildLinkedInShareUrl, buildTweetIntentUrl, SHARE_LANDING_URL } from './shareTargets';
 
 const LOG_PREFIX = '[share-modal]';
@@ -44,6 +50,19 @@ export function ShareCardModal({ content, agentName, threadId, onClose }: ShareC
   const [imageError, setImageError] = useState(false);
   const [linkedInHint, setLinkedInHint] = useState(false);
 
+  // Localized fallback text for the offline/empty-headline paths in
+  // shareContent.ts / shareCard.ts. Kept in a ref (refreshed every render) so
+  // the drafting effect below can read the latest translation without taking
+  // a `t` dependency that would re-trigger the LLM draft RPC on locale change.
+  const captionTemplatesRef = useRef<ShareCaptionTemplates>({
+    emptyFallback: '',
+    withHeadline: '',
+  });
+  captionTemplatesRef.current = {
+    emptyFallback: t('share.defaultCaption'),
+    withHeadline: t('share.captionWithHeadline'),
+  };
+
   // Draft the headline once on open; degrade to the offline fallback on any
   // failure (draftShareHeadline never rejects).
   useEffect(() => {
@@ -51,7 +70,7 @@ export function ShareCardModal({ content, agentName, threadId, onClose }: ShareC
     void draftShareHeadline(content, threadId).then(drafted => {
       if (cancelled) return;
       setHeadline(drafted);
-      setCaption(buildShareCaption(drafted));
+      setCaption(buildShareCaption(drafted, captionTemplatesRef.current));
       setDrafting(false);
       console.debug(`${LOG_PREFIX} headline ready len=${drafted.length}`);
     });
@@ -60,18 +79,23 @@ export function ShareCardModal({ content, agentName, threadId, onClose }: ShareC
     };
   }, [content, threadId]);
 
-  // (Re)paint the card whenever the headline settles.
+  // (Re)paint the card whenever the headline settles, and also on locale
+  // change so an empty-headline / empty-agent-name fallback repaints localized.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || drafting) return;
+    const cardFallbacks: ShareCardFallbacks = {
+      headline: t('share.defaultHeadline'),
+      agentName: t('share.defaultAgentName'),
+    };
     try {
-      renderShareCardToCanvas(canvas, { headline, agentName, brandUrl: CARD_URL });
+      renderShareCardToCanvas(canvas, { headline, agentName, brandUrl: CARD_URL }, cardFallbacks);
       setImageError(false);
     } catch (err) {
       console.debug(`${LOG_PREFIX} render failed: ${String(err)}`);
       setImageError(true);
     }
-  }, [headline, agentName, drafting]);
+  }, [headline, agentName, drafting, t]);
 
   const flashCopy = useCallback((state: Exclude<CopyState, 'idle'>) => {
     setCopyState(state);
@@ -106,10 +130,21 @@ export function ShareCardModal({ content, agentName, threadId, onClose }: ShareC
       const canWriteImage =
         typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard?.write === 'function';
       if (canWriteImage) {
-        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-        flashCopy('image');
-        trackAnalyticsEvent('chat_message_shared', { destination: 'copy_image' });
-        return;
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+          flashCopy('image');
+          trackAnalyticsEvent('chat_message_shared', { destination: 'copy_image' });
+          return;
+        } catch (clipboardErr) {
+          // Clipboard write rejected (permission denied, MIME unsupported, or
+          // WebView restrictions): fall through to the download fallback below
+          // instead of surfacing an image error for a card that rendered fine.
+          console.debug(
+            `${LOG_PREFIX} clipboard image write rejected; falling back to download err_type=${
+              clipboardErr instanceof Error ? clipboardErr.name : typeof clipboardErr
+            }`
+          );
+        }
       }
       // Fallback: trigger a download so the user still gets the PNG.
       downloadBlob(blob, 'openhuman-share.png');

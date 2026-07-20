@@ -807,7 +807,11 @@ const en: TranslationMap = {
   'share.captionLabel': 'Caption',
   'share.captionPlaceholder': 'Write a caption...',
   'share.privacyNote':
-    'Only this headline, caption, and branding are shared. Your chat, memory, and files stay private.',
+    'Only the headline, caption, agent name, and branding are shared. Your chat, memory, and files stay private.',
+  'share.defaultHeadline': 'Look what my OpenHuman agent just did',
+  'share.defaultAgentName': 'My agent',
+  'share.defaultCaption': 'Look what my OpenHuman agent just did.',
+  'share.captionWithHeadline': '{headline}. Made with my OpenHuman agent.',
   'share.linkedInHint': 'Caption copied. Paste it into your LinkedIn post.',
   'share.shareX': 'Share on X',
   'share.shareLinkedIn': 'Share on LinkedIn',

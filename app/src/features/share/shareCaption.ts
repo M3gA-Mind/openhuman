@@ -80,7 +80,11 @@ export async function draftShareHeadline(agentOutput: string, threadId?: string)
     console.debug(`${LOG_PREFIX} draft empty after sanitize; using fallback`);
     return fallback;
   } catch (err) {
-    console.debug(`${LOG_PREFIX} draft failed; using fallback: ${String(err)}`);
+    console.debug(
+      `${LOG_PREFIX} draft failed; using fallback err_type=${
+        err instanceof Error ? err.name : typeof err
+      }`
+    );
     return fallback;
   }
 }
