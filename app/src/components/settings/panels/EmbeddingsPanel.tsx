@@ -5,6 +5,7 @@
  * to enter the key, test connection, and save. Dimension changes show a
  * destructive confirm dialog since they invalidate stored vectors.
  */
+import createDebug from 'debug';
 import { useCallback, useEffect, useState } from 'react';
 
 import { useT } from '../../../lib/i18n/I18nContext';
@@ -32,6 +33,11 @@ import {
   SettingsTextField,
 } from '../controls';
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
+
+// Grep-friendly, namespaced diagnostics for the custom-endpoint verification
+// flow. Logs only safe metadata (error classification code, state transitions) —
+// never the endpoint URL, API key, or backend-provided detail body.
+const log = createDebug('app:settings:embeddings');
 
 type Status =
   | { kind: 'idle' }
@@ -303,6 +309,7 @@ const EmbeddingsPanel = ({ embedded = false }: EmbeddingsPanelProps = {}) => {
         await setEmbeddingsApiKey('custom', setupKey.trim());
       }
       setStatus({ kind: 'saving' });
+      log('setupSaveCustom: calling update_embeddings_settings (provider=custom)');
       const result = await updateEmbeddingsSettings({
         provider: 'custom',
         model: customModel || 'embedding',
@@ -310,6 +317,12 @@ const EmbeddingsPanel = ({ embedded = false }: EmbeddingsPanelProps = {}) => {
         custom_endpoint: customEndpoint.trim(),
         confirm_wipe: false,
       });
+      // Safe to log the error *code* (an enum-like sentinel, e.g.
+      // EMBEDDINGS_AUTH_FAILED) — it carries no endpoint/key/detail content.
+      log(
+        'setupSaveCustom: rpc returned error_code=%s',
+        typeof result.error === 'string' && result.error !== '' ? result.error : 'none'
+      );
       // Setup-time verification failed: the endpoint couldn't prove it can
       // embed, so the config was NOT saved. update_settings only ever returns an
       // `error` for a verification failure or the dimension-wipe confirm, so any
@@ -340,10 +353,17 @@ const EmbeddingsPanel = ({ embedded = false }: EmbeddingsPanelProps = {}) => {
             ? `${baseMessage} (${result.detail})`
             : baseMessage
         );
+        // Verification failed: keep the setup popup open (status→idle, not error)
+        // so the user can correct the model/key/endpoint and retry.
+        log(
+          'setupSaveCustom: verification failed (code=%s) — preserving setup popup, early return',
+          result.error
+        );
         setStatus({ kind: 'idle' });
         return;
       }
       if (result.error === 'EMBEDDINGS_DIMENSION_CHANGE_REQUIRES_WIPE') {
+        log('setupSaveCustom: dimension change requires wipe — prompting confirm');
         setPendingWipe({
           provider: 'custom',
           model: customModel || 'embedding',
@@ -352,6 +372,7 @@ const EmbeddingsPanel = ({ embedded = false }: EmbeddingsPanelProps = {}) => {
         });
         setStatus({ kind: 'idle' });
       } else {
+        log('setupSaveCustom: verification passed — saved, reloading settings');
         await reload();
         setStatus({ kind: 'saved' });
       }

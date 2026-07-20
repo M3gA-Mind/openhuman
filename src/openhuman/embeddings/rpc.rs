@@ -711,7 +711,7 @@ fn classify_embed_probe(outcome: EmbedProbe) -> Option<RpcOutcome<serde_json::Va
                     "EMBEDDINGS_DIMENSION_MISMATCH",
                     "The endpoint returned a vector with a different length than the \
                      dimensions you entered. Set dimensions to match the model's native \
-                     output (or clear the field to auto-detect), then save again.",
+                     output, then save again.",
                     "embeddings endpoint returned mismatched dimensions — not saved",
                     Some(&detail),
                 )
@@ -777,12 +777,18 @@ fn classify_embed_probe(outcome: EmbedProbe) -> Option<RpcOutcome<serde_json::Va
 }
 
 /// Whether a lowercased embed-error detail names the given HTTP status, tolerant
-/// of both wire shapes the embeddings stack emits:
+/// of the wire shapes the embeddings stack emits:
 ///   `openai embeddings returned HTTP 401 Unauthorized: …` (tinyagents adapter)
-///   `Embedding API error (401 Unauthorized): …`           (legacy / other hosts)
+///   `Embedding API error (401 Unauthorized): …`           (parenthesized host shape)
+///   `Embedding API error 401 Unauthorized: …`             (bare-status host shape)
+/// The bare-status `Embedding API error {code}` form is the one the observability
+/// classifier in `src/core/observability.rs` covers; without it, setup-time
+/// verification for those hosts fell through to the generic failure code (#5017).
 fn embed_error_mentions_status(lower: &str, code: u16) -> bool {
     let code = code.to_string();
-    lower.contains(&format!("http {code}")) || lower.contains(&format!("({code}"))
+    lower.contains(&format!("http {code}"))
+        || lower.contains(&format!("({code}"))
+        || lower.contains(&format!("embedding api error {code}"))
 }
 
 /// A reachable, authenticated embeddings API that **rejected the model id** — the
@@ -1206,6 +1212,9 @@ mod tests {
         for detail in [
             "openai embeddings returned HTTP 401 Unauthorized: {\"error\":\"invalid api key\"}",
             "Embedding API error (403 Forbidden): no access",
+            // Bare-status host shape (no parentheses) — the form the observability
+            // classifier covers; must map to auth, not the generic failure (#5017).
+            "Embedding API error 401 Unauthorized: {\"error\":\"invalid token\"}",
         ] {
             assert_eq!(
                 reject_code(EmbedProbe::Failed(detail.into())).as_deref(),
