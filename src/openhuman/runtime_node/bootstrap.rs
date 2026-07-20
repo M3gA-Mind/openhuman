@@ -89,6 +89,57 @@ impl NodeBootstrap {
         self.cached.try_lock().ok().and_then(|g| g.clone())
     }
 
+    /// Durable, **non-downloading** readiness probe.
+    ///
+    /// Unlike [`try_cached`], whose state is process-local and therefore empty
+    /// after every app restart, this inspects the host: a compatible system
+    /// `node` (when `prefer_system`) or an already-extracted managed
+    /// distribution under the cache root. The managed install directory is
+    /// derived deterministically from the configured version + host arch (no
+    /// network), so the check is purely filesystem `stat`s. A hit is memoised
+    /// into the same cache `resolve()` uses.
+    ///
+    /// Returns `Some(..)` when Node is already provisioned on disk, `None` when
+    /// a genuine download/install is still required (or the runtime is
+    /// disabled — callers treat that as "nothing to provision" separately).
+    pub async fn probe_installed(&self) -> Option<ResolvedNode> {
+        if let Some(existing) = self.try_cached() {
+            return Some(existing);
+        }
+        if !self.config.enabled {
+            return None;
+        }
+        if self.config.prefer_system {
+            if let Some(system) = detect_system_node(&self.config.version) {
+                if let Ok(resolved) = resolve_from_system(system) {
+                    tracing::debug!(
+                        version = %resolved.version,
+                        "[node_runtime::bootstrap] durable probe found system node"
+                    );
+                    *self.cached.lock().await = Some(resolved.clone());
+                    return Some(resolved);
+                }
+            }
+        }
+        let dist = NodeDistribution::for_host(&self.config.version).ok()?;
+        let install_dir = self.install_dir(&dist);
+        let cache_root = self.cache_root();
+        if let Some(resolved) =
+            probe_managed_install(&install_dir, &cache_root, &self.config.version)
+        {
+            tracing::debug!(
+                version = %resolved.version,
+                "[node_runtime::bootstrap] durable probe found managed node on disk"
+            );
+            *self.cached.lock().await = Some(resolved.clone());
+            return Some(resolved);
+        }
+        tracing::debug!(
+            "[node_runtime::bootstrap] durable probe found no installed node (provisioning required)"
+        );
+        None
+    }
+
     /// Resolve the Node.js toolchain, downloading + extracting a managed
     /// distribution if necessary. Idempotent: the first successful call
     /// memoises the result; later calls return it without further I/O.
@@ -358,4 +409,92 @@ fn probe_managed_install(
         return None;
     }
     Some(resolved)
+}
+
+#[cfg(test)]
+mod probe_installed_tests {
+    use super::*;
+
+    fn touch(path: &Path) {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(path, b"#!/bin/sh\n").unwrap();
+    }
+
+    fn managed_config(cache_root: &Path) -> NodeConfig {
+        NodeConfig {
+            enabled: true,
+            version: NodeConfig::default().version,
+            cache_dir: cache_root.to_string_lossy().to_string(),
+            // Force the managed path so the probe never depends on a host node.
+            prefer_system: false,
+        }
+    }
+
+    /// GH-5047: a warm restart is a fresh process, so the in-memory
+    /// `try_cached` memo is empty. The durable probe must still recover
+    /// readiness from the on-disk managed install — otherwise `is_done` reports
+    /// "not ready" every launch and the harness-init overlay re-appears.
+    #[tokio::test]
+    async fn probe_installed_true_from_disk_after_simulated_restart() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cache_root = tmp.path();
+
+        let config = managed_config(cache_root);
+        let dist = NodeDistribution::for_host(&config.version).expect("host arch supported");
+        let bootstrap = NodeBootstrap::new(config, tmp.path().join("ws"), Client::new());
+
+        // Lay down a managed install exactly where the bootstrap expects it.
+        let bin_dir = managed_bin_dir(&bootstrap.install_dir(&dist));
+        let (node_name, npm_name) = if cfg!(windows) {
+            ("node.exe", "npm.cmd")
+        } else {
+            ("node", "npm")
+        };
+        touch(&bin_dir.join(node_name));
+        touch(&bin_dir.join(npm_name));
+
+        // Simulated cold process: nothing memoised yet.
+        assert!(
+            bootstrap.try_cached().is_none(),
+            "precondition: process-local cache is empty right after a restart"
+        );
+
+        // The durable probe recovers readiness from disk (and never downloads).
+        assert!(
+            bootstrap.probe_installed().await.is_some(),
+            "durable probe should detect the on-disk managed node install"
+        );
+        assert!(
+            bootstrap.try_cached().is_some(),
+            "a probe hit should memoise into the shared cache for the rest of the process"
+        );
+    }
+
+    /// A fresh machine (empty cache, no install) must report "not installed" so
+    /// a genuine first-run download still runs and the overlay still shows.
+    #[tokio::test]
+    async fn probe_installed_none_when_nothing_on_disk() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let bootstrap = NodeBootstrap::new(
+            managed_config(tmp.path()),
+            tmp.path().join("ws"),
+            Client::new(),
+        );
+        assert!(
+            bootstrap.probe_installed().await.is_none(),
+            "no on-disk install → provisioning still required"
+        );
+    }
+
+    /// A disabled runtime is "nothing to provision", not "installed".
+    #[tokio::test]
+    async fn probe_installed_none_when_disabled() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut config = managed_config(tmp.path());
+        config.enabled = false;
+        let bootstrap = NodeBootstrap::new(config, tmp.path().join("ws"), Client::new());
+        assert!(bootstrap.probe_installed().await.is_none());
+    }
 }
