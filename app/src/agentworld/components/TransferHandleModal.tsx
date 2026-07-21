@@ -66,7 +66,9 @@ export default function TransferHandleModal({
     // Never log the handle or recipient — both identify a user.
     debug('handle transfer requested');
     try {
-      await apiClient.registry.transfer(handle, target);
+      // Send the normalized handle (not the raw prop) so the invariant is local
+      // and doesn't rest on every caller pre-cleaning the value (#4998 review).
+      await apiClient.registry.transfer(handleClean, target);
       debug('handle transfer confirmed');
       onTransferred();
       onClose();
@@ -78,7 +80,7 @@ export default function TransferHandleModal({
       setError(String(err));
       setSubmitting(false);
     }
-  }, [recipient, confirmMatches, handle, t, onTransferred, onClose]);
+  }, [recipient, confirmMatches, handleClean, t, onTransferred, onClose]);
 
   return (
     <ModalShell

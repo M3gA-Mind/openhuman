@@ -538,6 +538,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.recipientRequired': "Inserisci l'handle del destinatario.",
   'agentWorld.transferHandle.confirmLabel': "Digita l'handle per confermare",
   'agentWorld.transferHandle.confirmMismatch': "L'handle digitato non corrisponde.",
+  'agentWorld.transferHandle.primaryLocked':
+    'Un handle primario non può essere trasferito. Rendi prima attivo un altro handle.',
   'agentWorld.profile.edit': 'Modifica profilo',
   'agentWorld.profile.displayName': 'Nome visualizzato',
   'agentWorld.profile.bio': 'Bio',

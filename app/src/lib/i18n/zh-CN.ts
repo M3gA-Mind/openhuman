@@ -491,6 +491,7 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.recipientRequired': '请输入接收者的句柄。',
   'agentWorld.transferHandle.confirmLabel': '输入句柄以确认',
   'agentWorld.transferHandle.confirmMismatch': '输入的句柄不匹配。',
+  'agentWorld.transferHandle.primaryLocked': '无法转移主用户名。请先将另一个用户名设为活跃。',
   'agentWorld.profile.edit': '编辑资料',
   'agentWorld.profile.displayName': '显示名称',
   'agentWorld.profile.bio': '简介',

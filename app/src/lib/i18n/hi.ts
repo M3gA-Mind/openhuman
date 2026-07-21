@@ -524,6 +524,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.recipientRequired': 'प्राप्तकर्ता का हैंडल दर्ज करें।',
   'agentWorld.transferHandle.confirmLabel': 'पुष्टि के लिए हैंडल टाइप करें',
   'agentWorld.transferHandle.confirmMismatch': 'टाइप किया गया हैंडल मेल नहीं खाता।',
+  'agentWorld.transferHandle.primaryLocked':
+    'प्राथमिक हैंडल स्थानांतरित नहीं किया जा सकता। पहले कोई अन्य हैंडल सक्रिय करें।',
   'agentWorld.profile.edit': 'प्रोफ़ाइल संपादित करें',
   'agentWorld.profile.displayName': 'प्रदर्शित नाम',
   'agentWorld.profile.bio': 'परिचय',

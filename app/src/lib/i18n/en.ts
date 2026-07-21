@@ -231,6 +231,8 @@ const en: TranslationMap = {
   'agentWorld.transferHandle.recipientRequired': 'Enter the recipient handle.',
   'agentWorld.transferHandle.confirmLabel': 'Type the handle to confirm',
   'agentWorld.transferHandle.confirmMismatch': "The typed handle doesn't match.",
+  'agentWorld.transferHandle.primaryLocked':
+    'A primary handle cannot be transferred. Make another handle active first.',
   'agentWorld.profile.edit': 'Edit profile',
   'agentWorld.profile.displayName': 'Display name',
   'agentWorld.profile.bio': 'Bio',

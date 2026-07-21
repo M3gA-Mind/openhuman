@@ -530,6 +530,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.recipientRequired': 'Введите хэндл получателя.',
   'agentWorld.transferHandle.confirmLabel': 'Введите хэндл для подтверждения',
   'agentWorld.transferHandle.confirmMismatch': 'Введённый хэндл не совпадает.',
+  'agentWorld.transferHandle.primaryLocked':
+    'Основной хэндл нельзя передать. Сначала сделайте активным другой хэндл.',
   'agentWorld.profile.edit': 'Изменить профиль',
   'agentWorld.profile.displayName': 'Отображаемое имя',
   'agentWorld.profile.bio': 'О себе',

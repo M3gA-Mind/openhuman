@@ -517,6 +517,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.recipientRequired': '수신자 핸들을 입력하세요.',
   'agentWorld.transferHandle.confirmLabel': '확인하려면 핸들을 입력하세요',
   'agentWorld.transferHandle.confirmMismatch': '입력한 핸들이 일치하지 않습니다.',
+  'agentWorld.transferHandle.primaryLocked':
+    '기본 핸들은 이전할 수 없습니다. 먼저 다른 핸들을 활성화하세요.',
   'agentWorld.profile.edit': '프로필 편집',
   'agentWorld.profile.displayName': '표시 이름',
   'agentWorld.profile.bio': '소개',

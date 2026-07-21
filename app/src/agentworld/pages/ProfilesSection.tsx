@@ -572,13 +572,25 @@ function AgentProfileCard({ data, onSwitched }: { data: ProfileData; onSwitched?
                     </Button>
                   )}
                   {/* Transfer is destructive/irreversible — the modal confirms
-                      intent and fails closed. A primary handle is locked from
-                      sale/transfer, so only non-primary handles offer it. */}
+                      intent and fails closed. A primary (active) handle is
+                      locked from sale/transfer server-side, so it renders
+                      disabled with an explanation of the path out (make another
+                      handle active first) rather than silently vanishing (#4998
+                      M3). Only an explicit non-primary handle is transferable. */}
                   {id.primary === false && (
                     <Button
                       variant="secondary"
                       size="sm"
                       onClick={() => setTransferHandle(id.username.replace(/^@+/, ''))}>
+                      {t('agentWorld.transferHandle.action')}
+                    </Button>
+                  )}
+                  {id.primary === true && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled
+                      title={t('agentWorld.transferHandle.primaryLocked')}>
                       {t('agentWorld.transferHandle.action')}
                     </Button>
                   )}

@@ -524,6 +524,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.recipientRequired': 'প্রাপকের হ্যান্ডেল লিখুন।',
   'agentWorld.transferHandle.confirmLabel': 'নিশ্চিত করতে হ্যান্ডেলটি টাইপ করুন',
   'agentWorld.transferHandle.confirmMismatch': 'টাইপ করা হ্যান্ডেল মিলছে না।',
+  'agentWorld.transferHandle.primaryLocked':
+    'প্রাথমিক হ্যান্ডেল স্থানান্তর করা যায় না। প্রথমে অন্য একটি হ্যান্ডেল সক্রিয় করুন।',
   'agentWorld.profile.edit': 'প্রোফাইল সম্পাদনা',
   'agentWorld.profile.displayName': 'প্রদর্শন নাম',
   'agentWorld.profile.bio': 'পরিচিতি',

@@ -508,6 +508,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.recipientRequired': 'أدخل معرّف المستلم.',
   'agentWorld.transferHandle.confirmLabel': 'اكتب المعرّف للتأكيد',
   'agentWorld.transferHandle.confirmMismatch': 'المعرّف المكتوب غير مطابق.',
+  'agentWorld.transferHandle.primaryLocked':
+    'لا يمكن نقل المعرّف الأساسي. اجعل معرّفًا آخر نشطًا أولًا.',
   'agentWorld.profile.edit': 'تعديل الملف الشخصي',
   'agentWorld.profile.displayName': 'الاسم المعروض',
   'agentWorld.profile.bio': 'نبذة',

@@ -537,6 +537,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.recipientRequired': 'Podaj handle odbiorcy.',
   'agentWorld.transferHandle.confirmLabel': 'Wpisz handle, aby potwierdzić',
   'agentWorld.transferHandle.confirmMismatch': 'Wpisany handle nie pasuje.',
+  'agentWorld.transferHandle.primaryLocked':
+    'Podstawowego uchwytu nie można przenieść. Najpierw ustaw inny uchwyt jako aktywny.',
   'agentWorld.profile.edit': 'Edytuj profil',
   'agentWorld.profile.displayName': 'Wyświetlana nazwa',
   'agentWorld.profile.bio': 'Bio',

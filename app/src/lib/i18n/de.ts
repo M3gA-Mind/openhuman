@@ -551,6 +551,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.recipientRequired': 'Gib den Empfänger-Handle ein.',
   'agentWorld.transferHandle.confirmLabel': 'Zum Bestätigen den Handle eingeben',
   'agentWorld.transferHandle.confirmMismatch': 'Der eingegebene Handle stimmt nicht überein.',
+  'agentWorld.transferHandle.primaryLocked':
+    'Ein primäres Handle kann nicht übertragen werden. Mache zuerst ein anderes Handle aktiv.',
   'agentWorld.profile.edit': 'Profil bearbeiten',
   'agentWorld.profile.displayName': 'Anzeigename',
   'agentWorld.profile.bio': 'Bio',

@@ -530,6 +530,8 @@ const messages: TranslationMap = {
   'agentWorld.transferHandle.recipientRequired': 'Masukkan handle penerima.',
   'agentWorld.transferHandle.confirmLabel': 'Ketik handle untuk mengonfirmasi',
   'agentWorld.transferHandle.confirmMismatch': 'Handle yang diketik tidak cocok.',
+  'agentWorld.transferHandle.primaryLocked':
+    'Handle utama tidak dapat ditransfer. Aktifkan handle lain terlebih dahulu.',
   'agentWorld.profile.edit': 'Edit profil',
   'agentWorld.profile.displayName': 'Nama tampilan',
   'agentWorld.profile.bio': 'Bio',
