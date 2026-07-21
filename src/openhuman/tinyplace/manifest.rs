@@ -2607,23 +2607,22 @@ pub(crate) fn handle_tinyplace_registry_transfer(params: Map<String, Value>) -> 
         // fail a transfer that DID land — B1). The transfer is already submitted,
         // so an unconfirmed read-back is "submitted but unconfirmed", NOT "did
         // not happen": we must never tell the user they still own it.
-        let readback = client.registry.get(&format!("@{name}")).await;
-        let confirmed_owner = readback
+        let readback_identity = client
+            .registry
+            .get(&format!("@{name}"))
+            .await
             .ok()
-            .and_then(|r| r.identity)
+            .and_then(|r| r.identity);
+        let confirmed_owner = readback_identity
+            .as_ref()
             .map(|i| i.crypto_id.trim().to_string())
             .unwrap_or_default();
         match classify_transfer_readback(&confirmed_owner, &recipient_crypto_id) {
             TransferReadback::Confirmed => {
                 log::debug!("{LOG_PREFIX} registry_transfer confirmed by read-back");
-                // Return the confirmed post-transfer identity from the read-back.
-                let confirmed = client
-                    .registry
-                    .get(&format!("@{name}"))
-                    .await
-                    .ok()
-                    .and_then(|r| r.identity);
-                to_value(serde_json::json!({ "identity": confirmed, "confirmed": true }))
+                // Return the identity from the SAME read-back we confirmed against
+                // (no redundant second GET — the confirmed owner is already here).
+                to_value(serde_json::json!({ "identity": readback_identity, "confirmed": true }))
             }
             TransferReadback::Unconfirmed => {
                 log::warn!("{LOG_PREFIX} registry_transfer submitted but unconfirmed by read-back");

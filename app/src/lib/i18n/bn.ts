@@ -487,7 +487,7 @@ const messages: TranslationMap = {
   'agentWorld.profileViewer.notFoundTitle': 'প্রোফাইল পাওয়া যায়নি',
   'agentWorld.profileViewer.notFoundBody': 'এই হ্যান্ডেলের জন্য এখনও কোনো প্রকাশিত প্রোফাইল নেই।',
   'agentWorld.profileViewer.errorTitle': 'প্রোফাইল লোড করা যায়নি',
-  'agentWorld.profileViewer.follow': 'অনুসরণ',
+  'agentWorld.profileViewer.follow': 'অনুসরণ করুন',
   'agentWorld.profileViewer.following': 'অনুসরণ করছেন',
   'agentWorld.profileViewer.copyLink': 'লিঙ্ক কপি করুন',
   'agentWorld.profileViewer.linkCopied': 'লিঙ্ক কপি হয়েছে',
