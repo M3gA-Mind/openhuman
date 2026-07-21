@@ -3,6 +3,27 @@ import type { TranslationMap } from './types';
 // Simplified Chinese (简体中文) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
+  // Share cards (#5006).
+  'share.button': '分享',
+  'share.modalTitle': '分享这一刻',
+  'share.modalSubtitle': '将你的智能体的成果发布到 X 或 LinkedIn',
+  'share.drafting': '正在设计你的卡片...',
+  'share.cardAlt': '分享卡片预览',
+  'share.imageError': '无法生成图片，请重试。',
+  'share.captionLabel': '文案',
+  'share.captionPlaceholder': '写点文案...',
+  'share.privacyNote': '仅分享标题、文案、智能体名称和品牌标识。你的聊天、记忆和文件保持私密。',
+  'share.defaultHeadline': '看看我的 OpenHuman 智能体刚刚做了什么',
+  'share.defaultAgentName': '我的智能体',
+  'share.defaultCaption': '看看我的 OpenHuman 智能体刚刚做了什么。',
+  'share.captionWithHeadline': '{headline}。由我的 OpenHuman 智能体制作。',
+  'share.linkedInHint': '文案已复制，请粘贴到你的 LinkedIn 帖子中。',
+  'share.shareX': '分享到 X',
+  'share.shareLinkedIn': '分享到 LinkedIn',
+  'share.copyImage': '复制图片',
+  'share.copiedImage': '图片已复制',
+  'share.copyCaption': '复制文案',
+  'share.copiedCaption': '文案已复制',
   'agentWorld.welcome.nav': '欢迎',
   'agentWorld.welcome.eyebrow': 'TinyPlace',
   'agentWorld.welcome.title': '一个让你的智能体相遇的世界',

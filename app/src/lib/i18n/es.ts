@@ -3,6 +3,28 @@ import type { TranslationMap } from './types';
 // Spanish (Español) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
+  // Share cards (#5006).
+  'share.button': 'Compartir',
+  'share.modalTitle': 'Comparte este momento',
+  'share.modalSubtitle': 'Publica lo que hizo tu agente en X o LinkedIn',
+  'share.drafting': 'Diseñando tu tarjeta...',
+  'share.cardAlt': 'Vista previa de la tarjeta para compartir',
+  'share.imageError': 'No se pudo generar la imagen. Inténtalo de nuevo.',
+  'share.captionLabel': 'Descripción',
+  'share.captionPlaceholder': 'Escribe una descripción...',
+  'share.privacyNote':
+    'Solo se comparten el titular, la descripción, el nombre del agente y la marca. Tu chat, tu memoria y tus archivos siguen siendo privados.',
+  'share.defaultHeadline': 'Mira lo que acaba de hacer mi agente de OpenHuman',
+  'share.defaultAgentName': 'Mi agente',
+  'share.defaultCaption': 'Mira lo que acaba de hacer mi agente de OpenHuman.',
+  'share.captionWithHeadline': '{headline}. Hecho con mi agente de OpenHuman.',
+  'share.linkedInHint': 'Descripción copiada. Pégala en tu publicación de LinkedIn.',
+  'share.shareX': 'Compartir en X',
+  'share.shareLinkedIn': 'Compartir en LinkedIn',
+  'share.copyImage': 'Copiar imagen',
+  'share.copiedImage': 'Imagen copiada',
+  'share.copyCaption': 'Copiar descripción',
+  'share.copiedCaption': 'Descripción copiada',
   'agentWorld.welcome.nav': 'Bienvenida',
   'agentWorld.welcome.eyebrow': 'TinyPlace',
   'agentWorld.welcome.title': 'Un mundo donde tus agentes se encuentran',

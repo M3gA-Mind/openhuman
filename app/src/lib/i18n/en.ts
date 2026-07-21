@@ -806,6 +806,29 @@ const en: TranslationMap = {
   'chat.regenerate': 'Regenerate',
   'chat.copyResponse': 'Copy response',
   'chat.citations': 'Citations',
+
+  // Share cards (#5006): one-tap "look what my agent did" post to X / LinkedIn.
+  'share.button': 'Share',
+  'share.modalTitle': 'Share this moment',
+  'share.modalSubtitle': 'Post what your agent did to X or LinkedIn',
+  'share.drafting': 'Designing your card...',
+  'share.cardAlt': 'Share card preview',
+  'share.imageError': "Couldn't generate the image. Try again.",
+  'share.captionLabel': 'Caption',
+  'share.captionPlaceholder': 'Write a caption...',
+  'share.privacyNote':
+    'Only the headline, caption, agent name, and branding are shared. Your chat, memory, and files stay private.',
+  'share.defaultHeadline': 'Look what my OpenHuman agent just did',
+  'share.defaultAgentName': 'My agent',
+  'share.defaultCaption': 'Look what my OpenHuman agent just did.',
+  'share.captionWithHeadline': '{headline}. Made with my OpenHuman agent.',
+  'share.linkedInHint': 'Caption copied. Paste it into your LinkedIn post.',
+  'share.shareX': 'Share on X',
+  'share.shareLinkedIn': 'Share on LinkedIn',
+  'share.copyImage': 'Copy image',
+  'share.copiedImage': 'Image copied',
+  'share.copyCaption': 'Copy caption',
+  'share.copiedCaption': 'Caption copied',
   'chat.toolUsed': 'Tool used',
 
   // Skills / Connections

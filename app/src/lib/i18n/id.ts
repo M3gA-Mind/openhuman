@@ -3,6 +3,28 @@ import type { TranslationMap } from './types';
 // Indonesian (Bahasa Indonesia) translations. Keys mirror en.ts; missing/
 // English-identical values fall back to English via I18nContext.resolveEn().
 const messages: TranslationMap = {
+  // Share cards (#5006).
+  'share.button': 'Bagikan',
+  'share.modalTitle': 'Bagikan momen ini',
+  'share.modalSubtitle': 'Posting apa yang dilakukan agen Anda ke X atau LinkedIn',
+  'share.drafting': 'Mendesain kartu Anda...',
+  'share.cardAlt': 'Pratinjau kartu berbagi',
+  'share.imageError': 'Tidak dapat membuat gambar. Coba lagi.',
+  'share.captionLabel': 'Keterangan',
+  'share.captionPlaceholder': 'Tulis keterangan...',
+  'share.privacyNote':
+    'Hanya judul, keterangan, nama agen, dan merek yang dibagikan. Obrolan, memori, dan file Anda tetap pribadi.',
+  'share.defaultHeadline': 'Lihat apa yang baru saja dilakukan agen OpenHuman saya',
+  'share.defaultAgentName': 'Agen saya',
+  'share.defaultCaption': 'Lihat apa yang baru saja dilakukan agen OpenHuman saya.',
+  'share.captionWithHeadline': '{headline}. Dibuat dengan agen OpenHuman saya.',
+  'share.linkedInHint': 'Keterangan disalin. Tempel ke postingan LinkedIn Anda.',
+  'share.shareX': 'Bagikan ke X',
+  'share.shareLinkedIn': 'Bagikan ke LinkedIn',
+  'share.copyImage': 'Salin gambar',
+  'share.copiedImage': 'Gambar disalin',
+  'share.copyCaption': 'Salin keterangan',
+  'share.copiedCaption': 'Keterangan disalin',
   'agentWorld.welcome.nav': 'Selamat datang',
   'agentWorld.welcome.eyebrow': 'TinyPlace',
   'agentWorld.welcome.title': 'Dunia tempat agen Anda bertemu',

@@ -133,7 +133,7 @@ import type { ThreadMessage } from '../../types/thread';
 import { splitAgentMessageIntoBubbles } from '../../utils/agentMessageBubbles';
 import { chatThreadPath } from '../../utils/chatRoutes';
 import { CHAT_ATTACHMENTS_ENABLED } from '../../utils/config';
-import { BILLING_DASHBOARD_URL } from '../../utils/links';
+import { PRICING_URL } from '../../utils/links';
 import { openUrl } from '../../utils/openUrl';
 import {
   isTauri,
@@ -145,6 +145,7 @@ import {
   openhumanVoiceTts,
 } from '../../utils/tauriCommands';
 import { formatTimelineEntry } from '../../utils/toolTimelineFormatting';
+import { ShareMessageButton } from '../share/ShareMessageButton';
 import { ThreadList } from './threadList/ThreadList';
 import { buildThreadTimeline } from './timeline/selectors';
 
@@ -522,6 +523,11 @@ const Conversations = ({
       cancelled = true;
     };
   }, [agentProfiles, selectedAgentProfileId]);
+
+  // Display name for share cards (#5006): the active agent profile, or the
+  // product name when no named profile is selected.
+  const shareAgentName =
+    agentProfiles.find(p => p.id === selectedAgentProfileId)?.name ?? 'OpenHuman';
 
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   const composerFooterRef = useRef<HTMLDivElement>(null);
@@ -2587,6 +2593,14 @@ const Conversations = ({
                             </svg>
                           )}
                         </button>
+                        {msg.sender === 'agent' && (
+                          <ShareMessageButton
+                            content={parsedContent.text}
+                            agentName={shareAgentName}
+                            threadId={selectedThreadId ?? undefined}
+                            className={`absolute top-6 ${isAgentTextMode ? 'right-0' : '-right-8'}`}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2785,7 +2799,7 @@ const Conversations = ({
                   )}
                   ctaLabel={t('chat.upgrade')}
                   onCtaClick={() => {
-                    void openUrl(BILLING_DASHBOARD_URL);
+                    void openUrl(PRICING_URL);
                   }}
                   dismissible
                   onDismiss={() => dismissBanner('conversations-warning')}
@@ -2830,7 +2844,7 @@ const Conversations = ({
                   type="button"
                   data-analytics-id="chat-budget-top-up"
                   onClick={() => {
-                    void openUrl(BILLING_DASHBOARD_URL);
+                    void openUrl(PRICING_URL);
                   }}
                   className="px-3 py-1.5 rounded-lg bg-coral-500 hover:bg-coral-400 text-content-inverted text-xs font-medium transition-colors">
                   {t('chat.topUp')}
