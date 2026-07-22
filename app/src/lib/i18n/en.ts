@@ -1808,7 +1808,7 @@ const en: TranslationMap = {
   'settings.about.releasesDesc': 'Browse release notes and earlier builds on GitHub.',
   'settings.about.openReleases': 'Open GitHub releases',
   'settings.about.starCta.title': 'Enjoying OpenHuman?',
-  'settings.about.starCta.body': 'Star us on GitHub — it helps more people find us.',
+  'settings.about.starCta.body': 'Star us on GitHub. It helps more people find us.',
   'settings.about.starCta.star': 'Star on GitHub',
   'settings.about.starCta.dismiss': 'Not now',
   'settings.about.connection': 'Connection',

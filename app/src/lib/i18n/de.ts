@@ -1657,7 +1657,7 @@ const messages: TranslationMap = {
   'settings.about.openReleases': 'Öffne GitHub-Releases',
   'settings.about.starCta.title': 'Gefällt dir OpenHuman?',
   'settings.about.starCta.body': 'Gib uns einen Stern auf GitHub. So finden mehr Menschen zu uns.',
-  'settings.about.starCta.star': 'Auf GitHub mit Stern markieren',
+  'settings.about.starCta.star': 'Auf GitHub einen Stern vergeben',
   'settings.about.starCta.dismiss': 'Nicht jetzt',
   'settings.about.connection': 'Verbindung',
   'settings.about.connectionMode': 'Modus',

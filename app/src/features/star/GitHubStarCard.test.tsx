@@ -47,6 +47,20 @@ describe('GitHubStarCard', () => {
     await waitFor(() => expect(screen.queryByTestId('github-star-cta')).not.toBeInTheDocument());
   });
 
+  test('star click still retires the CTA when openUrl rejects (failure path)', async () => {
+    const user = userEvent.setup();
+    mocks.openUrl.mockRejectedValueOnce(new Error('opener unavailable'));
+    const { store } = renderWithProviders(<GitHubStarCard />);
+
+    await user.click(screen.getByText('Star on GitHub'));
+
+    // A failed browser hand-off must not throw and must still retire the CTA:
+    // the durable dismissal is dispatched before the async openUrl resolves.
+    await waitFor(() => expect(mocks.openUrl).toHaveBeenCalledTimes(1));
+    expect(store.getState().githubStar.dismissed).toBe(true);
+    await waitFor(() => expect(screen.queryByTestId('github-star-cta')).not.toBeInTheDocument());
+  });
+
   test('dismiss click hides the CTA, tracks analytics, and never opens a URL', async () => {
     const user = userEvent.setup();
     const { store } = renderWithProviders(<GitHubStarCard />);
