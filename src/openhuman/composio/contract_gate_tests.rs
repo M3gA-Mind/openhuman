@@ -215,6 +215,35 @@ async fn satisfied_required_arg_executes_immediately() {
 }
 
 #[tokio::test]
+async fn synthetic_connection_id_does_not_bounce_a_valid_call() {
+    // #5119 review: `connection_id` is an OpenHuman-injected routing parameter
+    // (added by `ComposioActionTool::parameters_schema` / `ComposioExecuteTool`
+    // and consumed before dispatch), NOT a field in Composio's live catalog
+    // `input_schema`. A valid multi-account first call carries it, so the
+    // unknown-key check must skip it rather than bounce the call into the retry
+    // path this gate exists to avoid.
+    let toolkit = "connkit";
+    let slug = "CONNKIT_FETCH_EMAILS";
+    seed_live_catalog_cache(toolkit, vec![fetch_contract(slug, toolkit)]);
+
+    let config = Config::default();
+    let gate = ContractGate::new();
+
+    let valid = serde_json::json!({
+        "label_ids": ["INBOX"],
+        "max_results": 1,
+        "connection_id": "conn_abc123"
+    });
+    assert!(
+        matches!(
+            consult(&gate, &config, slug, &valid).await,
+            GateDecision::Proceed
+        ),
+        "a valid call carrying the synthetic connection_id must execute, not surface"
+    );
+}
+
+#[tokio::test]
 async fn missing_required_arg_surfaces() {
     let toolkit = "missreq";
     let slug = "MISSREQ_SEARCH";

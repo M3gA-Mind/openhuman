@@ -199,6 +199,14 @@ fn args_satisfy_contract(args: &serde_json::Value, contract: &ToolContract) -> b
         .and_then(|p| p.as_object())
     {
         for (key, value) in obj {
+            // `connection_id` is an OpenHuman-injected routing parameter
+            // (`ComposioActionTool::parameters_schema` / `ComposioExecuteTool`),
+            // consumed before dispatch and absent from Composio's live catalog
+            // `input_schema`. Skip it so a valid multi-account call isn't bounced
+            // as an "unknown key" into the retry path this gate exists to avoid.
+            if key == "connection_id" {
+                continue;
+            }
             match props.get(key) {
                 None => return false,
                 Some(prop) => {

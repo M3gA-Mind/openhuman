@@ -236,8 +236,31 @@ fn normalize_garbled_tool_call_tags(s: &str) -> Cow<'_, str> {
         // and the stripped body flows through unchanged.
         let stripped = strip_call_prefix(&s[open_end..close_start]);
         match recover_sentinel_tool_call_body(stripped) {
-            Some(recovered) => out.push_str(&recovered),
-            None => out.push_str(stripped),
+            Some(recovered) => {
+                // Recovered a Kimi-family `NAME{…}` sentinel body into canonical
+                // JSON. body_chars only (never the body itself — it may carry
+                // tool arguments with user data); stable `[agent_parse]` prefix
+                // so it aggregates with the other harness log families.
+                tracing::debug!(
+                    body_chars = recovered.chars().count(),
+                    "[agent_parse] recovered Kimi-family sentinel tool-call body into canonical JSON (#5119)"
+                );
+                out.push_str(&recovered)
+            }
+            None => {
+                // A body still carrying the `<|"|>` arg-quote sentinel that
+                // recovery could NOT normalize is a new Kimi garble variant.
+                // Surface it (body_chars only — never the body: it may carry
+                // user data) so operators debugging a future unrecovered variant
+                // get a signal instead of a silently dropped tool call.
+                if stripped.contains(ARG_QUOTE_SENTINEL) {
+                    tracing::warn!(
+                        body_chars = stripped.chars().count(),
+                        "[agent_parse] unrecovered Kimi-family sentinel tool-call body; passing through as text (#5119)"
+                    );
+                }
+                out.push_str(stripped)
+            }
         }
         out.push_str("</tool_call>");
         cursor = close_end;
