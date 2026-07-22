@@ -1739,6 +1739,7 @@ const messages: TranslationMap = {
     'OpenHuman 세션을 새로 고치려면 다시 로그인하거나, 로컬 또는 자체 키 임베딩 공급자로 전환하세요.',
   'settings.embeddings.signInAgain': '다시 로그인',
   'settings.embeddings.apiKeyLabel': '{provider} API 키',
+  'settings.embeddings.apiKeyLabelGeneric': 'API 키',
   'settings.embeddings.placeholderStored': '•••••••(저장됨)',
   'settings.embeddings.placeholderKey': 'API 키를 붙여넣으세요…',
   'settings.embeddings.keyStoredEncrypted': 'API 키는 이 기기에 암호화되어 저장됩니다.',

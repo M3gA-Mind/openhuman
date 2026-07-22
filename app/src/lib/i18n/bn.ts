@@ -1750,6 +1750,7 @@ const messages: TranslationMap = {
     'OpenHuman সেশন রিফ্রেশ করতে আবার সাইন ইন করুন, অথবা স্থানীয়/নিজস্ব-কী এমবেডিং প্রোভাইডারে যান।',
   'settings.embeddings.signInAgain': 'আবার সাইন ইন করুন',
   'settings.embeddings.apiKeyLabel': '{provider} API কী',
+  'settings.embeddings.apiKeyLabelGeneric': 'API কী',
   'settings.embeddings.placeholderStored': '•••••••• (সঞ্চিত)',
   'settings.embeddings.placeholderKey': 'আপনার API কী পেস্ট করুন…',
   'settings.embeddings.keyStoredEncrypted': 'আপনার API কী এই ডিভাইসে এনক্রিপ্ট করে সংরক্ষিত আছে।',

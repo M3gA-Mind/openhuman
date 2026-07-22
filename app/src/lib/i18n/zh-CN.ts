@@ -1656,6 +1656,7 @@ const messages: TranslationMap = {
     '重新登录以刷新 OpenHuman 会话，或切换到本地/自带密钥的嵌入提供商。',
   'settings.embeddings.signInAgain': '重新登录',
   'settings.embeddings.apiKeyLabel': '{provider} API 密钥',
+  'settings.embeddings.apiKeyLabelGeneric': 'API 密钥',
   'settings.embeddings.placeholderStored': '••••••••（已存储）',
   'settings.embeddings.placeholderKey': '粘贴您的 API 密钥…',
   'settings.embeddings.keyStoredEncrypted': '您的 API 密钥已加密存储在此设备上。',

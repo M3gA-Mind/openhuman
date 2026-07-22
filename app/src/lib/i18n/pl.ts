@@ -1781,6 +1781,7 @@ const messages: TranslationMap = {
     'Zaloguj się ponownie, aby odświeżyć sesję OpenHuman, albo przełącz się na lokalnego dostawcę osadzań lub dostawcę z własnym kluczem.',
   'settings.embeddings.signInAgain': 'Zaloguj się ponownie',
   'settings.embeddings.apiKeyLabel': 'Klucz API {provider}',
+  'settings.embeddings.apiKeyLabelGeneric': 'Klucz API',
   'settings.embeddings.placeholderStored': '•••••••• (zapisane)',
   'settings.embeddings.placeholderKey': 'Wklej swój klucz API…',
   'settings.embeddings.keyStoredEncrypted': 'Twój klucz API jest zaszyfrowany na tym urządzeniu.',

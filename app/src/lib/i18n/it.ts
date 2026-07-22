@@ -1790,6 +1790,7 @@ const messages: TranslationMap = {
     'Accedi di nuovo per aggiornare la sessione OpenHuman, oppure passa a un provider di embedding locale o con chiave personale.',
   'settings.embeddings.signInAgain': 'Accedi di nuovo',
   'settings.embeddings.apiKeyLabel': 'Chiave API {provider}',
+  'settings.embeddings.apiKeyLabelGeneric': 'Chiave API',
   'settings.embeddings.placeholderStored': '•••••••• (memorizzato)',
   'settings.embeddings.placeholderKey': 'Incolla la tua chiave API…',
   'settings.embeddings.keyStoredEncrypted':

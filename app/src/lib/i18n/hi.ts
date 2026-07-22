@@ -1748,6 +1748,7 @@ const messages: TranslationMap = {
     'अपने OpenHuman सत्र को रीफ़्रेश करने के लिए फिर से साइन इन करें, या स्थानीय/अपनी-कुंजी वाले एम्बेडिंग प्रदाता पर स्विच करें।',
   'settings.embeddings.signInAgain': 'फिर से साइन इन करें',
   'settings.embeddings.apiKeyLabel': '{provider} API कुंजी',
+  'settings.embeddings.apiKeyLabelGeneric': 'API कुंजी',
   'settings.embeddings.placeholderStored': '•••••••• (संग्रहीत)',
   'settings.embeddings.placeholderKey': 'अपनी API कुंजी पेस्ट करें…',
   'settings.embeddings.keyStoredEncrypted':

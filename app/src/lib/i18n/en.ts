@@ -1977,6 +1977,7 @@ const en: TranslationMap = {
     'Sign in again to refresh your OpenHuman session, or switch to a local or bring-your-own embeddings provider.',
   'settings.embeddings.signInAgain': 'Sign in again',
   'settings.embeddings.apiKeyLabel': '{provider} API key',
+  'settings.embeddings.apiKeyLabelGeneric': 'API key',
   'settings.embeddings.placeholderStored': '•••••••• (stored)',
   'settings.embeddings.placeholderKey': 'Paste your API key…',
   'settings.embeddings.keyStoredEncrypted': 'Your API key is stored encrypted on this device.',

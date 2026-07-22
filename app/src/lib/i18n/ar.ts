@@ -1714,6 +1714,7 @@ const messages: TranslationMap = {
     'سجّل الدخول مرة أخرى لتحديث جلسة OpenHuman، أو انتقل إلى مزوّد تضمينات محلي أو بمفتاحك الخاص.',
   'settings.embeddings.signInAgain': 'تسجيل الدخول مرة أخرى',
   'settings.embeddings.apiKeyLabel': 'مفتاح API لـ {provider}',
+  'settings.embeddings.apiKeyLabelGeneric': 'مفتاح API',
   'settings.embeddings.placeholderStored': '•••••••• (مخزن)',
   'settings.embeddings.placeholderKey': 'الصق مفتاح API الخاص بك…',
   'settings.embeddings.keyStoredEncrypted': 'يتم تخزين مفتاح API الخاص بك مشفرًا على هذا الجهاز.',

@@ -1790,6 +1790,7 @@ const messages: TranslationMap = {
     'Vuelve a iniciar sesión para actualizar tu sesión de OpenHuman, o cambia a un proveedor de embeddings local o con tu propia clave.',
   'settings.embeddings.signInAgain': 'Volver a iniciar sesión',
   'settings.embeddings.apiKeyLabel': 'Clave API de {provider}',
+  'settings.embeddings.apiKeyLabelGeneric': 'Clave de API',
   'settings.embeddings.placeholderStored': '•••••••• (almacenado)',
   'settings.embeddings.placeholderKey': 'Pega tu clave API…',
   'settings.embeddings.keyStoredEncrypted': 'Tu clave API se almacena cifrada en este dispositivo.',

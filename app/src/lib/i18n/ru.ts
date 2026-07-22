@@ -1771,6 +1771,7 @@ const messages: TranslationMap = {
     'Войдите снова, чтобы обновить сеанс OpenHuman, или переключитесь на локального провайдера эмбеддингов либо провайдера с собственным ключом.',
   'settings.embeddings.signInAgain': 'Войти снова',
   'settings.embeddings.apiKeyLabel': 'API-ключ {provider}',
+  'settings.embeddings.apiKeyLabelGeneric': 'API-ключ',
   'settings.embeddings.placeholderStored': '•••••••• (сохранено)',
   'settings.embeddings.placeholderKey': 'Вставьте API-ключ…',
   'settings.embeddings.keyStoredEncrypted':

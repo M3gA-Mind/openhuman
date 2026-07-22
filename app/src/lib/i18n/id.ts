@@ -1765,6 +1765,7 @@ const messages: TranslationMap = {
     'Masuk lagi untuk menyegarkan sesi OpenHuman Anda, atau beralih ke penyedia embedding lokal atau bawa-kunci-sendiri.',
   'settings.embeddings.signInAgain': 'Masuk lagi',
   'settings.embeddings.apiKeyLabel': 'Kunci API {provider}',
+  'settings.embeddings.apiKeyLabelGeneric': 'Kunci API',
   'settings.embeddings.placeholderStored': '•••••••• (disimpan)',
   'settings.embeddings.placeholderKey': 'Tempel kunci API Anda…',
   'settings.embeddings.keyStoredEncrypted': 'Kunci API Anda disimpan terenkripsi di perangkat ini.',

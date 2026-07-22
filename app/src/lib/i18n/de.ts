@@ -1812,6 +1812,7 @@ const messages: TranslationMap = {
     'Melde dich erneut an, um deine OpenHuman-Sitzung zu aktualisieren, oder wechsle zu einem lokalen oder eigenen Einbettungsanbieter.',
   'settings.embeddings.signInAgain': 'Erneut anmelden',
   'settings.embeddings.apiKeyLabel': '{provider} API-Schlüssel',
+  'settings.embeddings.apiKeyLabelGeneric': 'API-Schlüssel',
   'settings.embeddings.placeholderStored': '•••••••• (gespeichert)',
   'settings.embeddings.placeholderKey': 'API-Schlüssel einfügen…',
   'settings.embeddings.keyStoredEncrypted':

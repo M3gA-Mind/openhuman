@@ -1805,6 +1805,7 @@ const messages: TranslationMap = {
     'Reconnectez-vous pour actualiser votre session OpenHuman, ou passez à un fournisseur local ou avec votre propre clé.',
   'settings.embeddings.signInAgain': 'Se reconnecter',
   'settings.embeddings.apiKeyLabel': 'Clé API {provider}',
+  'settings.embeddings.apiKeyLabelGeneric': 'Clé API',
   'settings.embeddings.placeholderStored': '•••••••• (stocké)',
   'settings.embeddings.placeholderKey': 'Collez votre clé API…',
   'settings.embeddings.keyStoredEncrypted':
