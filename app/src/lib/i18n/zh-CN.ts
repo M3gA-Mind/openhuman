@@ -7007,6 +7007,13 @@ const messages: TranslationMap = {
   'privacy.status.ariaLabel': '隐私状态',
   'privacy.status.external': '设备外',
   'privacy.status.local': '本地设备',
+  // Data Sync layered pipeline status (GH-4690)
+  'sync.pipeline.ingestedOnly': '仅已导入',
+  'sync.pipeline.storedWithoutVectors': '已存储但无向量。语义搜索不可用。',
+  'sync.pipeline.signInToEnable': '登录以启用',
+  'sync.pipeline.extractionFailed': '记忆结构提取失败。维基可能不完整。',
+  'sync.pipeline.treeDegraded': '记忆树已降级。检索可能返回过时的结果。',
+  'sync.pipeline.viewHealth': '查看记忆健康状况',
 };
 
 export default messages;

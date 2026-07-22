@@ -7409,6 +7409,13 @@ const messages: TranslationMap = {
   'privacy.status.ariaLabel': 'गोपनीयता स्थिति',
   'privacy.status.external': 'डिवाइस के बाहर',
   'privacy.status.local': 'डिवाइस पर',
+  // Data Sync layered pipeline status (GH-4690)
+  'sync.pipeline.ingestedOnly': 'केवल अंतर्ग्रहीत',
+  'sync.pipeline.storedWithoutVectors': 'वेक्टर के बिना संग्रहीत। सिमेंटिक खोज अनुपलब्ध।',
+  'sync.pipeline.signInToEnable': 'सक्षम करने के लिए साइन इन करें',
+  'sync.pipeline.extractionFailed': 'मेमोरी संरचना निष्कर्षण विफल रहा। विकी अपूर्ण हो सकता है।',
+  'sync.pipeline.treeDegraded': 'मेमोरी ट्री अवक्रमित। पुनर्प्राप्ति पुराने परिणाम दे सकती है।',
+  'sync.pipeline.viewHealth': 'मेमोरी स्वास्थ्य देखें',
 };
 
 export default messages;

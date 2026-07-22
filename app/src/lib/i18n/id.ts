@@ -7447,6 +7447,14 @@ const messages: TranslationMap = {
   'privacy.status.ariaLabel': 'Status privasi',
   'privacy.status.external': 'Di luar perangkat',
   'privacy.status.local': 'Di perangkat',
+  // Data Sync layered pipeline status (GH-4690)
+  'sync.pipeline.ingestedOnly': 'Hanya diserap',
+  'sync.pipeline.storedWithoutVectors': 'Disimpan tanpa vektor. Pencarian semantik tidak tersedia.',
+  'sync.pipeline.signInToEnable': 'Masuk untuk mengaktifkan',
+  'sync.pipeline.extractionFailed': 'Ekstraksi struktur memori gagal. Wiki mungkin tidak lengkap.',
+  'sync.pipeline.treeDegraded':
+    'Pohon memori menurun. Pengambilan mungkin mengembalikan hasil usang.',
+  'sync.pipeline.viewHealth': 'Lihat kesehatan memori',
 };
 
 export default messages;

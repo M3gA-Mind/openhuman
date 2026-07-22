@@ -7632,6 +7632,16 @@ const messages: TranslationMap = {
   'privacy.status.ariaLabel': 'Datenschutzstatus',
   'privacy.status.external': 'Außerhalb des Geräts',
   'privacy.status.local': 'Auf dem Gerät',
+  // Data Sync layered pipeline status (GH-4690)
+  'sync.pipeline.ingestedOnly': 'Nur aufgenommen',
+  'sync.pipeline.storedWithoutVectors':
+    'Ohne Vektoren gespeichert. Semantische Suche nicht verfügbar.',
+  'sync.pipeline.signInToEnable': 'Zum Aktivieren anmelden',
+  'sync.pipeline.extractionFailed':
+    'Extraktion der Speicherstruktur fehlgeschlagen. Das Wiki ist möglicherweise unvollständig.',
+  'sync.pipeline.treeDegraded':
+    'Speicherbaum beeinträchtigt. Die Abfrage liefert möglicherweise veraltete Ergebnisse.',
+  'sync.pipeline.viewHealth': 'Speicherzustand anzeigen',
 };
 
 export default messages;

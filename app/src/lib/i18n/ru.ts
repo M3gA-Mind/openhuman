@@ -7495,6 +7495,15 @@ const messages: TranslationMap = {
   'privacy.status.ariaLabel': 'Состояние конфиденциальности',
   'privacy.status.external': 'Вне устройства',
   'privacy.status.local': 'На устройстве',
+  // Data Sync layered pipeline status (GH-4690)
+  'sync.pipeline.ingestedOnly': 'Только загружено',
+  'sync.pipeline.storedWithoutVectors': 'Сохранено без векторов. Семантический поиск недоступен.',
+  'sync.pipeline.signInToEnable': 'Войдите, чтобы включить',
+  'sync.pipeline.extractionFailed':
+    'Не удалось извлечь структуру памяти. Вики может быть неполной.',
+  'sync.pipeline.treeDegraded':
+    'Дерево памяти деградировало. Поиск может возвращать устаревшие результаты.',
+  'sync.pipeline.viewHealth': 'Показать состояние памяти',
 };
 
 export default messages;

@@ -7555,6 +7555,16 @@ const messages: TranslationMap = {
   'privacy.status.ariaLabel': 'Stato privacy',
   'privacy.status.external': 'Fuori dal dispositivo',
   'privacy.status.local': 'Sul dispositivo',
+  // Data Sync layered pipeline status (GH-4690)
+  'sync.pipeline.ingestedOnly': 'Solo acquisito',
+  'sync.pipeline.storedWithoutVectors':
+    'Memorizzato senza vettori. Ricerca semantica non disponibile.',
+  'sync.pipeline.signInToEnable': 'Accedi per attivare',
+  'sync.pipeline.extractionFailed':
+    'Estrazione della struttura della memoria non riuscita. Il wiki potrebbe essere incompleto.',
+  'sync.pipeline.treeDegraded':
+    'Albero di memoria degradato. Il recupero potrebbe restituire risultati obsoleti.',
+  'sync.pipeline.viewHealth': 'Visualizza lo stato della memoria',
 };
 
 export default messages;

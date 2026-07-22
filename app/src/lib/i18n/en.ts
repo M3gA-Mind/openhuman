@@ -3348,6 +3348,14 @@ const en: TranslationMap = {
   'sync.failedToLoad': 'Failed to load sync status',
   'sync.noContent': 'No content has been synced into memory yet. Connect an integration to start.',
 
+  // Data Sync layered pipeline status (GH-4690) — raw sync ≠ retrieval-ready
+  'sync.pipeline.ingestedOnly': 'Ingested only',
+  'sync.pipeline.storedWithoutVectors': 'Stored without vectors. Semantic search unavailable.',
+  'sync.pipeline.signInToEnable': 'Sign in to enable',
+  'sync.pipeline.extractionFailed': 'Memory structure extraction failed. Wiki may be incomplete.',
+  'sync.pipeline.treeDegraded': 'Memory tree degraded. Retrieval may return stale results.',
+  'sync.pipeline.viewHealth': 'View memory health',
+
   // Memory Sync Schedule (global cadence)
   'memorySyncInterval.title': 'Sync schedule',
   'memorySyncInterval.lastSynced': 'Last synced',

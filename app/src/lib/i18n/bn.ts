@@ -7412,6 +7412,13 @@ const messages: TranslationMap = {
   'privacy.status.ariaLabel': 'গোপনীয়তা স্থিতি',
   'privacy.status.external': 'ডিভাইসের বাইরে',
   'privacy.status.local': 'ডিভাইসে',
+  // Data Sync layered pipeline status (GH-4690)
+  'sync.pipeline.ingestedOnly': 'শুধু গৃহীত',
+  'sync.pipeline.storedWithoutVectors': 'ভেক্টর ছাড়াই সংরক্ষিত। শব্দার্থিক অনুসন্ধান অনুপলব্ধ।',
+  'sync.pipeline.signInToEnable': 'সক্রিয় করতে সাইন ইন করুন',
+  'sync.pipeline.extractionFailed': 'মেমরি কাঠামো নিষ্কাশন ব্যর্থ হয়েছে। উইকি অসম্পূর্ণ হতে পারে।',
+  'sync.pipeline.treeDegraded': 'মেমরি ট্রি অবনমিত। পুনরুদ্ধার পুরনো ফলাফল দিতে পারে।',
+  'sync.pipeline.viewHealth': 'মেমরির স্বাস্থ্য দেখুন',
 };
 
 export default messages;

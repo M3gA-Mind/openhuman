@@ -7535,6 +7535,15 @@ const messages: TranslationMap = {
   'privacy.status.ariaLabel': 'Estado de privacidade',
   'privacy.status.external': 'Fora do dispositivo',
   'privacy.status.local': 'No dispositivo',
+  // Data Sync layered pipeline status (GH-4690)
+  'sync.pipeline.ingestedOnly': 'Apenas ingerido',
+  'sync.pipeline.storedWithoutVectors': 'Armazenado sem vetores. Pesquisa semântica indisponível.',
+  'sync.pipeline.signInToEnable': 'Inicie sessão para ativar',
+  'sync.pipeline.extractionFailed':
+    'Falha na extração da estrutura de memória. O wiki pode estar incompleto.',
+  'sync.pipeline.treeDegraded':
+    'Árvore de memória degradada. A recuperação pode retornar resultados desatualizados.',
+  'sync.pipeline.viewHealth': 'Ver a saúde da memória',
 };
 
 export default messages;
