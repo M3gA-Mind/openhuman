@@ -1757,7 +1757,7 @@ const messages: TranslationMap = {
     'Suchwerkzeuge aus dem Agenten-Kontext und der verfügbaren Tool-Liste entfernen.',
   'settings.search.engineManagedLabel': 'OpenHuman Verwaltet',
   'settings.search.engineManagedDesc':
-    'Standard. Wird über das OpenHuman-Backend weitergeleitet – kein API-Schlüssel erforderlich.',
+    'Standard. Wird über das OpenHuman-Backend geleitet, aktuell betrieben von Exa: kein API-Schlüssel erforderlich.',
   'settings.search.localManagedUnavailable':
     'Die von OpenHuman verwaltete Suche ist für lokale Benutzer nicht verfügbar. Füge deinen eigenen Parallel- oder Brave-API-Schlüssel hinzu, um die Websuche zu aktivieren.',
   'settings.search.engineParallelLabel': 'Parallel',

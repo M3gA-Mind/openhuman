@@ -1735,7 +1735,7 @@ const messages: TranslationMap = {
     "Rimuovi gli strumenti di ricerca dal contesto dell'agente e dall'elenco degli strumenti disponibili.",
   'settings.search.engineManagedLabel': 'OpenHuman Gestito',
   'settings.search.engineManagedDesc':
-    'Predefinito. Instradato tramite il backend OpenHuman: nessuna chiave API necessaria.',
+    'Predefinito. Instradato tramite il backend di OpenHuman, attualmente basato su Exa: nessuna chiave API necessaria.',
   'settings.search.localManagedUnavailable':
     'La ricerca gestita da OpenHuman non è disponibile per gli utenti locali. Aggiungi la tua chiave API Parallel o Brave per abilitare la ricerca web.',
   'settings.search.engineParallelLabel': 'parallelo',

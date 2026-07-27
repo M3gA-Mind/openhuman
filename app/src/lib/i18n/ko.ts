@@ -1686,7 +1686,7 @@ const messages: TranslationMap = {
     '에이전트 컨텍스트 및 사용 가능한 도구 목록에서 검색 도구를 제거합니다.',
   'settings.search.engineManagedLabel': 'OpenHuman 관리됨',
   'settings.search.engineManagedDesc':
-    '기본값입니다. OpenHuman 백엔드를 통해 라우팅되며 API 키가 필요하지 않습니다.',
+    '기본값입니다. OpenHuman 백엔드를 통해 라우팅되며 현재 Exa로 구동됩니다. API 키가 필요하지 않습니다.',
   'settings.search.localManagedUnavailable':
     '로컬 사용자는 OpenHuman 관리 검색을 사용할 수 없습니다. 웹 검색을 활성화하려면 자체 Parallel, Brave 또는 Querit API 키를 추가하세요.',
   'settings.search.engineParallelLabel': 'Parallel',

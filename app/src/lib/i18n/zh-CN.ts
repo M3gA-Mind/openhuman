@@ -1607,7 +1607,8 @@ const messages: TranslationMap = {
   'settings.search.engineDisabledLabel': 'Disabled',
   'settings.search.engineDisabledDesc': '从智能体上下文和可用工具列表中移除搜索工具。',
   'settings.search.engineManagedLabel': 'OpenHuman 托管',
-  'settings.search.engineManagedDesc': '默认选项。通过 OpenHuman 后端路由，无需 API 密钥。',
+  'settings.search.engineManagedDesc':
+    '默认选项。通过 OpenHuman 后端路由，当前由 Exa 提供支持，无需 API 密钥。',
   'settings.search.localManagedUnavailable':
     '本地用户无法使用 OpenHuman 托管搜索。请添加你自己的 Parallel、Brave 或 Querit API 密钥以启用网页搜索。',
   'settings.search.engineParallelLabel': 'Parallel',

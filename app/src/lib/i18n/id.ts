@@ -1711,7 +1711,7 @@ const messages: TranslationMap = {
     'Hapus alat pencarian dari konteks agen dan daftar alat yang tersedia.',
   'settings.search.engineManagedLabel': 'OpenHuman Dikelola',
   'settings.search.engineManagedDesc':
-    'Baku. Diarahkan melalui backend OpenHuman: tidak diperlukan kunci API.',
+    'Baku. Diarahkan melalui backend OpenHuman, saat ini didukung oleh Exa: tidak diperlukan kunci API.',
   'settings.search.localManagedUnavailable':
     'Pencarian OpenHuman Managed tidak tersedia untuk pengguna lokal. Tambahkan API key Parallel atau Brave Anda sendiri untuk mengaktifkan pencarian web.',
   'settings.search.engineParallelLabel': 'Parallel',

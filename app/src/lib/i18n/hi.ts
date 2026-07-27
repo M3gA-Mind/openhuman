@@ -1694,7 +1694,8 @@ const messages: TranslationMap = {
   'settings.search.engineDisabledLabel': 'Disabled',
   'settings.search.engineDisabledDesc': 'एजेंट संदर्भ और उपलब्ध टूल सूची से खोज टूल हटाएं।',
   'settings.search.engineManagedLabel': 'OpenHuman प्रबंधित',
-  'settings.search.engineManagedDesc': 'डिफ़ॉल्ट। OpenHuman backend: no API key required.',
+  'settings.search.engineManagedDesc':
+    'डिफ़ॉल्ट। OpenHuman बैक-एंड के माध्यम से रूट किया जाता है, वर्तमान में Exa द्वारा संचालित: किसी API key की आवश्यकता नहीं।',
   'settings.search.localManagedUnavailable':
     'लोकल उपयोगकर्ताओं के लिए OpenHuman Managed search उपलब्ध नहीं है। वेब सर्च चालू करने के लिए अपनी Parallel या Brave API key जोड़ें।',
   'settings.search.engineParallelLabel': 'Parallel',

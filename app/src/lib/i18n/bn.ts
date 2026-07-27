@@ -1696,7 +1696,8 @@ const messages: TranslationMap = {
   'settings.search.engineDisabledDesc':
     'এজেন্ট প্রেক্ষাপট এবং উপলব্ধ টুল তালিকা থেকে সার্চ টুলগুলি সরিয়ে দিন।',
   'settings.search.engineManagedLabel': 'OpenHuman পরিচালিত',
-  'settings.search.engineManagedDesc': 'ডিফল্ট xqx1x ব্যাক-এন্ড দ্বারা রুট',
+  'settings.search.engineManagedDesc':
+    'ডিফল্ট। OpenHuman ব্যাক-এন্ডের মাধ্যমে রুট করা হয়, বর্তমানে Exa দ্বারা চালিত: কোনো API key প্রয়োজন নেই।',
   'settings.search.localManagedUnavailable':
     'লোকাল ব্যবহারকারীদের জন্য OpenHuman Managed সার্চ উপলভ্য নয়। ওয়েব সার্চ চালু করতে আপনার নিজের Parallel বা Brave API key যোগ করুন।',
   'settings.search.engineParallelLabel': 'Parallel',

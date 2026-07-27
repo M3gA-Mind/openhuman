@@ -313,7 +313,9 @@ export function formatTimelineEntry(entry: ToolTimelineEntry): { title: string; 
   }
 
   // ── Tool-specific formatting with args-derived detail ──────────────
-  const toolDetail = formatToolDetail(entry.name, parsedArgs);
+  // Pass the completed result text so args-aware formatters can surface
+  // details only known post-execution (e.g. the resolved search provider).
+  const toolDetail = formatToolDetail(entry.name, parsedArgs, entry.result);
   if (toolDetail) {
     return { title: toolDetail.title, detail: toolDetail.detail ?? entry.detail };
   }
@@ -461,9 +463,33 @@ function shortenPath(filePath: string): string {
   return `…/${parts.slice(-2).join('/')}`;
 }
 
+/** Upper bound on a provider label, so a malformed marker can't blow up a row. */
+const MAX_SEARCH_PROVIDER_LENGTH = 32;
+
+/**
+ * Extract the resolved search provider from a completed web-search result.
+ * Every search engine tags its output with a `(via <Provider>)` marker on the
+ * heading line (managed resolves to "Exa" by default, or to whatever the
+ * backend reports; BYOK engines tag "Brave"/"Querit"/"Seltz"). Reading it back
+ * keeps the timeline attribution dynamic: it is driven by what actually ran,
+ * never by a hardcoded provider name (#5136).
+ *
+ * Only the first line is inspected, so a `(via …)` string inside a result
+ * excerpt cannot be mistaken for the provider. Returns `undefined` while the
+ * call is still running (no result yet) or if no marker is present.
+ */
+export function extractSearchProvider(result: string | undefined): string | undefined {
+  if (!result) return undefined;
+  const headingLine = result.split('\n', 1)[0];
+  const provider = headingLine?.match(/\(via ([^)]+)\)/i)?.[1]?.trim();
+  if (!provider || provider.length > MAX_SEARCH_PROVIDER_LENGTH) return undefined;
+  return provider;
+}
+
 function formatToolDetail(
   name: string,
-  args: ParsedToolArgs | null
+  args: ParsedToolArgs | null,
+  result?: string
 ): { title: string; detail?: string } | null {
   switch (name) {
     case 'shell':
@@ -486,6 +512,16 @@ function formatToolDetail(
 
     case 'web_search': {
       const query = args?.query?.trim();
+      // Once the call completes, attribute the search to the provider that
+      // actually served it ("Searched with Exa"); the query moves to the
+      // detail line so it stays visible.
+      const provider = extractSearchProvider(result);
+      if (provider) {
+        return {
+          title: `Searched with ${provider}`,
+          detail: query ? truncateDetail(query) : undefined,
+        };
+      }
       return { title: query ? `Searching: ${truncateDetail(query)}` : 'Searching the web' };
     }
 

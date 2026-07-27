@@ -1751,7 +1751,7 @@ const messages: TranslationMap = {
     "Supprimer les outils de recherche du contexte agent et de la liste d'outils disponibles.",
   'settings.search.engineManagedLabel': 'OpenHuman Géré',
   'settings.search.engineManagedDesc':
-    'Par défaut. Routé via le backend OpenHuman: aucune clé API requise.',
+    'Par défaut. Acheminé via le backend OpenHuman, actuellement propulsé par Exa: aucune clé API requise.',
   'settings.search.localManagedUnavailable':
     'La recherche gérée par OpenHuman n’est pas disponible pour les utilisateurs locaux. Ajoutez votre propre clé API Parallel ou Brave pour activer la recherche web.',
   'settings.search.engineParallelLabel': 'Parallèle',

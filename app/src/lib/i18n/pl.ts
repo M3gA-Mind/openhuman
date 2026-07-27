@@ -1727,7 +1727,8 @@ const messages: TranslationMap = {
   'settings.search.engineDisabledDesc':
     'Usuń narzędzia wyszukiwania z kontekstu agenta i listy dostępnych narzędzi.',
   'settings.search.engineManagedLabel': 'OpenHuman zarządzane',
-  'settings.search.engineManagedDesc': 'Domyślnie. Przez backend OpenHuman: bez klucza API.',
+  'settings.search.engineManagedDesc':
+    'Domyślnie. Kierowane przez backend OpenHuman, obecnie oparte na Exa: bez klucza API.',
   'settings.search.localManagedUnavailable':
     'Wyszukiwarka zarządzana przez OpenHuman jest niedostępna dla użytkowników lokalnych. Dodaj własny klucz API Parallel lub Brave, aby włączyć wyszukiwanie w sieci.',
   'settings.search.engineParallelLabel': 'Parallel',

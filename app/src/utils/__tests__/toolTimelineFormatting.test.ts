@@ -6,6 +6,7 @@ import {
   buildProcessingBlocks,
   categorizeTool,
   extractAgentSources,
+  extractSearchProvider,
   formatTimelineEntry,
   formatToolName,
   isKnownClientTool,
@@ -167,6 +168,44 @@ describe('formatTimelineEntry', () => {
     ).toEqual({ title: 'Searching: rust async trait' });
   });
 
+  it('attributes a completed web_search to the resolved provider', () => {
+    expect(
+      formatTimelineEntry(
+        entry({
+          name: 'web_search',
+          status: 'success',
+          argsBuffer: JSON.stringify({ query: 'rust async trait' }),
+          result: 'Search results for: rust async trait (via Exa)\n1. Some title\n   https://x.dev',
+        })
+      )
+    ).toEqual({ title: 'Searched with Exa', detail: 'rust async trait' });
+  });
+
+  it('reflects a different provider from the result (attribution is dynamic)', () => {
+    expect(
+      formatTimelineEntry(
+        entry({
+          name: 'web_search',
+          status: 'success',
+          argsBuffer: JSON.stringify({ query: 'weather' }),
+          result: 'Search results for: weather (via Brave)\n1. Forecast',
+        })
+      )
+    ).toEqual({ title: 'Searched with Brave', detail: 'weather' });
+  });
+
+  it('keeps the running label when no result is present yet', () => {
+    expect(
+      formatTimelineEntry(
+        entry({
+          name: 'web_search',
+          status: 'running',
+          argsBuffer: JSON.stringify({ query: 'rust async trait' }),
+        })
+      )
+    ).toEqual({ title: 'Searching: rust async trait' });
+  });
+
   it('formats file_read with shortened path', () => {
     expect(
       formatTimelineEntry(
@@ -230,6 +269,34 @@ describe('formatTimelineEntry', () => {
         })
       )
     ).toEqual({ title: 'Browsing github.com' });
+  });
+});
+
+describe('extractSearchProvider', () => {
+  it('reads the provider from a `(via …)` marker', () => {
+    expect(extractSearchProvider('Search results for: q (via Exa)\n1. foo')).toBe('Exa');
+    expect(extractSearchProvider('Search results for: q (via Brave)')).toBe('Brave');
+    expect(extractSearchProvider('# Search results — `q` (via Querit)')).toBe('Querit');
+  });
+
+  it('returns undefined when there is no marker or no result', () => {
+    expect(extractSearchProvider(undefined)).toBeUndefined();
+    expect(extractSearchProvider('')).toBeUndefined();
+    expect(extractSearchProvider('No results found for: q')).toBeUndefined();
+  });
+
+  it('trims surrounding whitespace in the provider name', () => {
+    expect(extractSearchProvider('foo (via  Exa )')).toBe('Exa');
+  });
+
+  it('ignores a `(via …)` string that appears only in a result excerpt', () => {
+    expect(
+      extractSearchProvider('Search results for: q\n1. Title\n   Booked (via SomeAirline) today.')
+    ).toBeUndefined();
+  });
+
+  it('ignores an implausibly long marker', () => {
+    expect(extractSearchProvider(`Search results for: q (via ${'x'.repeat(64)})`)).toBeUndefined();
   });
 });
 

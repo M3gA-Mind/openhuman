@@ -1796,7 +1796,7 @@ const en: TranslationMap = {
     'Remove search tools from the agent context and available tool list.',
   'settings.search.engineManagedLabel': 'OpenHuman Managed',
   'settings.search.engineManagedDesc':
-    'Default. Routed through the OpenHuman backend: no API key required.',
+    'Default. Routed through the OpenHuman backend, currently powered by Exa: no API key required.',
   'settings.search.localManagedUnavailable':
     'OpenHuman Managed search is not available for local users. Add your own Parallel, Brave, or Querit API key to enable web search.',
   'settings.search.engineParallelLabel': 'Parallel',

@@ -1716,7 +1716,7 @@ const messages: TranslationMap = {
     'Удалить инструменты поиска из контекста агента и списка доступных инструментов.',
   'settings.search.engineManagedLabel': 'OpenHuman Управляемый',
   'settings.search.engineManagedDesc':
-    'По умолчанию. Маршрутизируется через серверную часть OpenHuman: ключ API не ​​требуется.',
+    'По умолчанию. Маршрутизируется через серверную часть OpenHuman, сейчас на базе Exa: ключ API не требуется.',
   'settings.search.localManagedUnavailable':
     'Поиск OpenHuman Managed недоступен для локальных пользователей. Добавьте свой ключ API Parallel или Brave, чтобы включить веб-поиск.',
   'settings.search.engineParallelLabel': 'Параллельно',

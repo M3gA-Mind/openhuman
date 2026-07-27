@@ -1663,7 +1663,7 @@ const messages: TranslationMap = {
   'settings.search.engineDisabledDesc': 'أزل أدوات البحث من سياق الوكيل وقائمة الأدوات المتاحة.',
   'settings.search.engineManagedLabel': 'OpenHuman مُدار',
   'settings.search.engineManagedDesc':
-    'خطأ تم سحبها من خلال الركيزة الخلفية - لا حاجة لمفتاح Xqx0xx.',
+    'الإعداد الافتراضي. يتم توجيهه عبر خادم OpenHuman الخلفي، المدعوم حاليًا بواسطة Exa: لا حاجة إلى مفتاح API.',
   'settings.search.localManagedUnavailable':
     'بحث OpenHuman المُدار غير متاح للمستخدمين المحليين. أضف مفتاح Parallel أو Brave الخاص بك لتفعيل البحث على الويب.',
   'settings.search.engineParallelLabel': 'Parallel',

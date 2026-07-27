@@ -21,3 +21,6 @@ pub use searxng::{
 pub use seltz::SeltzSearchTool;
 pub use tinyfish::{TinyFishAgentRunTool, TinyFishFetchTool, TinyFishSearchTool};
 pub use web_search::WebSearchTool;
+// Crate-internal: the `tools.web_search` RPC reuses the same provider
+// resolution so both managed-search surfaces attribute a call identically.
+pub(crate) use web_search::resolve_managed_provider;
