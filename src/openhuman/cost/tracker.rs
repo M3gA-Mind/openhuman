@@ -76,16 +76,22 @@ impl CostTracker {
 
         let mut storage = self.lock_storage();
         let (daily_cost, monthly_cost) = storage.get_aggregated_managed_costs()?;
-        let (daily_all, monthly_all) = storage.get_aggregated_costs()?;
-        tracing::debug!(
-            daily_managed_usd = daily_cost,
-            monthly_managed_usd = monthly_cost,
-            daily_all_routes_usd = daily_all,
-            monthly_all_routes_usd = monthly_all,
-            daily_limit_usd = self.config.daily_limit_usd,
-            monthly_limit_usd = self.config.monthly_limit_usd,
-            "[cost] budget check against managed-route spend only (BYOK excluded, #5016)"
-        );
+        // The all-routes totals exist purely to make the managed-vs-BYOK split
+        // visible in a debug log. `tracing` evaluates field expressions eagerly,
+        // so compute them only when that level is actually enabled rather than
+        // on every budget check in production.
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            let (daily_all, monthly_all) = storage.get_aggregated_costs()?;
+            tracing::debug!(
+                daily_managed_usd = daily_cost,
+                monthly_managed_usd = monthly_cost,
+                daily_all_routes_usd = daily_all,
+                monthly_all_routes_usd = monthly_all,
+                daily_limit_usd = self.config.daily_limit_usd,
+                monthly_limit_usd = self.config.monthly_limit_usd,
+                "[cost] budget check against managed-route spend only (BYOK excluded, #5016)"
+            );
+        }
 
         // Check daily limit
         let projected_daily = daily_cost + estimated_cost_usd;

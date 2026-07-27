@@ -78,21 +78,64 @@ pub fn route_for_model(model: &str) -> CostRoute {
 /// Lower-case, trim, and strip the decorations a model id can pick up on its
 /// way to a cost record: a `hint:` prefix from the tier-resolution helpers and
 /// an `openhuman/` provider qualifier.
+///
+/// Stripping loops until neither prefix applies, so the two decorations are
+/// **order-independent**. A single fixed-order pass classified
+/// `openhuman/hint:chat-v1` as BYOK (it stripped `openhuman/`, leaving
+/// `hint:chat-v1`, which is not a managed slug) while `hint:openhuman/chat-v1`
+/// classified as Managed — meaning managed spend could silently stop counting
+/// toward the cap depending only on which decoration a recording site applied
+/// first.
 fn normalize_model_id(model: &str) -> String {
-    let lowered = model.trim().to_ascii_lowercase();
-    let without_hint = lowered
-        .as_str()
-        .strip_prefix("hint:")
-        .unwrap_or(lowered.as_str());
-    without_hint
-        .strip_prefix("openhuman/")
-        .unwrap_or(without_hint)
-        .to_string()
+    let mut current = model.trim().to_ascii_lowercase();
+    loop {
+        let stripped = current
+            .strip_prefix("hint:")
+            .or_else(|| current.strip_prefix("openhuman/"));
+        match stripped {
+            Some(rest) => current = rest.to_string(),
+            None => return current,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Both decorations, in BOTH orders, must normalize to the same slug.
+    /// A fixed-order strip classified `openhuman/hint:…` as BYOK, so managed
+    /// spend silently stopped counting toward the cap depending only on which
+    /// prefix a recording site applied first (review, #5016).
+    #[test]
+    fn decoration_prefixes_are_order_independent() {
+        for id in [
+            "chat-v1",
+            "hint:chat-v1",
+            "openhuman/chat-v1",
+            "hint:openhuman/chat-v1",
+            "openhuman/hint:chat-v1",
+            "  HINT:OpenHuman/Chat-V1  ",
+        ] {
+            assert_eq!(
+                route_for_model(id),
+                CostRoute::Managed,
+                "{id} must classify as managed"
+            );
+        }
+    }
+
+    #[test]
+    fn decorations_do_not_promote_a_byok_model_to_managed() {
+        for id in [
+            "openhuman/hint:llama3:8b",
+            "hint:openhuman/anthropic/claude-sonnet-4-20250514",
+            "ollama:chat-v1-not-a-slug",
+        ] {
+            assert_eq!(route_for_model(id), CostRoute::Byok, "{id} must stay BYOK");
+        }
+    }
+
     use crate::openhuman::config::{
         MODEL_AGENTIC_V1, MODEL_BURST_V1, MODEL_CHAT_V1, MODEL_CODING_V1, MODEL_REASONING_QUICK_V1,
         MODEL_REASONING_V1, MODEL_SUMMARIZATION_V1, MODEL_VISION_V1,
