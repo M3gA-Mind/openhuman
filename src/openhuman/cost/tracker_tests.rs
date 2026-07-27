@@ -268,10 +268,25 @@ fn byok_spend_never_exceeds_the_daily_limit() {
     let usage = TokenUsage::new(BYOK_MODEL, 10_000_000, 5_000_000, 1.0, 2.0);
     tracker.record_usage(usage).unwrap();
 
-    let check = tracker.check_budget(0.01).unwrap();
+    // Estimate 0.0, matching what `CostBudgetMiddleware::before_model` actually
+    // passes. Charging the whole $0.01 limit to the *current* request would trip
+    // the 80% warning on that request's own projected cost, which says nothing
+    // about whether the recorded BYOK history leaked into the budget.
+    let check = tracker.check_budget(0.0).unwrap();
     assert!(
         matches!(check, BudgetCheck::Allowed),
         "BYOK spend must never gate a request, got {check:?}"
+    );
+
+    // `Exceeded` is the only variant that actually blocks a request, so pin it
+    // separately: even a request that would consume the entire remaining limit
+    // must not be blocked by BYOK history.
+    assert!(
+        !matches!(
+            tracker.check_budget(0.01).unwrap(),
+            BudgetCheck::Exceeded { .. }
+        ),
+        "BYOK history must never push a request over the managed cap"
     );
 }
 
@@ -289,10 +304,20 @@ fn byok_spend_never_exceeds_the_monthly_limit() {
     let usage = TokenUsage::new(BYOK_MODEL, 10_000_000, 5_000_000, 1.0, 2.0);
     tracker.record_usage(usage).unwrap();
 
-    let check = tracker.check_budget(0.01).unwrap();
+    // Estimate 0.0, as `CostBudgetMiddleware::before_model` passes: charging the
+    // whole $0.01 limit to the current request would trip the 80% warning on
+    // that request's own cost, which says nothing about the BYOK history.
+    let check = tracker.check_budget(0.0).unwrap();
     assert!(
         matches!(check, BudgetCheck::Allowed),
         "BYOK spend must never gate a request, got {check:?}"
+    );
+    assert!(
+        !matches!(
+            tracker.check_budget(0.01).unwrap(),
+            BudgetCheck::Exceeded { .. }
+        ),
+        "BYOK history must never push a request over the managed monthly cap"
     );
 }
 
