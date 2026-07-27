@@ -555,6 +555,63 @@ describe('AIPanel', () => {
     fireEvent.change(deploymentInput, { target: { value: 'workload-deployment' } });
     expect(deploymentInput).toHaveValue('workload-deployment');
     expect(screen.getByText(/This is not the model ID/i)).toBeInTheDocument();
+
+    // A catalog base model id typed here is the pre-fix fingerprint, so the
+    // dialog raises the same confirmation hint the main selector does.
+    fireEvent.change(deploymentInput, { target: { value: 'gpt-5.6-terra-2026-07-09' } });
+    expect(
+      await screen.findByText(/confirm this is the name you gave your deployment/i)
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the catalog dropdown and its manual escape hatch for a non-Azure provider in the dialog', async () => {
+    // The dialog's non-Azure path must be untouched by #5213: a populated
+    // catalog still renders a dropdown, and the escape hatch still reaches an
+    // off-catalog model id — labelled "Model", not "Deployment name".
+    vi.mocked(loadAISettings).mockResolvedValue({
+      ...azureSettings,
+      cloudProviders: [
+        ...azureSettings.cloudProviders,
+        {
+          id: 'p_custom_openai',
+          slug: 'openai',
+          label: 'OpenAI',
+          endpoint: 'https://api.openai.com/v1',
+          auth_style: 'bearer' as const,
+          has_api_key: true,
+        },
+      ],
+    });
+    vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-4o' }]);
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: /Advanced/i }));
+    const chooseButtons = await screen.findAllByRole('button', {
+      name: /Choose Model|Change Model/i,
+    });
+    fireEvent.click(chooseButtons[0]);
+
+    const providerSelect = await screen.findByDisplayValue(
+      /Azure Foundry|OpenAI|OpenHuman|Ollama/i
+    );
+    fireEvent.change(providerSelect, { target: { value: 'cloud:openai' } });
+
+    // Catalog dropdown, no Azure labelling.
+    await waitFor(() =>
+      expect(screen.queryByRole('textbox', { name: /Deployment name/i })).not.toBeInTheDocument()
+    );
+    expect(screen.queryByText(/This is not the model ID/i)).not.toBeInTheDocument();
+
+    // The escape hatch still works for an off-catalog id.
+    fireEvent.click(await screen.findByRole('button', { name: /Enter model ID manually/i }));
+    const manualInput = await screen.findByRole('textbox', { name: /^Model$/i });
+    fireEvent.change(manualInput, { target: { value: 'my-private-model' } });
+    expect(manualInput).toHaveValue('my-private-model');
+    // ...and back to the catalog.
+    fireEvent.click(await screen.findByRole('button', { name: /Choose from list/i }));
+    await waitFor(() =>
+      expect(screen.queryByRole('textbox', { name: /^Model$/i })).not.toBeInTheDocument()
+    );
   });
 
   it('flags a custom BYOK model as vision-capable via the Own-model selector', async () => {
