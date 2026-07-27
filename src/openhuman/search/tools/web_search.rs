@@ -60,7 +60,12 @@ impl WebSearchTool {
         provider: &str,
     ) -> anyhow::Result<String> {
         if results.is_empty() {
-            return Ok(format!("No results found for: {}", query));
+            // Still attribute an empty search: the call completed, so the
+            // timeline must not keep showing it as in-progress (#5136).
+            return Ok(format!(
+                "No results found for: {} (via {})",
+                query, provider
+            ));
         }
 
         let mut lines = vec![format!("Search results for: {} (via {})", query, provider)];
@@ -102,7 +107,7 @@ impl WebSearchTool {
         provider: &str,
     ) -> String {
         if results.is_empty() {
-            return format!("_No results for `{query}`._");
+            return format!("_No results for `{query}`_ (via {provider})");
         }
         let mut out = format!("# Search results — `{query}` (via {provider})\n");
         for r in results.iter().take(self.max_results) {
@@ -287,8 +292,23 @@ mod tests {
             .parse_parallel_results(&[], "test query", "Exa")
             .unwrap();
         assert!(result.contains("No results found"));
+        // A completed empty search is still attributed, so the timeline labels
+        // the row instead of leaving it as in-progress (#5136).
+        assert!(result.trim_end().ends_with("(via Exa)"));
     }
 
+    #[test]
+    fn test_render_markdown_empty_carries_provider() {
+        // The markdown rendering is what production shows, so its empty form
+        // needs the marker too — and it must sit at the end of the line, where
+        // the timeline parser looks for it.
+        let result = tool().render_results_markdown(&[], "test query", "Exa");
+        assert!(result.contains("No results"));
+        assert!(result.trim_end().ends_with("(via Exa)"));
+    }
+
+    /// A minimal `SearchResponse` carrying only the provider under test, so
+    /// the resolution cases read without result/cost noise.
     fn response_with_provider(provider: Option<&str>) -> SearchResponse {
         SearchResponse {
             search_id: "search-1".into(),
