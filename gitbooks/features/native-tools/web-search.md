@@ -23,7 +23,7 @@ Pick the engine under **Connections → Search**. Exactly one engine is active a
 | --- | --- | --- |
 | **OpenHuman Managed** (default) | Not needed | The OpenHuman backend, currently powered by [Exa](https://exa.ai). |
 | **Exa** | Your API key | Straight to `https://api.exa.ai` with your key. |
-| **Parallel** | Local enablement value | Through the OpenHuman backend to Parallel. The value selects the engine locally; it is not sent to Parallel for authentication or billing. |
+| **Parallel** | Local enablement value | Parallel-specific tools go through the OpenHuman backend to Parallel; the canonical `web_search_tool` keeps using the backend-resolved managed provider (currently Exa). The value selects the engine locally and is not sent to Parallel for authentication or billing. |
 | **Brave** | Your API key | Straight to the Brave Search API with your key. |
 | **Querit** | Your API key | Straight to the Querit API with your key. |
 | **Disabled** | Not needed | Nowhere. All agent-facing search tools are removed; an enabled SearXNG endpoint remains available through RPC/MCP. |
