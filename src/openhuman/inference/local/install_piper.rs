@@ -241,6 +241,14 @@ pub async fn install_piper(
 
     if !force_reinstall && installed_artifacts_ok(config, &voice) {
         log::debug!("{LOG_PREFIX} short-circuit: artifacts already present");
+        // Repair permissions on the EXISTING install before reporting success.
+        // Users hit by #5045 already extracted the affected archive, so they
+        // reach this branch on every launch and would never run the repair that
+        // only lived on the fresh-install path — they would keep seeing TTS
+        // failures until they manually forced a reinstall. `ensure_executable_bits`
+        // is a no-op when the bits are already set, so this costs a stat per
+        // executable on the happy path.
+        ensure_executable_bits(&paths::workspace_piper_dir(config));
         let snapshot = VoiceInstallStatus {
             engine: ENGINE_PIPER.to_string(),
             state: VoiceInstallState::Installed,
@@ -393,7 +401,12 @@ async fn run_install(config: &Config, voice: &str) -> Result<(), String> {
         ArchiveKind::TarGz => extract_tar_gz(&archive_path, &dest)?,
     }
     ensure_executable_bits(&dest);
-    let _ = std::fs::remove_file(&archive_path);
+    if let Err(e) = std::fs::remove_file(&archive_path) {
+        log::warn!(
+            "{LOG_PREFIX} could not remove archive {}: {e}",
+            archive_path.display()
+        );
+    }
 
     Ok(())
 }
@@ -560,21 +573,78 @@ fn inflate_gzip(compressed: &[u8]) -> Result<Vec<u8>, String> {
 pub(crate) fn find_workspace_piper_binary(config: &Config) -> Option<PathBuf> {
     let candidates = paths::workspace_piper_binary_candidates(config);
     for candidate in candidates {
-        if candidate.is_file() {
-            log::debug!(
-                "{LOG_PREFIX} found workspace piper binary at {}",
+        if !candidate.is_file() {
+            continue;
+        }
+        // A file we cannot execute is not a usable candidate. Returning it
+        // anyway would pin resolution to the broken workspace copy and make the
+        // `PIPER_BIN` / PATH fallback unreachable, which is exactly what
+        // happens when the `chmod` repair fails (denied, or a filesystem with
+        // no execute bit). Skipping lets resolution continue to a working
+        // engine instead of failing at launch.
+        if !is_executable_file(&candidate) {
+            log::warn!(
+                "{LOG_PREFIX} skipping non-executable workspace piper binary {} — falling back to PIPER_BIN/PATH",
                 candidate.display()
             );
-            return Some(candidate);
+            continue;
         }
+        log::debug!(
+            "{LOG_PREFIX} found workspace piper binary at {}",
+            candidate.display()
+        );
+        return Some(candidate);
     }
     None
+}
+
+/// Whether `path` carries an execute bit for anybody.
+///
+/// Windows has no execute bit, so every regular file qualifies there.
+#[cfg(unix)]
+fn is_executable_file(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(path)
+        .map(|m| m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(not(unix))]
+fn is_executable_file(_path: &std::path::Path) -> bool {
+    true
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::openhuman::inference::local::voice_install_common::reset_status;
+
+    #[cfg(unix)]
+    #[test]
+    fn non_executable_workspace_binary_is_skipped_so_path_can_win() {
+        // #5045 review (Codex P2): when the chmod repair fails, returning the
+        // 0644 workspace copy anyway pins resolution to a binary that cannot
+        // launch and makes the PIPER_BIN/PATH fallback unreachable.
+        use std::os::unix::fs::PermissionsExt;
+        let (_dir, config) = temp_config();
+        let candidates = paths::workspace_piper_binary_candidates(&config);
+        let candidate = candidates.first().expect("at least one candidate").clone();
+        std::fs::create_dir_all(candidate.parent().unwrap()).unwrap();
+        std::fs::write(&candidate, b"#!/bin/sh\n").unwrap();
+
+        std::fs::set_permissions(&candidate, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(
+            find_workspace_piper_binary(&config).is_none(),
+            "a non-executable workspace binary must not be resolved"
+        );
+
+        std::fs::set_permissions(&candidate, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            find_workspace_piper_binary(&config).as_deref(),
+            Some(candidate.as_path()),
+            "an executable workspace binary is still preferred"
+        );
+    }
 
     fn temp_config() -> (tempfile::TempDir, Config) {
         let dir = tempfile::tempdir().expect("tempdir");
