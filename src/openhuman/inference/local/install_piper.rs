@@ -816,6 +816,15 @@ mod tests {
         let target = paths::workspace_piper_binary_candidates(&config)[0].clone();
         std::fs::create_dir_all(target.parent().unwrap()).unwrap();
         std::fs::write(&target, b"stub").unwrap();
+        // "Present" now means present AND executable: a 0644 file is not a
+        // usable binary, and resolving it would pin us to a copy that cannot
+        // launch (see `non_executable_workspace_binary_is_skipped_so_path_can_win`).
+        // `std::fs::write` creates 0644, so grant the bit explicitly.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         let found = find_workspace_piper_binary(&config).expect("should find binary");
         assert_eq!(found, target);
         wipe_shared_install_dir(&config);
