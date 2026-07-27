@@ -9,16 +9,34 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::*;
-use crate::openhuman::security::{AutonomyLevel, SecurityPolicy};
+use crate::openhuman::security::{AutonomyLevel, SecurityPolicy, TrustedAccess, TrustedRoot};
 use crate::openhuman::tools::traits::Tool;
 use crate::openhuman::tools::FileReadTool;
 use serde_json::json;
 
 /// Policy with disjoint action/workspace roots, the shipped default layout
 /// (`~/OpenHuman/projects` vs `~/.openhuman/users/<id>/workspace`).
+///
+/// `action_dir` is granted as a read-write trusted root, because that is what
+/// production does: `SecurityPolicy::from_config` grants the projects dir
+/// exactly this way (`from_config_grants_default_projects_dir_as_readwrite_root`).
+/// Without the grant, `is_resolved_path_allowed_for` refuses everything outside
+/// `workspace_dir` — that check is unconditional and is NOT relaxed by
+/// `workspace_only`, so a hand-built policy that omits the grant cannot read a
+/// file the shipped app reads fine.
 fn policy_with(action_dir: PathBuf, workspace_dir: PathBuf) -> Arc<SecurityPolicy> {
+    // Canonicalize the granted root: `validate_path` compares the CANONICAL
+    // resolved path against it, and on macOS a temp dir under `/tmp` resolves
+    // to `/private/tmp`, so an uncanonicalized grant would silently never match.
+    let granted = action_dir
+        .canonicalize()
+        .unwrap_or_else(|_| action_dir.clone());
     Arc::new(SecurityPolicy {
         autonomy: AutonomyLevel::Supervised,
+        trusted_roots: vec![TrustedRoot {
+            path: granted.to_string_lossy().to_string(),
+            access: TrustedAccess::ReadWrite,
+        }],
         action_dir,
         workspace_dir,
         ..SecurityPolicy::default()
@@ -531,17 +549,9 @@ async fn oversized_result_is_offloaded_and_the_parent_gets_a_path_plus_abstract(
     );
 
     // And the parent recovers it with an ordinary relative `file_read`, which
-    // resolves against action_dir. `workspace_only` is cleared because these two
-    // roots are disjoint temp dirs here; with the shipped layout the action root
-    // is granted, and the point under test is the path round-trip, not the
-    // trusted-root grant.
-    let reader_policy = Arc::new(SecurityPolicy {
-        autonomy: AutonomyLevel::Supervised,
-        action_dir: action.path().to_path_buf(),
-        workspace_dir: workspace.path().to_path_buf(),
-        workspace_only: false,
-        ..SecurityPolicy::default()
-    });
+    // resolves against action_dir under the same trusted-root grant production
+    // gives the projects dir.
+    let reader_policy = policy_with(action.path().to_path_buf(), workspace.path().to_path_buf());
     let read = FileReadTool::new(reader_policy)
         .execute(json!({ "path": artifact.relative_path }))
         .await
