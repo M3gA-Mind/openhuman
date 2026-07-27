@@ -648,6 +648,52 @@ async fn write_refuses_a_parent_that_symlinks_out_of_the_convention_root() {
 }
 
 #[tokio::test]
+async fn worktree_artifact_renders_a_path_the_parent_can_resolve() {
+    // The worker writes inside its isolated checkout; the parent resolves
+    // relative paths against its own action root. Rendering against the
+    // parent's root keeps the pointer meaningful instead of handing back a bare
+    // `outputs/…` that would miss the file.
+    let parent_action = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let worktree = parent_action.path().join("worktrees").join("w1");
+
+    let nested = ArtifactOffload::new(
+        worktree.clone(),
+        Some(policy_with(
+            parent_action.path().to_path_buf(),
+            workspace.path().to_path_buf(),
+        )),
+        "code_executor",
+        "sub-7",
+    )
+    .with_render_root(parent_action.path().to_path_buf());
+
+    let artifact = nested
+        .write(ArtifactKind::Output, "report.md", "body")
+        .await
+        .unwrap();
+    assert_eq!(
+        artifact.relative_path, "worktrees/w1/outputs/report.md",
+        "a nested worktree stays relative to the parent's action root"
+    );
+
+    // A worktree OUTSIDE the parent's root cannot be expressed relatively, so
+    // the pointer carries the absolute path rather than a wrong relative one.
+    let outside = tempfile::tempdir().unwrap();
+    let detached = ArtifactOffload::new(outside.path().to_path_buf(), None, "code_executor", "s8")
+        .with_render_root(parent_action.path().to_path_buf());
+    let artifact = detached
+        .write(ArtifactKind::Output, "report.md", "body")
+        .await
+        .unwrap();
+    assert!(
+        std::path::Path::new(&artifact.relative_path).is_absolute(),
+        "expected an absolute fallback, got {}",
+        artifact.relative_path
+    );
+}
+
+#[tokio::test]
 async fn offload_is_disabled_by_a_zero_threshold() {
     let action = tempfile::tempdir().unwrap();
     let workspace = tempfile::tempdir().unwrap();

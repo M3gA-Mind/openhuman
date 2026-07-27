@@ -518,6 +518,28 @@ async fn offload_outcome_artifacts(
         return;
     };
 
+    // A read-only tier means this run may not mutate the disk at all, so the
+    // harness does not persist on its behalf either. The result stays inline and
+    // the summarizer / truncation backstops handle it, exactly as before #3883.
+    if policy
+        .as_ref()
+        .is_some_and(|p| p.autonomy == crate::openhuman::security::AutonomyLevel::ReadOnly)
+    {
+        tracing::debug!(
+            task_id = %task_id,
+            agent_id = %outcome.agent_id,
+            "[artifact] readonly autonomy tier — skipping offload (summarizer/truncation backstop applies)"
+        );
+        outcome.artifact_paths = paths;
+        note_artifact_handoff(
+            HANDOFF_STAGE_RECORDED,
+            &outcome.agent_id,
+            task_id,
+            &outcome.artifact_paths,
+        );
+        return;
+    }
+
     // Offload at the tighter of the global default and this agent's own result
     // cap, so a definition capped below the default (flow_memory_agent at 4 000
     // chars, context_scout at 5 000) gets its full body on disk instead of
@@ -525,7 +547,17 @@ async fn offload_outcome_artifacts(
     let threshold =
         effective_offload_threshold(DEFAULT_OFFLOAD_THRESHOLD_BYTES, definition.max_result_chars);
 
-    let offload = ArtifactOffload::new(action_dir, policy, outcome.agent_id.clone(), task_id);
+    // Worktree-isolated workers write inside their own checkout, but the parent
+    // that receives the pointer resolves relative paths against ITS action root.
+    // Render against that root so the handed-back path is one the parent can
+    // actually open (relative when the worktree nests inside it, absolute when
+    // it does not) rather than a bare `outputs/…` that silently misses.
+    let render_root = policy
+        .as_ref()
+        .map(|p| p.action_dir.clone())
+        .unwrap_or_else(|| action_dir.clone());
+    let offload = ArtifactOffload::new(action_dir, policy, outcome.agent_id.clone(), task_id)
+        .with_render_root(render_root);
     let (output, _artifact) =
         offload_oversized_result(std::mem::take(&mut outcome.output), &offload, threshold).await;
     outcome.output = output;

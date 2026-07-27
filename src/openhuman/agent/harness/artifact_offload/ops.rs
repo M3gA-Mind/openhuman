@@ -153,6 +153,9 @@ pub fn effective_offload_threshold(
 #[derive(Debug, Clone)]
 pub struct ArtifactOffload {
     action_dir: PathBuf,
+    /// Root the handed-back path is rendered against. Normally identical to
+    /// `action_dir`; see [`Self::with_render_root`].
+    render_root: PathBuf,
     policy: Option<Arc<SecurityPolicy>>,
     agent_id: String,
     task_id: String,
@@ -166,11 +169,27 @@ impl ArtifactOffload {
         task_id: impl Into<String>,
     ) -> Self {
         Self {
+            render_root: action_dir.clone(),
             action_dir,
             policy,
             agent_id: agent_id.into(),
             task_id: task_id.into(),
         }
+    }
+
+    /// Render handed-back paths relative to `render_root` instead of the write
+    /// root.
+    ///
+    /// A worktree-isolated worker writes inside its own checkout, but the parent
+    /// that receives the pointer no longer holds that worker's
+    /// `WorkspaceDescriptor` — a bare `outputs/…` would resolve against the
+    /// *parent's* action root and miss the file entirely. Rendering against the
+    /// parent's root yields a relative path when the worktree is nested inside
+    /// it, and falls back to an absolute path when it is not, so the pointer is
+    /// never silently wrong.
+    pub fn with_render_root(mut self, render_root: PathBuf) -> Self {
+        self.render_root = render_root;
+        self
     }
 
     /// Convention-stable name for a worker's offloaded final result:
@@ -230,7 +249,7 @@ impl ArtifactOffload {
         let sanitized = sanitize_text(content);
         tokio::fs::write(&absolute, sanitized.value.as_bytes()).await?;
 
-        let relative_path = relative_to_action_dir(&self.action_dir, &absolute);
+        let relative_path = relative_to_action_dir(&self.render_root, &absolute);
         let artifact = OffloadedArtifact {
             kind,
             relative_path,
