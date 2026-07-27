@@ -1,4 +1,5 @@
 mod brave;
+mod exa;
 mod parallel;
 mod querit;
 mod searxng;
@@ -8,6 +9,9 @@ mod web_search;
 
 pub use brave::{
     BraveImageSearchTool, BraveNewsSearchTool, BraveVideoSearchTool, BraveWebSearchTool,
+};
+pub use exa::{
+    ExaFindSimilarTool, ExaGetContentsTool, ExaResultItem, ExaSearchResponse, ExaSearchTool,
 };
 pub use parallel::{
     ParallelChatTool, ParallelDatasetTool, ParallelEnrichTool, ParallelExtractTool,

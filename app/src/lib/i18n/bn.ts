@@ -1708,6 +1708,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'প্রতিদ্বন্ধিতা',
   'settings.search.engineQueritDesc':
     'সরাসরি কিউআরটিএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সএক্সক্স: সাইট, টাইম সীমা, এবং ভাষা ফিল্টার।',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'Exa দ্বারা চালিত নিউরাল সার্চ। আপনার নিজের Exa API key প্রয়োজন। সার্চ, সদৃশ পৃষ্ঠা খোঁজা এবং পৃষ্ঠার বিষয়বস্তু আনার টুল যোগ করে।',
   'settings.search.statusConfigured': 'কনফিগার করা',
   'settings.search.statusNeedsKey': 'API কী প্রয়োজন',
   'settings.search.fallbackToManaged':
@@ -1723,10 +1726,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API কী',
   'settings.search.braveKeyLabel': 'Brave অনুসন্ধান API কী',
   'settings.search.queritKeyLabel': 'কিউ- টি xxqx কি',
+  'settings.search.exaKeyLabel': 'Exa API কী',
   'settings.search.placeholderStored': '•••••••• (সংরক্ষিত)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'কিউ- টি xxqx কি',
+  'settings.search.placeholderExa': 'Exa API কী',
   'settings.search.allowedSitesLabel': 'ওয়েবসাইটের অনুমতি দেওয়া হয়েছে',
   'settings.search.allowedSitesHint':
     'যেসব হোস্ট অ্যাসিস্ট্যান্ট খুলতে ও পড়তে পারবে (ওয়েব ফেচ এবং ব্রাউজার টুলের মাধ্যমে) প্রতি লাইনে একটি করে, যেমন reuters.com। একটি হোস্ট তার সাবডোমেইনগুলোও অন্তর্ভুক্ত করে। ওয়েব সার্চ নিজে এই তালিকা দ্বারা সীমাবদ্ধ নয়।',

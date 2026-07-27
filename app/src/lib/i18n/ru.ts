@@ -1728,6 +1728,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'Керит',
   'settings.search.engineQueritDesc':
     'Direct Querit API: поиск в Интернете с фильтрами по сайту, временному диапазону, стране и языку.',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'Нейропоиск на базе Exa. Требуется ваш собственный ключ API Exa. Добавляет инструменты поиска, похожих страниц и содержимого страниц.',
   'settings.search.statusConfigured': 'Настроено',
   'settings.search.statusNeedsKey': 'Требуется ключ API',
   'settings.search.fallbackToManaged':
@@ -1743,10 +1746,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API ключ',
   'settings.search.braveKeyLabel': 'Brave Поиск API ключ',
   'settings.search.queritKeyLabel': 'Запросить ключ API',
+  'settings.search.exaKeyLabel': 'Ключ API Exa',
   'settings.search.placeholderStored': '•••••••• (сохранено)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Запросить ключ API',
+  'settings.search.placeholderExa': 'Ключ API Exa',
   'settings.search.allowedSitesLabel': 'Разрешенные веб-сайты',
   'settings.search.allowedSitesHint':
     'Хосты, которые ассистент может открывать и читать (через веб-запросы и браузерный инструмент) по одному на строку, например reuters.com. Хост также охватывает все его поддомены. Веб-поиск не ограничивается этим списком.',

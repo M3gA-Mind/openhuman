@@ -1763,6 +1763,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'Il/Elle cherche',
   'settings.search.engineQueritDesc':
     'Direct Querit API: recherche sur le web avec filtres de site, de plage temporelle, de pays et de langue.',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'Recherche neuronale propulsée par Exa. Nécessite votre propre clé API Exa. Ajoute des outils de recherche, de pages similaires et de contenu de pages.',
   'settings.search.statusConfigured': 'Configuré',
   'settings.search.statusNeedsKey': 'Nécessite la clé API',
   'settings.search.fallbackToManaged':
@@ -1778,10 +1781,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API clé',
   'settings.search.braveKeyLabel': 'Brave Recherche API clé',
   'settings.search.queritKeyLabel': 'Cherche la clé API',
+  'settings.search.exaKeyLabel': 'Clé API Exa',
   'settings.search.placeholderStored': '•••••••• (stocké)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Cherche la clé API',
+  'settings.search.placeholderExa': 'Clé API Exa',
   'settings.search.allowedSitesLabel': 'Sites web autorisés',
   'settings.search.allowedSitesHint':
     "Saisissez les hôtes que l'assistant peut ouvrir et lire (via la récupération web et l'outil navigateur), un hôte par ligne, p. ex. reuters.com. Un hôte couvre également ses sous-domaines. La recherche web elle-même n'est pas limitée par cette liste.",

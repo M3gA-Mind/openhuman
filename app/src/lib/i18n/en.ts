@@ -1807,6 +1807,9 @@ const en: TranslationMap = {
   'settings.search.engineQueritLabel': 'Querit',
   'settings.search.engineQueritDesc':
     'Direct Querit API: web search with site, time range, country, and language filters.',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'Neural search powered by Exa. Requires your own Exa API key. Adds search, find similar, and page contents tools.',
   'settings.search.statusConfigured': 'Configured',
   'settings.search.statusNeedsKey': 'Needs API key',
   'settings.search.fallbackToManaged':
@@ -1822,10 +1825,12 @@ const en: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API key',
   'settings.search.braveKeyLabel': 'Brave Search API key',
   'settings.search.queritKeyLabel': 'Querit API key',
+  'settings.search.exaKeyLabel': 'Exa API key',
   'settings.search.placeholderStored': '•••••••• (stored)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Querit API key',
+  'settings.search.placeholderExa': 'Exa API key',
   'settings.search.allowedSitesLabel': 'Allowed websites',
   'settings.search.allowedSitesHint':
     'Enter one host per line, such as reuters.com. The assistant may open and read these hosts through web fetch and the browser tool. Each host also covers its subdomains. This list does not restrict web search.',

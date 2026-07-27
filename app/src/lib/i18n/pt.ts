@@ -1745,6 +1745,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'Querit',
   'settings.search.engineQueritDesc':
     'Direct Querit API: pesquisa na web com filtros de site, intervalo de tempo, país e idioma.',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'Busca neural com tecnologia Exa. Requer sua própria chave de API do Exa. Adiciona ferramentas de busca, páginas semelhantes e conteúdo de páginas.',
   'settings.search.statusConfigured': 'Configurado',
   'settings.search.statusNeedsKey': 'Precisa da chave API',
   'settings.search.fallbackToManaged':
@@ -1760,10 +1763,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API chave',
   'settings.search.braveKeyLabel': 'Brave Pesquisar chave API',
   'settings.search.queritKeyLabel': 'Chave Querit API',
+  'settings.search.exaKeyLabel': 'Chave de API do Exa',
   'settings.search.placeholderStored': '•••••••• (armazenado)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Chave Querit API',
+  'settings.search.placeholderExa': 'Chave de API do Exa',
   'settings.search.allowedSitesLabel': 'Sites permitidos',
   'settings.search.allowedSitesHint':
     'Liste, um por linha, os hosts que o assistente pode abrir e ler (via busca na web e ferramenta de navegador), ex.: reuters.com. Um host também cobre seus subdomínios. A busca na web em si não é restringida por esta lista.',

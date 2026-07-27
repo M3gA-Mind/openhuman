@@ -1723,6 +1723,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'Querit',
   'settings.search.engineQueritDesc':
     'Querit Langsung API: pencarian web dengan situs, rentang waktu, negara, dan filter bahasa.',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'Pencarian neural yang didukung Exa. Memerlukan API key Exa Anda sendiri. Menambahkan alat pencarian, halaman serupa, dan konten halaman.',
   'settings.search.statusConfigured': 'Dikonfigurasi',
   'settings.search.statusNeedsKey': 'Memerlukan kunci API',
   'settings.search.fallbackToManaged':
@@ -1738,10 +1741,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API kunci',
   'settings.search.braveKeyLabel': 'Brave Penelusuran API kunci',
   'settings.search.queritKeyLabel': 'kunci Querit API',
+  'settings.search.exaKeyLabel': 'Kunci API Exa',
   'settings.search.placeholderStored': '•••••••• (disimpan)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'kunci Querit API',
+  'settings.search.placeholderExa': 'Kunci API Exa',
   'settings.search.allowedSitesLabel': 'Situs yang diijinkan',
   'settings.search.allowedSitesHint':
     'Host yang boleh dibuka dan dibaca oleh asisten (melalui pengambilan web dan alat browser) satu per baris, mis. reuters.com. Sebuah host juga mencakup subdomain-nya. Penelusuran web itu sendiri tidak dibatasi oleh daftar ini.',

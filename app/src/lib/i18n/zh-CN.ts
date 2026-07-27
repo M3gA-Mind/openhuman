@@ -1618,6 +1618,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'Querit',
   'settings.search.engineQueritDesc':
     '直接调用 Querit API：支持站点、时间范围、国家/地区和语言筛选的网页搜索。',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    '由 Exa 提供的神经搜索。需要你自己的 Exa API 密钥。新增搜索、查找相似页面和获取页面内容工具。',
   'settings.search.statusConfigured': '已配置',
   'settings.search.statusNeedsKey': '需要 API 密钥',
   'settings.search.fallbackToManaged': '未配置密钥，保存密钥前搜索会回退到托管模式。',
@@ -1632,10 +1635,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API 键',
   'settings.search.braveKeyLabel': 'Brave 搜索 API 键',
   'settings.search.queritKeyLabel': 'Querit API 键',
+  'settings.search.exaKeyLabel': 'Exa API 密钥',
   'settings.search.placeholderStored': '••••••••（已存储）',
   'settings.search.placeholderParallel': 'PK_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Querit API 密钥',
+  'settings.search.placeholderExa': 'Exa API 密钥',
   'settings.search.allowedSitesLabel': '允许的网站',
   'settings.search.allowedSitesHint':
     '助手在研究时可以打开并阅读的网站（每行一个主机，例如 reuters.com）。主机也包含其子域名。留空将阻止所有网页访问。',

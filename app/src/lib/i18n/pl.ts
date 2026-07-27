@@ -1739,6 +1739,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'Querit',
   'settings.search.engineQueritDesc':
     'Bezpośrednie API Querit: wyszukiwanie w sieci z filtrami strony, zakresu czasu, kraju i języka.',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'Wyszukiwanie neuronowe oparte na Exa. Wymaga własnego klucza API Exa. Dodaje narzędzia wyszukiwania, podobnych stron i treści stron.',
   'settings.search.statusConfigured': 'Skonfigurowano',
   'settings.search.statusNeedsKey': 'Wymaga klucza API',
   'settings.search.fallbackToManaged':
@@ -1754,10 +1757,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Klucz API Parallel',
   'settings.search.braveKeyLabel': 'Klucz API Brave Search',
   'settings.search.queritKeyLabel': 'Klucz API Querit',
+  'settings.search.exaKeyLabel': 'Klucz API Exa',
   'settings.search.placeholderStored': '•••••••• (zapisane)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Klucz API Querit',
+  'settings.search.placeholderExa': 'Klucz API Exa',
   'settings.search.allowedSitesLabel': 'Dozwolone witryny',
   'settings.search.allowedSitesHint':
     'Hosty, które asystent może otwierać i odczytywać (poprzez pobieranie stron i narzędzie przeglądarki) jeden na linię, np. reuters.com. Host obejmuje również swoje subdomeny. Samo wyszukiwanie w internecie nie jest ograniczone przez tę listę.',

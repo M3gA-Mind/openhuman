@@ -1697,6 +1697,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'Querit',
   'settings.search.engineQueritDesc':
     '직접 Querit API: 사이트, 시간 범위, 국가 및 언어 필터가 있는 웹 검색.',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'Exa 기반 신경망 검색. 본인의 Exa API 키가 필요합니다. 검색, 유사 페이지 찾기, 페이지 콘텐츠 도구를 추가합니다.',
   'settings.search.statusConfigured': '구성됨',
   'settings.search.statusNeedsKey': 'API 키 필요',
   'settings.search.fallbackToManaged':
@@ -1712,10 +1715,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API 키',
   'settings.search.braveKeyLabel': 'Brave 검색 API 키',
   'settings.search.queritKeyLabel': 'Querit API 키',
+  'settings.search.exaKeyLabel': 'Exa API 키',
   'settings.search.placeholderStored': '•••••••(저장됨)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Querit API 키',
+  'settings.search.placeholderExa': 'Exa API 키',
   'settings.search.allowedSitesLabel': '허용된 웹사이트',
   'settings.search.allowedSitesHint':
     '리서치 중 어시스턴트가 열고 읽을 수 있는 웹사이트입니다(한 줄에 호스트 하나, 예: reuters.com). 호스트에는 하위 도메인도 포함됩니다. 모든 웹 접근을 차단하려면 비워 두세요.',

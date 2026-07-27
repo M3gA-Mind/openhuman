@@ -1705,6 +1705,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'क्वेर्ट',
   'settings.search.engineQueritDesc':
     'प्रत्यक्ष Querit API: साइट, समय सीमा, देश और भाषा फिल्टर के साथ वेब खोज।',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'Exa द्वारा संचालित न्यूरल सर्च। इसके लिए आपकी अपनी Exa API key आवश्यक है। सर्च, मिलते-जुलते पेज खोजने और पेज सामग्री लाने के टूल जोड़ता है।',
   'settings.search.statusConfigured': 'विन्यस्त',
   'settings.search.statusNeedsKey': 'API कुंजी की आवश्यकता है',
   'settings.search.fallbackToManaged':
@@ -1720,10 +1723,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API कुंजी',
   'settings.search.braveKeyLabel': 'Brave API कुंजी खोजें',
   'settings.search.queritKeyLabel': 'क्वेरिट API कुंजी',
+  'settings.search.exaKeyLabel': 'Exa API कुंजी',
   'settings.search.placeholderStored': '•••••••• (संग्रहीत)',
   'settings.search.placeholderParallel': 'पीके_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'क्वेरिट API कुंजी',
+  'settings.search.placeholderExa': 'Exa API कुंजी',
   'settings.search.allowedSitesLabel': 'अनुमत वेबसाइटों',
   'settings.search.allowedSitesHint':
     'उन होस्ट को सूचीबद्ध करें जिन्हें असिस्टेंट खोल और पढ़ सकता है (वेब फ़ेच और ब्राउज़र टूल के माध्यम से), प्रति पंक्ति एक, जैसे reuters.com। एक होस्ट में उसके सभी सबडोमेन भी शामिल होते हैं। वेब सर्च स्वयं इस सूची से प्रतिबंधित नहीं है।',

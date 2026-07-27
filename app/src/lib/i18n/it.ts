@@ -1747,6 +1747,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'Querit',
   'settings.search.engineQueritDesc':
     'Direct Querit API: ricerca sul web con filtri per sito, intervallo di tempo, paese e lingua.',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'Ricerca neurale basata su Exa. Richiede la tua chiave API Exa. Aggiunge strumenti di ricerca, pagine simili e contenuti delle pagine.',
   'settings.search.statusConfigured': 'Configurato',
   'settings.search.statusNeedsKey': 'Richiede la chiave API',
   'settings.search.fallbackToManaged':
@@ -1762,10 +1765,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API chiave',
   'settings.search.braveKeyLabel': 'Brave Cerca chiave API',
   'settings.search.queritKeyLabel': 'Chiave Querit API',
+  'settings.search.exaKeyLabel': 'Chiave API Exa',
   'settings.search.placeholderStored': '•••••••• (memorizzato)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Chiave Querit API',
+  'settings.search.placeholderExa': 'Chiave API Exa',
   'settings.search.allowedSitesLabel': 'Siti web consentiti',
   'settings.search.allowedSitesHint':
     "Inserisci, uno per riga, gli host che l'assistente può aprire e leggere tramite il recupero web e lo strumento browser, ad es. reuters.com. Un host include anche i suoi sottodomini. La ricerca web stessa non è limitata da questo elenco.",

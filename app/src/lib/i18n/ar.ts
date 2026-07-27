@@ -1674,6 +1674,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'Querit',
   'settings.search.engineQueritDesc':
     'واجهة Querit API المباشرة: بحث على الويب مع فلاتر الموقع والنطاق الزمني والبلد واللغة.',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'بحث عصبي مدعوم من Exa. يتطلب مفتاح API الخاص بك من Exa. يضيف أدوات البحث والعثور على صفحات مشابهة واسترجاع محتوى الصفحات.',
   'settings.search.statusConfigured': 'تم تكوينه',
   'settings.search.statusNeedsKey': 'يحتاج إلى مفتاح API',
   'settings.search.fallbackToManaged':
@@ -1689,10 +1692,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API مفتاح',
   'settings.search.braveKeyLabel': 'Brave بحث API مفتاح',
   'settings.search.queritKeyLabel': 'مفتاح API الخاص بـ Querit',
+  'settings.search.exaKeyLabel': 'مفتاح API الخاص بـ Exa',
   'settings.search.placeholderStored': '•••••••• (مخزن)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'مفتاح API الخاص بـ Querit',
+  'settings.search.placeholderExa': 'مفتاح API الخاص بـ Exa',
   'settings.search.allowedSitesLabel': 'المواقع الشبكية المسموح بها',
   'settings.search.allowedSitesHint':
     'المضيفون الذين يُسمح للمساعد بفتحهم وقراءتهم (عبر جلب الويب وأداة المتصفح) مضيف واحد في كل سطر، مثل reuters.com. يشمل المضيف نطاقاته الفرعية أيضًا. البحث على الويب نفسه لا يتقيّد بهذه القائمة.',

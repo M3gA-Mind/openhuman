@@ -1769,6 +1769,9 @@ const messages: TranslationMap = {
   'settings.search.engineQueritLabel': 'Querit',
   'settings.search.engineQueritDesc':
     'Direct Querit API: Websuche mit Standort-, Zeitbereichs-, Länder- und Sprachfiltern.',
+  'settings.search.engineExaLabel': 'Exa',
+  'settings.search.engineExaDesc':
+    'Neuronale Suche von Exa. Erfordert deinen eigenen Exa-API-Schlüssel. Fügt Werkzeuge für Suche, ähnliche Seiten und Seiteninhalte hinzu.',
   'settings.search.statusConfigured': 'Konfiguriert',
   'settings.search.statusNeedsKey': 'Benötigt API-Schlüssel',
   'settings.search.fallbackToManaged':
@@ -1784,10 +1787,12 @@ const messages: TranslationMap = {
   'settings.search.parallelKeyLabel': 'Parallel API fehlgeschlagen',
   'settings.search.braveKeyLabel': 'Brave Suche API Schlüssel',
   'settings.search.queritKeyLabel': 'Fragen Sie den API-Schlüssel ab',
+  'settings.search.exaKeyLabel': 'Exa-API-Schlüssel',
   'settings.search.placeholderStored': '•••••••• (gespeichert)',
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Fragen Sie den API-Schlüssel ab',
+  'settings.search.placeholderExa': 'Exa-API-Schlüssel',
   'settings.search.allowedSitesLabel': 'Erlaubte Websites',
   'settings.search.allowedSitesHint':
     'Hosts, die der Assistent öffnen und lesen darf – per Web-Abruf und Browser-Tool – einer pro Zeile, z. B. reuters.com. Ein Host schließt auch seine Subdomains ein. Die Websuche selbst wird durch diese Liste nicht eingeschränkt.',
