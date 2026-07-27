@@ -7,7 +7,7 @@ icon: magnifying-glass
 
 # Web Search
 
-The agent can search the live web on its own. By default this runs on **OpenHuman Managed** search: the query goes through the OpenHuman backend, currently powered by [Exa](https://exa.ai), so you never carry a search API key. If you would rather search directly from your own machine, you can bring your own key for Exa, Parallel, Brave, or Querit. If you run your own [SearXNG](https://docs.searxng.org/) instance, you can enable `searxng_search` as a private, self-hosted search tool.
+The agent can search the live web on its own. By default this runs on **OpenHuman Managed** search: the query goes through the OpenHuman backend, currently powered by [Exa](https://exa.ai), so you never carry a search API key. You can also bring your own key for Exa, Parallel, Brave, or Querit; Exa, Brave, and Querit call their providers directly, while Parallel remains backend-proxied. If you run your own [SearXNG](https://docs.searxng.org/) instance, you can enable `searxng_search` as a private, self-hosted search tool.
 
 ## What it's good for
 
@@ -23,10 +23,10 @@ Pick the engine under **Connections → Search**. Exactly one engine is active a
 | --- | --- | --- |
 | **OpenHuman Managed** (default) | Not needed | The OpenHuman backend, currently powered by [Exa](https://exa.ai). |
 | **Exa** | Required | Straight to `https://api.exa.ai` with your key. |
-| **Parallel** | Required | Straight to the Parallel API with your key. |
+| **Parallel** | Required | Through the OpenHuman backend to Parallel. |
 | **Brave** | Required | Straight to the Brave Search API with your key. |
 | **Querit** | Required | Straight to the Querit API with your key. |
-| **Disabled** | Not needed | Nowhere. The canonical `web_search_tool` is removed; an independently enabled SearXNG tool remains available. |
+| **Disabled** | Not needed | Nowhere. All agent-facing search tools are removed; an enabled SearXNG endpoint remains available through RPC/MCP. |
 
 Selecting a bring-your-own-key engine without saving a key falls back to managed search, so the agent always has working search. Once a search finishes, the chat timeline names the provider that answered it ("Searched with Exa"), so the managed path is never an unattributed black box.
 
@@ -68,7 +68,7 @@ EXA_API_KEY=your-exa-api-key
 
 ## Self-hosted SearXNG
 
-SearXNG search is opt-in. When enabled, OpenHuman registers `searxng_search` for agents and MCP clients. The tool calls your configured SearXNG `/search?format=json` endpoint and returns normalized `{ title, url, snippet, source }` results.
+SearXNG search is opt-in. When enabled, OpenHuman registers `searxng_search` for agents and MCP clients unless the selected engine is **Disabled**; in that mode it remains available through RPC/MCP but is omitted from the agent's tools. The tool calls your configured SearXNG `/search?format=json` endpoint and returns normalized `{ title, url, snippet, source }` results.
 
 Enable it in `config.toml`:
 
