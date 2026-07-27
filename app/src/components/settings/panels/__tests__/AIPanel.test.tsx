@@ -450,6 +450,113 @@ describe('AIPanel', () => {
     expect(manualInput).toHaveValue('my-private-model');
   });
 
+  it('warns when a stored Azure value is verbatim a catalog base model id', async () => {
+    // The fingerprint of a PRE-FIX Azure selection: the dropdown was the only
+    // way to set the value, so catalog membership is exactly the signature of a
+    // connection configured the broken way. It stays a hint, never a rewrite —
+    // a user may legitimately name a deployment after its base model.
+    vi.mocked(loadAISettings).mockResolvedValue({
+      ...azureSettings,
+      routing: {
+        ...azureSettings.routing,
+        chat: {
+          kind: 'cloud' as const,
+          providerSlug: 'azure-foundry',
+          model: 'gpt-5.6-terra-2026-07-09',
+        },
+      },
+    });
+    vi.mocked(listProviderModels).mockResolvedValue([
+      { id: 'gpt-5.6-terra-2026-07-09' },
+      { id: 'gpt-4o' },
+    ]);
+
+    renderWithProviders(<AIPanel />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Use Your Own Models/i })).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Use Your Own Models/i }));
+
+    expect(
+      await screen.findByText(/confirm this is the name you gave your deployment/i)
+    ).toBeInTheDocument();
+    // The always-on explainer sits alongside it for any Azure connection.
+    expect(screen.getByText(/This is not the model ID/i)).toBeInTheDocument();
+  });
+
+  it('does not warn when the Azure deployment name is absent from the catalog', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue({
+      ...azureSettings,
+      routing: {
+        ...azureSettings.routing,
+        chat: { kind: 'cloud' as const, providerSlug: 'azure-foundry', model: 'my-deployment' },
+      },
+    });
+    vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-5.6-terra-2026-07-09' }]);
+
+    renderWithProviders(<AIPanel />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Use Your Own Models/i })).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Use Your Own Models/i }));
+
+    expect(await screen.findByText(/This is not the model ID/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByText(/confirm this is the name you gave your deployment/i)
+      ).not.toBeInTheDocument()
+    );
+  });
+
+  it('can toggle an Azure connection back to the catalog and out again', async () => {
+    // The escape hatch has to work in BOTH directions: Azure opens on free
+    // text, but a user whose deployment IS named after a catalog entry should
+    // still be able to pick it, then return to typing.
+    vi.mocked(loadAISettings).mockResolvedValue(azureSettings);
+    vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-4o' }]);
+
+    renderWithProviders(<AIPanel />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Use Your Own Models/i })).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Use Your Own Models/i }));
+
+    await screen.findByRole('textbox', { name: /Deployment name/i });
+    fireEvent.click(await screen.findByRole('button', { name: /Choose from list/i }));
+
+    // Back on the catalog dropdown, with the manual escape hatch offered again.
+    await waitFor(() =>
+      expect(screen.queryByRole('textbox', { name: /Deployment name/i })).not.toBeInTheDocument()
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Enter model ID manually/i }));
+    expect(await screen.findByRole('textbox', { name: /Deployment name/i })).toBeInTheDocument();
+  });
+
+  it('offers a deployment-name field in the per-workload custom routing dialog', async () => {
+    // The workload override dialog is a second, independent model picker. It
+    // needs the same Azure treatment, or per-workload routing stays stuck on
+    // catalog base model ids even after the main selector is fixed.
+    vi.mocked(loadAISettings).mockResolvedValue(azureSettings);
+    vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-5.6-terra-2026-07-09' }]);
+
+    renderWithProviders(<AIPanel />);
+    // Per-workload rows live behind the advanced routing mode.
+    fireEvent.click(await screen.findByRole('button', { name: /Advanced/i }));
+    const chooseButtons = await screen.findAllByRole('button', {
+      name: /Choose Model|Change Model/i,
+    });
+    fireEvent.click(chooseButtons[0]);
+
+    // Selecting the Azure provider flips the dialog to free text and relabels.
+    const providerSelect = await screen.findByDisplayValue(/Azure Foundry|OpenAI|Ollama/i);
+    fireEvent.change(providerSelect, { target: { value: 'cloud:azure-foundry' } });
+
+    const deploymentInput = await screen.findByRole('textbox', { name: /Deployment name/i });
+    fireEvent.change(deploymentInput, { target: { value: 'workload-deployment' } });
+    expect(deploymentInput).toHaveValue('workload-deployment');
+    expect(screen.getByText(/This is not the model ID/i)).toBeInTheDocument();
+  });
+
   it('flags a custom BYOK model as vision-capable via the Own-model selector', async () => {
     vi.mocked(loadAISettings).mockResolvedValue({
       ...baseSettings,
