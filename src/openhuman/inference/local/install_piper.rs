@@ -37,6 +37,20 @@ const MIN_VOICE_BYTES: u64 = 30 * 1024 * 1024;
 /// a 404 HTML response masquerading as JSON.
 const MIN_VOICE_JSON_BYTES: u64 = 256;
 
+/// Binaries shipped inside the Piper release archive that must carry the
+/// executable bit for the engine to start.
+///
+/// The upstream macOS tarballs ship `espeak-ng` with mode `0644` (#5045).
+/// `tar::Archive::unpack` faithfully reproduces the archived mode, so a
+/// plain extraction leaves the file non-executable and Piper fails when it
+/// shells out to phonemize. Extraction must therefore repair the bit
+/// rather than trust the archive.
+///
+/// Unix-only: Windows has no executable bit, so the const would be dead
+/// code there.
+#[cfg(unix)]
+const PIPER_EXECUTABLES: [&str; 3] = ["piper", "piper_phonemize", "espeak-ng"];
+
 /// Result of resolving the Piper binary archive URL for the host OS.
 struct BinaryAsset {
     url: String,
@@ -75,11 +89,20 @@ fn binary_download_asset() -> Option<BinaryAsset> {
     if cfg!(target_os = "macos") {
         // Two assets exist (`piper_macos_x64.tar.gz` and
         // `piper_macos_aarch64.tar.gz`). Pick based on the host arch.
+        //
+        // NOTE (#5045): as of the pinned upstream release `2023.11.14-2`
+        // the two macOS assets are byte-identical x86_64 builds — the
+        // `aarch64` name is a mislabel — and neither ships the
+        // `@rpath` dylibs `piper` links against. Selecting the arm64
+        // asset here is still correct, but it cannot make Piper run on
+        // Apple Silicon until upstream republishes the bundle. The arch
+        // is logged below so a bad asset is diagnosable from user logs.
         let arch = std::env::consts::ARCH;
         let suffix = match arch {
             "aarch64" | "arm64" => "macos_aarch64",
             _ => "macos_x64",
         };
+        log::info!("{LOG_PREFIX} host arch={arch} selecting asset=piper_{suffix}.tar.gz");
         return Some(BinaryAsset {
             url: format!("{base}/piper_{suffix}.tar.gz"),
             kind: ArchiveKind::TarGz,
@@ -369,10 +392,78 @@ async fn run_install(config: &Config, voice: &str) -> Result<(), String> {
         ArchiveKind::Zip => extract_zip(&archive_path, &dest)?,
         ArchiveKind::TarGz => extract_tar_gz(&archive_path, &dest)?,
     }
+    ensure_executable_bits(&dest);
     let _ = std::fs::remove_file(&archive_path);
 
     Ok(())
 }
+
+/// Directories under the install root where an extracted Piper binary can
+/// land. Mirrors the layouts probed by
+/// [`paths::workspace_piper_binary_candidates`]: the macOS/Linux tarballs
+/// nest under `piper/`, some builds flatten to the root, and a few use
+/// `bin/`. Bounded on purpose — a recursive walk would descend into
+/// `espeak-ng-data/` and `voices/` (which holds a ~60 MB `.onnx`) for no
+/// benefit.
+#[cfg(unix)]
+fn executable_search_dirs(dest_dir: &std::path::Path) -> [PathBuf; 3] {
+    [
+        dest_dir.to_path_buf(),
+        dest_dir.join("piper"),
+        dest_dir.join("bin"),
+    ]
+}
+
+/// Repair the executable bit on the binaries extracted from the Piper
+/// archive.
+///
+/// Upstream ships `espeak-ng` as mode `0644` inside both macOS tarballs
+/// (#5045) and `tar::Archive::unpack` reproduces the archived mode
+/// verbatim, so the extracted tree is left with a non-executable
+/// `espeak-ng`. Rather than trust archive metadata, set `0o755` on every
+/// binary we know Piper needs.
+///
+/// Best-effort by design: a `chmod` failure is logged but does not fail
+/// the install, since the caller may still have a working engine on
+/// `PATH` (`PIPER_BIN`) and a hard error here would regress that path.
+#[cfg(unix)]
+fn ensure_executable_bits(dest_dir: &std::path::Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    for dir in executable_search_dirs(dest_dir) {
+        for name in PIPER_EXECUTABLES {
+            let path = dir.join(name);
+            let Ok(meta) = std::fs::metadata(&path) else {
+                continue;
+            };
+            if !meta.is_file() {
+                continue;
+            }
+            let mode = meta.permissions().mode();
+            // Any of user/group/other execute already set → leave it be.
+            if mode & 0o111 != 0 {
+                log::debug!(
+                    "{LOG_PREFIX} {} already executable (mode {:o})",
+                    path.display(),
+                    mode & 0o777
+                );
+                continue;
+            }
+            match std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)) {
+                Ok(()) => log::info!(
+                    "{LOG_PREFIX} repaired execute bit on {} (was mode {:o})",
+                    path.display(),
+                    mode & 0o777
+                ),
+                Err(e) => log::warn!("{LOG_PREFIX} could not chmod +x {}: {e}", path.display()),
+            }
+        }
+    }
+}
+
+/// Windows has no executable bit — extraction is sufficient there.
+#[cfg(not(unix))]
+fn ensure_executable_bits(_dest_dir: &std::path::Path) {}
 
 fn update_stage(stage: String) {
     let mut current = read_status(ENGINE_PIPER);
@@ -666,5 +757,102 @@ mod tests {
         let (_tmp, config) = temp_config();
         wipe_shared_install_dir(&config);
         assert!(find_workspace_piper_binary(&config).is_none());
+    }
+
+    /// Regression tests for #5045: the upstream macOS tarballs ship
+    /// `espeak-ng` as mode 0644 and `tar::Archive::unpack` reproduces the
+    /// archived mode verbatim, leaving Piper unable to phonemize.
+    #[cfg(unix)]
+    mod executable_bits {
+        use super::*;
+        use std::os::unix::fs::PermissionsExt;
+
+        fn mode_of(path: &std::path::Path) -> u32 {
+            std::fs::metadata(path)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777
+        }
+
+        fn write_with_mode(path: &std::path::Path, mode: u32) {
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+            std::fs::write(path, b"stub").expect("write");
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).expect("chmod");
+        }
+
+        /// The headline bug: a 0644 `espeak-ng` in the nested `piper/`
+        /// layout the macOS tarball actually produces.
+        #[test]
+        fn repairs_non_executable_espeak_ng_in_nested_layout() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let espeak = tmp.path().join("piper").join("espeak-ng");
+            write_with_mode(&espeak, 0o644);
+            assert_eq!(mode_of(&espeak), 0o644, "precondition: not executable");
+
+            ensure_executable_bits(tmp.path());
+
+            assert_eq!(
+                mode_of(&espeak),
+                0o755,
+                "espeak-ng must be executable after extraction"
+            );
+        }
+
+        /// Some builds flatten the archive to the install root rather than
+        /// nesting under `piper/`; both layouts must be repaired.
+        #[test]
+        fn repairs_binaries_in_flat_layout() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let espeak = tmp.path().join("espeak-ng");
+            write_with_mode(&espeak, 0o644);
+
+            ensure_executable_bits(tmp.path());
+
+            assert_eq!(mode_of(&espeak), 0o755);
+        }
+
+        /// `piper` and `piper_phonemize` already ship 0755 upstream — the
+        /// repair must not widen or otherwise rewrite a good mode.
+        #[test]
+        fn leaves_already_executable_binaries_untouched() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let piper = tmp.path().join("piper").join("piper");
+            // Deliberately narrower than 0755 to prove we don't rewrite.
+            write_with_mode(&piper, 0o700);
+
+            ensure_executable_bits(tmp.path());
+
+            assert_eq!(
+                mode_of(&piper),
+                0o700,
+                "an already-executable binary must keep its mode"
+            );
+        }
+
+        /// Data files shipped alongside the binaries (`libtashkeel_model.ort`,
+        /// the `.onnx` voices) must not become executable.
+        #[test]
+        fn does_not_touch_non_binary_payloads() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            let data = tmp.path().join("piper").join("libtashkeel_model.ort");
+            write_with_mode(&data, 0o644);
+
+            ensure_executable_bits(tmp.path());
+
+            assert_eq!(
+                mode_of(&data),
+                0o644,
+                "data payloads must not gain the execute bit"
+            );
+        }
+
+        /// A missing install directory is the common case on a fresh
+        /// workspace — the repair must be a silent no-op, not a panic.
+        #[test]
+        fn is_a_no_op_when_nothing_was_extracted() {
+            let tmp = tempfile::tempdir().expect("tempdir");
+            ensure_executable_bits(&tmp.path().join("does-not-exist"));
+        }
     }
 }
