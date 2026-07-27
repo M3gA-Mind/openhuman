@@ -3,6 +3,9 @@
 //! Includes the role-contract suffix, its injector, and the tool-spec
 //! deduplication helper used before sending specs to the provider.
 
+use crate::openhuman::agent::harness::artifact_offload::{
+    render_artifact_offload_contract, ARTIFACT_OFFLOAD_HEADING,
+};
 use crate::openhuman::tools::ToolSpec;
 use std::collections::HashSet;
 
@@ -66,6 +69,16 @@ pub(crate) fn append_subagent_role_contract(base_prompt: String, agent_id: &str)
     }
     prompt.push('\n');
     prompt.push_str(SUBAGENT_ROLE_CONTRACT_SUFFIX);
+
+    // #3883: the filesystem-offload convention. Rendered from the artifact
+    // module so the directory names the model is told about can never drift
+    // from the ones `resolve_artifact_path` will actually accept. Guarded
+    // separately from the role contract above because an archetype prompt may
+    // already spell the convention out itself.
+    if !prompt.contains(ARTIFACT_OFFLOAD_HEADING) {
+        prompt.push('\n');
+        prompt.push_str(&render_artifact_offload_contract());
+    }
 
     tracing::debug!(
         agent_id = %agent_id,

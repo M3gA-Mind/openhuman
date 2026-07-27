@@ -1,0 +1,248 @@
+//! Write, pointer-render, and handoff plumbing for the artifact-offload
+//! convention (#3883).
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use crate::openhuman::memory_store::safety::sanitize_text;
+use crate::openhuman::security::SecurityPolicy;
+
+use super::paths::{relative_to_action_dir, resolve_artifact_path, sanitize_component};
+use super::types::{
+    ArtifactKind, OffloadError, OffloadedArtifact, ABSTRACT_BUDGET_CHARS, ARTIFACT_POINTER_PREFIX,
+};
+
+/// Whether a payload of `bytes` should be offloaded at `threshold_bytes`.
+///
+/// A zero threshold disables offload entirely (used to opt a run out without
+/// threading an `Option` through every call site).
+pub fn should_offload(bytes: usize, threshold_bytes: usize) -> bool {
+    threshold_bytes > 0 && bytes > threshold_bytes
+}
+
+/// Condense `content` down to at most `budget_chars` characters for the
+/// pointer's abstract.
+///
+/// Prefers cutting at a line break, then at a word break, so the parent reads a
+/// whole thought rather than a word sliced in half. Only falls back to a hard
+/// character cut when neither boundary sits in the back half of the budget.
+pub fn build_abstract(content: &str, budget_chars: usize) -> String {
+    let trimmed = content.trim();
+    if budget_chars == 0 {
+        return String::new();
+    }
+    if trimmed.chars().count() <= budget_chars {
+        return trimmed.to_string();
+    }
+
+    let mut head: String = trimmed.chars().take(budget_chars).collect();
+    let floor = head.len() / 2;
+    if let Some(idx) = head.rfind('\n').filter(|idx| *idx >= floor) {
+        head.truncate(idx);
+    } else if let Some(idx) = head.rfind(' ').filter(|idx| *idx >= floor) {
+        head.truncate(idx);
+    }
+    format!("{}...", head.trim_end())
+}
+
+/// Render the text a worker hands back in place of an offloaded payload.
+///
+/// The first line is the machine-readable pointer ([`extract_artifact_paths`]
+/// parses it); the rest is for the model reading the handoff.
+pub fn render_artifact_pointer(artifact: &OffloadedArtifact, abstract_text: &str) -> String {
+    let redaction_note = if artifact.redacted {
+        " Credential/PII redaction was applied before storage."
+    } else {
+        ""
+    };
+    format!(
+        "{ARTIFACT_POINTER_PREFIX} kind={kind} path={path} bytes={bytes}\n\
+         read_with: file_read {{\"path\":\"{path}\"}}\n\
+         note: The full result was written to the action workspace instead of being inlined. \
+         Read the file for complete fidelity; the abstract below is not exhaustive.{redaction_note}\n\n\
+         [abstract]\n{abstract_text}",
+        kind = artifact.kind.as_str(),
+        path = artifact.relative_path,
+        bytes = artifact.stored_bytes,
+    )
+}
+
+/// Pull every artifact path out of a handoff payload.
+///
+/// Scans for [`ARTIFACT_POINTER_PREFIX`] lines and returns their `path=` values
+/// in encounter order, de-duplicated. A worker that inlined a pointer by hand
+/// (following the prompt contract rather than being offloaded by the harness)
+/// is picked up by exactly the same parse.
+pub fn extract_artifact_paths(text: &str) -> Vec<String> {
+    let mut found: Vec<String> = Vec::new();
+    for line in text.lines() {
+        let line = line.trim_start();
+        if !line.starts_with(ARTIFACT_POINTER_PREFIX) {
+            continue;
+        }
+        let Some(rest) = line.split(" path=").nth(1) else {
+            continue;
+        };
+        // Split on the FIRST whitespace rather than `split_whitespace`, which
+        // skips leading separators: an empty `path=` followed by another field
+        // would otherwise yield that next field (`bytes=1`) as the "path".
+        let path = rest.split(char::is_whitespace).next().unwrap_or_default();
+        if path.is_empty() || found.iter().any(|existing| existing == path) {
+            continue;
+        }
+        found.push(path.to_string());
+    }
+    found
+}
+
+/// Emit an `[artifact]` reference log for every path a child handed its parent,
+/// and return how many were surfaced.
+///
+/// Called on the consuming side of the handoff so a run journal shows both ends
+/// of the pointer: the `[artifact]` write when the file landed, and this
+/// reference when the orchestrator took delivery of the path.
+pub fn note_artifact_handoff(agent_id: &str, task_id: &str, paths: &[String]) -> usize {
+    for path in paths {
+        tracing::info!(
+            agent_id = %agent_id,
+            task_id = %task_id,
+            path = %path,
+            "[artifact] handoff carried an artifact path to the parent"
+        );
+    }
+    paths.len()
+}
+
+/// Per-run writer for the offload convention.
+///
+/// Holds the resolved `action_dir`, the security policy used for the
+/// fail-closed workspace checks, and the identifiers that name generated
+/// artifacts and tag the `[artifact]` logs.
+#[derive(Debug, Clone)]
+pub struct ArtifactOffload {
+    action_dir: PathBuf,
+    policy: Option<Arc<SecurityPolicy>>,
+    agent_id: String,
+    task_id: String,
+}
+
+impl ArtifactOffload {
+    pub fn new(
+        action_dir: PathBuf,
+        policy: Option<Arc<SecurityPolicy>>,
+        agent_id: impl Into<String>,
+        task_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            action_dir,
+            policy,
+            agent_id: agent_id.into(),
+            task_id: task_id.into(),
+        }
+    }
+
+    /// Convention-stable name for a worker's offloaded final result:
+    /// `<agent_id>/<task_id>-result.md` with both components sanitized.
+    pub fn default_result_name(&self) -> String {
+        format!(
+            "{}/{}-result.md",
+            sanitize_component(&self.agent_id),
+            sanitize_component(&self.task_id)
+        )
+    }
+
+    /// Resolve `relative` under this run's `action_dir` without writing.
+    /// Exposed so callers can validate a model-supplied path before acting on
+    /// it.
+    pub fn resolve(&self, kind: ArtifactKind, relative: &str) -> Result<PathBuf, OffloadError> {
+        resolve_artifact_path(&self.action_dir, self.policy.as_deref(), kind, relative)
+    }
+
+    /// Write `content` to `relative` under the convention directory for `kind`.
+    ///
+    /// The body is passed through credential/PII redaction before it touches
+    /// disk, matching how oversized tool results are persisted.
+    pub async fn write(
+        &self,
+        kind: ArtifactKind,
+        relative: &str,
+        content: &str,
+    ) -> Result<OffloadedArtifact, OffloadError> {
+        let absolute = self.resolve(kind, relative)?;
+        if let Some(parent) = absolute.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        let sanitized = sanitize_text(content);
+        tokio::fs::write(&absolute, sanitized.value.as_bytes()).await?;
+
+        let relative_path = relative_to_action_dir(&self.action_dir, &absolute);
+        let artifact = OffloadedArtifact {
+            kind,
+            relative_path,
+            absolute_path: absolute,
+            stored_bytes: sanitized.value.len(),
+            original_bytes: content.len(),
+            redacted: sanitized.report.changed(),
+        };
+
+        tracing::info!(
+            agent_id = %self.agent_id,
+            task_id = %self.task_id,
+            kind = artifact.kind.as_str(),
+            path = %artifact.relative_path,
+            original_bytes = artifact.original_bytes,
+            stored_bytes = artifact.stored_bytes,
+            redacted = artifact.redacted,
+            "[artifact] wrote worker artifact under action_dir"
+        );
+
+        Ok(artifact)
+    }
+
+    /// Action directory this writer is rooted at.
+    pub fn action_dir(&self) -> &Path {
+        &self.action_dir
+    }
+}
+
+/// Offload `output` when it exceeds `threshold_bytes`, returning the text the
+/// parent should receive plus the artifact when one was written.
+///
+/// This is the deterministic half of the convention: it fires whether or not
+/// the worker followed the prompt contract. Every failure mode is soft, the
+/// caller gets the original payload back and the existing summarizer detour and
+/// tool-result budget stay in charge as the fallback.
+pub async fn offload_oversized_result(
+    output: String,
+    offload: &ArtifactOffload,
+    threshold_bytes: usize,
+) -> (String, Option<OffloadedArtifact>) {
+    if !should_offload(output.len(), threshold_bytes) {
+        return (output, None);
+    }
+
+    let name = offload.default_result_name();
+    match offload.write(ArtifactKind::Output, &name, &output).await {
+        Ok(artifact) => {
+            let abstract_text = build_abstract(&output, ABSTRACT_BUDGET_CHARS);
+            let pointer = render_artifact_pointer(&artifact, &abstract_text);
+            tracing::info!(
+                path = %artifact.relative_path,
+                inline_bytes = output.len(),
+                pointer_bytes = pointer.len(),
+                threshold_bytes,
+                "[artifact] replaced oversized worker result with a path + abstract"
+            );
+            (pointer, Some(artifact))
+        }
+        Err(err) => {
+            tracing::warn!(
+                error = %err,
+                inline_bytes = output.len(),
+                threshold_bytes,
+                "[artifact] offload refused; keeping the inline result (summarizer/truncation backstop applies)"
+            );
+            (output, None)
+        }
+    }
+}

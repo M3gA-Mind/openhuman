@@ -11,6 +11,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::openhuman::agent::harness::agent_graph::{AgentTurnRequest, AgentTurnUsage};
+use crate::openhuman::agent::harness::artifact_offload::{
+    extract_artifact_paths, note_artifact_handoff, offload_oversized_result, ArtifactOffload,
+    DEFAULT_OFFLOAD_THRESHOLD_BYTES,
+};
 use crate::openhuman::agent::harness::definition::{
     validate_tier_transition, AgentDefinition, AgentDefinitionRegistry, AgentTier, IterationPolicy,
     PromptSource, SandboxMode as AgentSandboxMode,
@@ -287,6 +291,9 @@ async fn try_deterministic_memory_retrieval(
         status: SubagentRunStatus::Completed,
         final_history: Vec::new(),
         usage: SubagentUsage::default(),
+        // Deterministic memory hits are already bounded; nothing is offloaded
+        // on this path.
+        artifact_paths: Vec::new(),
     })
 }
 
@@ -432,6 +439,13 @@ pub async fn run_subagent(
         })
         .await?;
 
+        // #3883: offload an oversized worker result to `action_dir/outputs/`
+        // BEFORE the cap below truncates it, so the parent receives a path plus
+        // an abstract and the full-fidelity body survives on disk instead of
+        // being cut. A refused or failed offload is soft: the inline payload
+        // continues on to the cap and the summarizer detour exactly as before.
+        offload_outcome_artifacts(&mut outcome, &options, &task_id).await;
+
         // Truncate result to the definition's cap if set (shared with the
         // deterministic memory fast path via `apply_max_result_chars`).
         apply_max_result_chars(&mut outcome.output, definition.max_result_chars, &definition.id);
@@ -450,6 +464,52 @@ pub async fn run_subagent(
         Ok(outcome)
     })
     .await
+}
+
+/// Apply the filesystem-offload convention to a finished sub-agent run (#3883).
+///
+/// Writes an oversized result to `action_dir/outputs/` and swaps `output` for a
+/// path + abstract, then records every `[artifact]` pointer the outgoing payload
+/// carries — the harness-written one and any the worker authored itself by
+/// following the prompt contract — onto `SubagentRunOutcome::artifact_paths`, so
+/// the parent receives the paths structurally, not only as prose.
+///
+/// Every failure is soft. With no resolvable action root (or a refused target)
+/// the outcome is left untouched and the summarizer detour plus
+/// `tool_result_budget_bytes` truncation stay in charge as the fallback.
+async fn offload_outcome_artifacts(
+    outcome: &mut SubagentRunOutcome,
+    options: &SubagentRunOptions,
+    task_id: &str,
+) {
+    // A worktree-isolated worker offloads into its own checkout; everyone else
+    // uses the live policy's action root, which is the same root `file_read`
+    // will resolve the returned path against.
+    let policy = crate::openhuman::security::live_policy::current();
+    let Some(action_dir) = options
+        .worktree_action_dir
+        .clone()
+        .or_else(|| policy.as_ref().map(|p| p.action_dir.clone()))
+    else {
+        tracing::debug!(
+            task_id = %task_id,
+            agent_id = %outcome.agent_id,
+            "[artifact] no resolvable action_dir — skipping offload (summarizer/truncation backstop applies)"
+        );
+        return;
+    };
+
+    let offload = ArtifactOffload::new(action_dir, policy, outcome.agent_id.clone(), task_id);
+    let (output, _artifact) = offload_oversized_result(
+        std::mem::take(&mut outcome.output),
+        &offload,
+        DEFAULT_OFFLOAD_THRESHOLD_BYTES,
+    )
+    .await;
+    outcome.output = output;
+
+    outcome.artifact_paths = extract_artifact_paths(&outcome.output);
+    note_artifact_handoff(&outcome.agent_id, task_id, &outcome.artifact_paths);
 }
 
 fn workspace_descriptor_for_subagent(
@@ -1425,6 +1485,9 @@ async fn run_typed_mode(
         status,
         final_history: history,
         usage,
+        // Filled in by `run_subagent` once the offload step has had its say, so
+        // both the harness-offloaded and worker-authored pointers are counted.
+        artifact_paths: Vec::new(),
     })
 }
 #[cfg(test)]
