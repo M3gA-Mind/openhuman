@@ -182,7 +182,7 @@ When a tool result exceeds the summarizer's threshold, it gets routed through a 
 
 Compression alone does not survive a long-horizon run. Summaries still accumulate step after step, and no amount of compressing restores the fidelity that was thrown away. So for minutes-to-hours tasks the harness moves large results **out of context and onto disk**, and hands the next step a **path**.
 
-Two directories under the agent's existing `action_dir` (`src/openhuman/agent/harness/artifact_offload/`):
+Two directories under the agent's existing `action_dir` at runtime (the implementation lives in `src/openhuman/agent/harness/artifact_offload/`):
 
 | Directory                | Holds                                                                       |
 | ------------------------ | ----------------------------------------------------------------------------- |
@@ -193,7 +193,7 @@ Note `action_dir/workspace/` is a scratch folder inside the agent's action root.
 
 Two halves enforce the convention:
 
-* **Prompt.** Every typed sub-agent's system prompt carries a Long-horizon Artifact Offload contract: results past roughly 2 000 tokens go to a file under `outputs/` via `file_write`, and the reply is that relative path plus a short abstract. The relevant archetype prompts (`researcher`, `planner`) spell out what that means for their own work; the planner is told to reference artifact paths across DAG nodes rather than pasting payloads forward.
+* **Prompt.** A sub-agent that actually holds `file_write` gets a Long-horizon Artifact Offload contract in its system prompt: results past roughly 2 000 tokens go to a file under `outputs/`, and the reply is that relative path plus a short abstract. The gate is deliberate — a prompt may only name tools the agent can really call, or the model emits calls that fail. `researcher` (search + fetch only) and skill-filtered specialists get no contract text, and dedicated guards assert their prompts never mention a filesystem tool. They stay covered by the harness half below, which needs no cooperation from the model. The relevant archetype prompts (`researcher`, `planner`) spell out what the convention means for their own work; the planner is told to reference artifact paths across DAG nodes rather than pasting payloads forward.
 * **Harness.** `offload_oversized_result` runs on every sub-agent outcome, so an oversized result is offloaded even when the worker inlined it anyway. It fires **before** the definition's `max_result_chars` cap, so the full body lands on disk instead of being cut.
 
 What the parent receives is a pointer, not a payload:

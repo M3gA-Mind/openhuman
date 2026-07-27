@@ -50,15 +50,45 @@ fn kinds_map_to_the_documented_directories() {
 }
 
 #[test]
-fn prompt_contract_names_both_directories_and_the_file_write_step() {
+fn prompt_contract_names_both_directories_and_the_write_step() {
     let rendered = render_artifact_offload_contract();
     assert!(rendered.starts_with(ARTIFACT_OFFLOAD_HEADING));
     assert!(rendered.contains("`outputs/`"));
     assert!(rendered.contains("`workspace/`"));
-    assert!(rendered.contains("file_write"));
-    assert!(rendered.contains("file_read"));
+    assert!(rendered.contains(OFFLOAD_WRITE_TOOL));
     // Byte-stable: the sub-agent system prompt is prefix-cached.
     assert_eq!(rendered, render_artifact_offload_contract());
+}
+
+#[test]
+fn prompt_contract_names_no_tool_the_agent_may_not_hold() {
+    // A sub-agent prompt may only advertise tools it can actually call, or the
+    // model emits calls that fail. `file_write` is gated on the agent holding
+    // it; the parent's *reading* tool must never appear at all, since this
+    // prompt also reaches agents that have no filesystem tools.
+    let rendered = render_artifact_offload_contract();
+    assert!(
+        !rendered.contains("file_read"),
+        "the parent's read tool must not leak into a child prompt: {rendered}"
+    );
+    // Guarded upstream by researcher::prompt::tests::build_returns_nonempty_body
+    // and ops_tests::typed_mode_filters_tools_by_skill_filter.
+}
+
+#[test]
+fn offload_contract_is_rendered_only_for_agents_holding_a_write_tool() {
+    let mut writer = std::collections::HashSet::new();
+    writer.insert(OFFLOAD_WRITE_TOOL.to_string());
+    assert!(should_render_offload_contract(&writer));
+
+    // `researcher` (search + fetch) and skill-filtered specialists land here.
+    let mut reader_only = std::collections::HashSet::new();
+    reader_only.insert("web_search_tool".to_string());
+    reader_only.insert("notion__search".to_string());
+    assert!(!should_render_offload_contract(&reader_only));
+    assert!(!should_render_offload_contract(
+        &std::collections::HashSet::new()
+    ));
 }
 
 // ── Path hardening ──────────────────────────────────────────────────────────
@@ -342,8 +372,40 @@ fn extract_artifact_paths_ignores_non_pointer_and_malformed_lines() {
 #[test]
 fn note_artifact_handoff_reports_how_many_paths_crossed() {
     let paths = vec!["outputs/a.md".to_string(), "outputs/b.md".to_string()];
-    assert_eq!(note_artifact_handoff("researcher", "sub-1", &paths), 2);
-    assert_eq!(note_artifact_handoff("researcher", "sub-1", &[]), 0);
+    assert_eq!(
+        note_artifact_handoff(HANDOFF_STAGE_RECORDED, "researcher", "sub-1", &paths),
+        2
+    );
+    assert_eq!(
+        note_artifact_handoff(HANDOFF_STAGE_CONSUMED, "researcher", "sub-1", &[]),
+        0
+    );
+    // The two ends of one pointer must be distinguishable in a run journal.
+    assert_ne!(HANDOFF_STAGE_RECORDED, HANDOFF_STAGE_CONSUMED);
+}
+
+#[test]
+fn offload_threshold_tightens_to_an_agents_own_result_cap() {
+    // A cap below the default would truncate the result before offload ever
+    // fired (flow_memory_agent 4 000, context_scout 5 000).
+    assert_eq!(
+        effective_offload_threshold(DEFAULT_OFFLOAD_THRESHOLD_BYTES, Some(4_000)),
+        4_000
+    );
+    // A cap above the default leaves the default in charge.
+    assert_eq!(
+        effective_offload_threshold(DEFAULT_OFFLOAD_THRESHOLD_BYTES, Some(50_000)),
+        DEFAULT_OFFLOAD_THRESHOLD_BYTES
+    );
+    // Uncapped agents (agent_memory) and a nonsense zero cap keep the default.
+    assert_eq!(
+        effective_offload_threshold(DEFAULT_OFFLOAD_THRESHOLD_BYTES, None),
+        DEFAULT_OFFLOAD_THRESHOLD_BYTES
+    );
+    assert_eq!(
+        effective_offload_threshold(DEFAULT_OFFLOAD_THRESHOLD_BYTES, Some(0)),
+        DEFAULT_OFFLOAD_THRESHOLD_BYTES
+    );
 }
 
 // ── Write path ──────────────────────────────────────────────────────────────
@@ -459,10 +521,28 @@ async fn oversized_result_is_offloaded_and_the_parent_gets_a_path_plus_abstract(
         vec![artifact.relative_path.clone()]
     );
 
-    // The parent can recover full fidelity with an ordinary file_read scoped to
-    // the action dir — that is the whole point of the convention.
-    let policy = policy_with(action.path().to_path_buf(), workspace.path().to_path_buf());
-    let read = FileReadTool::new(policy)
+    // Full fidelity survives on disk — the whole point of the convention. The
+    // body is byte-identical to what the worker produced, not an abstract.
+    assert_eq!(
+        tokio::fs::read_to_string(&artifact.absolute_path)
+            .await
+            .unwrap(),
+        body
+    );
+
+    // And the parent recovers it with an ordinary relative `file_read`, which
+    // resolves against action_dir. `workspace_only` is cleared because these two
+    // roots are disjoint temp dirs here; with the shipped layout the action root
+    // is granted, and the point under test is the path round-trip, not the
+    // trusted-root grant.
+    let reader_policy = Arc::new(SecurityPolicy {
+        autonomy: AutonomyLevel::Supervised,
+        action_dir: action.path().to_path_buf(),
+        workspace_dir: workspace.path().to_path_buf(),
+        workspace_only: false,
+        ..SecurityPolicy::default()
+    });
+    let read = FileReadTool::new(reader_policy)
         .execute(json!({ "path": artifact.relative_path }))
         .await
         .unwrap();
@@ -510,6 +590,61 @@ async fn offload_failure_keeps_the_inline_payload_for_the_summarizer_fallback() 
         "the inline payload must survive a refused offload"
     );
     assert!(artifact.is_none());
+}
+
+#[tokio::test]
+async fn abstract_is_built_from_the_redacted_body_not_the_raw_output() {
+    // The pointer goes straight into the parent's context. Building its
+    // abstract from the raw output would re-expose exactly the credential
+    // `write` scrubbed out of the file on disk.
+    let action = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let offload = offload_for(action.path(), workspace.path());
+
+    let secret = "ghp_abcdefghijklmnopqrstuvwxyz123456";
+    let body = format!("{secret}\n{}", "filler line\n".repeat(2_000));
+    let (handed_to_parent, artifact) =
+        offload_oversized_result(body, &offload, DEFAULT_OFFLOAD_THRESHOLD_BYTES).await;
+
+    let artifact = artifact.expect("offloaded");
+    assert!(artifact.redacted);
+    assert!(
+        !handed_to_parent.contains(secret),
+        "the abstract leaked a credential that was redacted on disk: {handed_to_parent}"
+    );
+    let stored = tokio::fs::read_to_string(&artifact.absolute_path)
+        .await
+        .unwrap();
+    assert!(!stored.contains(secret));
+}
+
+// Unix-only: creating a directory symlink on Windows needs a privilege the CI
+// runner does not have. The guard itself is platform-independent.
+#[cfg(unix)]
+#[tokio::test]
+async fn write_refuses_a_parent_that_symlinks_out_of_the_convention_root() {
+    // `resolve_artifact_path` is lexical by necessity (the target does not
+    // exist yet), so a pre-existing symlink is only catchable once the parent
+    // materialises. Without this check the write would follow the link.
+    let action = tempfile::tempdir().unwrap();
+    let workspace = tempfile::tempdir().unwrap();
+    let outside = tempfile::tempdir().unwrap();
+
+    let outputs_root = action.path().join("outputs");
+    tokio::fs::create_dir_all(&outputs_root).await.unwrap();
+    std::os::unix::fs::symlink(outside.path(), outputs_root.join("linked")).unwrap();
+
+    let offload = offload_for(action.path(), workspace.path());
+    let err = offload
+        .write(ArtifactKind::Output, "linked/report.md", "body")
+        .await
+        .expect_err("a symlinked parent must be refused");
+
+    assert!(matches!(err, OffloadError::SymlinkEscape { .. }), "{err}");
+    assert!(
+        !outside.path().join("report.md").exists(),
+        "nothing may be written through the link"
+    );
 }
 
 #[tokio::test]

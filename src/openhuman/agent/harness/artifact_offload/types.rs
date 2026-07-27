@@ -107,6 +107,13 @@ pub enum OffloadError {
     #[error("artifact path is workspace-internal state: {path}")]
     WorkspaceInternal { path: String },
 
+    /// The parent directory that actually materialised on disk resolves, through
+    /// symlinks, to somewhere outside the convention root. The lexical checks in
+    /// `resolve_artifact_path` cannot see this because the target does not exist
+    /// yet when they run.
+    #[error("artifact parent escapes its root through a symlink: {path} resolves to {resolved}")]
+    SymlinkEscape { path: String, resolved: String },
+
     /// Creating the parent directory or writing the file failed.
     #[error("artifact write failed: {0}")]
     Io(#[from] std::io::Error),

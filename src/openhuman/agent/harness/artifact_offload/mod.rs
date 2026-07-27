@@ -54,10 +54,14 @@ mod ops;
 mod paths;
 mod types;
 
-pub use contract::{render_artifact_offload_contract, ARTIFACT_OFFLOAD_HEADING};
+pub use contract::{
+    render_artifact_offload_contract, should_render_offload_contract, ARTIFACT_OFFLOAD_HEADING,
+    OFFLOAD_WRITE_TOOL,
+};
 pub use ops::{
-    build_abstract, extract_artifact_paths, note_artifact_handoff, offload_oversized_result,
-    render_artifact_pointer, should_offload, ArtifactOffload,
+    build_abstract, effective_offload_threshold, extract_artifact_paths, note_artifact_handoff,
+    offload_oversized_result, render_artifact_pointer, should_offload, ArtifactOffload,
+    HANDOFF_STAGE_CONSUMED, HANDOFF_STAGE_RECORDED,
 };
 pub use paths::{relative_to_action_dir, resolve_artifact_path, sanitize_component};
 pub use types::{

@@ -95,22 +95,54 @@ pub fn extract_artifact_paths(text: &str) -> Vec<String> {
     found
 }
 
-/// Emit an `[artifact]` reference log for every path a child handed its parent,
-/// and return how many were surfaced.
+/// Emit an `[artifact]` reference log for every path crossing a handoff, and
+/// return how many were surfaced.
 ///
-/// Called on the consuming side of the handoff so a run journal shows both ends
-/// of the pointer: the `[artifact]` write when the file landed, and this
-/// reference when the orchestrator took delivery of the path.
-pub fn note_artifact_handoff(agent_id: &str, task_id: &str, paths: &[String]) -> usize {
+/// `stage` distinguishes the two ends of the same pointer so a run journal can
+/// tell them apart instead of showing the identical line twice: the child
+/// *recording* paths onto its outcome, and the parent *consuming* them. Use
+/// [`HANDOFF_STAGE_RECORDED`] / [`HANDOFF_STAGE_CONSUMED`].
+pub fn note_artifact_handoff(
+    stage: &str,
+    agent_id: &str,
+    task_id: &str,
+    paths: &[String],
+) -> usize {
     for path in paths {
         tracing::info!(
+            stage = %stage,
             agent_id = %agent_id,
             task_id = %task_id,
             path = %path,
-            "[artifact] handoff carried an artifact path to the parent"
+            "[artifact] handoff carried an artifact path"
         );
     }
     paths.len()
+}
+
+/// Producing side: the child recorded these paths onto its outcome.
+pub const HANDOFF_STAGE_RECORDED: &str = "recorded_by_child";
+
+/// Consuming side: the parent took delivery of these paths.
+pub const HANDOFF_STAGE_CONSUMED: &str = "consumed_by_parent";
+
+/// Effective offload threshold for an agent whose definition caps its result at
+/// `max_result_chars`.
+///
+/// A cap below the default would otherwise truncate the result before offload
+/// ever fired — `flow_memory_agent` caps at 4 000 chars, `context_scout` at
+/// 5 000, several built-ins at 8 000, all under the 8 KiB default. Offloading at
+/// the tighter of the two means anything the cap would have cut is on disk
+/// first. Chars are treated as a byte budget, which is conservative for
+/// multibyte text (it offloads slightly earlier, never later).
+pub fn effective_offload_threshold(
+    default_threshold_bytes: usize,
+    max_result_chars: Option<usize>,
+) -> usize {
+    match max_result_chars {
+        Some(cap) if cap > 0 => default_threshold_bytes.min(cap),
+        _ => default_threshold_bytes,
+    }
 }
 
 /// Per-run writer for the offload convention.
@@ -168,9 +200,32 @@ impl ArtifactOffload {
         relative: &str,
         content: &str,
     ) -> Result<OffloadedArtifact, OffloadError> {
+        self.write_returning_stored(kind, relative, content)
+            .await
+            .map(|(artifact, _stored)| artifact)
+    }
+
+    /// Same as [`Self::write`], but also hands back the **stored** (redacted)
+    /// body.
+    ///
+    /// Callers that surface any part of the artifact back into the model's
+    /// context must render it from this value, never from their own input:
+    /// building a preview from the raw text would re-expose exactly the
+    /// credentials `sanitize_text` just scrubbed out of the file.
+    pub async fn write_returning_stored(
+        &self,
+        kind: ArtifactKind,
+        relative: &str,
+        content: &str,
+    ) -> Result<(OffloadedArtifact, String), OffloadError> {
         let absolute = self.resolve(kind, relative)?;
         if let Some(parent) = absolute.parent() {
             tokio::fs::create_dir_all(parent).await?;
+            // The checks in `resolve` are lexical, so a pre-existing symlink
+            // (`outputs -> /elsewhere`, or `outputs/x -> <workspace_dir>`) would
+            // still be followed by the write below. Re-validate the parent that
+            // actually materialised on disk before touching it.
+            self.assert_real_parent_inside_root(kind, parent).await?;
         }
         let sanitized = sanitize_text(content);
         tokio::fs::write(&absolute, sanitized.value.as_bytes()).await?;
@@ -196,7 +251,47 @@ impl ArtifactOffload {
             "[artifact] wrote worker artifact under action_dir"
         );
 
-        Ok(artifact)
+        Ok((artifact, sanitized.value))
+    }
+
+    /// Resolve `parent` through symlinks and confirm it still sits inside this
+    /// kind's convention root (and outside `workspace_dir`).
+    ///
+    /// `resolve_artifact_path` cannot do this: its target usually does not
+    /// exist yet, so it is lexical by necessity. Once `create_dir_all` has run
+    /// the parent *does* exist, which is the first moment the real, link-
+    /// resolved location can be checked.
+    async fn assert_real_parent_inside_root(
+        &self,
+        kind: ArtifactKind,
+        parent: &Path,
+    ) -> Result<(), OffloadError> {
+        let root = self.action_dir.join(kind.subdir());
+        let real_parent = tokio::fs::canonicalize(parent).await?;
+        // The root itself may be reached through a symlinked `action_dir` (macOS
+        // `/tmp` -> `/private/tmp` is the everyday case), so compare like with
+        // like rather than against the lexical root.
+        let real_root = tokio::fs::canonicalize(&root).await?;
+        if !real_parent.starts_with(&real_root) {
+            return Err(OffloadError::SymlinkEscape {
+                path: parent.display().to_string(),
+                resolved: real_parent.display().to_string(),
+            });
+        }
+        if let Some(policy) = self.policy.as_deref() {
+            if policy.is_workspace_internal_path(&real_parent)
+                || tokio::fs::canonicalize(&policy.workspace_dir)
+                    .await
+                    .map(|ws| real_parent.starts_with(&ws))
+                    .unwrap_or(false)
+            {
+                return Err(OffloadError::SymlinkEscape {
+                    path: parent.display().to_string(),
+                    resolved: real_parent.display().to_string(),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Action directory this writer is rooted at.
@@ -222,9 +317,16 @@ pub async fn offload_oversized_result(
     }
 
     let name = offload.default_result_name();
-    match offload.write(ArtifactKind::Output, &name, &output).await {
-        Ok(artifact) => {
-            let abstract_text = build_abstract(&output, ABSTRACT_BUDGET_CHARS);
+    match offload
+        .write_returning_stored(ArtifactKind::Output, &name, &output)
+        .await
+    {
+        Ok((artifact, stored)) => {
+            // Build the abstract from the STORED (redacted) body, never from
+            // `output`. The pointer goes straight into the parent's context, so
+            // rendering it from the raw text would re-expose the very
+            // credentials `write` just scrubbed out of the file.
+            let abstract_text = build_abstract(&stored, ABSTRACT_BUDGET_CHARS);
             let pointer = render_artifact_pointer(&artifact, &abstract_text);
             tracing::info!(
                 path = %artifact.relative_path,
