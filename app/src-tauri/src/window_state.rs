@@ -642,16 +642,19 @@ fn dpi_adjusted_size(width: u32, height: u32, from_scale: f64, to_scale: f64) ->
         return (width, height);
     }
     let scaled = |v: u32| {
-        // Round rather than truncate: truncating loses up to a pixel on
-        // every move, so a window shuttled between two monitors drifts
-        // steadily smaller. Rounding holds the A→B→A round trip stable
-        // across the standard DPI ladder (1.0 / 1.25 / 1.5 / 1.75 / 2.0)
-        // at realistic window dimensions — see
-        // `dpi_adjusted_size_round_trips_without_drift`. It is not an
-        // exact inverse for every conceivable ratio and size (at very
-        // small pixel counts the rounding error is a large fraction of
-        // the value), which is why the test pins the pairs that matter
-        // rather than claiming a universal identity.
+        // Round rather than truncate. Truncation always loses, so a
+        // window shuttled between two monitors shrinks by up to a pixel
+        // per move and the error accumulates without bound. Rounding
+        // keeps it bounded at ±1 px total, however many moves happen.
+        //
+        // It is NOT an exact inverse in general. When the first hop is a
+        // *downscale* the intermediate size has genuinely lost
+        // information, and scaling back up cannot recover it: 1281 px at
+        // 2.0→1.25 gives 801, and 801 back at 1.25→2.0 gives 1282. The
+        // round trip is exact when the first hop scales up (the common
+        // case: a window sized on a low-DPI monitor moving to a high-DPI
+        // one and back). `dpi_adjusted_size_round_trips_without_drift`
+        // pins both halves of that contract.
         let out = (f64::from(v) * ratio).round();
         // Saturate instead of wrapping — an absurd ratio must not
         // produce a tiny window via u32 overflow.
@@ -911,9 +914,12 @@ mod tests {
         // of rounding would lose a pixel on every move.
         //
         // Covers the whole standard DPI ladder rather than just 1.0↔1.5:
-        // the doc comment claims stability across it, and a single pair
-        // does not establish that (review, #5041). Odd dimensions are
-        // deliberate — even ones round-trip trivially at these ratios.
+        // a single pair does not establish the property (review, #5041).
+        // Odd dimensions are deliberate — even ones round-trip trivially.
+        const SIZES: [(u32, u32); 3] = [(1281, 901), (1920, 1080), (2560, 1600)];
+
+        // Upscale first: exact. This is the common case — a window sized
+        // on a low-DPI monitor moves to a high-DPI one and back.
         for (from, to) in [
             (1.0, 1.25),
             (1.0, 1.5),
@@ -921,15 +927,30 @@ mod tests {
             (1.0, 2.0),
             (1.25, 1.5),
             (1.5, 2.0),
-            (2.0, 1.25),
         ] {
-            for (w, h) in [(1281, 901), (1920, 1080), (2560, 1600)] {
+            for (w, h) in SIZES {
                 let (up_w, up_h) = dpi_adjusted_size(w, h, from, to);
                 let (back_w, back_h) = dpi_adjusted_size(up_w, up_h, to, from);
                 assert_eq!(
                     (back_w, back_h),
                     (w, h),
-                    "round trip {w}x{h} at {from}->{to}->{from} drifted to {back_w}x{back_h}"
+                    "upscale-first round trip {w}x{h} at {from}->{to}->{from} drifted to {back_w}x{back_h}"
+                );
+            }
+        }
+
+        // Downscale first: bounded, not exact. The intermediate size has
+        // genuinely lost information (1281 at 2.0->1.25 is 801, and 801
+        // back up is 1282), so the contract is that the error stays
+        // within 1 px and never accumulates — which is precisely what
+        // truncation fails to do.
+        for (from, to) in [(2.0, 1.25), (1.75, 1.0), (2.0, 1.0), (1.5, 1.25)] {
+            for (w, h) in SIZES {
+                let (down_w, down_h) = dpi_adjusted_size(w, h, from, to);
+                let (back_w, back_h) = dpi_adjusted_size(down_w, down_h, to, from);
+                assert!(
+                    back_w.abs_diff(w) <= 1 && back_h.abs_diff(h) <= 1,
+                    "downscale-first round trip {w}x{h} at {from}->{to}->{from} drifted to {back_w}x{back_h}, beyond the 1px bound"
                 );
             }
         }
