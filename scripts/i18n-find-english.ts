@@ -58,6 +58,7 @@ const INTENTIONAL_ENGLISH = new Set([
   "conversations.backgroundTasks.cronSchedCron", // Cron expression label; Cron is the scheduler name
   "composio.integrationSlugsExample",
   "composio.integrationSlugsPlaceholder",
+  "settings.ai.deploymentNamePlaceholder", // Example Azure deployment id; an identifier, not prose
   "devOptions.toolPolicyDiagnostics.mcpAllowlists.allowDeny",
   "intelligence.agents.subagentCountOne",
   "intelligence.diagram.skillInstallCommand",

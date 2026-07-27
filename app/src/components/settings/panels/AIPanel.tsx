@@ -64,6 +64,7 @@ import { SettingsSelect, SettingsStatusLine, SettingsSwitch, SettingsTextField }
 import { useSettingsNavigation } from '../hooks/useSettingsNavigation';
 import { ClaudeCodeConnect } from './ai/ClaudeCodeStatusCard';
 import { routingWithProviderRemoved, toSelectableChatModels } from './aiRouting';
+import { isAzureFoundryEndpoint, looksLikeAzureBaseModelId } from './azureDeployment';
 import {
   authStyleForBuiltinCloudProvider,
   BUILTIN_CLOUD_PROVIDER_META,
@@ -1997,6 +1998,16 @@ const CustomRoutingDialog = ({
   const [cloudModelsLoading, setCloudModelsLoading] = useState(false);
   const [cloudModelsError, setCloudModelsError] = useState<string | null>(null);
   const [modelsKey, setModelsKey] = useState(0);
+  // Type the model id instead of picking it from the probed `/models` catalog.
+  // Azure connections start here: the catalog lists base model ids, but Azure
+  // routes on the user's deployment name, which is never in it (#5213).
+  const [manualModelEntry, setManualModelEntry] = useState<boolean>(() =>
+    initialSource?.kind === 'cloud'
+      ? isAzureFoundryEndpoint(
+          customCloud.find(c => c.slug === initialSource.providerSlug)?.endpoint
+        )
+      : false
+  );
   const [testBusy, setTestBusy] = useState(false);
   const [testReply, setTestReply] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
@@ -2051,6 +2062,21 @@ const CustomRoutingDialog = ({
 
   const selectedCloud =
     source?.kind === 'cloud' ? customCloud.find(c => c.slug === source.providerSlug) : undefined;
+  // Azure routes inference by deployment name, so the model field is relabelled
+  // and defaults to free text for these connections (#5213).
+  const isAzureProvider = isAzureFoundryEndpoint(selectedCloud?.endpoint);
+  // Free text whenever the user asked for it, or when there is no catalog to
+  // pick from (an empty `/models` listing).
+  const useManualModelEntry = manualModelEntry || cloudModels.length === 0;
+  // A stored value that is verbatim a catalog entry is the fingerprint of a
+  // pre-fix Azure selection — prompt the user to confirm it is the deployment
+  // name rather than the base model id it was deployed from.
+  const showAzureLegacyModelHint =
+    isAzureProvider &&
+    looksLikeAzureBaseModelId(
+      model,
+      cloudModels.map(m => m.id)
+    );
 
   // Fetch available models whenever the selected cloud provider changes.
   const selectedSlug = source?.kind === 'cloud' ? source.providerSlug : null;
@@ -2224,12 +2250,19 @@ const CustomRoutingDialog = ({
                   if (kind === 'local') {
                     setSource({ kind: 'local' });
                     setModel(localModels[0]?.id ?? '');
+                    setManualModelEntry(false);
                   } else if (kind === 'cloud') {
                     setSource({ kind: 'cloud', providerSlug: slug });
                     setModel('');
+                    // Azure connections need a deployment name, which the
+                    // catalog never lists — start on free text (#5213).
+                    setManualModelEntry(
+                      isAzureFoundryEndpoint(customCloud.find(c => c.slug === slug)?.endpoint)
+                    );
                   } else if (kind === 'claude-code') {
                     setSource({ kind: 'claude-code' });
                     setModel(CLAUDE_CODE_DEFAULT_MODEL);
+                    setManualModelEntry(false);
                   }
                 }}
                 className="w-full">
@@ -2250,7 +2283,9 @@ const CustomRoutingDialog = ({
 
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-content-secondary">
-                {t('settings.ai.modelLabel')}
+                {isAzureProvider
+                  ? t('settings.ai.deploymentNameLabel')
+                  : t('settings.ai.modelLabel')}
               </label>
               {source?.kind === 'local' ? (
                 <SettingsSelect
@@ -2320,42 +2355,78 @@ const CustomRoutingDialog = ({
                     }
                   />
                 </div>
-              ) : cloudModels.length > 0 ? (
-                <SettingsSelect
-                  value={model}
-                  onChange={e => {
-                    resetTestState();
-                    setModel(e.target.value);
-                  }}
-                  className="w-full">
-                  {!model && <option value="">{t('settings.ai.selectModel')}</option>}
-                  {/* Keep existing value selectable even if the provider no longer lists it */}
-                  {model && !cloudModels.some(m => m.id === model) && (
-                    <option value={model}>{model}</option>
-                  )}
-                  {cloudModels.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {humanizeModelId(m.id)} — {m.id}
-                    </option>
-                  ))}
-                </SettingsSelect>
               ) : (
-                <SettingsTextField
-                  type="text"
-                  mono
-                  value={model}
-                  onChange={e => {
-                    resetTestState();
-                    setModel(e.target.value);
-                  }}
-                  placeholder={
-                    selectedCloud
-                      ? formatI18n(t('settings.ai.modelIdPlaceholderForProvider'), {
-                          slug: selectedCloud.slug,
-                        })
-                      : t('settings.ai.modelIdPlaceholder')
-                  }
-                />
+                <div className="space-y-1.5">
+                  {useManualModelEntry ? (
+                    <SettingsTextField
+                      type="text"
+                      mono
+                      aria-label={
+                        isAzureProvider
+                          ? t('settings.ai.deploymentNameLabel')
+                          : t('settings.ai.modelLabel')
+                      }
+                      value={model}
+                      onChange={e => {
+                        resetTestState();
+                        setModel(e.target.value);
+                      }}
+                      placeholder={
+                        isAzureProvider
+                          ? t('settings.ai.deploymentNamePlaceholder')
+                          : selectedCloud
+                            ? formatI18n(t('settings.ai.modelIdPlaceholderForProvider'), {
+                                slug: selectedCloud.slug,
+                              })
+                            : t('settings.ai.modelIdPlaceholder')
+                      }
+                    />
+                  ) : (
+                    <SettingsSelect
+                      value={model}
+                      onChange={e => {
+                        resetTestState();
+                        setModel(e.target.value);
+                      }}
+                      className="w-full">
+                      {!model && <option value="">{t('settings.ai.selectModel')}</option>}
+                      {/* Keep existing value selectable even if the provider no longer lists it */}
+                      {model && !cloudModels.some(m => m.id === model) && (
+                        <option value={model}>{model}</option>
+                      )}
+                      {cloudModels.map(m => (
+                        <option key={m.id} value={m.id}>
+                          {humanizeModelId(m.id)} — {m.id}
+                        </option>
+                      ))}
+                    </SettingsSelect>
+                  )}
+                  {/* Escape hatch out of the catalog: a deployment name (Azure)
+                      or any model the provider does not advertise is otherwise
+                      unreachable from a closed dropdown (#5213). */}
+                  {cloudModels.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="tertiary"
+                      size="xs"
+                      analyticsId="ai-model-entry-mode-toggle"
+                      onClick={() => setManualModelEntry(v => !v)}>
+                      {manualModelEntry
+                        ? t('settings.ai.chooseModelFromList')
+                        : t('settings.ai.enterModelIdManuallyAction')}
+                    </Button>
+                  )}
+                  {isAzureProvider && (
+                    <p className="text-[11px] text-content-muted">
+                      {t('settings.ai.deploymentNameHelp')}
+                    </p>
+                  )}
+                  {showAzureLegacyModelHint && (
+                    <p className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
+                      {t('settings.ai.deploymentNameLegacyHint')}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
@@ -2643,8 +2714,27 @@ const GlobalOwnModelSelector = ({
   const [cloudModelsLoading, setCloudModelsLoading] = useState(false);
   const [cloudModelsError, setCloudModelsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // See the identically-named state in CustomRoutingDialog: Azure deployment
+  // names are never in the probed catalog, so free text is the only way to
+  // reach them (#5213).
+  const [manualModelEntry, setManualModelEntry] = useState<boolean>(() =>
+    initialSource?.kind === 'cloud'
+      ? isAzureFoundryEndpoint(
+          customCloud.find(c => c.slug === initialSource.providerSlug)?.endpoint
+        )
+      : false
+  );
 
   const selectedSlug = source?.kind === 'cloud' ? source.providerSlug : null;
+  const selectedCloud = customCloud.find(c => c.slug === selectedSlug);
+  const isAzureProvider = isAzureFoundryEndpoint(selectedCloud?.endpoint);
+  const useManualModelEntry = manualModelEntry || cloudModels.length === 0;
+  const showAzureLegacyModelHint =
+    isAzureProvider &&
+    looksLikeAzureBaseModelId(
+      model,
+      cloudModels.map(m => m.id)
+    );
 
   useEffect(() => {
     if (!selectedSlug) {
@@ -2667,7 +2757,10 @@ const GlobalOwnModelSelector = ({
         if (!active) return;
         setCloudModels(ms);
         setCloudModelsLoading(false);
-        if (!model.trim() && ms[0]?.id) {
+        // Never auto-pick for Azure: the catalog holds base model ids, and
+        // silently seeding one is exactly what produced "Model not found"
+        // (#5213). Leave the field empty so the user supplies the deployment.
+        if (!model.trim() && ms[0]?.id && !isAzureFoundryEndpoint(provider.endpoint)) {
           setModel(ms[0].id);
         }
       })
@@ -2756,13 +2849,18 @@ const GlobalOwnModelSelector = ({
                     const nextModel = localModels[0]?.id ?? '';
                     setSource(nextSource);
                     setModel(nextModel);
+                    setManualModelEntry(false);
                   } else if (kind === 'claude-code') {
                     setSource({ kind: 'claude-code' });
                     setModel(CLAUDE_CODE_DEFAULT_MODEL);
+                    setManualModelEntry(false);
                   } else {
                     const nextSource = { kind: 'cloud', providerSlug: slug } as const;
                     setSource(nextSource);
                     setModel('');
+                    setManualModelEntry(
+                      isAzureFoundryEndpoint(customCloud.find(c => c.slug === slug)?.endpoint)
+                    );
                   }
                 }}
                 className="w-full">
@@ -2782,7 +2880,9 @@ const GlobalOwnModelSelector = ({
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-content-secondary">
-                {t('settings.ai.globalModel.model')}
+                {isAzureProvider
+                  ? t('settings.ai.deploymentNameLabel')
+                  : t('settings.ai.globalModel.model')}
               </label>
               {source?.kind === 'local' ? (
                 <SettingsSelect
@@ -2795,27 +2895,62 @@ const GlobalOwnModelSelector = ({
                     </option>
                   ))}
                 </SettingsSelect>
-              ) : cloudModels.length > 0 ? (
+              ) : useManualModelEntry ? (
+                <SettingsTextField
+                  value={model}
+                  aria-label={
+                    isAzureProvider
+                      ? t('settings.ai.deploymentNameLabel')
+                      : t('settings.ai.globalModel.model')
+                  }
+                  onChange={e => setModel(e.target.value)}
+                  placeholder={
+                    isAzureProvider
+                      ? t('settings.ai.deploymentNamePlaceholder')
+                      : cloudModelsLoading
+                        ? t('settings.ai.globalModel.loadingModels')
+                        : t('settings.ai.globalModel.enterModelId')
+                  }
+                />
+              ) : (
                 <SettingsSelect
                   value={model}
                   onChange={e => setModel(e.target.value)}
                   className="w-full">
+                  {/* Keep an off-catalog value (e.g. a deployment name) selectable */}
+                  {model && !cloudModels.some(m => m.id === model) && (
+                    <option value={model}>{model}</option>
+                  )}
                   {cloudModels.map(m => (
                     <option key={m.id} value={m.id}>
                       {m.id}
                     </option>
                   ))}
                 </SettingsSelect>
-              ) : (
-                <SettingsTextField
-                  value={model}
-                  onChange={e => setModel(e.target.value)}
-                  placeholder={
-                    cloudModelsLoading
-                      ? t('settings.ai.globalModel.loadingModels')
-                      : t('settings.ai.globalModel.enterModelId')
-                  }
-                />
+              )}
+              {/* Escape hatch out of the catalog — without it an Azure
+                  deployment name is unreachable from a closed dropdown (#5213). */}
+              {source?.kind !== 'local' && cloudModels.length > 0 && (
+                <Button
+                  type="button"
+                  variant="tertiary"
+                  size="xs"
+                  analyticsId="ai-global-model-entry-mode-toggle"
+                  onClick={() => setManualModelEntry(v => !v)}>
+                  {manualModelEntry
+                    ? t('settings.ai.chooseModelFromList')
+                    : t('settings.ai.enterModelIdManuallyAction')}
+                </Button>
+              )}
+              {source?.kind !== 'local' && isAzureProvider && (
+                <p className="text-[11px] text-content-muted">
+                  {t('settings.ai.deploymentNameHelp')}
+                </p>
+              )}
+              {source?.kind !== 'local' && showAzureLegacyModelHint && (
+                <p className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
+                  {t('settings.ai.deploymentNameLegacyHint')}
+                </p>
               )}
               {cloudModelsError ? (
                 <div className="text-xs text-coral-700 dark:text-coral-300">{cloudModelsError}</div>
@@ -3827,6 +3962,13 @@ const CloudProviderEditor = ({
               className="mt-1"
               placeholder={t('settings.ai.openAiUrlPlaceholder')}
             />
+            {/* Azure routes by deployment name, which is set on the model
+                field rather than here — point the user at it (#5213). */}
+            {isAzureFoundryEndpoint(endpoint) && (
+              <div className="mt-1 text-[11px] text-content-muted">
+                {t('settings.ai.deploymentNameProviderHint')}
+              </div>
+            )}
           </div>
           <div>
             <label className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-content-muted">

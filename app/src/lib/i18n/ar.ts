@@ -4591,6 +4591,16 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} معرف النموذج',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'حدد نموذجًا...',
+  'settings.ai.deploymentNameLabel': 'اسم النشر',
+  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNameHelp':
+    'أدخل اسم النشر الذي حددته في Azure AI Foundry. هذا ليس معرف النموذج.',
+  'settings.ai.deploymentNameLegacyHint':
+    'تطابق هذه القيمة معرف نموذج أساسي من كتالوج المزود. يوجه Azure الطلبات حسب اسم النشر، لذا تأكد من أن هذا هو الاسم الذي منحته لعملية النشر.',
+  'settings.ai.deploymentNameProviderHint':
+    'تم اكتشاف نقطة نهاية Azure. حدد اسم النشر في حقل النموذج بعد اختيار هذا المزود.',
+  'settings.ai.chooseModelFromList': 'اختر من القائمة',
+  'settings.ai.enterModelIdManuallyAction': 'أدخل معرف النموذج يدويًا',
   'settings.ai.temperatureOverride': 'تجاوز درجة الحرارة',
   'settings.ai.temperatureOverrideSlider': 'تجاوز درجة الحرارة (شريط التمرير)',
   'settings.ai.temperatureOverrideValue': 'تجاوز درجة الحرارة (القيمة)',

@@ -4705,6 +4705,16 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} मॉडल आईडी',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'एक मॉडल चुनें...',
+  'settings.ai.deploymentNameLabel': 'परिनियोजन नाम',
+  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNameHelp':
+    'Azure AI Foundry में आपके द्वारा सेट किया गया परिनियोजन नाम दर्ज करें। यह मॉडल आईडी नहीं है।',
+  'settings.ai.deploymentNameLegacyHint':
+    'यह मान प्रदाता सूची की आधार मॉडल आईडी से मेल खाता है। Azure अनुरोधों को परिनियोजन नाम से भेजता है, इसलिए पुष्टि करें कि यह आपके परिनियोजन का नाम है।',
+  'settings.ai.deploymentNameProviderHint':
+    'Azure एंडपॉइंट मिला। यह प्रदाता चुनने के बाद मॉडल फ़ील्ड में अपना परिनियोजन नाम दर्ज करें।',
+  'settings.ai.chooseModelFromList': 'सूची से चुनें',
+  'settings.ai.enterModelIdManuallyAction': 'मॉडल आईडी मैन्युअल रूप से दर्ज करें',
   'settings.ai.temperatureOverride': 'तापमान ओवरराइड',
   'settings.ai.temperatureOverrideSlider': 'तापमान ओवरराइड (स्लाइडर)',
   'settings.ai.temperatureOverrideValue': 'तापमान ओवरराइड (मान)',

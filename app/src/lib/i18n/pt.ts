@@ -4772,6 +4772,16 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} ID do modelo',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Selecione um modelo...',
+  'settings.ai.deploymentNameLabel': 'Nome da implantação',
+  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNameHelp':
+    'Digite o nome da implantação que você definiu no Azure AI Foundry. Este não é o ID do modelo.',
+  'settings.ai.deploymentNameLegacyHint':
+    'Este valor corresponde a um ID de modelo base do catálogo do provedor. O Azure roteia as solicitações pelo nome da implantação, portanto confirme que este é o nome que você deu à sua implantação.',
+  'settings.ai.deploymentNameProviderHint':
+    'Endpoint do Azure detectado. Defina o nome da sua implantação no campo do modelo depois de escolher este provedor.',
+  'settings.ai.chooseModelFromList': 'Escolher da lista',
+  'settings.ai.enterModelIdManuallyAction': 'Inserir o ID do modelo manualmente',
   'settings.ai.temperatureOverride': 'Substituição de temperatura',
   'settings.ai.temperatureOverrideSlider': 'Substituição de temperatura (controle deslizante)',
   'settings.ai.temperatureOverrideValue': 'Substituição de temperatura (valor)',

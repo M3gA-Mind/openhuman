@@ -4776,6 +4776,16 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': 'ID modelu {slug}',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Wybierz model...',
+  'settings.ai.deploymentNameLabel': 'Nazwa wdrożenia',
+  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNameHelp':
+    'Wprowadź nazwę wdrożenia ustawioną w Azure AI Foundry. To nie jest identyfikator modelu.',
+  'settings.ai.deploymentNameLegacyHint':
+    'Ta wartość odpowiada identyfikatorowi modelu bazowego z katalogu dostawcy. Azure kieruje żądania według nazwy wdrożenia, więc potwierdź, że jest to nazwa nadana Twojemu wdrożeniu.',
+  'settings.ai.deploymentNameProviderHint':
+    'Wykryto punkt końcowy Azure. Ustaw nazwę wdrożenia w polu modelu po wybraniu tego dostawcy.',
+  'settings.ai.chooseModelFromList': 'Wybierz z listy',
+  'settings.ai.enterModelIdManuallyAction': 'Wpisz identyfikator modelu ręcznie',
   'settings.ai.temperatureOverride': 'Nadpisanie temperatury',
   'settings.ai.temperatureOverrideSlider': 'Nadpisanie temperatury (suwak)',
   'settings.ai.temperatureOverrideValue': 'Nadpisanie temperatury (wartość)',

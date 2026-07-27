@@ -4651,6 +4651,16 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} 모델 ID',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': '모델 선택...',
+  'settings.ai.deploymentNameLabel': '배포 이름',
+  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNameHelp':
+    'Azure AI Foundry에서 설정한 배포 이름을 입력하세요. 모델 ID가 아닙니다.',
+  'settings.ai.deploymentNameLegacyHint':
+    '이 값은 공급자 카탈로그의 기본 모델 ID와 일치합니다. Azure는 배포 이름으로 요청을 라우팅하므로 배포에 지정한 이름인지 확인하세요.',
+  'settings.ai.deploymentNameProviderHint':
+    'Azure 엔드포인트가 감지되었습니다. 이 공급자를 선택한 후 모델 필드에 배포 이름을 설정하세요.',
+  'settings.ai.chooseModelFromList': '목록에서 선택',
+  'settings.ai.enterModelIdManuallyAction': '모델 ID 수동 입력',
   'settings.ai.temperatureOverride': '온도 재정의',
   'settings.ai.temperatureOverrideSlider': '온도 재정의(슬라이더)',
   'settings.ai.temperatureOverrideValue': '온도 재정의(값)',

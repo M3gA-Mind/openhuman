@@ -345,6 +345,111 @@ describe('AIPanel', () => {
 
   // ─── per-model vision flag (BYOK) ───────────────────────────────────────────
 
+  // ─── Azure deployment names (#5213) ─────────────────────────────────────────
+
+  // Regression: Azure's `/models` catalog lists *base model ids*, but Azure
+  // routes inference by the user's *deployment name*. Before the fix a
+  // non-empty catalog forced a closed <select>, so a deployment name that was
+  // not in the catalog could not be entered at all and every request came back
+  // "Model not found".
+  const azureSettings = {
+    ...baseSettings,
+    cloudProviders: [
+      ...baseSettings.cloudProviders,
+      {
+        id: 'p_azure_x',
+        slug: 'azure-foundry',
+        label: 'Azure Foundry',
+        endpoint: 'https://my-resource.openai.azure.com/openai/v1',
+        auth_style: 'bearer' as const,
+        has_api_key: true,
+      },
+    ],
+  };
+
+  it('lets an Azure provider take a deployment name that is absent from the model catalog', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue(azureSettings);
+    // A NON-empty catalog is the pre-fix blocker: it used to force a dropdown.
+    vi.mocked(listProviderModels).mockResolvedValue([
+      { id: 'gpt-5.6-terra-2026-07-09' },
+      { id: 'gpt-4o' },
+    ]);
+
+    renderWithProviders(<AIPanel />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Use Your Own Models/i })).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Use Your Own Models/i }));
+
+    // The field is a free-text "Deployment name" box, not a catalog dropdown.
+    const deploymentInput = await screen.findByRole('textbox', { name: /Deployment name/i });
+    fireEvent.change(deploymentInput, { target: { value: 'gpt-5.6-terra' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+
+    await waitFor(() => expect(saveAISettings).toHaveBeenCalled());
+    // The deployment name reaches the persisted routing verbatim, and the base
+    // model id from the catalog is never substituted for it.
+    const [, nextSettings] = vi.mocked(saveAISettings).mock.calls.at(-1) ?? [];
+    expect(nextSettings?.routing.chat).toEqual({
+      kind: 'cloud',
+      providerSlug: 'azure-foundry',
+      model: 'gpt-5.6-terra',
+    });
+    expect(JSON.stringify(nextSettings)).not.toContain('gpt-5.6-terra-2026-07-09');
+  });
+
+  it('does not auto-select a catalog model id for an Azure provider', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue(azureSettings);
+    vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-5.6-terra-2026-07-09' }]);
+
+    renderWithProviders(<AIPanel />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Use Your Own Models/i })).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Use Your Own Models/i }));
+
+    // Seeding the field with a base model id is what produced the bug, so the
+    // deployment field must come up empty and wait for the user.
+    const deploymentInput = await screen.findByRole('textbox', { name: /Deployment name/i });
+    await waitFor(() => expect(deploymentInput).toHaveValue(''));
+  });
+
+  it('keeps the model dropdown for a non-Azure provider, with a manual-entry escape hatch', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue({
+      ...baseSettings,
+      cloudProviders: [
+        ...baseSettings.cloudProviders,
+        {
+          id: 'p_custom_openai',
+          slug: 'openai',
+          label: 'OpenAI',
+          endpoint: 'https://api.openai.com/v1',
+          auth_style: 'bearer' as const,
+          has_api_key: true,
+        },
+      ],
+    });
+    vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-4o' }]);
+
+    renderWithProviders(<AIPanel />);
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Use Your Own Models/i })).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Use Your Own Models/i }));
+
+    // Existing behaviour is unchanged: a populated catalog still renders a
+    // dropdown and there is no Azure-specific labelling.
+    await waitFor(() => expect(screen.queryByText('Deployment name')).not.toBeInTheDocument());
+    const toggle = await screen.findByRole('button', { name: /Enter model ID manually/i });
+
+    // ...but the catalog is no longer a dead end for off-catalog model ids.
+    fireEvent.click(toggle);
+    const manualInput = await screen.findByRole('textbox', { name: /^Model$/i });
+    fireEvent.change(manualInput, { target: { value: 'my-private-model' } });
+    expect(manualInput).toHaveValue('my-private-model');
+  });
+
   it('flags a custom BYOK model as vision-capable via the Own-model selector', async () => {
     vi.mocked(loadAISettings).mockResolvedValue({
       ...baseSettings,

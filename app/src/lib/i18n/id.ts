@@ -4722,6 +4722,16 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} ID model',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Pilih model...',
+  'settings.ai.deploymentNameLabel': 'Nama penerapan',
+  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNameHelp':
+    'Masukkan nama penerapan yang Anda atur di Azure AI Foundry. Ini bukan ID model.',
+  'settings.ai.deploymentNameLegacyHint':
+    'Nilai ini cocok dengan ID model dasar dari katalog penyedia. Azure merutekan permintaan berdasarkan nama penerapan, jadi pastikan ini adalah nama yang Anda berikan untuk penerapan Anda.',
+  'settings.ai.deploymentNameProviderHint':
+    'Endpoint Azure terdeteksi. Atur nama penerapan Anda di bidang model setelah memilih penyedia ini.',
+  'settings.ai.chooseModelFromList': 'Pilih dari daftar',
+  'settings.ai.enterModelIdManuallyAction': 'Masukkan ID model secara manual',
   'settings.ai.temperatureOverride': 'Penggantian suhu',
   'settings.ai.temperatureOverrideSlider': 'Penggantian suhu (slider)',
   'settings.ai.temperatureOverrideValue': 'Penggantian suhu (nilai)',

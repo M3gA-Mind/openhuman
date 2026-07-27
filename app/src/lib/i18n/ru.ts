@@ -4749,6 +4749,16 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} идентификатор модели',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Выберите модель...',
+  'settings.ai.deploymentNameLabel': 'Имя развёртывания',
+  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNameHelp':
+    'Введите имя развёртывания, заданное в Azure AI Foundry. Это не идентификатор модели.',
+  'settings.ai.deploymentNameLegacyHint':
+    'Это значение совпадает с идентификатором базовой модели из каталога поставщика. Azure маршрутизирует запросы по имени развёртывания, поэтому убедитесь, что это имя вашего развёртывания.',
+  'settings.ai.deploymentNameProviderHint':
+    'Обнаружена конечная точка Azure. Укажите имя развёртывания в поле модели после выбора этого поставщика.',
+  'settings.ai.chooseModelFromList': 'Выбрать из списка',
+  'settings.ai.enterModelIdManuallyAction': 'Ввести идентификатор модели вручную',
   'settings.ai.temperatureOverride': 'Переопределение температуры',
   'settings.ai.temperatureOverrideSlider': 'Переопределение температуры (ползунок)',
   'settings.ai.temperatureOverrideValue': 'Переопределение температуры (значение)',

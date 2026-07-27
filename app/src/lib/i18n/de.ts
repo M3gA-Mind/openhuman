@@ -4838,6 +4838,16 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} Modell-ID',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Wählen Sie ein Modell...',
+  'settings.ai.deploymentNameLabel': 'Bereitstellungsname',
+  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNameHelp':
+    'Geben Sie den Bereitstellungsnamen ein, den Sie in Azure AI Foundry festgelegt haben. Dies ist nicht die Modell-ID.',
+  'settings.ai.deploymentNameLegacyHint':
+    'Dieser Wert entspricht einer Basismodell-ID aus dem Anbieterkatalog. Azure leitet Anfragen über den Bereitstellungsnamen weiter, bestätigen Sie daher, dass dies der Name Ihrer Bereitstellung ist.',
+  'settings.ai.deploymentNameProviderHint':
+    'Azure-Endpunkt erkannt. Legen Sie Ihren Bereitstellungsnamen im Modellfeld fest, nachdem Sie diesen Anbieter ausgewählt haben.',
+  'settings.ai.chooseModelFromList': 'Aus Liste wählen',
+  'settings.ai.enterModelIdManuallyAction': 'Modell-ID manuell eingeben',
   'settings.ai.temperatureOverride': 'Temperatur-Override',
   'settings.ai.temperatureOverrideSlider': 'Temperatur-Override (Schieberegler)',
   'settings.ai.temperatureOverrideValue': 'Temperatur-Override (Wert)',

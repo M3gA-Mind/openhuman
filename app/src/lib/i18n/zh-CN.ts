@@ -4448,6 +4448,15 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} 型号 ID',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': '选择型号...',
+  'settings.ai.deploymentNameLabel': '部署名称',
+  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNameHelp': '请输入您在 Azure AI Foundry 中设置的部署名称。这不是模型 ID。',
+  'settings.ai.deploymentNameLegacyHint':
+    '此值与提供商目录中的基础模型 ID 相同。Azure 按部署名称路由请求，请确认这是您为部署指定的名称。',
+  'settings.ai.deploymentNameProviderHint':
+    '已检测到 Azure 端点。选择此提供商后，请在模型字段中设置部署名称。',
+  'settings.ai.chooseModelFromList': '从列表中选择',
+  'settings.ai.enterModelIdManuallyAction': '手动输入模型 ID',
   'settings.ai.temperatureOverride': '温度超控',
   'settings.ai.temperatureOverrideSlider': '温度超控（滑块）',
   'settings.ai.temperatureOverrideValue': '温度超控（值）',

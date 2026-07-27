@@ -4705,6 +4705,16 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} মডেল আইডি',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'একটি মডেল নির্বাচন করুন...',
+  'settings.ai.deploymentNameLabel': 'ডিপ্লয়মেন্টের নাম',
+  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNameHelp':
+    'Azure AI Foundry-তে আপনি যে ডিপ্লয়মেন্টের নাম সেট করেছেন তা লিখুন। এটি মডেল আইডি নয়।',
+  'settings.ai.deploymentNameLegacyHint':
+    'এই মানটি প্রদানকারীর তালিকার বেস মডেল আইডির সঙ্গে মেলে। Azure ডিপ্লয়মেন্টের নাম দিয়ে অনুরোধ পাঠায়, তাই নিশ্চিত করুন এটি আপনার ডিপ্লয়মেন্টের নাম।',
+  'settings.ai.deploymentNameProviderHint':
+    'Azure এন্ডপয়েন্ট শনাক্ত হয়েছে। এই প্রদানকারী নির্বাচন করার পর মডেল ফিল্ডে আপনার ডিপ্লয়মেন্টের নাম দিন।',
+  'settings.ai.chooseModelFromList': 'তালিকা থেকে বেছে নিন',
+  'settings.ai.enterModelIdManuallyAction': 'ম্যানুয়ালি মডেল আইডি লিখুন',
   'settings.ai.temperatureOverride': 'তাপমাত্রা ওভাররাইড',
   'settings.ai.temperatureOverrideSlider': 'তাপমাত্রা ওভাররাইড (স্লাইডার)',
   'settings.ai.temperatureOverrideValue': 'তাপমাত্রা ওভাররাইড (মান)',
