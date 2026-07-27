@@ -36,6 +36,12 @@ describe('isAzureFoundryEndpoint', () => {
       'https://team.models.ai.azure.com/v1',
       // Case and trailing path must not matter.
       'HTTPS://My-Res.OPENAI.AZURE.COM/openai/v1/',
+      // Sovereign clouds: Azure Government and Azure operated by 21Vianet.
+      // Separate DNS parents, so the commercial `.com` entries do not cover
+      // them and a tenant there would otherwise hit the very "model not
+      // found" path this module prevents.
+      'https://my-res.openai.azure.us/openai/v1',
+      'https://my-res.openai.azure.cn/openai/v1',
     ]) {
       expect(isAzureFoundryEndpoint(endpoint)).toBe(true);
     }

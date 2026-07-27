@@ -34,6 +34,14 @@ const AZURE_ENDPOINT_HOSTS = [
   'cognitiveservices.azure.com',
   'inference.ai.azure.com',
   'models.ai.azure.com',
+  // Sovereign clouds. Azure OpenAI is offered in Azure Government
+  // (`*.openai.azure.us`) and in Azure operated by 21Vianet / China
+  // (`*.openai.azure.cn`). They are separate DNS parents, so the commercial
+  // `.com` entries above do not cover them, and without these a sovereign
+  // tenant falls through to the exact "model not found" path this module
+  // exists to prevent.
+  'openai.azure.us',
+  'openai.azure.cn',
 ] as const;
 
 /**

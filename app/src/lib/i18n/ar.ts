@@ -4592,7 +4592,7 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'حدد نموذجًا...',
   'settings.ai.deploymentNameLabel': 'اسم النشر',
-  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
   'settings.ai.deploymentNameHelp':
     'أدخل اسم النشر الذي حددته في Azure AI Foundry. هذا ليس معرف النموذج.',
   'settings.ai.deploymentNameLegacyHint':

@@ -4449,7 +4449,7 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': '选择型号...',
   'settings.ai.deploymentNameLabel': '部署名称',
-  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
   'settings.ai.deploymentNameHelp': '请输入您在 Azure AI Foundry 中设置的部署名称。这不是模型 ID。',
   'settings.ai.deploymentNameLegacyHint':
     '此值与提供商目录中的基础模型 ID 相同。Azure 按部署名称路由请求，请确认这是您为部署指定的名称。',

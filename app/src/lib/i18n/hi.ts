@@ -4706,7 +4706,7 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'एक मॉडल चुनें...',
   'settings.ai.deploymentNameLabel': 'परिनियोजन नाम',
-  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
   'settings.ai.deploymentNameHelp':
     'Azure AI Foundry में आपके द्वारा सेट किया गया परिनियोजन नाम दर्ज करें। यह मॉडल आईडी नहीं है।',
   'settings.ai.deploymentNameLegacyHint':

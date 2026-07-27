@@ -4750,7 +4750,7 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Выберите модель...',
   'settings.ai.deploymentNameLabel': 'Имя развёртывания',
-  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
   'settings.ai.deploymentNameHelp':
     'Введите имя развёртывания, заданное в Azure AI Foundry. Это не идентификатор модели.',
   'settings.ai.deploymentNameLegacyHint':

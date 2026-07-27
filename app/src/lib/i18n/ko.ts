@@ -4652,7 +4652,7 @@ const messages: TranslationMap = {
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': '모델 선택...',
   'settings.ai.deploymentNameLabel': '배포 이름',
-  'settings.ai.deploymentNamePlaceholder': 'gpt-5.6-terra',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
   'settings.ai.deploymentNameHelp':
     'Azure AI Foundry에서 설정한 배포 이름을 입력하세요. 모델 ID가 아닙니다.',
   'settings.ai.deploymentNameLegacyHint':

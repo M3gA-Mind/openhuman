@@ -562,6 +562,24 @@ describe('AIPanel', () => {
     expect(
       await screen.findByText(/confirm this is the name you gave your deployment/i)
     ).toBeInTheDocument();
+
+    // Complete the flow: a working text field proves nothing if the
+    // dialog-to-routing handoff drops the value. Put the deployment name back
+    // and assert it reaches the persisted per-workload routing verbatim.
+    fireEvent.change(deploymentInput, { target: { value: 'workload-deployment' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Apply$|^Save$|^Confirm$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/ }));
+
+    await waitFor(() => expect(saveAISettings).toHaveBeenCalled());
+    const [, nextSettings] = vi.mocked(saveAISettings).mock.calls.at(-1) ?? [];
+    const workloadRefs = Object.values(nextSettings?.routing ?? {});
+    expect(workloadRefs).toContainEqual(
+      expect.objectContaining({
+        kind: 'cloud',
+        providerSlug: 'azure-foundry',
+        model: 'workload-deployment',
+      })
+    );
   });
 
   it('keeps the catalog dropdown and its manual escape hatch for a non-Azure provider in the dialog', async () => {
