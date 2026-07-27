@@ -7,7 +7,7 @@ icon: magnifying-glass
 
 # Web Search
 
-The agent can search the live web on its own. By default this runs on **OpenHuman Managed** search: the query goes through the OpenHuman backend, currently powered by [Exa](https://exa.ai), so you never carry a search API key. You can also bring your own key for Exa, Parallel, Brave, or Querit; Exa, Brave, and Querit call their providers directly, while Parallel remains backend-proxied. If you run your own [SearXNG](https://docs.searxng.org/) instance, you can enable `searxng_search` as a private, self-hosted search tool.
+The agent can search the live web on its own. By default this runs on **OpenHuman Managed** search: the query goes through the OpenHuman backend, currently powered by [Exa](https://exa.ai), so you never carry a search API key. You can also bring your own key for Exa, Brave, or Querit, or enable the backend-proxied Parallel engine. If you run your own [SearXNG](https://docs.searxng.org/) instance, you can expose `searxng_search` to RPC and MCP clients as a private, self-hosted search tool.
 
 ## What it's good for
 
@@ -19,16 +19,16 @@ The agent can search the live web on its own. By default this runs on **OpenHuma
 
 Pick the engine under **Connections → Search**. Exactly one engine is active at a time, and that engine owns the canonical `web_search_tool` the agent calls.
 
-| Engine | Your own API key | Where your queries go |
+| Engine | Setup | Where your queries go |
 | --- | --- | --- |
 | **OpenHuman Managed** (default) | Not needed | The OpenHuman backend, currently powered by [Exa](https://exa.ai). |
-| **Exa** | Required | Straight to `https://api.exa.ai` with your key. |
-| **Parallel** | Required | Through the OpenHuman backend to Parallel. |
-| **Brave** | Required | Straight to the Brave Search API with your key. |
-| **Querit** | Required | Straight to the Querit API with your key. |
+| **Exa** | Your API key | Straight to `https://api.exa.ai` with your key. |
+| **Parallel** | Local enablement value | Through the OpenHuman backend to Parallel. The value selects the engine locally; it is not sent to Parallel for authentication or billing. |
+| **Brave** | Your API key | Straight to the Brave Search API with your key. |
+| **Querit** | Your API key | Straight to the Querit API with your key. |
 | **Disabled** | Not needed | Nowhere. All agent-facing search tools are removed; an enabled SearXNG endpoint remains available through RPC/MCP. |
 
-Selecting a bring-your-own-key engine without saving a key falls back to managed search, so the agent always has working search. Once a search finishes, the chat timeline names the provider that answered it ("Searched with Exa"), so the managed path is never an unattributed black box.
+Selecting a bring-your-own-key engine without saving a key falls back to managed search. That fallback requires a backend-authenticated session; local or offline users must configure a direct provider key. Once a search finishes, the chat timeline names the provider that answered it ("Searched with Exa"), so the managed path is never an unattributed black box.
 
 ### OpenHuman Managed (default)
 
@@ -68,7 +68,7 @@ EXA_API_KEY=your-exa-api-key
 
 ## Self-hosted SearXNG
 
-SearXNG search is opt-in. When enabled, OpenHuman registers `searxng_search` for agents and MCP clients unless the selected engine is **Disabled**; in that mode it remains available through RPC/MCP but is omitted from the agent's tools. The tool calls your configured SearXNG `/search?format=json` endpoint and returns normalized `{ title, url, snippet, source }` results.
+SearXNG search is opt-in and exposed through the `openhuman.tools_searxng_search` RPC controller and MCP catalog; it is not registered as an agent tool. The controller calls your configured SearXNG `/search?format=json` endpoint and returns normalized `{ title, url, snippet, source }` results.
 
 Enable it in `config.toml`:
 
