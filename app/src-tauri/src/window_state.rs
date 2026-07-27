@@ -385,6 +385,23 @@ pub fn center_main<R: Runtime>(window: &WebviewWindow<R>) {
 /// the window from a 100 % monitor onto a 150 % one at any point during
 /// the session, where the same OS rescale applies.
 fn reclamp_after_scale_change<R: Runtime>(window: &WebviewWindow<R>, new_scale: f64) {
+    // Maximized and fullscreen windows intentionally carry geometry that can
+    // exceed the work area, and the OS owns it in those states. Clamping here
+    // would issue `set_size`/`set_position` that unmaximizes the window, or
+    // overwrite the bounds the OS restores on leaving fullscreen. Both states
+    // are reachable from the app's own `toggleMaximize()` and the native
+    // fullscreen menu, so this is a normal path, not an edge case.
+    //
+    // A failed query is treated as "not in that state": the pre-#5041 behaviour
+    // was to always clamp, so falling back to clamping keeps the fix working
+    // rather than silently disabling it on a backend that cannot answer.
+    if window.is_maximized().unwrap_or(false) || window.is_fullscreen().unwrap_or(false) {
+        log::debug!(
+            "[window-state] scale change to {new_scale}; window is maximized/fullscreen — leaving geometry to the OS"
+        );
+        return;
+    }
+
     let Ok(Some(monitor)) = window.current_monitor() else {
         log::warn!("[window-state] scale change but current_monitor unavailable; skip re-clamp");
         return;
@@ -625,9 +642,16 @@ fn dpi_adjusted_size(width: u32, height: u32, from_scale: f64, to_scale: f64) ->
         return (width, height);
     }
     let scaled = |v: u32| {
-        // Round rather than truncate: at ratio 1.5 a 1-px truncation
-        // difference is invisible, but rounding keeps the round-trip
-        // A→B→A stable instead of drifting a pixel smaller each move.
+        // Round rather than truncate: truncating loses up to a pixel on
+        // every move, so a window shuttled between two monitors drifts
+        // steadily smaller. Rounding holds the A→B→A round trip stable
+        // across the standard DPI ladder (1.0 / 1.25 / 1.5 / 1.75 / 2.0)
+        // at realistic window dimensions — see
+        // `dpi_adjusted_size_round_trips_without_drift`. It is not an
+        // exact inverse for every conceivable ratio and size (at very
+        // small pixel counts the rounding error is a large fraction of
+        // the value), which is why the test pins the pairs that matter
+        // rather than claiming a universal identity.
         let out = (f64::from(v) * ratio).round();
         // Saturate instead of wrapping — an absurd ratio must not
         // produce a tiny window via u32 overflow.
@@ -885,9 +909,30 @@ mod tests {
     fn dpi_adjusted_size_round_trips_without_drift() {
         // A→B→A must land back on the original size; truncating instead
         // of rounding would lose a pixel on every move.
-        let (w, h) = dpi_adjusted_size(1281, 901, 1.0, 1.5);
-        let (back_w, back_h) = dpi_adjusted_size(w, h, 1.5, 1.0);
-        assert_eq!((back_w, back_h), (1281, 901));
+        //
+        // Covers the whole standard DPI ladder rather than just 1.0↔1.5:
+        // the doc comment claims stability across it, and a single pair
+        // does not establish that (review, #5041). Odd dimensions are
+        // deliberate — even ones round-trip trivially at these ratios.
+        for (from, to) in [
+            (1.0, 1.25),
+            (1.0, 1.5),
+            (1.0, 1.75),
+            (1.0, 2.0),
+            (1.25, 1.5),
+            (1.5, 2.0),
+            (2.0, 1.25),
+        ] {
+            for (w, h) in [(1281, 901), (1920, 1080), (2560, 1600)] {
+                let (up_w, up_h) = dpi_adjusted_size(w, h, from, to);
+                let (back_w, back_h) = dpi_adjusted_size(up_w, up_h, to, from);
+                assert_eq!(
+                    (back_w, back_h),
+                    (w, h),
+                    "round trip {w}x{h} at {from}->{to}->{from} drifted to {back_w}x{back_h}"
+                );
+            }
+        }
     }
 
     #[test]
