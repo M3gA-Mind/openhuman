@@ -217,17 +217,33 @@ impl LocalAiService {
             }
         };
 
-        // An empty catalog is not a recovery — fall through to the original
-        // /v1/models error so the user sees the real problem. LM Studio answers
-        // unknown paths with `200 {"error": …}` and no models (GH #5053), which
-        // would otherwise look like a successful discovery of zero models.
-        if payload.models.is_empty() {
+        // Reject on an explicit error envelope, NOT on emptiness. LM Studio
+        // answers unknown paths with `200 {"error": …}` and no models
+        // (GH #5053) — that is the case that must fall through to the original
+        // /v1/models error. A fresh Ollama with nothing pulled yet legitimately
+        // returns `{"models":[]}`, and treating that as a failure hid a
+        // reachable runtime behind a 404, so the UI could not offer the
+        // model-download action.
+        if let Some(error) = payload
+            .error
+            .as_deref()
+            .map(str::trim)
+            .filter(|e| !e.is_empty())
+        {
             tracing::debug!(
                 target: "local_ai::lm_studio",
                 url = %fallback_url,
-                "[local_ai:lm_studio] /api/tags fallback returned an empty catalog — not a recovery"
+                error = %error,
+                "[local_ai:lm_studio] /api/tags fallback returned an error envelope — not a recovery"
             );
             return None;
+        }
+        if payload.models.is_empty() {
+            tracing::info!(
+                target: "local_ai::lm_studio",
+                url = %fallback_url,
+                "[local_ai:lm_studio] /api/tags fallback reached a reachable runtime with an empty catalog — recovering as zero models"
+            );
         }
 
         tracing::info!(
