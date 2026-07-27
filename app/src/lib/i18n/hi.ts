@@ -1689,14 +1689,14 @@ const messages: TranslationMap = {
   'settings.search.menuDesc':
     'डिफ़ॉल्ट to OpenHuman -एक API कुंजी के साथ अपने स्वयं के प्रदाता को प्रबंधित खोज या तार करना।',
   'settings.search.description':
-    'एजेंट द्वारा उपयोग किए जाने वाले सर्च इंजन को चुनें, या सर्च टूल्स को पूरी तरह बंद करें। Managed, OpenHuman के बैकएंड का उपयोग करता है (कोई सेटअप नहीं)। Parallel, Brave, और Querit आपकी API key का उपयोग करके सीधे आपकी मशीन से चलते हैं।',
+    'एजेंट द्वारा उपयोग किए जाने वाले सर्च इंजन को चुनें, या सर्च टूल्स को पूरी तरह बंद करें। Managed, OpenHuman के बैकएंड का उपयोग करता है (कोई सेटअप नहीं)। Parallel, Brave, Querit, और Exa आपकी API key का उपयोग करके सीधे आपकी मशीन से चलते हैं।',
   'settings.search.engineAria': 'खोज इंजन',
   'settings.search.engineDisabledLabel': 'Disabled',
   'settings.search.engineDisabledDesc': 'एजेंट संदर्भ और उपलब्ध टूल सूची से खोज टूल हटाएं।',
   'settings.search.engineManagedLabel': 'OpenHuman प्रबंधित',
   'settings.search.engineManagedDesc': 'डिफ़ॉल्ट। OpenHuman backend: no API key required.',
   'settings.search.localManagedUnavailable':
-    'लोकल उपयोगकर्ताओं के लिए OpenHuman Managed search उपलब्ध नहीं है। वेब सर्च चालू करने के लिए अपनी Parallel या Brave API key जोड़ें।',
+    'लोकल उपयोगकर्ताओं के लिए OpenHuman Managed search उपलब्ध नहीं है। वेब सर्च चालू करने के लिए अपनी Parallel, Brave, Querit या Exa API key जोड़ें।',
   'settings.search.engineParallelLabel': 'Parallel',
   'settings.search.engineParallelDesc':
     'डायरेक्ट Parallel API: खोज, निकालने, चैट, अनुसंधान, समृद्ध, डेटासेट उपकरण।',
@@ -1728,7 +1728,7 @@ const messages: TranslationMap = {
   'settings.search.placeholderParallel': 'पीके_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'क्वेरिट API कुंजी',
-  'settings.search.placeholderExa': 'Exa API कुंजी',
+  'settings.search.placeholderExa': 'अपनी Exa API कुंजी पेस्ट करें…',
   'settings.search.allowedSitesLabel': 'अनुमत वेबसाइटों',
   'settings.search.allowedSitesHint':
     'उन होस्ट को सूचीबद्ध करें जिन्हें असिस्टेंट खोल और पढ़ सकता है (वेब फ़ेच और ब्राउज़र टूल के माध्यम से), प्रति पंक्ति एक, जैसे reuters.com। एक होस्ट में उसके सभी सबडोमेन भी शामिल होते हैं। वेब सर्च स्वयं इस सूची से प्रतिबंधित नहीं है।',

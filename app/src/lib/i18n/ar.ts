@@ -1657,7 +1657,7 @@ const messages: TranslationMap = {
   'settings.search.title': 'محرك البحث',
   'settings.search.menuDesc': 'تخلف عن البحث أو التنصت على مزودك الخاص بمفتاح اكسوكس',
   'settings.search.description':
-    'اختر محرك البحث الذي يستخدمه الوكيل، أو عطّل أدوات البحث بالكامل. يستخدم الوضع المُدار واجهة خلفية OpenHuman (بدون إعداد). تعمل محركات Parallel وBrave وQuerit مباشرةً من جهازك باستخدام مفتاح API الخاص بك.',
+    'اختر محرك البحث الذي يستخدمه الوكيل، أو عطّل أدوات البحث بالكامل. يستخدم الوضع المُدار واجهة خلفية OpenHuman (بدون إعداد). تعمل محركات Parallel وBrave وQuerit وExa مباشرةً من جهازك باستخدام مفتاح API الخاص بك.',
   'settings.search.engineAria': 'محرك البحث',
   'settings.search.engineDisabledLabel': 'Disabled',
   'settings.search.engineDisabledDesc': 'أزل أدوات البحث من سياق الوكيل وقائمة الأدوات المتاحة.',
@@ -1665,7 +1665,7 @@ const messages: TranslationMap = {
   'settings.search.engineManagedDesc':
     'خطأ تم سحبها من خلال الركيزة الخلفية - لا حاجة لمفتاح Xqx0xx.',
   'settings.search.localManagedUnavailable':
-    'بحث OpenHuman المُدار غير متاح للمستخدمين المحليين. أضف مفتاح Parallel أو Brave الخاص بك لتفعيل البحث على الويب.',
+    'بحث OpenHuman المُدار غير متاح للمستخدمين المحليين. أضف مفتاح Parallel أو Brave أو Querit أو Exa الخاص بك لتفعيل البحث على الويب.',
   'settings.search.engineParallelLabel': 'Parallel',
   'settings.search.engineParallelDesc':
     'واجهة برمجية متوازية مباشرة: أدوات البحث والاستخراج والمحادثة والبحث المتعمق والإثراء ومجموعات البيانات.',
@@ -1697,7 +1697,7 @@ const messages: TranslationMap = {
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'مفتاح API الخاص بـ Querit',
-  'settings.search.placeholderExa': 'مفتاح API الخاص بـ Exa',
+  'settings.search.placeholderExa': 'الصق مفتاح API الخاص بـ Exa…',
   'settings.search.allowedSitesLabel': 'المواقع الشبكية المسموح بها',
   'settings.search.allowedSitesHint':
     'المضيفون الذين يُسمح للمساعد بفتحهم وقراءتهم (عبر جلب الويب وأداة المتصفح) مضيف واحد في كل سطر، مثل reuters.com. يشمل المضيف نطاقاته الفرعية أيضًا. البحث على الويب نفسه لا يتقيّد بهذه القائمة.',

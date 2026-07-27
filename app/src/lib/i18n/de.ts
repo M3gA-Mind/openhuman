@@ -1750,7 +1750,7 @@ const messages: TranslationMap = {
   'settings.search.menuDesc':
     'Verwenden Sie standardmäßig die von OpenHuman verwaltete Suche oder verbinden Sie Ihren eigenen Anbieter mit einem API-Schlüssel.',
   'settings.search.description':
-    'Wählen Sie die Suchmaschine, die der Agent verwendet, oder deaktivieren Sie Suchwerkzeuge vollständig. „Verwaltet“ nutzt das Backend von OpenHuman (keine Einrichtung erforderlich). Parallel, Brave und Querit laufen direkt von Ihrem Gerät aus und verwenden Ihren API-Schlüssel.',
+    'Wählen Sie die Suchmaschine, die der Agent verwendet, oder deaktivieren Sie Suchwerkzeuge vollständig. „Verwaltet“ nutzt das Backend von OpenHuman (keine Einrichtung erforderlich). Parallel, Brave, Querit und Exa laufen direkt von Ihrem Gerät aus und verwenden Ihren API-Schlüssel.',
   'settings.search.engineAria': 'Suchmaschine',
   'settings.search.engineDisabledLabel': 'Disabled',
   'settings.search.engineDisabledDesc':
@@ -1759,7 +1759,7 @@ const messages: TranslationMap = {
   'settings.search.engineManagedDesc':
     'Standard. Wird über das OpenHuman-Backend weitergeleitet – kein API-Schlüssel erforderlich.',
   'settings.search.localManagedUnavailable':
-    'Die von OpenHuman verwaltete Suche ist für lokale Benutzer nicht verfügbar. Füge deinen eigenen Parallel- oder Brave-API-Schlüssel hinzu, um die Websuche zu aktivieren.',
+    'Die von OpenHuman verwaltete Suche ist für lokale Benutzer nicht verfügbar. Füge deinen eigenen Parallel-, Brave-, Querit- oder Exa-API-Schlüssel hinzu, um die Websuche zu aktivieren.',
   'settings.search.engineParallelLabel': 'Parallel',
   'settings.search.engineParallelDesc':
     'Direct Parallel API: Such-, Extrahierungs-, Chat-, Recherche-, Anreicherungs- und Datensatz-Tools.',
@@ -1792,7 +1792,7 @@ const messages: TranslationMap = {
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Fragen Sie den API-Schlüssel ab',
-  'settings.search.placeholderExa': 'Exa-API-Schlüssel',
+  'settings.search.placeholderExa': 'Füge deinen Exa-API-Schlüssel ein…',
   'settings.search.allowedSitesLabel': 'Erlaubte Websites',
   'settings.search.allowedSitesHint':
     'Hosts, die der Assistent öffnen und lesen darf – per Web-Abruf und Browser-Tool – einer pro Zeile, z. B. reuters.com. Ein Host schließt auch seine Subdomains ein. Die Websuche selbst wird durch diese Liste nicht eingeschränkt.',

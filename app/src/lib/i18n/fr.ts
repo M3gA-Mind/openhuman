@@ -1744,7 +1744,7 @@ const messages: TranslationMap = {
   'settings.search.menuDesc':
     'Par défaut, utilisez la recherche gérée par OpenHuman ou connectez votre propre fournisseur avec une clé API.',
   'settings.search.description':
-    "Choisissez le moteur de recherche utilisé par l'agent, ou désactivez entièrement les outils de recherche. Géré utilise le backend d'OpenHuman (sans configuration). Parallel, Brave et Querit s'exécutent directement depuis votre machine avec votre clé API.",
+    "Choisissez le moteur de recherche utilisé par l'agent, ou désactivez entièrement les outils de recherche. Géré utilise le backend d'OpenHuman (sans configuration). Parallel, Brave, Querit et Exa s'exécutent directement depuis votre machine avec votre clé API.",
   'settings.search.engineAria': 'Moteur de recherche',
   'settings.search.engineDisabledLabel': 'Disabled',
   'settings.search.engineDisabledDesc':
@@ -1753,7 +1753,7 @@ const messages: TranslationMap = {
   'settings.search.engineManagedDesc':
     'Par défaut. Routé via le backend OpenHuman: aucune clé API requise.',
   'settings.search.localManagedUnavailable':
-    'La recherche gérée par OpenHuman n’est pas disponible pour les utilisateurs locaux. Ajoutez votre propre clé API Parallel ou Brave pour activer la recherche web.',
+    'La recherche gérée par OpenHuman n’est pas disponible pour les utilisateurs locaux. Ajoutez votre propre clé API Parallel, Brave, Querit ou Exa pour activer la recherche web.',
   'settings.search.engineParallelLabel': 'Parallèle',
   'settings.search.engineParallelDesc':
     'Direct Parallel API: rechercher, extraire, discuter, rechercher, enrichir, outils de jeu de données.',
@@ -1786,7 +1786,7 @@ const messages: TranslationMap = {
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Cherche la clé API',
-  'settings.search.placeholderExa': 'Clé API Exa',
+  'settings.search.placeholderExa': 'Collez votre clé API Exa…',
   'settings.search.allowedSitesLabel': 'Sites web autorisés',
   'settings.search.allowedSitesHint':
     "Saisissez les hôtes que l'assistant peut ouvrir et lire (via la récupération web et l'outil navigateur), un hôte par ligne, p. ex. reuters.com. Un hôte couvre également ses sous-domaines. La recherche web elle-même n'est pas limitée par cette liste.",

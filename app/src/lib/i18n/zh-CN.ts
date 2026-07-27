@@ -1602,14 +1602,14 @@ const messages: TranslationMap = {
   'settings.search.title': '搜索引擎',
   'settings.search.menuDesc': '默认使用 OpenHuman 托管搜索，或用 API 密钥接入你自己的提供商。',
   'settings.search.description':
-    '选择智能体使用的搜索引擎。托管模式使用 OpenHuman 后端（无需设置）。Parallel、Brave 和 Querit 会用你的 API 密钥从本机直接调用。',
+    '选择智能体使用的搜索引擎。托管模式使用 OpenHuman 后端（无需设置）。Parallel、Brave、Querit 和 Exa 会用你的 API 密钥从本机直接调用。',
   'settings.search.engineAria': '搜索引擎',
   'settings.search.engineDisabledLabel': 'Disabled',
   'settings.search.engineDisabledDesc': '从智能体上下文和可用工具列表中移除搜索工具。',
   'settings.search.engineManagedLabel': 'OpenHuman 托管',
   'settings.search.engineManagedDesc': '默认选项。通过 OpenHuman 后端路由，无需 API 密钥。',
   'settings.search.localManagedUnavailable':
-    '本地用户无法使用 OpenHuman 托管搜索。请添加你自己的 Parallel、Brave 或 Querit API 密钥以启用网页搜索。',
+    '本地用户无法使用 OpenHuman 托管搜索。请添加你自己的 Parallel、Brave、Querit 或 Exa API 密钥以启用网页搜索。',
   'settings.search.engineParallelLabel': 'Parallel',
   'settings.search.engineParallelDesc':
     '直接调用 Parallel API：搜索、提取、聊天、研究、增强和数据集工具。',
@@ -1640,7 +1640,7 @@ const messages: TranslationMap = {
   'settings.search.placeholderParallel': 'PK_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'Querit API 密钥',
-  'settings.search.placeholderExa': 'Exa API 密钥',
+  'settings.search.placeholderExa': '粘贴你的 Exa API 密钥…',
   'settings.search.allowedSitesLabel': '允许的网站',
   'settings.search.allowedSitesHint':
     '助手在研究时可以打开并阅读的网站（每行一个主机，例如 reuters.com）。主机也包含其子域名。留空将阻止所有网页访问。',

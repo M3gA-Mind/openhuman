@@ -1690,7 +1690,7 @@ const messages: TranslationMap = {
   'settings.search.menuDesc':
     'Xqx1q1x - নিজ হাতে অনুসন্ধান অথবা তার নিজের উপলব্ধকারীর সাথে যোগাযোগ স্থাপন করুন। Xqxqxkey কী- র সাথে একযোগে কাজ করার জন্য',
   'settings.search.description':
-    'এজেন্ট যে সার্চ ইঞ্জিন ব্যবহার করে তা বেছে নিন, অথবা সার্চ টুলগুলো সম্পূর্ণভাবে নিষ্ক্রিয় করুন। Managed OpenHuman-এর ব্যাকএন্ড ব্যবহার করে (কোনো সেটআপ নেই)। Parallel, Brave, এবং Querit আপনার API কী ব্যবহার করে সরাসরি আপনার মেশিন থেকে চলে।',
+    'এজেন্ট যে সার্চ ইঞ্জিন ব্যবহার করে তা বেছে নিন, অথবা সার্চ টুলগুলো সম্পূর্ণভাবে নিষ্ক্রিয় করুন। Managed OpenHuman-এর ব্যাকএন্ড ব্যবহার করে (কোনো সেটআপ নেই)। Parallel, Brave, Querit, এবং Exa আপনার API কী ব্যবহার করে সরাসরি আপনার মেশিন থেকে চলে।',
   'settings.search.engineAria': 'সার্চ ইঞ্জিন',
   'settings.search.engineDisabledLabel': 'Disabled',
   'settings.search.engineDisabledDesc':
@@ -1698,7 +1698,7 @@ const messages: TranslationMap = {
   'settings.search.engineManagedLabel': 'OpenHuman পরিচালিত',
   'settings.search.engineManagedDesc': 'ডিফল্ট xqx1x ব্যাক-এন্ড দ্বারা রুট',
   'settings.search.localManagedUnavailable':
-    'লোকাল ব্যবহারকারীদের জন্য OpenHuman Managed সার্চ উপলভ্য নয়। ওয়েব সার্চ চালু করতে আপনার নিজের Parallel বা Brave API key যোগ করুন।',
+    'লোকাল ব্যবহারকারীদের জন্য OpenHuman Managed সার্চ উপলভ্য নয়। ওয়েব সার্চ চালু করতে আপনার নিজের Parallel, Brave, Querit বা Exa API key যোগ করুন।',
   'settings.search.engineParallelLabel': 'Parallel',
   'settings.search.engineParallelDesc':
     'সরাসরি xqxxxxxxxxxxxxqx; অনুসন্ধান, চ্যাট, গবেষণা, সমৃদ্ধ টুল।',
@@ -1731,7 +1731,7 @@ const messages: TranslationMap = {
   'settings.search.placeholderParallel': 'pk_...',
   'settings.search.placeholderBrave': 'BSA...',
   'settings.search.placeholderQuerit': 'কিউ- টি xxqx কি',
-  'settings.search.placeholderExa': 'Exa API কী',
+  'settings.search.placeholderExa': 'আপনার Exa API কী পেস্ট করুন…',
   'settings.search.allowedSitesLabel': 'ওয়েবসাইটের অনুমতি দেওয়া হয়েছে',
   'settings.search.allowedSitesHint':
     'যেসব হোস্ট অ্যাসিস্ট্যান্ট খুলতে ও পড়তে পারবে (ওয়েব ফেচ এবং ব্রাউজার টুলের মাধ্যমে) প্রতি লাইনে একটি করে, যেমন reuters.com। একটি হোস্ট তার সাবডোমেইনগুলোও অন্তর্ভুক্ত করে। ওয়েব সার্চ নিজে এই তালিকা দ্বারা সীমাবদ্ধ নয়।',

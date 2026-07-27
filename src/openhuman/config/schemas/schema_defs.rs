@@ -521,7 +521,7 @@ pub fn schemas(function: &str) -> ControllerSchema {
             inputs: vec![
                 optional_string(
                     "engine",
-                    "Active engine: managed | parallel | brave | querit | exa.",
+                    "Active engine: disabled | managed | parallel | brave | querit | exa.",
                 ),
                 FieldSchema {
                     name: "max_results",

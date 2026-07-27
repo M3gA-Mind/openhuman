@@ -87,6 +87,27 @@ fn non_empty(value: Option<&str>) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Escape a remote page title for use as a markdown link label. Titles are
+/// attacker-controlled, and an unescaped `[`/`]` breaks out of the link and
+/// lets a crafted page inject markdown into the agent transcript.
+fn escape_link_text(raw: &str) -> String {
+    raw.replace('\\', r"\\")
+        .replace('[', r"\[")
+        .replace(']', r"\]")
+}
+
+/// Render a URL as a markdown link destination. Bare parentheses (common in
+/// Wikipedia URLs) terminate the destination early, so wrap in angle brackets
+/// and drop the characters that would close them.
+fn escape_link_destination(raw: &str) -> String {
+    let cleaned: String = raw
+        .trim()
+        .chars()
+        .filter(|c| !matches!(c, '<' | '>' | ' '))
+        .collect();
+    format!("<{cleaned}>")
+}
+
 /// Shared HTTP plumbing for the Exa BYOK tool family. Holds the user's key and
 /// the direct `api.exa.ai` base URL (overridable in tests).
 #[derive(Clone)]
@@ -95,7 +116,6 @@ pub(crate) struct ExaClient {
     api_url: String,
     max_results: usize,
     timeout_secs: u64,
-    http_client: reqwest::Client,
 }
 
 impl ExaClient {
@@ -105,20 +125,47 @@ impl ExaClient {
         max_results: usize,
         timeout_secs: u64,
     ) -> Self {
-        let timeout = timeout_secs.max(1);
-        let http_client = crate::openhuman::tls::tls_client_builder()
-            .timeout(Duration::from_secs(timeout))
-            .connect_timeout(Duration::from_secs(10))
-            .build()
-            .expect("failed to build Exa HTTP client");
-
         Self {
             api_key,
             api_url: api_url.unwrap_or_else(|| DEFAULT_API_URL.to_string()),
             max_results: max_results.clamp(1, 20),
-            timeout_secs: timeout,
-            http_client,
+            timeout_secs: timeout_secs.max(1),
         }
+    }
+
+    /// Build the HTTP client at call time, like `brave.rs::http_client`, so a
+    /// TLS-backend failure surfaces as a tool error instead of aborting the
+    /// process while a session is being constructed.
+    fn http_client(&self) -> anyhow::Result<reqwest::Client> {
+        crate::openhuman::tls::tls_client_builder()
+            .timeout(Duration::from_secs(self.timeout_secs))
+            .connect_timeout(Duration::from_secs(10))
+            .build()
+            .map_err(|e| anyhow::anyhow!("failed to build Exa HTTP client: {e}"))
+    }
+
+    /// Destination host for the egress descriptor, e.g. `api.exa.ai`.
+    fn egress_host(&self) -> String {
+        reqwest::Url::parse(&self.api_url)
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_string))
+            .unwrap_or_else(|| "api.exa.ai".to_string())
+    }
+
+    /// Egress descriptor for a call to Exa. The query (or the requested URLs)
+    /// is user content leaving the device, so it carries `Prompt` on top of the
+    /// destination `Url` that `network_fetch` supplies.
+    fn egress_descriptor(&self) -> crate::openhuman::security::egress::EgressDescriptor {
+        crate::openhuman::security::egress::EgressDescriptor::network_fetch(self.egress_host())
+            .with_data_kind(crate::openhuman::security::egress::DataKind::Prompt)
+    }
+
+    /// Privacy epic S7 (#4441): under `LocalOnly` the search is refused before
+    /// anything reaches Exa. Returns the `[policy-blocked]` tool result to hand
+    /// straight back from `execute`, or `None` when the transfer is permitted.
+    fn local_only_block(&self) -> Option<ToolResult> {
+        crate::openhuman::security::egress::local_only_tool_block(&self.egress_descriptor())
+            .map(ToolResult::error)
     }
 
     /// The configured key, or a user-actionable error naming exactly where to
@@ -138,7 +185,10 @@ impl ExaClient {
     }
 
     /// Requested result count, honouring both `max_results` and Exa's native
-    /// `numResults` spelling, clamped to the configured ceiling.
+    /// `numResults` spelling. An explicit per-call value is clamped to the
+    /// API's own 1..=20 range rather than to the configured `max_results` --
+    /// config supplies the *default* when the call omits one, and a caller may
+    /// ask for more (this matches `querit.rs`).
     fn requested_results(&self, args: &Value) -> usize {
         args.get("max_results")
             .or_else(|| args.get("num_results"))
@@ -150,6 +200,7 @@ impl ExaClient {
 
     async fn post(&self, path: &str, body: Value) -> anyhow::Result<Value> {
         let api_key = self.key()?;
+        let client = self.http_client()?;
         let url = format!("{}/{}", self.api_url.trim_end_matches('/'), path);
         tracing::debug!(
             path,
@@ -157,8 +208,12 @@ impl ExaClient {
             "[exa] POST {url} (direct BYOK)"
         );
 
-        let resp = self
-            .http_client
+        // Egress spine (privacy epic S2, #4436): disclose the destination before
+        // contacting Exa. `local_only_block` has already refused the call if the
+        // live policy forbids it.
+        crate::openhuman::security::egress::emit_external_transfer(self.egress_descriptor());
+
+        let resp = client
             .post(&url)
             .header("x-api-key", api_key)
             .header("Content-Type", "application/json")
@@ -236,8 +291,8 @@ impl ExaClient {
         for item in results.iter().take(limit) {
             out.push_str(&format!(
                 "\n## [{}]({})\n",
-                item.display_title(),
-                item.url.trim()
+                escape_link_text(item.display_title()),
+                escape_link_destination(&item.url)
             ));
             if let Some(date) = non_empty(item.published_date.as_deref()) {
                 out.push_str(&format!("_Published: {date}_\n\n"));
@@ -368,9 +423,9 @@ impl Tool for ExaSearchTool {
     }
 
     fn description(&self) -> &str {
-        "Search the web with Exa neural or keyword search. Returns ranked pages with URLs, \
-         titles, publish dates, and optional page text. Supports domain include/exclude \
-         filters, a published-date range, and result categories."
+        "Search the web with Exa. Returns ranked pages with URLs, titles, publish dates, \
+         and optional page text. Supports search modes from instant to deep-reasoning, \
+         domain include/exclude filters, a published-date range, and result categories."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -387,12 +442,12 @@ impl Tool for ExaSearchTool {
                 },
                 "type": {
                     "type": "string",
-                    "enum": ["auto", "neural", "keyword", "fast"],
-                    "description": "Exa search mode. Defaults to Exa's own 'auto' selection."
+                    "enum": ["auto", "instant", "fast", "deep-lite", "deep", "deep-reasoning"],
+                    "description": "Exa search mode, fastest to most thorough. Defaults to Exa's own 'auto' selection."
                 },
                 "category": {
                     "type": "string",
-                    "description": "Restrict to an Exa category, e.g. 'company', 'research paper', 'news', 'pdf', 'github'."
+                    "description": "Restrict to an Exa category, e.g. 'company', 'research paper', 'news', 'financial report', 'personal site'."
                 },
                 "include_domains": {
                     "type": "array",
@@ -439,6 +494,10 @@ impl Tool for ExaSearchTool {
         args: Value,
         options: ToolCallOptions,
     ) -> anyhow::Result<ToolResult> {
+        if let Some(blocked) = self.client.local_only_block() {
+            return Ok(blocked);
+        }
+
         let query = non_empty(args.get("query").and_then(Value::as_str))
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: query"))?;
 
@@ -531,6 +590,10 @@ impl Tool for ExaFindSimilarTool {
         args: Value,
         options: ToolCallOptions,
     ) -> anyhow::Result<ToolResult> {
+        if let Some(blocked) = self.client.local_only_block() {
+            return Ok(blocked);
+        }
+
         let url = non_empty(args.get("url").and_then(Value::as_str))
             .ok_or_else(|| anyhow::anyhow!("Missing required parameter: url"))?;
 
@@ -642,8 +705,15 @@ impl Tool for ExaGetContentsTool {
         args: Value,
         options: ToolCallOptions,
     ) -> anyhow::Result<ToolResult> {
+        if let Some(blocked) = self.client.local_only_block() {
+            return Ok(blocked);
+        }
+
         let urls = Self::collect_urls(&args)?;
 
+        // `urls` is Exa's current field name for /contents; `ids` is the
+        // backwards-compatible legacy alias, and the schema rejects both at
+        // once. Do not "fix" this to `ids`.
         let mut body = json!({
             "urls": urls,
             "text": true,

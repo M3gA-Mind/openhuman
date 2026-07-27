@@ -68,6 +68,31 @@ fn search_schema_exposes_the_exa_filters() {
 }
 
 #[test]
+fn search_type_enum_matches_exa_current_search_modes() {
+    // Exa's documented modes, fastest to most thorough. `neural` / `keyword`
+    // are legacy spellings and must not be advertised to the agent.
+    let schema = search_tool().parameters_schema();
+    let modes = schema["properties"]["type"]["enum"]
+        .as_array()
+        .expect("type enum")
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        modes,
+        vec![
+            "auto",
+            "instant",
+            "fast",
+            "deep-lite",
+            "deep",
+            "deep-reasoning"
+        ]
+    );
+}
+
+#[test]
 fn search_body_maps_snake_case_args_to_exa_camel_case() {
     let tool = search_tool_with_key();
     let body = tool.build_body(
@@ -327,6 +352,87 @@ async fn non_success_status_does_not_expose_the_response_body() {
 
     assert!(message.contains("Exa returned non-2xx status 400 Bad Request"));
     assert!(!message.contains("sensitive query context"));
+}
+
+/// Privacy epic S7 (#4441): `LocalOnly` must refuse every Exa call before any
+/// query or URL reaches api.exa.ai. The base URL points at a port nothing is
+/// listening on, so a request escaping the guard fails the test rather than
+/// silently passing.
+fn local_only() -> crate::openhuman::security::live_policy::TestPrivacyGuard {
+    crate::openhuman::security::live_policy::test_privacy_scope(
+        crate::openhuman::config::PrivacyMode::LocalOnly,
+    )
+}
+
+#[tokio::test]
+async fn search_is_refused_under_local_only_privacy_mode() {
+    let _mode = local_only();
+    let tool = ExaSearchTool::new(
+        Some("test-key".into()),
+        Some("http://127.0.0.1:1".into()),
+        5,
+        15,
+    );
+
+    let result = tool
+        .execute(json!({"query": "private search"}))
+        .await
+        .expect("the block is a tool error, not a transport failure");
+
+    assert!(result.is_error);
+    assert!(
+        result.output().contains("[policy-blocked]"),
+        "got: {}",
+        result.output()
+    );
+    assert!(
+        !result.output().contains("private search"),
+        "the block message must not echo the query: {}",
+        result.output()
+    );
+}
+
+#[tokio::test]
+async fn find_similar_and_get_contents_are_refused_under_local_only() {
+    let _mode = local_only();
+    let base = || Some("http://127.0.0.1:1".to_string());
+
+    let similar = ExaFindSimilarTool::new(Some("k".into()), base(), 5, 15)
+        .execute(json!({"url": "https://example.com/seed"}))
+        .await
+        .expect("blocked, not failed");
+    assert!(similar.is_error);
+    assert!(similar.output().contains("[policy-blocked]"));
+
+    let contents = ExaGetContentsTool::new(Some("k".into()), base(), 5, 15)
+        .execute(json!({"urls": ["https://example.com/a"]}))
+        .await
+        .expect("blocked, not failed");
+    assert!(contents.is_error);
+    assert!(contents.output().contains("[policy-blocked]"));
+}
+
+#[test]
+fn markdown_rendering_neutralizes_hostile_titles_and_urls() {
+    // Title and URL are remote, attacker-controlled. An unescaped `]` would
+    // close the link label and let a crafted page inject markdown into the
+    // agent transcript.
+    let client = ExaClient::new(Some("k".into()), None, 5, 15);
+    let results = vec![ExaResultItem {
+        url: "https://example.com/a_(b)".into(),
+        title: Some("Pwned](https://evil.test) [click".into()),
+        ..Default::default()
+    }];
+
+    let out = client.render_markdown(&results, "q", 5);
+
+    // The hostile `]` is escaped, so the label never closes early and the
+    // injected `(https://evil.test)` cannot become a link destination. Bare
+    // parens need no escaping inside a label.
+    assert!(!out.contains("[Pwned](https://evil.test)"));
+    assert!(out.contains(r"[Pwned\](https://evil.test) \[click]"));
+    // Parenthesised URLs survive intact inside an angle-bracket destination.
+    assert!(out.contains("(<https://example.com/a_(b)>)"));
 }
 
 #[tokio::test]
