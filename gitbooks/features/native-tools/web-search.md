@@ -17,7 +17,7 @@ The agent can search the live web on its own. By default this runs on **OpenHuma
 
 ## Search engines
 
-Pick the engine under **Settings → Search engine**. Exactly one engine is active at a time, and that engine owns the canonical `web_search_tool` the agent calls.
+Pick the engine under **Connections → Search**. Exactly one engine is active at a time, and that engine owns the canonical `web_search_tool` the agent calls.
 
 | Engine | Your own API key | Where your queries go |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ Pick the engine under **Settings → Search engine**. Exactly one engine is acti
 | **Parallel** | Required | Straight to the Parallel API with your key. |
 | **Brave** | Required | Straight to the Brave Search API with your key. |
 | **Querit** | Required | Straight to the Querit API with your key. |
-| **Disabled** | Not needed | Nowhere. Search tools are removed from the agent's tool list entirely. |
+| **Disabled** | Not needed | Nowhere. The canonical `web_search_tool` is removed; an independently enabled SearXNG tool remains available. |
 
 Selecting a bring-your-own-key engine without saving a key falls back to managed search, so the agent always has working search. Once a search finishes, the chat timeline names the provider that answered it ("Searched with Exa"), so the managed path is never an unattributed black box.
 
@@ -36,12 +36,12 @@ Managed search is the out-of-the-box path and needs no setup: it is proxied thro
 
 ### Exa (bring your own key)
 
-Prefer to run search on your own Exa account? Grab a key from [exa.ai](https://exa.ai) and paste it under **Settings → Search engine → Exa**. Calls then go straight from your machine to `https://api.exa.ai` with your key and never touch the managed backend. The key is stored encrypted in your OS keyring alongside your other secrets.
+Prefer to run search on your own Exa account? Grab a key from [exa.ai](https://exa.ai) and paste it under **Connections → Search → Exa**. Calls then go straight from your machine to `https://api.exa.ai` with your key and never touch the managed backend. When secret encryption is enabled, OpenHuman stores the key as ciphertext in `config.toml`; the OS keyring protects the master encryption key, not the Exa key itself.
 
 Choosing Exa registers Exa's neural-search family for the agent, on top of the usual `web_search_tool`:
 
 * `exa_search` - ranked pages with URLs, titles, publish dates, and optional page text. Supports search modes from instant to deep reasoning, domain include/exclude filters, a published-date range, and result categories.
-* `exa_find_similar` - pages semantically similar to a URL you already have, for expanding from one good source to comparable ones (competitors, related papers, similar articles).
+* `exa_find_similar` - pages semantically similar to a URL you already have, for expanding from one good source to comparable ones (competitors, related papers, similar articles). This tool uses Exa's deprecated `/findSimilar` endpoint and may change if Exa removes it.
 * `exa_get_contents` - the full crawled contents of one or more URLs, with an optional summary or query-relevant highlights per URL.
 
 You can also select it from `config.toml`:
@@ -54,6 +54,8 @@ engine = "exa"
 api_key = "your-exa-api-key"
 ```
 
+Do not commit a plaintext API key from this example. A key entered directly in `config.toml` remains plaintext until OpenHuman next saves the configuration with secret encryption enabled.
+
 Or via environment:
 
 ```bash
@@ -61,6 +63,8 @@ OPENHUMAN_SEARCH_ENGINE=exa
 EXA_API_KEY=your-exa-api-key
 # OPENHUMAN_EXA_API_KEY is accepted as well
 ```
+
+`OPENHUMAN_EXA_API_KEY` and `EXA_API_KEY` both override `search.exa.api_key`; treat environment-provided keys as sensitive secrets.
 
 ## Self-hosted SearXNG
 
