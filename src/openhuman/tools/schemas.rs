@@ -546,8 +546,12 @@ fn handle_web_search(params: Map<String, Value>) -> ControllerFuture {
         // `web_search` tool does (#5136).
         let provider = crate::openhuman::search::tools::resolve_managed_provider(&resp);
         let payload = json!({ "results": resp.results, "provider": provider });
+        // Log the query's length, never its text: a search query is
+        // user-authored and can carry PII or credentials. This matches the
+        // sibling seltz/querit handlers below, which already log `query_len`.
         let log = vec![format!(
-            "tools.web_search: query=\"{query}\" results={count} provider={provider}"
+            "tools.web_search: query_len={} results={count} provider={provider}",
+            query.chars().count()
         )];
         RpcOutcome::new(payload, log).into_cli_compatible_json()
     })
