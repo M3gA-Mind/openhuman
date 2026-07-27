@@ -2897,6 +2897,8 @@ const GlobalOwnModelSelector = ({
                 </SettingsSelect>
               ) : useManualModelEntry ? (
                 <SettingsTextField
+                  type="text"
+                  mono
                   value={model}
                   aria-label={
                     isAzureProvider
