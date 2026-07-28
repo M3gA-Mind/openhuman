@@ -60,6 +60,13 @@ impl LocalAiService {
         // /api/pull` retried three times before failing opaquely (#5146).
         // The resolver guarantees a non-empty, vision-capable id or a message
         // that says what to configure.
+        // NOTE: this Err arm is defence in depth, not a reachable branch here.
+        // `resolve_vision_model_choice` fails only when no vision model is
+        // configured, and that same condition makes `vision_mode_for_config`
+        // report `Disabled` (a blank `vision_model_id` cannot match any
+        // vision-enabled preset, so the tier resolves to `Custom` -> Disabled),
+        // which returns above. The empty case is covered directly in
+        // `model_ids::tests::resolve_vision_model_id_errors_when_unconfigured`.
         let choice = match model_ids::resolve_vision_model_choice(config) {
             Ok(choice) => choice,
             Err(error) => {
@@ -562,34 +569,6 @@ mod tests {
         assert!(
             err.contains("ollama pull"),
             "error should say how to install it: {err}"
-        );
-        assert_eq!(service.status.lock().vision_state, "missing");
-    }
-
-    /// The resolver-failure branch: vision is enabled for the tier but no
-    /// vision model is configured, so the request is refused before any HTTP
-    /// call with a message naming the key to set.
-    #[tokio::test]
-    async fn vision_prompt_reports_an_unconfigured_vision_model() {
-        let _guard = crate::openhuman::inference::inference_test_guard();
-
-        let mut config = enabled_config();
-        config.local_ai.vision_model_id = String::new();
-        let service = ready_service(&config);
-
-        let err = service
-            .vision_prompt(
-                &config,
-                "describe",
-                &["data:image/png;base64,QUJD".to_string()],
-                None,
-            )
-            .await
-            .expect_err("an unconfigured vision model must fail");
-
-        assert!(
-            err.contains("vision_model_id"),
-            "error should name the key to set: {err}"
         );
         assert_eq!(service.status.lock().vision_state, "missing");
     }
