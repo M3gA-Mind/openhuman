@@ -10,9 +10,12 @@
 # Env:
 #   APPIMAGE_RUNTIME_SMOKE — set to 1 to require the bounded Xvfb startup smoke;
 #                            otherwise only static final-artifact checks run
-#   APPIMAGE_RUNTIME_APPARMOR_USERNS — set to 1 on Ubuntu 24.04 CI to load a
-#                            temporary, per-executable AppArmor profile granting
-#                            Chromium's sandbox access to user namespaces
+#   APPIMAGE_RUNTIME_APPARMOR_USERNS — set to 1 on Ubuntu 24.04 CI to give
+#                            Chromium's sandbox access to user namespaces for
+#                            the smoke window: relaxes
+#                            kernel.apparmor_restrict_unprivileged_userns (and
+#                            restores it afterwards) and loads a temporary,
+#                            per-executable AppArmor profile
 
 set -euo pipefail
 
@@ -208,6 +211,67 @@ smoke_extracted_apprun() {
   echo "[appimage-runtime] Application remained alive for the 15-second startup window"
 }
 
+# Ubuntu 23.10+ (the hosted ubuntu-24.04 runner included) sets
+# `kernel.apparmor_restrict_unprivileged_userns=1`, which denies unprivileged
+# user-namespace creation to every *unconfined* process on the box. Chromium's
+# zygote needs one, so CEF aborts during startup with
+# `FATAL:zygote_host_impl_linux.cc] No usable sandbox!` and the smoke sees exit
+# 133 (SIGTRAP) instead of the expected 124 (still alive at the timeout).
+#
+# `install_smoke_userns_profile` below is Chromium's second documented remedy —
+# a per-executable AppArmor profile carrying `userns,`. It loads successfully
+# but never takes effect here, because the profile attaches by execve path and
+# the sharun launcher runs the app through the AppDir's bundled dynamic loader
+# rather than exec'ing `shared/bin/OpenHuman` directly (Chromium then re-execs
+# `/proc/self/exe` for the zygote). Toggling the sysctl is Chromium's first
+# documented remedy and is path-independent, so it cannot miss the way the
+# profile attachment does. The AppArmor profile is retained alongside it: it is
+# harmless, and it keeps the narrower per-executable grant in place for hosts
+# where the sysctl is unavailable.
+#
+# The original value is restored after the smoke window so the runner is left
+# exactly as it was found.
+SMOKE_USERNS_SYSCTL="kernel.apparmor_restrict_unprivileged_userns"
+
+smoke_userns_sysctl_value() {
+  sysctl -n "$SMOKE_USERNS_SYSCTL" 2>/dev/null || true
+}
+
+relax_smoke_userns_restriction() {
+  local previous_file="$1"
+  local current
+  current="$(smoke_userns_sysctl_value)"
+
+  if [ -z "$current" ]; then
+    echo "[appimage-runtime] $SMOKE_USERNS_SYSCTL is absent; unprivileged user namespaces are already unrestricted"
+    return 0
+  fi
+  if [ "$current" = "0" ]; then
+    echo "[appimage-runtime] $SMOKE_USERNS_SYSCTL is already 0; leaving it unchanged"
+    return 0
+  fi
+
+  command -v sudo >/dev/null 2>&1 \
+    || { runtime_validation_error "sudo is required to relax $SMOKE_USERNS_SYSCTL for the AppImage smoke"; return 1; }
+  sudo --non-interactive sysctl -q -w "$SMOKE_USERNS_SYSCTL=0" \
+    || { runtime_validation_error "could not relax $SMOKE_USERNS_SYSCTL for the AppImage smoke"; return 1; }
+
+  printf '%s\n' "$current" >"$previous_file"
+  echo "[appimage-runtime] Relaxed $SMOKE_USERNS_SYSCTL: $current -> 0 for the smoke window"
+}
+
+restore_smoke_userns_restriction() {
+  local previous_file="$1"
+  [ -s "$previous_file" ] || return 0
+
+  local previous
+  previous="$(cat "$previous_file")"
+  rm -f "$previous_file"
+  sudo --non-interactive sysctl -q -w "$SMOKE_USERNS_SYSCTL=$previous" \
+    || { runtime_validation_error "could not restore $SMOKE_USERNS_SYSCTL to $previous"; return 1; }
+  echo "[appimage-runtime] Restored $SMOKE_USERNS_SYSCTL to $previous"
+}
+
 install_smoke_userns_profile() {
   local appdir="$1"
   local profile_file="$2"
@@ -248,6 +312,8 @@ smoke_extracted_apprun_with_userns() {
   local log_file="$3"
   local profile_file="$4"
   local profile_loaded=0
+  # Derived rather than passed so the four-argument contract is unchanged.
+  local userns_sysctl_file="$profile_file.sysctl"
   local previous_hup_trap previous_int_trap previous_term_trap
   previous_hup_trap="$(trap -p HUP)"
   previous_int_trap="$(trap -p INT)"
@@ -266,6 +332,8 @@ smoke_extracted_apprun_with_userns() {
       remove_smoke_userns_profile "$profile_file" \
         || echo "[appimage-runtime] ERROR: AppArmor cleanup failed after smoke interruption" >&2
     fi
+    restore_smoke_userns_restriction "$userns_sysctl_file" \
+      || echo "[appimage-runtime] ERROR: $SMOKE_USERNS_SYSCTL restore failed after smoke interruption" >&2
   }
 
   interrupt_smoke_with_userns() {
@@ -278,7 +346,15 @@ smoke_extracted_apprun_with_userns() {
   trap 'interrupt_smoke_with_userns 130' INT
   trap 'interrupt_smoke_with_userns 143' TERM
 
+  rm -f "$userns_sysctl_file"
+  if ! relax_smoke_userns_restriction "$userns_sysctl_file"; then
+    restore_smoke_signal_traps
+    return 1
+  fi
+
   if ! install_smoke_userns_profile "$appdir" "$profile_file"; then
+    restore_smoke_userns_restriction "$userns_sysctl_file" \
+      || echo "[appimage-runtime] ERROR: $SMOKE_USERNS_SYSCTL restore failed after AppArmor setup failure" >&2
     restore_smoke_signal_traps
     return 1
   fi
@@ -299,10 +375,18 @@ smoke_extracted_apprun_with_userns() {
     remove_status=$?
   fi
 
+  local restore_status
+  if restore_smoke_userns_restriction "$userns_sysctl_file"; then
+    restore_status=0
+  else
+    restore_status=$?
+  fi
+
   restore_smoke_signal_traps
-  # Preserve the original smoke failure even if profile cleanup also fails.
+  # Preserve the original smoke failure even if cleanup also fails.
   [ "$smoke_status" -eq 0 ] || return "$smoke_status"
-  return "$remove_status"
+  [ "$remove_status" -eq 0 ] || return "$remove_status"
+  return "$restore_status"
 }
 
 validate_final_appimage() (
