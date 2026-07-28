@@ -52,9 +52,51 @@ impl LocalAiService {
             );
         }
         self.bootstrap(config).await;
-        let vision_model = model_ids::effective_vision_model_id(config);
-        self.ensure_ollama_model_available(config, &vision_model, "vision")
-            .await?;
+
+        // Resolve through `resolve_vision_model_id` rather than
+        // `effective_vision_model_id`: the latter returns an empty string when
+        // no vision model is configured, which used to be handed straight to
+        // `ensure_ollama_model_available` and became a nameless `POST
+        // /api/pull` retried three times before failing opaquely (#5146).
+        // The resolver guarantees a non-empty, vision-capable id or a message
+        // that says what to configure.
+        let vision_model = match model_ids::resolve_vision_model_id(config) {
+            Ok(model) => model,
+            Err(error) => {
+                self.status.lock().vision_state = "missing".to_string();
+                tracing::warn!(
+                    target: "local_ai::vision",
+                    %error,
+                    "[local_ai:vision] no vision-capable model resolved; refusing request"
+                );
+                return Err(error);
+            }
+        };
+        tracing::debug!(
+            target: "local_ai::vision",
+            model = %vision_model,
+            "[local_ai:vision] resolved vision-capable model"
+        );
+
+        // A model that is configured but not pulled (and cannot be pulled)
+        // must also read as a vision problem, not a generic pull failure.
+        if let Err(error) = self
+            .ensure_ollama_model_available(config, &vision_model, "vision")
+            .await
+        {
+            self.status.lock().vision_state = "missing".to_string();
+            tracing::warn!(
+                target: "local_ai::vision",
+                model = %vision_model,
+                %error,
+                "[local_ai:vision] vision model unavailable"
+            );
+            return Err(format!(
+                "local vision model `{vision_model}` is not available: {error}. \
+                 Pull it with `ollama pull {vision_model}`, or route the vision \
+                 workload to a cloud provider with `vision_provider`."
+            ));
+        }
 
         let images: Vec<String> = image_refs
             .iter()
