@@ -158,6 +158,52 @@ smoke_extracted_apprun() {
     [ -n "$secret_name" ] && unset_args+=(-u "$secret_name")
   done < <(compgen -v OPENAI_ || true)
 
+  # ── D-Bus session bus for the smoke window ─────────────────────────────────
+  #
+  # A real desktop user always launches the AppImage inside a session that has a
+  # D-Bus session bus; a CI runner does not. `tauri-plugin-single-instance` calls
+  # `zbus::blocking::connection::Builder::session().unwrap()` in its `setup()`,
+  # so with no usable bus it panics before any window exists:
+  #
+  #   thread 'main' panicked at plugins/single-instance/src/platform_impl/linux.rs:57
+  #   called `Result::unwrap()` on an `Err` value:
+  #     Address("unsupported transport 'disabled'")
+  #
+  # ...which is exactly how the Release Production ubuntu smoke failed (exit 101,
+  # actions/runs/30393949588). Chromium logs the same underlying condition as
+  # "Failed to connect to the bus: Could not parse server address".
+  #
+  # `app/scripts/e2e-run-session.sh` already solves this for the desktop e2e
+  # runner by starting a bus with `dbus-launch`; the AppImage smoke never got the
+  # same treatment. Wrapping in `dbus-run-session` is the modern equivalent and
+  # needs no explicit teardown — the bus dies with the wrapped command, so the
+  # 15s `timeout` still bounds everything.
+  #
+  # Echo the inherited value first: whether it arrives as `disabled`, `disabled:`
+  # or unset changes which code path the app takes, and the failing log gave us
+  # no way to tell.
+  echo "[appimage-runtime] Inherited DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-<unset>}"
+
+  # Always drop the inherited value: the wrapper below supplies a real one, and
+  # if no wrapper is available a poisoned `disabled` must not reach the app —
+  # with the variable absent the app's own `can_register_single_instance_plugin()`
+  # probe falls back to inspecting `$XDG_RUNTIME_DIR/bus`, whereas the literal
+  # string `disabled` is precisely what zbus refuses to parse.
+  unset_args+=(-u DBUS_SESSION_BUS_ADDRESS)
+
+  local -a dbus_wrapper=()
+  if command -v dbus-run-session >/dev/null 2>&1; then
+    dbus_wrapper=(dbus-run-session --)
+    echo "[appimage-runtime] Providing a session bus via dbus-run-session"
+  elif command -v dbus-launch >/dev/null 2>&1; then
+    # Older images ship dbus-launch (from dbus-x11) but not dbus-run-session.
+    dbus_wrapper=(dbus-launch --exit-with-session)
+    echo "[appimage-runtime] Providing a session bus via dbus-launch"
+  else
+    echo "[appimage-runtime] WARNING: neither dbus-run-session nor dbus-launch found;" \
+      "smoking without a session bus (single-instance will be skipped)"
+  fi
+
   local status
   if (
     cd "$foreign_cwd"
@@ -170,6 +216,7 @@ smoke_extracted_apprun() {
         XDG_CACHE_HOME="$smoke_cache" \
         OPENHUMAN_CEF_PREWARM=0 \
         OPENHUMAN_DISABLE_GPU=1 \
+        ${dbus_wrapper[@]+"${dbus_wrapper[@]}"} \
         "$appdir/AppRun"
   ) >"$log_file" 2>&1; then
     status=0
@@ -195,6 +242,17 @@ smoke_extracted_apprun() {
   fi
   if grep -Eiq 'error while loading shared libraries' "$log_file"; then
     forbidden=1
+  fi
+
+  # Name this failure explicitly. It exits 101 like any other Rust panic, and the
+  # generic "status 101" message sent the last investigation looking at the
+  # non-fatal `libcef.so => not found` ldd lines instead of the actual cause.
+  if grep -Eq "unsupported transport 'disabled'|single-instance/src/platform_impl/linux\.rs" \
+    "$log_file"; then
+    forbidden=1
+    echo "[appimage-runtime] Detected the single-instance D-Bus panic — the smoke" \
+      "environment has no usable session bus. Check the dbus-run-session wrapper" \
+      "above and that 'dbus'/'dbus-x11' are installed on the runner." >&2
   fi
 
   # The desktop process is expected to remain alive until timeout ends the
