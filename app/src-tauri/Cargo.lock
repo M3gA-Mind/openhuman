@@ -3690,11 +3690,9 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "socket2",
- "system-configuration",
  "tokio",
  "tower-service",
  "tracing",
- "windows-registry",
 ]
 
 [[package]]
@@ -4764,9 +4762,7 @@ dependencies = [
 
 [[package]]
 name = "motosan-ai-oauth"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16994a67367076b08479af83ca05503c4d423fc6631f849fb92fa787956ad557"
+version = "0.2.1"
 dependencies = [
  "base64 0.22.1",
  "percent-encoding",
@@ -5544,7 +5540,6 @@ dependencies = [
  "chrono-tz",
  "clap",
  "coins-bip39",
- "console",
  "cpal",
  "cron",
  "curve25519-dalek",
@@ -5569,7 +5564,6 @@ dependencies = [
  "hostname",
  "hound",
  "iana-time-zone",
- "image",
  "keyring",
  "lettre",
  "libc",
@@ -5590,16 +5584,13 @@ dependencies = [
  "ring",
  "rusqlite",
  "rustls",
- "rustls-pki-types",
  "schemars 1.2.1",
  "sentry",
  "serde",
  "serde_json",
  "serde_repr",
  "serde_yaml",
- "sha1",
  "sha2 0.10.9",
- "similar",
  "socketioxide",
  "starship-battery",
  "sysinfo",
@@ -5614,7 +5605,6 @@ dependencies = [
  "tinyjuice",
  "tinyplace",
  "tokio",
- "tokio-rustls",
  "tokio-stream",
  "tokio-tungstenite 0.24.0",
  "tokio-util",
@@ -5628,7 +5618,6 @@ dependencies = [
  "uuid 1.23.1",
  "wait-timeout",
  "walkdir",
- "webpki-roots 1.0.7",
  "whisper-rs",
  "windows-sys 0.61.2",
  "x25519-dalek",
@@ -6523,7 +6512,6 @@ version = "0.11.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e"
 dependencies = [
- "aws-lc-rs",
  "bytes",
  "getrandom 0.3.4",
  "lru-slab",
@@ -6844,7 +6832,6 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64 0.22.1",
  "bytes",
- "encoding_rs",
  "futures-channel",
  "futures-core",
  "futures-util",
@@ -6858,7 +6845,6 @@ dependencies = [
  "hyper-util",
  "js-sys",
  "log",
- "mime",
  "mime_guess",
  "native-tls",
  "percent-encoding",
@@ -6893,10 +6879,8 @@ checksum = "04e9018c9d814e5f30cc16a0f03271aeab3571e609612d9fe78c1aa8d11c2f62"
 dependencies = [
  "base64 0.22.1",
  "bytes",
- "futures-channel",
  "futures-core",
  "futures-util",
- "h2",
  "http",
  "http-body",
  "http-body-util",
@@ -6907,7 +6891,6 @@ dependencies = [
  "log",
  "percent-encoding",
  "pin-project-lite",
- "quinn",
  "rustls",
  "rustls-pki-types",
  "rustls-platform-verifier",
@@ -7491,16 +7474,12 @@ checksum = "eb25f439f97d26fea01d717fa626167ceffcd981addaa670001e70505b72acbb"
 dependencies = [
  "cfg_aliases",
  "httpdate",
- "reqwest 0.13.1",
- "rustls",
  "sentry-backtrace",
  "sentry-contexts",
  "sentry-core",
  "sentry-debug-images",
  "sentry-panic",
  "sentry-tracing",
- "tokio",
- "ureq",
 ]
 
 [[package]]
@@ -7885,12 +7864,6 @@ name = "simd-adler32"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214"
-
-[[package]]
-name = "similar"
-version = "2.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
 
 [[package]]
 name = "simplecss"
@@ -8323,27 +8296,6 @@ dependencies = [
  "memchr",
  "ntapi",
  "windows 0.57.0",
-]
-
-[[package]]
-name = "system-configuration"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a13f3d0daba03132c0aa9767f98351b3488edc2c100cda2d2ec2b04f3d8d3c8b"
-dependencies = [
- "bitflags 2.11.1",
- "core-foundation 0.9.4",
- "system-configuration-sys",
-]
-
-[[package]]
-name = "system-configuration-sys"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e1d1b10ced5ca923a1fcb8d03e96b8d3268065d724548c0211415ff6ac6bac4"
-dependencies = [
- "core-foundation-sys 0.8.7",
- "libc",
 ]
 
 [[package]]
@@ -9077,7 +9029,6 @@ dependencies = [
 [[package]]
 name = "tinyhumans-sdk"
 version = "0.1.0"
-source = "git+https://github.com/tinyhumansai/sdk.git?rev=3ee4123ba3b7a76c5f167d7bc2c72fca86671292#3ee4123ba3b7a76c5f167d7bc2c72fca86671292"
 dependencies = [
  "base64 0.22.1",
  "percent-encoding",
