@@ -2313,10 +2313,7 @@ const CustomRoutingDialog = ({
                   placeholder="sonnet"
                 />
                 <p className="text-[11px] text-content-muted">
-                  A model id the <code>claude</code> CLI accepts — an alias (<code>sonnet</code>,{' '}
-                  <code>opus</code>) or full name (<code>claude-sonnet-4-5</code>). Passed verbatim
-                  to <code>claude --model</code>; marketing strings like <code>sonnet-4-5</code> are
-                  rejected.
+                  {t('settings.ai.claudeCode.modelHelp')}
                 </p>
               </div>
             ) : (
@@ -3782,10 +3779,22 @@ const CloudProviderEditor = ({
         ? t('settings.ai.slugReservedError')
         : null;
   const hasExistingKey = (initial?.maskedKey ?? '').startsWith('••••');
+  // Skipping verification is a bet that the provider works despite an
+  // unreadable listing. For an Azure host that is not the `/openai/v1` base
+  // that bet is already lost: `{base}/chat/completions` is not a route Azure
+  // serves there and the stored bearer auth is the wrong header, so the entry
+  // would be dead on arrival. Withhold the bypass and let the inline nudge do
+  // its job instead of manufacturing a broken provider (#5213).
+  const knownUnusableEndpoint =
+    isAzureFoundryEndpoint(endpoint) && !isAzureV1BaseUrl(endpoint.trim());
 
   const submitProvider = async (opts?: { skipProbe?: boolean }) => {
     setSaving(true);
     setSubmitError(null);
+    // Cleared alongside the error: a later attempt that fails for an unrelated
+    // reason (slug collision, key write) must not still offer to skip
+    // verification, which is the distinction `ProviderProbeError` exists for.
+    setProbeFailed(false);
     try {
       if (slugError) {
         throw new Error(slugError);
@@ -3887,7 +3896,7 @@ const CloudProviderEditor = ({
                 with. The older `api-version` surface wants an `api-key` header
                 and no `/models`, so a user who pastes the portal's bare
                 resource URL fails both the probe and inference (#5213). */}
-            {isAzureFoundryEndpoint(endpoint) && !isAzureV1BaseUrl(endpoint) && (
+            {knownUnusableEndpoint && (
               <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
                 {t('settings.ai.azureV1EndpointHint')}
               </div>
@@ -3926,8 +3935,9 @@ const CloudProviderEditor = ({
           </div>
           {submitError ? <ProviderSetupErrorNotice error={submitError} /> : null}
           {/* A failed verification is not a failed provider. Explain what the
-              probe does and does not prove, then let the user proceed (#5213). */}
-          {probeFailed ? (
+              probe does and does not prove, then let the user proceed (#5213).
+              Withheld for an endpoint we already know cannot serve inference. */}
+          {probeFailed && !knownUnusableEndpoint ? (
             <p className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
               {t('settings.ai.probeFailedHint')}
             </p>
@@ -3937,7 +3947,7 @@ const CloudProviderEditor = ({
           <Button variant="secondary" size="xs" onClick={onClose} disabled={saving}>
             {t('common.cancel')}
           </Button>
-          {probeFailed ? (
+          {probeFailed && !knownUnusableEndpoint ? (
             <Button
               variant="secondary"
               size="xs"

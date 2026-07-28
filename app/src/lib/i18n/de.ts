@@ -4714,6 +4714,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'Anmeldestatus unbekannt',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Verbunden · nicht angemeldet',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'Eine Modell-ID, die die claude-CLI akzeptiert: ein Alias (sonnet, opus) oder ein vollständiger Name (claude-sonnet-4-5). Sie wird unverändert an claude --model übergeben, Marketingnamen wie sonnet-4-5 werden daher abgelehnt.',
   'settings.ai.claudeCode.modalDescription':
     'Leitet Chat-, Agenten- und Reasoning-Aufgaben über deine lokal installierte Claude Code CLI. Kein API-Schlüssel: sie nutzt die eigene Anmeldung der CLI.',
   'settings.ai.claudeCode.close': 'Schließen',

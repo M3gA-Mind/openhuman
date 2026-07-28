@@ -4625,6 +4625,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'Состояние входа неизвестно',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Подключено · вход не выполнен',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'Идентификатор модели, который принимает CLI claude: псевдоним (sonnet, opus) или полное имя (claude-sonnet-4-5). Значение передаётся в claude --model без изменений, поэтому маркетинговые названия вроде sonnet-4-5 отклоняются.',
   'settings.ai.claudeCode.modalDescription':
     'Направляет задачи чата, агентные и рассуждающие нагрузки через локально установленный Claude Code CLI. Без ключа API: используется собственный вход CLI.',
   'settings.ai.claudeCode.close': 'Закрыть',

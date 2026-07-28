@@ -4533,6 +4533,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': '로그인 상태 알 수 없음',
   'settings.ai.claudeCode.connectedNotSignedIn': '연결됨 · 로그인되지 않음',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'claude CLI가 허용하는 모델 ID입니다. 별칭(sonnet, opus) 또는 전체 이름(claude-sonnet-4-5)을 쓸 수 있습니다. 값은 claude --model에 그대로 전달되므로 sonnet-4-5 같은 마케팅 이름은 거부됩니다.',
   'settings.ai.claudeCode.modalDescription':
     '채팅, 에이전트, 추론 작업을 로컬에 설치된 Claude Code CLI를 통해 라우팅합니다. API 키가 필요 없으며 CLI 자체 로그인을 사용합니다.',
   'settings.ai.claudeCode.close': '닫기',

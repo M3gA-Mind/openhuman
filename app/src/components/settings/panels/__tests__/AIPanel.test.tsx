@@ -539,10 +539,9 @@ describe('AIPanel', () => {
 
   it('still lets a provider be added when the live /models probe fails', async () => {
     // Regression: the `{base}/models` probe used to be a hard gate on creating
-    // a provider. Azure's classic `api-version` surface does not serve an
-    // OpenAI-shaped listing at all, so those users could never create the
-    // connection — which put the deployment-name field permanently out of
-    // reach. The probe now informs, it does not block.
+    // a provider. A gateway that serves no OpenAI-shaped listing could never be
+    // connected at all, which put the model / deployment-name field permanently
+    // out of reach. The probe now informs, it does not block.
     vi.mocked(loadAISettings).mockResolvedValue(baseSettings);
     vi.mocked(listProviderModels).mockRejectedValue(
       new Error('provider returned 404: no /models endpoint')
@@ -555,7 +554,7 @@ describe('AIPanel', () => {
       target: { value: 'Azure Foundry' },
     });
     fireEvent.change(screen.getByPlaceholderText('https://api.openai.com/v1'), {
-      target: { value: 'https://my-resource.openai.azure.com/openai' },
+      target: { value: 'https://my-resource.openai.azure.com/openai/v1' },
     });
 
     fireEvent.click(screen.getByRole('button', { name: /^Add Provider$/i }));
@@ -571,6 +570,38 @@ describe('AIPanel', () => {
     await waitFor(() => expect(saveAISettings).toHaveBeenCalled());
     const [, nextSettings] = vi.mocked(saveAISettings).mock.calls.at(-1) ?? [];
     expect(nextSettings?.cloudProviders.map(p => p.slug)).toContain('azure-foundry');
+  });
+
+  it('withholds the verification bypass for a legacy Azure base URL', async () => {
+    // Skipping verification is a bet that the provider works anyway. On an
+    // Azure host that is not the `/openai/v1` base that bet is already lost:
+    // `{base}/chat/completions` is not a route Azure serves there and the
+    // stored bearer auth is the wrong header. Offering the bypass would just
+    // manufacture a dead provider, so the nudge has to be followed instead.
+    vi.mocked(loadAISettings).mockResolvedValue(baseSettings);
+    vi.mocked(listProviderModels).mockRejectedValue(
+      new Error('provider returned 404: no /models endpoint')
+    );
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add Custom Provider/i }));
+
+    fireEvent.change(await screen.findByPlaceholderText('My Provider'), {
+      target: { value: 'Azure Legacy' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('https://api.openai.com/v1'), {
+      target: { value: 'https://my-resource.openai.azure.com/openai' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Add Provider$/i }));
+
+    expect(await screen.findByText(/use the v1 base URL/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: /Add without verifying/i })
+      ).not.toBeInTheDocument()
+    );
+    expect(saveAISettings).not.toHaveBeenCalled();
   });
 
   it('nudges an Azure endpoint that is not the v1 base towards /openai/v1', async () => {
@@ -634,6 +665,70 @@ describe('AIPanel', () => {
     expect(
       screen.queryByRole('button', { name: /Add without verifying/i })
     ).not.toBeInTheDocument();
+  });
+
+  it('does not offer to skip verification when the key write is what failed', async () => {
+    // The slug case above never reaches `submitProvider`'s catch. This one
+    // does: the credential write rejects, so the failure travels the same path
+    // as a probe rejection but must not be mistaken for one — only a typed
+    // `ProviderProbeError` unlocks the bypass.
+    vi.mocked(loadAISettings).mockResolvedValue(baseSettings);
+    vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-4o' }]);
+    vi.mocked(setCloudProviderKey).mockRejectedValueOnce(new Error('keyring is locked'));
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add Custom Provider/i }));
+
+    fireEvent.change(await screen.findByPlaceholderText('My Provider'), {
+      target: { value: 'Azure Foundry' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('https://api.openai.com/v1'), {
+      target: { value: 'https://my-resource.openai.azure.com/openai/v1' },
+    });
+    fireEvent.change(screen.getByLabelText(/API Key/i), { target: { value: 'sk-test-key' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Add Provider$/i }));
+
+    expect(await screen.findByText(/keyring is locked/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Add without verifying/i })
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/could not read this provider/i)).not.toBeInTheDocument();
+    expect(saveAISettings).not.toHaveBeenCalled();
+  });
+
+  it('clears the verification bypass once a later attempt fails for another reason', async () => {
+    // `probeFailed` used to persist for the dialog's lifetime, so a probe
+    // rejection left "Add without verifying" on screen even after the next
+    // attempt failed for an unrelated reason.
+    vi.mocked(loadAISettings).mockResolvedValue(baseSettings);
+    vi.mocked(listProviderModels).mockRejectedValueOnce(new Error('provider returned 404'));
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add Custom Provider/i }));
+
+    fireEvent.change(await screen.findByPlaceholderText('My Provider'), {
+      target: { value: 'Azure Foundry' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('https://api.openai.com/v1'), {
+      target: { value: 'https://my-resource.openai.azure.com/openai/v1' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Add Provider$/i }));
+    expect(
+      await screen.findByRole('button', { name: /Add without verifying/i })
+    ).toBeInTheDocument();
+
+    // Second attempt: the probe would now succeed, but the key write rejects.
+    vi.mocked(setCloudProviderKey).mockRejectedValueOnce(new Error('keyring is locked'));
+    fireEvent.change(screen.getByLabelText(/API Key/i), { target: { value: 'sk-test-key' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Add Provider$/i }));
+
+    expect(await screen.findByText(/keyring is locked/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: /Add without verifying/i })
+      ).not.toBeInTheDocument()
+    );
   });
 
   it('offers a deployment-name field in the per-workload custom routing dialog', async () => {

@@ -4586,6 +4586,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'সাইন-ইন অবস্থা অজানা',
   'settings.ai.claudeCode.connectedNotSignedIn': 'সংযুক্ত · সাইন-ইন করা হয়নি',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'claude CLI যে মডেল আইডি গ্রহণ করে: একটি উপনাম (sonnet, opus) বা পূর্ণ নাম (claude-sonnet-4-5)। এটি হুবহু claude --model-এ পাঠানো হয়, তাই sonnet-4-5-এর মতো বিপণন নাম গ্রহণ করা হয় না।',
   'settings.ai.claudeCode.modalDescription':
     'চ্যাট, এজেন্টিক ও যুক্তিনির্ভর কাজগুলো আপনার স্থানীয়ভাবে ইনস্টল করা Claude Code CLI-এর মাধ্যমে রুট করে। কোনো API কী লাগে না: এটি CLI-এর নিজস্ব লগইন ব্যবহার করে।',
   'settings.ai.claudeCode.close': 'বন্ধ করুন',

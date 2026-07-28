@@ -4340,6 +4340,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': '登录状态未知',
   'settings.ai.claudeCode.connectedNotSignedIn': '已连接 · 未登录',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'claude 命令行接受的模型 ID：别名（sonnet、opus）或完整名称（claude-sonnet-4-5）。该值会原样传给 claude --model，因此 sonnet-4-5 这类营销名称会被拒绝。',
   'settings.ai.claudeCode.modalDescription':
     '通过你本地安装的 Claude Code CLI 路由聊天、智能体和推理任务。无需 API 密钥：它使用 CLI 自身的登录。',
   'settings.ai.claudeCode.close': '关闭',

@@ -4600,6 +4600,8 @@ const messages: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'Status masuk tidak diketahui',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Terhubung · belum masuk',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'ID model yang diterima CLI claude: sebuah alias (sonnet, opus) atau nama lengkap (claude-sonnet-4-5). Nilainya diteruskan apa adanya ke claude --model, sehingga nama pemasaran seperti sonnet-4-5 akan ditolak.',
   'settings.ai.claudeCode.modalDescription':
     'Merutekan beban kerja obrolan, agentik, dan penalaran melalui Claude Code CLI yang terpasang secara lokal. Tanpa kunci API: menggunakan login milik CLI itu sendiri.',
   'settings.ai.claudeCode.close': 'Tutup',
