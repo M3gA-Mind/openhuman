@@ -106,6 +106,21 @@ embeddings_provider = "ollama:bge-m3"
 
 The full set of workload fields is `chat_provider`, `reasoning_provider`, `agentic_provider`, `coding_provider`, `vision_provider`, `memory_provider`, `embeddings_provider`, `heartbeat_provider`, `learning_provider`, and `subconscious_provider`. Any field left unset, blank, or set to `cloud` stays on the default route.
 
+#### Attaching images in chat needs one more flag
+
+`vision_provider` routes the **vision workload** — image summaries and the OCR/description path. It does not by itself let you attach an image to a chat or agent turn.
+
+A turn only rehydrates image attachments when the resolved chat model is known to accept them, and for a local model that knowledge comes from the per-model registry, not from `vision_provider`. Set the model's **vision** flag in Settings → AI (the custom-model dialog), which records it in `model_registry`:
+
+```toml
+[[model_registry]]
+id = "gemma3:4b-it-qat"
+provider = "ollama"
+vision = true
+```
+
+Without that flag the images are stripped before dispatch and the model answers from the text alone — fluently, and with no indication that it never saw the picture.
+
 See [Local AI (optional)](local-ai.md) for the deeper runtime detail, LM Studio setup, and troubleshooting.
 
 ## Route B: bring your own key

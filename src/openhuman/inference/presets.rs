@@ -481,6 +481,16 @@ mod tests {
                     );
                     continue;
                 }
+                // `bge-m3` is deliberately exempt rather than retagged to
+                // `bge-m3:latest` (greptile, #5253). The bare id is the
+                // canonical spelling across the embedding stack: it is the
+                // entry in `model_ids::MVP_ALLOWED_EMBEDDING_MODELS`, the
+                // `embeddings::catalog` id, and what `normalize_embed_model_id`
+                // collapses `bge-m3:latest` *to*. Retagging the preset alone
+                // would be silently rewritten back by
+                // `enforce_mvp_embedding_allowlist`; retagging all of them is a
+                // cross-cutting rename that must also migrate configs already
+                // persisting `bge-m3` - disproportionate to a cosmetic tag.
                 assert!(
                     id.contains(':') || id == "bge-m3",
                     "preset {:?} {field} model `{id}` must be a fully-qualified \

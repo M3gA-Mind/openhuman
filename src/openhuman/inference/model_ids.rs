@@ -175,7 +175,7 @@ fn raw_chat_model_id(config: &Config) -> String {
 ///
 /// An empty return means "vision is not configured" and is a legitimate
 /// state (the low tiers ship no vision model). A non-empty return is
-/// **always** a vision-capable id. Call [`resolve_vision_model_id`] instead
+/// **always** a vision-capable id. Call [`resolve_vision_model_choice`] instead
 /// when about to issue an actual vision request — it turns the
 /// not-configured case into an actionable error rather than an empty string
 /// that downstream code would send to Ollama verbatim.
@@ -193,12 +193,26 @@ pub(crate) fn effective_vision_model_id(config: &Config) -> String {
     enforce_vision_capability(resolved)
 }
 
-/// Resolve the vision model for a real vision request.
+/// The vision model a request will actually use, plus what it displaced.
+pub(crate) struct VisionModelChoice {
+    /// The vision-capable model id to send to Ollama.
+    pub(crate) model: String,
+    /// The configured id that was swapped out because it is chat-only.
+    ///
+    /// `Some` means the user asked for one model and is getting another, which
+    /// every downstream *error* must say out loud: a bare "`moondream:...` is
+    /// not available, pull it" is actively misleading when the user configured
+    /// `gemma3:1b-it-qat` and never mentioned moondream (greptile, #5253).
+    pub(crate) replaced: Option<String>,
+}
+
+/// Resolve the vision model for a real vision request, reporting any
+/// capability substitution.
 ///
 /// Never returns an empty id: when no vision model is configured the caller
 /// gets a message naming what to set and which models to pull, instead of
 /// silently shipping an empty model name to Ollama (#5146 §Part 1).
-pub(crate) fn resolve_vision_model_id(config: &Config) -> Result<String, String> {
+pub(crate) fn resolve_vision_model_choice(config: &Config) -> Result<VisionModelChoice, String> {
     let resolved = effective_vision_model_id(config);
     if resolved.trim().is_empty() {
         let suggestions = VISION_MODEL_SUGGESTIONS.join("`, `");
@@ -210,7 +224,20 @@ pub(crate) fn resolve_vision_model_id(config: &Config) -> Result<String, String>
              with `vision_provider`."
         ));
     }
-    Ok(resolved)
+
+    // Report only a *capability* substitution. An alias rewrite (`moondream` ->
+    // the pinned tag) resolves to a different string but is the same model the
+    // user asked for, so it is not something they need to be told about.
+    let configured = config.local_ai.vision_model_id.trim();
+    let replaced = (!configured.is_empty()
+        && !vision_models::is_vision_capable(configured)
+        && !resolved.eq_ignore_ascii_case(configured))
+    .then(|| configured.to_string());
+
+    Ok(VisionModelChoice {
+        model: resolved,
+        replaced,
+    })
 }
 
 pub(crate) fn effective_embedding_model_id(config: &Config) -> String {
@@ -453,7 +480,9 @@ mod tests {
         let mut config = test_config();
         config.local_ai.vision_model_id = String::new();
 
-        let err = resolve_vision_model_id(&config).expect_err("expected a vision error");
+        let err = resolve_vision_model_choice(&config)
+            .err()
+            .expect("expected a vision error");
         assert!(
             err.contains("vision_model_id"),
             "error should name the config key to set: {err}"
@@ -464,19 +493,47 @@ mod tests {
         );
         // Whitespace-only is the same "not configured" state.
         config.local_ai.vision_model_id = "   ".to_string();
-        assert!(resolve_vision_model_id(&config).is_err());
+        assert!(resolve_vision_model_choice(&config).is_err());
     }
 
     #[test]
     fn resolve_vision_model_id_returns_a_vision_capable_model_when_configured() {
         let mut config = test_config();
         config.local_ai.vision_model_id = "llava:7b".to_string();
-        assert_eq!(resolve_vision_model_id(&config).unwrap(), "llava:7b");
+        assert_eq!(
+            resolve_vision_model_choice(&config).unwrap().model,
+            "llava:7b"
+        );
 
         // Even a chat-only configured id resolves to something that can see.
         config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
-        let resolved = resolve_vision_model_id(&config).unwrap();
+        let resolved = resolve_vision_model_choice(&config).unwrap().model;
         assert!(vision_models::is_vision_capable(&resolved));
+    }
+
+    #[test]
+    fn resolve_vision_model_choice_reports_only_capability_substitutions() {
+        let mut config = test_config();
+
+        // A vision-capable id is used as-is, with nothing to report.
+        config.local_ai.vision_model_id = "llava:7b".to_string();
+        let choice = resolve_vision_model_choice(&config).unwrap();
+        assert_eq!(choice.model, "llava:7b");
+        assert_eq!(choice.replaced, None);
+
+        // A chat-only id is replaced, and the configured id is reported so the
+        // caller can explain the swap instead of naming a model out of nowhere.
+        config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
+        let choice = resolve_vision_model_choice(&config).unwrap();
+        assert!(vision_models::is_vision_capable(&choice.model));
+        assert_eq!(choice.replaced.as_deref(), Some("gemma3n:e4b-it-q8_0"));
+
+        // An alias rewrite resolves to a different string but is the same model
+        // the user asked for, so it must not be reported as a substitution.
+        config.local_ai.vision_model_id = "moondream".to_string();
+        let choice = resolve_vision_model_choice(&config).unwrap();
+        assert!(vision_models::is_vision_capable(&choice.model));
+        assert_eq!(choice.replaced, None);
     }
 
     #[test]

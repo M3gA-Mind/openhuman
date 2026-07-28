@@ -53,15 +53,15 @@ impl LocalAiService {
         }
         self.bootstrap(config).await;
 
-        // Resolve through `resolve_vision_model_id` rather than
+        // Resolve through `resolve_vision_model_choice` rather than
         // `effective_vision_model_id`: the latter returns an empty string when
         // no vision model is configured, which used to be handed straight to
         // `ensure_ollama_model_available` and became a nameless `POST
         // /api/pull` retried three times before failing opaquely (#5146).
         // The resolver guarantees a non-empty, vision-capable id or a message
         // that says what to configure.
-        let vision_model = match model_ids::resolve_vision_model_id(config) {
-            Ok(model) => model,
+        let choice = match model_ids::resolve_vision_model_choice(config) {
+            Ok(choice) => choice,
             Err(error) => {
                 self.status.lock().vision_state = "missing".to_string();
                 tracing::warn!(
@@ -72,9 +72,25 @@ impl LocalAiService {
                 return Err(error);
             }
         };
+        let vision_model = choice.model;
+        // A capability substitution means we are about to talk about a model the
+        // user never named. Carry that into the error text so "pull moondream"
+        // cannot read as a non-sequitur to someone who configured gemma3.
+        let substitution_note = choice
+            .replaced
+            .as_deref()
+            .map(|configured| {
+                format!(
+                    " Your configured `{configured}` cannot accept images, so OpenHuman \
+                     selected `{vision_model}` instead; set `local_ai.vision_model_id` to \
+                     a vision-capable model to choose your own."
+                )
+            })
+            .unwrap_or_default();
         tracing::debug!(
             target: "local_ai::vision",
             model = %vision_model,
+            substituted_for = ?choice.replaced,
             "[local_ai:vision] resolved vision-capable model"
         );
 
@@ -88,13 +104,14 @@ impl LocalAiService {
             tracing::warn!(
                 target: "local_ai::vision",
                 model = %vision_model,
+                substituted_for = ?choice.replaced,
                 %error,
                 "[local_ai:vision] vision model unavailable"
             );
             return Err(format!(
                 "local vision model `{vision_model}` is not available: {error}. \
                  Pull it with `ollama pull {vision_model}`, or route the vision \
-                 workload to a cloud provider with `vision_provider`."
+                 workload to a cloud provider with `vision_provider`.{substitution_note}"
             ));
         }
 
@@ -547,5 +564,91 @@ mod tests {
             "error should say how to install it: {err}"
         );
         assert_eq!(service.status.lock().vision_state, "missing");
+    }
+
+    /// The resolver-failure branch: vision is enabled for the tier but no
+    /// vision model is configured, so the request is refused before any HTTP
+    /// call with a message naming the key to set.
+    #[tokio::test]
+    async fn vision_prompt_reports_an_unconfigured_vision_model() {
+        let _guard = crate::openhuman::inference::inference_test_guard();
+
+        let mut config = enabled_config();
+        config.local_ai.vision_model_id = String::new();
+        let service = ready_service(&config);
+
+        let err = service
+            .vision_prompt(
+                &config,
+                "describe",
+                &["data:image/png;base64,QUJD".to_string()],
+                None,
+            )
+            .await
+            .expect_err("an unconfigured vision model must fail");
+
+        assert!(
+            err.contains("vision_model_id"),
+            "error should name the key to set: {err}"
+        );
+        assert_eq!(service.status.lock().vision_state, "missing");
+    }
+
+    /// greptile #5253: when the capability guard swaps a chat-only model for a
+    /// vision-capable default, an unavailable-model error must say so. Without
+    /// this the user is told to `ollama pull moondream:…` having configured
+    /// `gemma3n:…`, with nothing connecting the two.
+    #[tokio::test]
+    async fn unavailable_error_explains_a_capability_substitution() {
+        use axum::routing::get;
+        let _guard = crate::openhuman::inference::inference_test_guard();
+
+        let app = Router::new()
+            .route("/api/tags", get(|| async { Json(json!({ "models": [] })) }))
+            .route(
+                "/api/pull",
+                post(|| async {
+                    (
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        "pull refused",
+                    )
+                }),
+            );
+        let base = spawn_mock(app).await;
+        unsafe {
+            std::env::set_var("OPENHUMAN_OLLAMA_BASE_URL", &base);
+        }
+
+        let mut config = enabled_config();
+        // Chat-only: the guard substitutes the vision-capable default.
+        config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
+        let service = ready_service(&config);
+
+        let err = service
+            .vision_prompt(
+                &config,
+                "describe",
+                &["data:image/png;base64,QUJD".to_string()],
+                None,
+            )
+            .await
+            .expect_err("an unpullable substituted model must fail");
+
+        unsafe {
+            std::env::remove_var("OPENHUMAN_OLLAMA_BASE_URL");
+        }
+
+        assert!(
+            err.contains("gemma3n:e4b-it-q8_0"),
+            "error must name the model the user actually configured: {err}"
+        );
+        assert!(
+            err.contains("cannot accept images"),
+            "error must explain why it was replaced: {err}"
+        );
+        assert!(
+            err.contains(crate::openhuman::inference::model_ids::DEFAULT_OLLAMA_VISION_MODEL),
+            "error must name the substitute it is asking the user to pull: {err}"
+        );
     }
 }

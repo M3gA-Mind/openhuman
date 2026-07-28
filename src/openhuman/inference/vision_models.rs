@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn every_suggested_vision_model_is_vision_capable() {
         // The suggestions are quoted verbatim in the user-facing error from
-        // `model_ids::resolve_vision_model_id`; a chat-only entry here would
+        // `model_ids::resolve_vision_model_choice`; a chat-only entry here would
         // send users to a model that silently ignores their image.
         for suggestion in VISION_MODEL_SUGGESTIONS {
             assert!(
