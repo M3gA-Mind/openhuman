@@ -625,8 +625,22 @@ mod tests {
         // #5045 review (Codex P2): when the chmod repair fails, returning the
         // 0644 workspace copy anyway pins resolution to a binary that cannot
         // launch and makes the PIPER_BIN/PATH fallback unreachable.
+        //
+        // This test must hold the module lock. `workspace_piper_binary_candidates`
+        // resolves through `paths::shared_root_dir`, which ignores
+        // `config.workspace_dir` unless OPENHUMAN_WORKSPACE is set and otherwise
+        // returns the real `~/.openhuman/bin/piper`. The `temp_config()` TempDir
+        // therefore does NOT isolate this test: it writes into the same shared
+        // directory every sibling install_piper / install_whisper / paths test
+        // uses, and several of those call `wipe_shared_install_dir`. Without the
+        // lock a concurrent wipe deletes the file between the two `chmod` calls
+        // below and the second one panics with `NotFound`. Also leave the shared
+        // dir clean on the way out so the executable stub written here cannot
+        // leak into `find_workspace_piper_binary_returns_none_without_install`.
         use std::os::unix::fs::PermissionsExt;
+        let _g = shared_install_lock();
         let (_dir, config) = temp_config();
+        wipe_shared_install_dir(&config);
         let candidates = paths::workspace_piper_binary_candidates(&config);
         let candidate = candidates.first().expect("at least one candidate").clone();
         std::fs::create_dir_all(candidate.parent().unwrap()).unwrap();
@@ -644,6 +658,8 @@ mod tests {
             Some(candidate.as_path()),
             "an executable workspace binary is still preferred"
         );
+
+        wipe_shared_install_dir(&config);
     }
 
     fn temp_config() -> (tempfile::TempDir, Config) {

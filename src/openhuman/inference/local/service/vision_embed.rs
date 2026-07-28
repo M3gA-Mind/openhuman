@@ -381,4 +381,171 @@ mod tests {
             .unwrap_err();
         assert!(err.contains("local ai is disabled"));
     }
+
+    // ── #5146 §Part 1: which model a vision request actually reaches ────────
+    //
+    // These drive the real `vision_prompt` path against a mock Ollama server.
+    // `ready_service` marks the status "ready", which makes `bootstrap` return
+    // early, so no process launch or network beyond the mock is involved.
+
+    /// Mock Ollama exposing `/api/tags` with `installed` present, and an
+    /// `/api/generate` that echoes back the `model` field it was sent. The
+    /// echo is what lets a test assert *which* model the request targeted.
+    fn mock_ollama_echoing_requested_model(installed: &'static str) -> Router {
+        use axum::routing::get;
+        Router::new()
+            .route(
+                "/api/tags",
+                get(move || async move {
+                    Json(json!({
+                        "models": [
+                            { "name": installed, "modified_at": "", "size": 0u64, "digest": "a" }
+                        ]
+                    }))
+                }),
+            )
+            .route(
+                "/api/generate",
+                post(|Json(body): Json<serde_json::Value>| async move {
+                    Json(json!({
+                        "response": body["model"].as_str().unwrap_or("<no model field>"),
+                        "done": true
+                    }))
+                }),
+            )
+    }
+
+    /// A configured, genuinely vision-capable model must reach Ollama unchanged.
+    ///
+    /// Before #5146 the `MVP_ALLOWED_VISION_MODELS = &[""]` allowlist rewrote
+    /// this to the empty string, so the request went out with `model: ""`.
+    #[tokio::test]
+    async fn vision_prompt_sends_the_configured_vision_capable_model() {
+        let _guard = crate::openhuman::inference::inference_test_guard();
+
+        let base = spawn_mock(mock_ollama_echoing_requested_model("llava:7b")).await;
+        unsafe {
+            std::env::set_var("OPENHUMAN_OLLAMA_BASE_URL", &base);
+        }
+
+        let mut config = enabled_config();
+        config.local_ai.vision_model_id = "llava:7b".to_string();
+        let service = ready_service(&config);
+
+        let result = service
+            .vision_prompt(
+                &config,
+                "describe",
+                &["data:image/png;base64,QUJD".to_string()],
+                None,
+            )
+            .await;
+
+        unsafe {
+            std::env::remove_var("OPENHUMAN_OLLAMA_BASE_URL");
+        }
+
+        assert_eq!(
+            result.expect("vision prompt should succeed"),
+            "llava:7b",
+            "the configured vision model must reach Ollama unchanged"
+        );
+    }
+
+    /// A chat-only model configured for vision must never be the model that
+    /// receives the images.
+    ///
+    /// Ollama accepts an `images` array against a text-only model, discards it,
+    /// and answers from the prompt alone, so passing `gemma3n` through would
+    /// return a fabricated description rather than an error.
+    #[tokio::test]
+    async fn vision_prompt_never_routes_images_at_a_chat_only_model() {
+        let _guard = crate::openhuman::inference::inference_test_guard();
+
+        let base = spawn_mock(mock_ollama_echoing_requested_model(
+            "moondream:1.8b-v2-q4_K_S",
+        ))
+        .await;
+        unsafe {
+            std::env::set_var("OPENHUMAN_OLLAMA_BASE_URL", &base);
+        }
+
+        let mut config = enabled_config();
+        // Text-only on Ollama, despite sharing a prefix with multimodal gemma3.
+        config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
+        let service = ready_service(&config);
+
+        let result = service
+            .vision_prompt(
+                &config,
+                "describe",
+                &["data:image/png;base64,QUJD".to_string()],
+                None,
+            )
+            .await;
+
+        unsafe {
+            std::env::remove_var("OPENHUMAN_OLLAMA_BASE_URL");
+        }
+
+        let model_used = result.expect("vision prompt should succeed");
+        assert_ne!(
+            model_used, "gemma3n:e4b-it-q8_0",
+            "images must never be sent to a chat-only model"
+        );
+        assert_eq!(model_used, "moondream:1.8b-v2-q4_K_S");
+    }
+
+    /// A configured-but-unpullable vision model must report a vision problem
+    /// naming the model and the `ollama pull` that fixes it.
+    #[tokio::test]
+    async fn vision_prompt_reports_an_unavailable_vision_model() {
+        use axum::routing::get;
+        let _guard = crate::openhuman::inference::inference_test_guard();
+
+        // Empty tag list, and a pull that refuses: nothing to fall back to.
+        let app = Router::new()
+            .route("/api/tags", get(|| async { Json(json!({ "models": [] })) }))
+            .route(
+                "/api/pull",
+                post(|| async {
+                    (
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        "pull refused",
+                    )
+                }),
+            );
+        let base = spawn_mock(app).await;
+        unsafe {
+            std::env::set_var("OPENHUMAN_OLLAMA_BASE_URL", &base);
+        }
+
+        let mut config = enabled_config();
+        config.local_ai.vision_model_id = "llava:7b".to_string();
+        let service = ready_service(&config);
+
+        let err = service
+            .vision_prompt(
+                &config,
+                "describe",
+                &["data:image/png;base64,QUJD".to_string()],
+                None,
+            )
+            .await
+            .expect_err("an unpullable vision model must fail");
+
+        unsafe {
+            std::env::remove_var("OPENHUMAN_OLLAMA_BASE_URL");
+        }
+
+        assert!(
+            err.contains("llava:7b"),
+            "error should name the model: {err}"
+        );
+        assert!(
+            err.contains("ollama pull"),
+            "error should say how to install it: {err}"
+        );
+        assert_eq!(service.status.lock().vision_state, "missing");
+    }
 }
