@@ -4794,6 +4794,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'Actívalo si este modelo acepta imágenes. Permite adjuntar imágenes en el chat cuando este modelo está seleccionado.',
   'settings.ai.testFailed': 'Prueba fallida',
+  'settings.ai.providerTest.authRejected':
+    "La clave se guardó, pero '{slug}' la rechazó. Comprueba que pegaste la clave completa y que sigue activa en el panel del proveedor.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "La clave se guardó y se aceptó, pero '{slug}' no reconoce el modelo seleccionado. Elige un identificador de modelo que este proveedor sirva realmente (su modelo predeterminado se define en la entrada del proveedor).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "La clave se guardó y se aceptó, pero '{slug}' rechazó la solicitud por motivos de cuota o facturación. Revisa el saldo de tu cuenta y los límites de uso con el proveedor.",
+  'settings.ai.providerTest.endpointNotFound':
+    "La clave se guardó, pero el endpoint configurado para '{slug}' devolvió 404. Revisa la URL base: un proveedor compatible con OpenAI suele necesitar el sufijo '/v1' (por ejemplo, https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "La clave se guardó, pero '{slug}' no respondió a tiempo. Revisa la URL del endpoint y tu red, y vuelve a probar.",
+  'settings.ai.providerTest.emptyReply':
+    "La clave se guardó, pero '{slug}' devolvió una respuesta vacía a un mensaje de prueba. Revisa el identificador de modelo configurado para este proveedor.",
+  'settings.ai.providerTest.unknown':
+    "La clave se guardó, pero una llamada de prueba a '{slug}' falló: {detail}",
+  'settings.ai.providerTest.unknownError': 'error desconocido',
   'settings.ai.testingModel': 'Modelo de prueba...',
   'settings.ai.modelResponse': 'Respuesta modelo',
   'settings.ai.providerWithValue': 'Proveedor: {value}',

@@ -477,18 +477,36 @@ export interface CloudProviderVerification {
   detail: string;
 }
 
+/** Minimal `{placeholder}` interpolation, matching `ProviderSetupErrorNotice`. */
+function fillTemplate(template: string, replacements: Record<string, string>): string {
+  return Object.entries(replacements).reduce(
+    (result, [key, value]) => result.replaceAll(`{${key}}`, value),
+    template
+  );
+}
+
+/** Translator shape accepted here — the `(key, fallback)` form `useT` returns. */
+export type TranslateFn = (key: string, fallback?: string) => string;
+
 /**
- * Turn a raw provider/RPC failure into something a user can act on (#5146 §2.4).
+ * Which failure a raw provider/RPC error represents (#5146 §2.4).
  *
- * Storing a key only proves we wrote it to disk. The failures users actually
- * hit — wrong model id, exhausted quota, a base URL that doesn't speak the
- * endpoint we call — all surface as opaque upstream strings, so map the common
- * shapes onto a concrete next step and pass anything unrecognised through
- * verbatim rather than inventing a diagnosis.
+ * Classification is kept separate from wording so the decision is unit-testable
+ * without a translator and the copy can live in the locale files where the i18n
+ * tooling can see it.
  */
-export function describeProviderVerificationFailure(slug: string, raw: string): string {
-  const detail = raw.trim();
-  const haystack = detail.toLowerCase();
+export type ProviderVerificationReason =
+  | 'auth'
+  | 'model'
+  | 'quota'
+  | 'endpoint'
+  | 'timeout'
+  | 'empty'
+  | 'unknown';
+
+/** Map a raw upstream error string onto a [`ProviderVerificationReason`]. */
+export function classifyProviderVerificationFailure(raw: string): ProviderVerificationReason {
+  const haystack = raw.trim().toLowerCase();
 
   if (
     haystack.includes('401') ||
@@ -498,7 +516,7 @@ export function describeProviderVerificationFailure(slug: string, raw: string): 
     haystack.includes('unauthorized') ||
     haystack.includes('authentication')
   ) {
-    return `The key was saved, but '${slug}' rejected it. Check that you pasted the whole key and that it is still active in the provider's dashboard.`;
+    return 'auth';
   }
   if (
     haystack.includes('model_not_found') ||
@@ -507,7 +525,7 @@ export function describeProviderVerificationFailure(slug: string, raw: string): 
     haystack.includes('unknown model') ||
     haystack.includes('invalid model')
   ) {
-    return `The key was saved and accepted, but '${slug}' does not recognise the selected model. Pick a model id this provider actually serves (its default model is set on the provider entry).`;
+    return 'model';
   }
   if (
     haystack.includes('quota') ||
@@ -516,15 +534,89 @@ export function describeProviderVerificationFailure(slug: string, raw: string): 
     haystack.includes('429') ||
     haystack.includes('rate limit')
   ) {
-    return `The key was saved and accepted, but '${slug}' refused the request for quota or billing reasons. Check your account balance and rate limits with the provider.`;
+    return 'quota';
   }
   if (haystack.includes('404') || haystack.includes('not found')) {
-    return `The key was saved, but the configured endpoint for '${slug}' returned 404. Check the base URL — an OpenAI-compatible provider usually needs the '/v1' suffix (e.g. https://api.openai.com/v1).`;
+    return 'endpoint';
   }
   if (haystack.includes('timeout') || haystack.includes('timed out')) {
-    return `The key was saved, but '${slug}' did not respond in time. Check the endpoint URL and your network, then test again.`;
+    return 'timeout';
   }
-  return `The key was saved, but a test call to '${slug}' failed: ${detail || 'unknown error'}`;
+  return 'unknown';
+}
+
+/**
+ * Turn a raw provider/RPC failure into something a user can act on (#5146 §2.4).
+ *
+ * Storing a key only proves we wrote it to disk. The failures users actually
+ * hit (wrong model id, exhausted quota, a base URL that doesn't speak the
+ * endpoint we call) all surface as opaque upstream strings, so map the common
+ * shapes onto a concrete next step and pass anything unrecognised through
+ * verbatim rather than inventing a diagnosis.
+ *
+ * The rendered string is user-visible UI text, so it goes through `t` like the
+ * sibling `presentProviderSetupError`: the caller passes the translator from
+ * `useT()` and every branch resolves against the locale files. `slug` must be
+ * the bare provider slug (`openai`), not a composite `provider:model` string.
+ */
+export function describeProviderVerificationFailure(
+  slug: string,
+  raw: string,
+  t: TranslateFn
+): string {
+  const detail = raw.trim();
+  const reason = classifyProviderVerificationFailure(detail);
+
+  switch (reason) {
+    case 'auth':
+      return fillTemplate(
+        t(
+          'settings.ai.providerTest.authRejected',
+          "The key was saved, but '{slug}' rejected it. Check that you pasted the whole key and that it is still active in the provider's dashboard."
+        ),
+        { slug }
+      );
+    case 'model':
+      return fillTemplate(
+        t(
+          'settings.ai.providerTest.modelNotRecognized',
+          "The key was saved and accepted, but '{slug}' does not recognise the selected model. Pick a model id this provider actually serves (its default model is set on the provider entry)."
+        ),
+        { slug }
+      );
+    case 'quota':
+      return fillTemplate(
+        t(
+          'settings.ai.providerTest.quotaOrBilling',
+          "The key was saved and accepted, but '{slug}' refused the request for quota or billing reasons. Check your account balance and rate limits with the provider."
+        ),
+        { slug }
+      );
+    case 'endpoint':
+      return fillTemplate(
+        t(
+          'settings.ai.providerTest.endpointNotFound',
+          "The key was saved, but the configured endpoint for '{slug}' returned 404. Check the base URL: an OpenAI-compatible provider usually needs the '/v1' suffix (e.g. https://api.openai.com/v1)."
+        ),
+        { slug }
+      );
+    case 'timeout':
+      return fillTemplate(
+        t(
+          'settings.ai.providerTest.timeout',
+          "The key was saved, but '{slug}' did not respond in time. Check the endpoint URL and your network, then test again."
+        ),
+        { slug }
+      );
+    default:
+      return fillTemplate(
+        t(
+          'settings.ai.providerTest.unknown',
+          "The key was saved, but a test call to '{slug}' failed: {detail}"
+        ),
+        { slug, detail: detail || t('settings.ai.providerTest.unknownError', 'unknown error') }
+      );
+  }
 }
 
 /**
@@ -536,27 +628,45 @@ export function describeProviderVerificationFailure(slug: string, raw: string): 
  * always wants to show it rather than lose the save.
  */
 export async function verifyCloudProviderConnection(
-  slug: string,
-  workload: WorkloadId = 'chat'
+  provider: string,
+  workload: WorkloadId = 'chat',
+  t: TranslateFn = (_key, fallback) => fallback ?? ''
 ): Promise<CloudProviderVerification> {
+  // The core only builds a configured cloud provider from the `<slug>:<model>`
+  // form, so a bare slug would be rejected as an unrecognised provider and a
+  // perfectly good key would be reported as broken. Callers pass the same
+  // composite string the Test button uses; the bare slug is what the *messages*
+  // name, so derive it rather than echoing `provider:model[:temp]` at the user.
+  const providerString = provider.trim();
+  const slug = providerString.split(':')[0]?.trim() || providerString;
+
+  console.debug(`[ai-settings][verify] start workload=${workload} slug=${slug}`);
   try {
-    const result = await testProviderModel(workload, slug, 'ping');
+    const result = await testProviderModel(workload, providerString, 'ping');
     const reply = (result?.reply ?? '').trim();
     if (!reply) {
+      console.debug(`[ai-settings][verify] empty-reply workload=${workload} slug=${slug}`);
       return {
         ok: false,
-        message: `The key was saved, but '${slug}' returned an empty response to a test prompt. Check the model id configured for this provider.`,
+        message: fillTemplate(
+          t(
+            'settings.ai.providerTest.emptyReply',
+            "The key was saved, but '{slug}' returned an empty response to a test prompt. Check the model id configured for this provider."
+          ),
+          { slug }
+        ),
         detail: '',
       };
     }
+    console.debug(`[ai-settings][verify] ok workload=${workload} slug=${slug}`);
     return { ok: true, message: '', detail: '' };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    return {
-      ok: false,
-      message: describeProviderVerificationFailure(slug, detail),
-      detail,
-    };
+    // The raw detail can carry provider text; log only the classification.
+    console.error(
+      `[ai-settings][verify] failed workload=${workload} slug=${slug} reason=${classifyProviderVerificationFailure(detail)}`
+    );
+    return { ok: false, message: describeProviderVerificationFailure(slug, detail, t), detail };
   }
 }
 

@@ -4660,6 +4660,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     '이 모델이 이미지를 지원하면 활성화하세요. 이 모델을 선택하면 채팅 작성기에서 이미지를 첨부할 수 있습니다.',
   'settings.ai.testFailed': '테스트 실패',
+  'settings.ai.providerTest.authRejected':
+    "키는 저장되었지만 '{slug}'에서 거부했습니다. 키 전체를 붙여넣었는지, 제공업체 대시보드에서 아직 활성 상태인지 확인하세요.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "키는 저장되어 승인되었지만 '{slug}'에서 선택한 모델을 인식하지 못합니다. 이 제공업체가 실제로 제공하는 모델 ID를 선택하세요(기본 모델은 제공업체 항목에서 설정합니다).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "키는 저장되어 승인되었지만 '{slug}'에서 할당량 또는 결제 문제로 요청을 거부했습니다. 제공업체에서 계정 잔액과 사용 한도를 확인하세요.",
+  'settings.ai.providerTest.endpointNotFound':
+    "키는 저장되었지만 '{slug}'에 설정된 엔드포인트가 404를 반환했습니다. 기본 URL을 확인하세요. OpenAI 호환 제공업체는 보통 '/v1' 접미사가 필요합니다(예: https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "키는 저장되었지만 '{slug}'가 제때 응답하지 않았습니다. 엔드포인트 URL과 네트워크를 확인한 뒤 다시 테스트하세요.",
+  'settings.ai.providerTest.emptyReply':
+    "키는 저장되었지만 '{slug}'가 테스트 프롬프트에 빈 응답을 반환했습니다. 이 제공업체에 설정된 모델 ID를 확인하세요.",
+  'settings.ai.providerTest.unknown':
+    "키는 저장되었지만 '{slug}'에 대한 테스트 호출이 실패했습니다: {detail}",
+  'settings.ai.providerTest.unknownError': '알 수 없는 오류',
   'settings.ai.testingModel': '모델 테스트 중...',
   'settings.ai.modelResponse': '모델 응답',
   'settings.ai.providerWithValue': '공급자: {value}',

@@ -4600,6 +4600,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'فعّل هذا إذا كان النموذج يقبل الصور. يتيح لمربع الدردشة إرفاق الصور عند اختيار هذا النموذج.',
   'settings.ai.testFailed': 'فشل الاختبار',
+  'settings.ai.providerTest.authRejected':
+    "تم حفظ المفتاح، لكن '{slug}' رفضه. تأكد من لصق المفتاح كاملاً ومن أنه ما زال نشطاً في لوحة تحكم المزوّد.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "تم حفظ المفتاح وقبوله، لكن '{slug}' لا يتعرف على النموذج المحدد. اختر معرّف نموذج يقدمه هذا المزوّد فعلياً (يُضبط نموذجه الافتراضي في إدخال المزوّد).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "تم حفظ المفتاح وقبوله، لكن '{slug}' رفض الطلب لأسباب تتعلق بالحصة أو الفوترة. تحقق من رصيد حسابك وحدود الاستخدام لدى المزوّد.",
+  'settings.ai.providerTest.endpointNotFound':
+    "تم حفظ المفتاح، لكن نقطة النهاية المهيأة لـ '{slug}' أعادت 404. تحقق من عنوان URL الأساسي: عادةً ما يحتاج المزوّد المتوافق مع OpenAI إلى اللاحقة '/v1' (مثل https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "تم حفظ المفتاح، لكن '{slug}' لم يستجب في الوقت المحدد. تحقق من عنوان نقطة النهاية ومن شبكتك ثم أعد الاختبار.",
+  'settings.ai.providerTest.emptyReply':
+    "تم حفظ المفتاح، لكن '{slug}' أعاد رداً فارغاً على رسالة اختبار. تحقق من معرّف النموذج المهيأ لهذا المزوّد.",
+  'settings.ai.providerTest.unknown':
+    "تم حفظ المفتاح، لكن فشل استدعاء اختباري إلى '{slug}': {detail}",
+  'settings.ai.providerTest.unknownError': 'خطأ غير معروف',
   'settings.ai.testingModel': 'نموذج الاختبار...',
   'settings.ai.modelResponse': 'استجابة النموذج',
   'settings.ai.providerWithValue': 'الموفر: {value}',

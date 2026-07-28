@@ -5302,6 +5302,21 @@ const en: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'Enable if this model accepts images. Lets the chat composer attach images when this model is selected.',
   'settings.ai.testFailed': 'Test failed',
+  'settings.ai.providerTest.authRejected':
+    "The key was saved, but '{slug}' rejected it. Check that you pasted the whole key and that it is still active in the provider's dashboard.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "The key was saved and accepted, but '{slug}' does not recognise the selected model. Pick a model id this provider actually serves (its default model is set on the provider entry).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "The key was saved and accepted, but '{slug}' refused the request for quota or billing reasons. Check your account balance and rate limits with the provider.",
+  'settings.ai.providerTest.endpointNotFound':
+    "The key was saved, but the configured endpoint for '{slug}' returned 404. Check the base URL: an OpenAI-compatible provider usually needs the '/v1' suffix (e.g. https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "The key was saved, but '{slug}' did not respond in time. Check the endpoint URL and your network, then test again.",
+  'settings.ai.providerTest.emptyReply':
+    "The key was saved, but '{slug}' returned an empty response to a test prompt. Check the model id configured for this provider.",
+  'settings.ai.providerTest.unknown':
+    "The key was saved, but a test call to '{slug}' failed: {detail}",
+  'settings.ai.providerTest.unknownError': 'unknown error',
   'settings.ai.testingModel': 'Testing model...',
   'settings.ai.modelResponse': 'Model response',
   'settings.ai.providerWithValue': 'Provider: {value}',

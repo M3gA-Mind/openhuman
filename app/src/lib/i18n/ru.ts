@@ -4758,6 +4758,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'Включите, если модель принимает изображения. Позволяет прикреплять изображения в чате, когда выбрана эта модель.',
   'settings.ai.testFailed': 'Тест не пройден.',
+  'settings.ai.providerTest.authRejected':
+    "Ключ сохранён, но '{slug}' его отклонил. Проверьте, что вы вставили ключ целиком и что он всё ещё активен в панели провайдера.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "Ключ сохранён и принят, но '{slug}' не распознаёт выбранную модель. Укажите идентификатор модели, которую этот провайдер действительно обслуживает (модель по умолчанию задаётся в записи провайдера).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "Ключ сохранён и принят, но '{slug}' отклонил запрос из-за квоты или оплаты. Проверьте баланс счёта и лимиты у провайдера.",
+  'settings.ai.providerTest.endpointNotFound':
+    "Ключ сохранён, но настроенный endpoint для '{slug}' вернул 404. Проверьте базовый URL: провайдеру, совместимому с OpenAI, обычно нужен суффикс '/v1' (например, https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "Ключ сохранён, но '{slug}' не ответил вовремя. Проверьте URL endpoint и сеть, затем повторите проверку.",
+  'settings.ai.providerTest.emptyReply':
+    "Ключ сохранён, но '{slug}' вернул пустой ответ на тестовый запрос. Проверьте идентификатор модели, настроенный для этого провайдера.",
+  'settings.ai.providerTest.unknown':
+    "Ключ сохранён, но тестовый вызов к '{slug}' завершился ошибкой: {detail}",
+  'settings.ai.providerTest.unknownError': 'неизвестная ошибка',
   'settings.ai.testingModel': 'Модель тестирования...',
   'settings.ai.modelResponse': 'Ответ модели',
   'settings.ai.providerWithValue': 'Поставщик: {value}',

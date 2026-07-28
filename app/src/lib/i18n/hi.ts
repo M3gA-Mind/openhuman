@@ -4714,6 +4714,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'यदि यह मॉडल छवियाँ स्वीकार करता है तो सक्षम करें। यह मॉडल चुने जाने पर चैट में छवियाँ संलग्न करने देता है।',
   'settings.ai.testFailed': 'परीक्षण विफल रहा',
+  'settings.ai.providerTest.authRejected':
+    "कुंजी सहेज दी गई, लेकिन '{slug}' ने इसे अस्वीकार कर दिया। जाँचें कि आपने पूरी कुंजी चिपकाई है और वह प्रदाता के डैशबोर्ड में अब भी सक्रिय है।",
+  'settings.ai.providerTest.modelNotRecognized':
+    "कुंजी सहेजी और स्वीकार की गई, लेकिन '{slug}' चयनित मॉडल को नहीं पहचानता। ऐसा मॉडल आईडी चुनें जो यह प्रदाता वास्तव में देता है (इसका डिफ़ॉल्ट मॉडल प्रदाता प्रविष्टि में सेट होता है)।",
+  'settings.ai.providerTest.quotaOrBilling':
+    "कुंजी सहेजी और स्वीकार की गई, लेकिन '{slug}' ने कोटा या बिलिंग कारणों से अनुरोध ठुकरा दिया। प्रदाता के पास अपना खाता शेष और उपयोग सीमाएँ देखें।",
+  'settings.ai.providerTest.endpointNotFound':
+    "कुंजी सहेज दी गई, लेकिन '{slug}' के लिए कॉन्फ़िगर किए गए एंडपॉइंट ने 404 लौटाया। बेस URL जाँचें: OpenAI-संगत प्रदाता को आम तौर पर '/v1' प्रत्यय चाहिए (जैसे https://api.openai.com/v1)।",
+  'settings.ai.providerTest.timeout':
+    "कुंजी सहेज दी गई, लेकिन '{slug}' ने समय पर उत्तर नहीं दिया। एंडपॉइंट URL और अपना नेटवर्क जाँचें, फिर दोबारा परीक्षण करें।",
+  'settings.ai.providerTest.emptyReply':
+    "कुंजी सहेज दी गई, लेकिन '{slug}' ने परीक्षण संकेत पर खाली उत्तर लौटाया। इस प्रदाता के लिए कॉन्फ़िगर किया गया मॉडल आईडी जाँचें।",
+  'settings.ai.providerTest.unknown':
+    "कुंजी सहेज दी गई, लेकिन '{slug}' पर परीक्षण कॉल विफल रही: {detail}",
+  'settings.ai.providerTest.unknownError': 'अज्ञात त्रुटि',
   'settings.ai.testingModel': 'परीक्षण मॉडल...',
   'settings.ai.modelResponse': 'मॉडल प्रतिक्रिया',
   'settings.ai.providerWithValue': 'प्रदाता: {value}',

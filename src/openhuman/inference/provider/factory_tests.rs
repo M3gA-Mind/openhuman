@@ -1489,6 +1489,7 @@ fn local_chat_still_routes_background_roles_to_the_managed_backend() {
         "vision",
         "embeddings",
         "memory",
+        "summarization",
         "heartbeat",
         "learning",
         "subconscious",
@@ -1530,6 +1531,61 @@ fn explicit_background_route_overrides_the_cloud_fallback() {
 }
 
 #[test]
+fn a_readable_profile_with_no_stored_key_is_treated_as_missing_credentials() {
+    // The common BYOK-with-no-key shape: the auth profile reads fine, it just
+    // has nothing for this slug, so the lookup succeeds with an empty string.
+    // Without an emptiness check the client would be built with a blank bearer
+    // and the user would get a raw 401 from the provider instead of guidance.
+    let _guard = crate::openhuman::inference::inference_test_guard();
+    let tmp = TempDir::new().expect("tempdir");
+    let mut config = config_with_providers_in_tempdir(&tmp, vec![openai_entry("p_oai", "openai")]);
+    config.chat_provider = Some("ollama:gemma3:1b".to_string());
+
+    let err = create_test_chat_model_from_string("vision", "openai:gpt-4o", &config)
+        .err()
+        .expect("a slug with no stored key must not build a client");
+    let message = err.to_string();
+
+    assert!(
+        message.contains("No usable credentials for 'openai'"),
+        "expected the actionable guidance, got: {message}"
+    );
+    // It is a genuine implicit fallback here (vision has no route of its own),
+    // so the local chat model that caused it is named.
+    assert!(
+        message.contains("ollama:gemma3:1b"),
+        "expected the local chat model to be named, got: {message}"
+    );
+}
+
+#[test]
+fn implicit_cloud_fallback_is_claimed_only_when_the_role_has_no_route_of_its_own() {
+    let mut config = Config::default();
+    config.chat_provider = Some("ollama:gemma3:1b".to_string());
+
+    // Unset background route: the role genuinely landed on the cloud because
+    // the local chat model cannot serve it, so the explanation applies.
+    assert!(role_uses_implicit_cloud_fallback("vision", &config));
+    // The literal "cloud" is the same "route me wherever the cloud is" intent.
+    config.embeddings_provider = Some("cloud".to_string());
+    assert!(role_uses_implicit_cloud_fallback("embeddings", &config));
+    // Whitespace is not a configured route.
+    config.memory_provider = Some("   ".to_string());
+    assert!(role_uses_implicit_cloud_fallback("memory", &config));
+
+    // Explicitly routed to a cloud slug: a credential failure here is about
+    // that route, not about the local chat model, so it must not be described
+    // as a fallback.
+    config.vision_provider = Some("anthropic:claude-3-5-sonnet-latest".to_string());
+    assert!(!role_uses_implicit_cloud_fallback("vision", &config));
+
+    // Chat-tier roles are never described as cloud fallbacks, routed or not.
+    for role in ["chat", "reasoning", "coding"] {
+        assert!(!role_uses_implicit_cloud_fallback(role, &config));
+    }
+}
+
+#[test]
 fn cloud_fallback_roles_match_the_roles_provider_for_role_actually_falls_back() {
     // `factory_tests` is a child module of `factory`, so `super` is `factory`,
     // not `provider` — reach the sibling module by its crate path.
@@ -1543,6 +1599,7 @@ fn cloud_fallback_roles_match_the_roles_provider_for_role_actually_falls_back() 
         "vision",
         "embeddings",
         "memory",
+        "summarization",
         "heartbeat",
         "learning",
         "subconscious",

@@ -4455,6 +4455,20 @@ const messages: TranslationMap = {
   'settings.ai.modelVision': '支持视觉（图像输入）',
   'settings.ai.modelVisionDesc': '如果此模型接受图像，请启用。选择此模型后可在聊天框中附加图像。',
   'settings.ai.testFailed': '测试失败',
+  'settings.ai.providerTest.authRejected':
+    "密钥已保存，但 '{slug}' 拒绝了它。请确认你粘贴了完整的密钥，并且它在服务商后台仍然有效。",
+  'settings.ai.providerTest.modelNotRecognized':
+    "密钥已保存并通过验证，但 '{slug}' 无法识别所选模型。请选择该服务商确实提供的模型 ID（默认模型在服务商条目中设置）。",
+  'settings.ai.providerTest.quotaOrBilling':
+    "密钥已保存并通过验证，但 '{slug}' 因配额或账单原因拒绝了请求。请在服务商处查看账户余额和速率限制。",
+  'settings.ai.providerTest.endpointNotFound':
+    "密钥已保存，但为 '{slug}' 配置的接口地址返回了 404。请检查基础 URL：兼容 OpenAI 的服务商通常需要 '/v1' 后缀（例如 https://api.openai.com/v1）。",
+  'settings.ai.providerTest.timeout':
+    "密钥已保存，但 '{slug}' 未在规定时间内响应。请检查接口地址和网络后重新测试。",
+  'settings.ai.providerTest.emptyReply':
+    "密钥已保存，但 '{slug}' 对测试提示返回了空响应。请检查为该服务商配置的模型 ID。",
+  'settings.ai.providerTest.unknown': "密钥已保存，但对 '{slug}' 的测试调用失败：{detail}",
+  'settings.ai.providerTest.unknownError': '未知错误',
   'settings.ai.testingModel': '测试模型...',
   'settings.ai.modelResponse': '模型响应',
   'settings.ai.providerWithValue': '提供者：{value}',

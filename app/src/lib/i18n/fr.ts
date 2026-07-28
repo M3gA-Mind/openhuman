@@ -4824,6 +4824,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'Activez si ce modèle accepte les images. Permet de joindre des images dans le chat lorsque ce modèle est sélectionné.',
   'settings.ai.testFailed': 'Test échoué',
+  'settings.ai.providerTest.authRejected':
+    "La clé a été enregistrée, mais '{slug}' l'a refusée. Vérifiez que vous avez collé la clé entière et qu'elle est toujours active dans le tableau de bord du fournisseur.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "La clé a été enregistrée et acceptée, mais '{slug}' ne reconnaît pas le modèle sélectionné. Choisissez un identifiant de modèle réellement proposé par ce fournisseur (son modèle par défaut est défini sur la fiche du fournisseur).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "La clé a été enregistrée et acceptée, mais '{slug}' a refusé la requête pour des raisons de quota ou de facturation. Vérifiez le solde de votre compte et vos limites auprès du fournisseur.",
+  'settings.ai.providerTest.endpointNotFound':
+    "La clé a été enregistrée, mais le point de terminaison configuré pour '{slug}' a renvoyé une erreur 404. Vérifiez l'URL de base : un fournisseur compatible OpenAI nécessite généralement le suffixe '/v1' (par exemple https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "La clé a été enregistrée, mais '{slug}' n'a pas répondu à temps. Vérifiez l'URL du point de terminaison et votre réseau, puis réessayez.",
+  'settings.ai.providerTest.emptyReply':
+    "La clé a été enregistrée, mais '{slug}' a renvoyé une réponse vide à une invite de test. Vérifiez l'identifiant de modèle configuré pour ce fournisseur.",
+  'settings.ai.providerTest.unknown':
+    "La clé a été enregistrée, mais un appel de test vers '{slug}' a échoué : {detail}",
+  'settings.ai.providerTest.unknownError': 'erreur inconnue',
   'settings.ai.testingModel': 'Modèle de test...',
   'settings.ai.modelResponse': 'Réponse du modèle',
   'settings.ai.providerWithValue': 'Fournisseur : {value}',

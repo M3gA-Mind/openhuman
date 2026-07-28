@@ -4787,6 +4787,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'Attiva se questo modello accetta immagini. Consente di allegare immagini nella chat quando è selezionato questo modello.',
   'settings.ai.testFailed': 'Test non riuscito',
+  'settings.ai.providerTest.authRejected':
+    "La chiave è stata salvata, ma '{slug}' l'ha rifiutata. Verifica di aver incollato la chiave completa e che sia ancora attiva nella dashboard del provider.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "La chiave è stata salvata e accettata, ma '{slug}' non riconosce il modello selezionato. Scegli un id di modello che questo provider offre davvero (il modello predefinito si imposta nella voce del provider).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "La chiave è stata salvata e accettata, ma '{slug}' ha rifiutato la richiesta per motivi di quota o fatturazione. Controlla il saldo del tuo account e i limiti di utilizzo presso il provider.",
+  'settings.ai.providerTest.endpointNotFound':
+    "La chiave è stata salvata, ma l'endpoint configurato per '{slug}' ha restituito 404. Controlla l'URL di base: un provider compatibile con OpenAI di solito richiede il suffisso '/v1' (ad esempio https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "La chiave è stata salvata, ma '{slug}' non ha risposto in tempo. Controlla l'URL dell'endpoint e la tua rete, poi riprova.",
+  'settings.ai.providerTest.emptyReply':
+    "La chiave è stata salvata, ma '{slug}' ha restituito una risposta vuota a un prompt di prova. Controlla l'id del modello configurato per questo provider.",
+  'settings.ai.providerTest.unknown':
+    "La chiave è stata salvata, ma una chiamata di prova a '{slug}' non è riuscita: {detail}",
+  'settings.ai.providerTest.unknownError': 'errore sconosciuto',
   'settings.ai.testingModel': 'Test del modello...',
   'settings.ai.modelResponse': 'Risposta del modello',
   'settings.ai.providerWithValue': 'Fornitore: {value}',

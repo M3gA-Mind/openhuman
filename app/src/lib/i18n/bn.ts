@@ -4714,6 +4714,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'এই মডেল ছবি গ্রহণ করলে সক্ষম করুন। এই মডেল নির্বাচিত থাকলে চ্যাটে ছবি সংযুক্ত করতে দেয়।',
   'settings.ai.testFailed': 'পরীক্ষা ব্যর্থ হয়েছে',
+  'settings.ai.providerTest.authRejected':
+    "কী সংরক্ষণ করা হয়েছে, কিন্তু '{slug}' সেটি প্রত্যাখ্যান করেছে। দেখুন আপনি পুরো কী পেস্ট করেছেন কি না এবং সেটি প্রদানকারীর ড্যাশবোর্ডে এখনও সক্রিয় কি না।",
+  'settings.ai.providerTest.modelNotRecognized':
+    "কী সংরক্ষণ ও গৃহীত হয়েছে, কিন্তু '{slug}' নির্বাচিত মডেলটি চিনতে পারছে না। এই প্রদানকারী সত্যিই দেয় এমন একটি মডেল আইডি বেছে নিন (এর ডিফল্ট মডেল প্রদানকারীর এন্ট্রিতে সেট করা হয়)।",
+  'settings.ai.providerTest.quotaOrBilling':
+    "কী সংরক্ষণ ও গৃহীত হয়েছে, কিন্তু '{slug}' কোটা বা বিলিংয়ের কারণে অনুরোধটি প্রত্যাখ্যান করেছে। প্রদানকারীর কাছে আপনার অ্যাকাউন্ট ব্যালেন্স ও ব্যবহারের সীমা দেখুন।",
+  'settings.ai.providerTest.endpointNotFound':
+    "কী সংরক্ষণ করা হয়েছে, কিন্তু '{slug}' এর জন্য কনফিগার করা এন্ডপয়েন্ট 404 ফেরত দিয়েছে। বেস URL দেখুন: OpenAI-সঙ্গতিপূর্ণ প্রদানকারীর সাধারণত '/v1' প্রত্যয় প্রয়োজন (যেমন https://api.openai.com/v1)।",
+  'settings.ai.providerTest.timeout':
+    "কী সংরক্ষণ করা হয়েছে, কিন্তু '{slug}' সময়মতো সাড়া দেয়নি। এন্ডপয়েন্ট URL ও আপনার নেটওয়ার্ক দেখে আবার পরীক্ষা করুন।",
+  'settings.ai.providerTest.emptyReply':
+    "কী সংরক্ষণ করা হয়েছে, কিন্তু '{slug}' পরীক্ষামূলক প্রম্পটে খালি উত্তর ফেরত দিয়েছে। এই প্রদানকারীর জন্য কনফিগার করা মডেল আইডি দেখুন।",
+  'settings.ai.providerTest.unknown':
+    "কী সংরক্ষণ করা হয়েছে, কিন্তু '{slug}' এ পরীক্ষামূলক কল ব্যর্থ হয়েছে: {detail}",
+  'settings.ai.providerTest.unknownError': 'অজানা ত্রুটি',
   'settings.ai.testingModel': 'পরীক্ষার মডেল...',
   'settings.ai.modelResponse': 'মডেল প্রতিক্রিয়া',
   'settings.ai.providerWithValue': 'প্রদানকারী: {value}',

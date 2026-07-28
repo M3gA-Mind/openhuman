@@ -4731,6 +4731,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'Aktifkan jika model ini menerima gambar. Memungkinkan penyusun obrolan melampirkan gambar saat model ini dipilih.',
   'settings.ai.testFailed': 'Pengujian gagal',
+  'settings.ai.providerTest.authRejected':
+    "Kunci sudah disimpan, tetapi '{slug}' menolaknya. Pastikan Anda menempelkan kunci secara utuh dan kunci itu masih aktif di dasbor penyedia.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "Kunci sudah disimpan dan diterima, tetapi '{slug}' tidak mengenali model yang dipilih. Pilih id model yang benar-benar disediakan penyedia ini (model bawaannya diatur pada entri penyedia).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "Kunci sudah disimpan dan diterima, tetapi '{slug}' menolak permintaan karena alasan kuota atau penagihan. Periksa saldo akun dan batas penggunaan Anda pada penyedia.",
+  'settings.ai.providerTest.endpointNotFound':
+    "Kunci sudah disimpan, tetapi endpoint yang dikonfigurasi untuk '{slug}' mengembalikan 404. Periksa URL dasar: penyedia yang kompatibel dengan OpenAI biasanya memerlukan akhiran '/v1' (misalnya https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "Kunci sudah disimpan, tetapi '{slug}' tidak merespons tepat waktu. Periksa URL endpoint dan jaringan Anda, lalu uji lagi.",
+  'settings.ai.providerTest.emptyReply':
+    "Kunci sudah disimpan, tetapi '{slug}' mengembalikan respons kosong untuk prompt uji. Periksa id model yang dikonfigurasi untuk penyedia ini.",
+  'settings.ai.providerTest.unknown':
+    "Kunci sudah disimpan, tetapi panggilan uji ke '{slug}' gagal: {detail}",
+  'settings.ai.providerTest.unknownError': 'kesalahan tidak diketahui',
   'settings.ai.testingModel': 'Pengujian model...',
   'settings.ai.modelResponse': 'Respons model',
   'settings.ai.providerWithValue': 'Penyedia: {value}',

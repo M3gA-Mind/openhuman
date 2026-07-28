@@ -4847,6 +4847,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'Aktivieren, wenn dieses Modell Bilder akzeptiert. Ermöglicht das Anhängen von Bildern im Chat, wenn dieses Modell ausgewählt ist.',
   'settings.ai.testFailed': 'Test fehlgeschlagen.',
+  'settings.ai.providerTest.authRejected':
+    "Der Schlüssel wurde gespeichert, aber '{slug}' hat ihn abgelehnt. Prüfen Sie, ob Sie den vollständigen Schlüssel eingefügt haben und ob er im Dashboard des Anbieters noch aktiv ist.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "Der Schlüssel wurde gespeichert und akzeptiert, aber '{slug}' kennt das ausgewählte Modell nicht. Wählen Sie eine Modell-ID, die dieser Anbieter tatsächlich bereitstellt (das Standardmodell wird im Anbietereintrag festgelegt).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "Der Schlüssel wurde gespeichert und akzeptiert, aber '{slug}' hat die Anfrage aus Kontingent- oder Abrechnungsgründen abgelehnt. Prüfen Sie Ihr Guthaben und Ihre Limits beim Anbieter.",
+  'settings.ai.providerTest.endpointNotFound':
+    "Der Schlüssel wurde gespeichert, aber der konfigurierte Endpunkt für '{slug}' lieferte 404. Prüfen Sie die Basis-URL: ein OpenAI-kompatibler Anbieter benötigt meist den Zusatz '/v1' (z. B. https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "Der Schlüssel wurde gespeichert, aber '{slug}' hat nicht rechtzeitig geantwortet. Prüfen Sie die Endpunkt-URL und Ihr Netzwerk und testen Sie erneut.",
+  'settings.ai.providerTest.emptyReply':
+    "Der Schlüssel wurde gespeichert, aber '{slug}' lieferte auf eine Testanfrage eine leere Antwort. Prüfen Sie die für diesen Anbieter konfigurierte Modell-ID.",
+  'settings.ai.providerTest.unknown':
+    "Der Schlüssel wurde gespeichert, aber ein Testaufruf an '{slug}' ist fehlgeschlagen: {detail}",
+  'settings.ai.providerTest.unknownError': 'unbekannter Fehler',
   'settings.ai.testingModel': 'Modell wird getestet...',
   'settings.ai.modelResponse': 'Modellantwort',
   'settings.ai.providerWithValue': 'Anbieter: {value}',

@@ -4781,6 +4781,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'Ative se este modelo aceitar imagens. Permite anexar imagens no chat quando este modelo está selecionado.',
   'settings.ai.testFailed': 'Teste falhou',
+  'settings.ai.providerTest.authRejected':
+    "A chave foi salva, mas '{slug}' a recusou. Verifique se você colou a chave inteira e se ela continua ativa no painel do provedor.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "A chave foi salva e aceita, mas '{slug}' não reconhece o modelo selecionado. Escolha um id de modelo que este provedor realmente ofereça (o modelo padrão é definido no registro do provedor).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "A chave foi salva e aceita, mas '{slug}' recusou a solicitação por motivos de cota ou faturamento. Verifique o saldo da sua conta e os limites de uso com o provedor.",
+  'settings.ai.providerTest.endpointNotFound':
+    "A chave foi salva, mas o endpoint configurado para '{slug}' retornou 404. Verifique a URL base: um provedor compatível com OpenAI normalmente precisa do sufixo '/v1' (por exemplo, https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "A chave foi salva, mas '{slug}' não respondeu a tempo. Verifique a URL do endpoint e sua rede e teste novamente.",
+  'settings.ai.providerTest.emptyReply':
+    "A chave foi salva, mas '{slug}' retornou uma resposta vazia a um prompt de teste. Verifique o id do modelo configurado para este provedor.",
+  'settings.ai.providerTest.unknown':
+    "A chave foi salva, mas uma chamada de teste para '{slug}' falhou: {detail}",
+  'settings.ai.providerTest.unknownError': 'erro desconhecido',
   'settings.ai.testingModel': 'Modelo de teste...',
   'settings.ai.modelResponse': 'Resposta do modelo',
   'settings.ai.providerWithValue': 'Provedor: {value}',

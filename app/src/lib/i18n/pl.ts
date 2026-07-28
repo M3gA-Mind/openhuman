@@ -4785,6 +4785,21 @@ const messages: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'Włącz, jeśli ten model akceptuje obrazy. Pozwala dołączać obrazy w czacie, gdy ten model jest wybrany.',
   'settings.ai.testFailed': 'Test nie powiódł się',
+  'settings.ai.providerTest.authRejected':
+    "Klucz został zapisany, ale '{slug}' go odrzucił. Sprawdź, czy wkleiłeś cały klucz i czy nadal jest aktywny w panelu dostawcy.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "Klucz został zapisany i zaakceptowany, ale '{slug}' nie rozpoznaje wybranego modelu. Wybierz identyfikator modelu, który ten dostawca faktycznie udostępnia (model domyślny ustawia się we wpisie dostawcy).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "Klucz został zapisany i zaakceptowany, ale '{slug}' odrzucił żądanie z powodu limitu lub rozliczeń. Sprawdź saldo konta i limity u dostawcy.",
+  'settings.ai.providerTest.endpointNotFound':
+    "Klucz został zapisany, ale skonfigurowany endpoint dla '{slug}' zwrócił 404. Sprawdź adres bazowy: dostawca zgodny z OpenAI zwykle wymaga przyrostka '/v1' (na przykład https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "Klucz został zapisany, ale '{slug}' nie odpowiedział na czas. Sprawdź adres endpointu i sieć, a następnie przetestuj ponownie.",
+  'settings.ai.providerTest.emptyReply':
+    "Klucz został zapisany, ale '{slug}' zwrócił pustą odpowiedź na zapytanie testowe. Sprawdź identyfikator modelu skonfigurowany dla tego dostawcy.",
+  'settings.ai.providerTest.unknown':
+    "Klucz został zapisany, ale wywołanie testowe do '{slug}' nie powiodło się: {detail}",
+  'settings.ai.providerTest.unknownError': 'nieznany błąd',
   'settings.ai.testingModel': 'Testowanie modelu...',
   'settings.ai.modelResponse': 'Odpowiedź modelu',
   'settings.ai.providerWithValue': 'Dostawca: {value}',
