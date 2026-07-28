@@ -2264,10 +2264,22 @@ fn resolve_cloud_slug<'a>(
     // A readable auth profile with no key for this slug returns `Ok("")`, which
     // would otherwise build a client with an empty bearer and surface as a raw
     // 401 from the provider several layers later — exactly the baffling error
-    // this diagnostic exists to replace. Styles that carry no stored key
-    // (`OpenhumanJwt` injects a session JWT downstream, `None` sends no auth
-    // header at all) are legitimately blank and must not trip this.
-    if key.trim().is_empty() && matches!(entry.auth_style, AuthStyle::Bearer | AuthStyle::Anthropic)
+    // this diagnostic exists to replace.
+    //
+    // Scoped to the *implicit fallback* path deliberately. That is the case the
+    // diagnostic is for: a local-chat user whose background role landed on a
+    // BYOK slug they never configured. An explicitly routed provider keeps its
+    // existing behaviour and is allowed to build without a stored key — callers
+    // construct such models to probe or describe a provider before a key is
+    // saved, and failing that at construction time would be a behaviour change
+    // well beyond this diagnostic.
+    //
+    // Styles that carry no stored key (`OpenhumanJwt` injects a session JWT
+    // downstream, `None` sends no auth header at all) are legitimately blank and
+    // never trip this.
+    if implicit_fallback
+        && key.trim().is_empty()
+        && matches!(entry.auth_style, AuthStyle::Bearer | AuthStyle::Anthropic)
     {
         anyhow::bail!("{}", missing_credentials());
     }

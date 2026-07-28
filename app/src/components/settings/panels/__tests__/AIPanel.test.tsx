@@ -53,6 +53,12 @@ vi.mock('../../../../services/api/aiSettingsApi', () => ({
   loadLocalProviderSnapshot: vi.fn(),
   loadProviderAuthErrors: vi.fn().mockResolvedValue([]),
   testProviderModel: vi.fn(),
+  // #5146 §2.4: AIPanel no longer renders the raw provider string — it maps
+  // the failure onto actionable copy first. Mirror that shape here so the
+  // banner asserted below is what a user actually sees; the mapping itself is
+  // covered in aiSettingsApi.test.ts.
+  describeProviderVerificationFailure: (slug: string, _raw: string) =>
+    `The key was saved, but '${slug}' rejected it. Check that you pasted the whole key.`,
   modelRegistryVision: vi.fn(() => false),
   upsertModelRegistryVision: vi.fn((registry: unknown[]) => registry),
   setCloudProviderKey: vi.fn().mockResolvedValue(undefined),
@@ -1440,7 +1446,12 @@ describe('AIPanel', () => {
     const dialog = await screen.findByRole('dialog', { name: /Custom routing/i });
     fireEvent.click(within(dialog).getByRole('button', { name: /^Test$/i }));
 
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('401 invalid api key');
+    // The banner carries the actionable message keyed to the provider slug,
+    // not the raw upstream string (which can echo request material).
+    const alert = await within(dialog).findByRole('alert');
+    expect(alert).toHaveTextContent('rejected it');
+    expect(alert).toHaveTextContent('openai');
+    expect(alert).not.toHaveTextContent('401 invalid api key');
   });
 
   it('renders background loop diagnostics with newest spend row and budget math', async () => {

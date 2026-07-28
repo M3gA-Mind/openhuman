@@ -1556,6 +1556,16 @@ fn a_readable_profile_with_no_stored_key_is_treated_as_missing_credentials() {
         message.contains("ollama:gemma3:1b"),
         "expected the local chat model to be named, got: {message}"
     );
+
+    // Scope: an explicitly routed provider is NOT failed at construction time
+    // for a missing key. Callers build such models to probe or describe a
+    // provider before a key is saved, so only the implicit-fallback path (the
+    // one this diagnostic exists for) turns a blank key into an error.
+    config.vision_provider = Some("openai:gpt-4o".to_string());
+    assert!(
+        create_test_chat_model_from_string("vision", "openai:gpt-4o", &config).is_ok(),
+        "an explicitly routed provider must still build without a stored key"
+    );
 }
 
 #[test]
