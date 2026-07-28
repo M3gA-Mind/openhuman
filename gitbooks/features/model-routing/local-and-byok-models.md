@@ -22,10 +22,10 @@ This page covers how to set up the two self-owned options and, importantly, **wh
 | **Speech to text** | Included | Not routed through BYOK | Local Whisper available |
 | **Text to speech** | Included | Not routed through BYOK | Local Piper available |
 | **Web search** | Included, no key needed | Bring your own Exa key | Not applicable |
-| **Data leaves your machine** | Yes, to the OpenHuman backend | Yes, to your chosen provider | No |
+| **Inference data leaves your machine** | Yes, to the OpenHuman backend | Yes, to your chosen provider | No |
 | **API keys to manage** | None | One per provider | None |
 
-Sign-in, managed integration OAuth, billing, and hosted features such as meeting agents still use the OpenHuman backend even when inference is entirely yours. If you want a hard guarantee that no inference leaves the machine, use [Privacy Mode](../privacy-mode.md), which enforces the local-only path in the Rust core rather than relying on configuration alone.
+That last row is deliberately about **inference data only**. Sign-in, managed integration OAuth, billing, and hosted features such as meeting agents still use the OpenHuman backend even when inference is entirely yours, so running local models is not by itself a guarantee that nothing leaves the machine. If you want a hard guarantee that no inference leaves the machine, use [Privacy Mode](../privacy-mode.md), which enforces the local-only path in the Rust core rather than relying on configuration alone.
 
 ## Route A: local models with Ollama
 
@@ -53,7 +53,7 @@ This is the part that bites people. A model that only does text will still **acc
 | `moondream:1.8b-v2-q4_K_S` | 1.7 GB | Minimal | **Yes** | No |
 | `llava:7b` | 4.7 GB | Minimal | **Yes** | No |
 | `bge-m3` | 1.2 GB | No | No | **Yes**, 1024 dim |
-| `all-minilm:latest` | 0.05 GB | No | No | Yes, 384 dim |
+| `all-minilm:latest` | 0.05 GB | No | No | 384 dim, too small for Memory Tree |
 
 Two traps worth calling out:
 
@@ -68,13 +68,17 @@ The quickest path is the desktop app: **Settings → AI & Skills → Local AI** 
 
 | Tier | Chat | Vision | Embeddings | Download |
 | --- | --- | --- | --- | --- |
-| 1 GB | `gemma3:270m-it-qat` | Disabled | `all-minilm:latest` | ~0.3 GB |
+| 1 GB | `gemma3:270m-it-qat` | Disabled | `all-minilm:latest` (see note) | ~0.3 GB |
 | 2-4 GB | `gemma3:1b-it-qat` | Disabled | `bge-m3` | ~2.3 GB |
-| 4-8 GB | `gemma3:1b-it-qat` | `moondream:1.8b-v2-q4_K_S` | `all-minilm:latest` | ~2.8 GB |
+| 4-8 GB | `gemma3:1b-it-qat` | `moondream:1.8b-v2-q4_K_S` | `all-minilm:latest` (see note) | ~2.8 GB |
 | 8-16 GB | `gemma3:4b-it-qat` | `gemma3:4b-it-qat` | `bge-m3` | ~5.2 GB |
 | 16 GB+ | `gemma4:e4b-it-q8_0` | `gemma4:e4b-it-q8_0` | `bge-m3` | ~12.8 GB |
 
 The two highest tiers use one multimodal model for both chat and vision, so you download a single set of weights rather than a chat model plus a separate vision sidecar.
+
+{% hint style="warning" %}
+**The 1 GB and 4-8 GB tiers ship `all-minilm:latest`, which the Memory Tree cannot use.** It emits 384-dimension vectors and the Memory Tree's on-disk format is fixed at 1024, so memory embedding fails the dimension check at embed time. Those two tiers are usable for local chat and, on the 4-8 GB tier, vision, but if you want local Memory Tree embeddings set `embedding_model_id = "bge-m3"` explicitly after applying the preset, or pick the 2-4 GB tier or above. Aligning those presets is tracked as follow-up.
+{% endhint %}
 
 To configure by hand, the keys live under `[local_ai]` in `config.toml`:
 
