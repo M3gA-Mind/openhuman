@@ -4782,6 +4782,12 @@ const messages: TranslationMap = {
     'Endpoint do Azure detectado. Defina o nome da sua implantação no campo do modelo depois de escolher este provedor.',
   'settings.ai.chooseModelFromList': 'Escolher da lista',
   'settings.ai.enterModelIdManuallyAction': 'Inserir o ID do modelo manualmente',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Inserir o nome da implantação manualmente',
+  'settings.ai.probeFailedHint':
+    'Não foi possível ler a lista de modelos deste provedor. Essa lista só preenche o menu suspenso, portanto você ainda pode adicionar o provedor e digitar o nome do modelo ou da implantação.',
+  'settings.ai.probeFailedAddAnyway': 'Adicionar sem verificar',
+  'settings.ai.azureV1EndpointHint':
+    'No Azure, use o URL base v1: https://YOUR-RESOURCE.openai.azure.com/openai/v1. O URL de recurso antigo não fornece uma lista de modelos e espera outro cabeçalho de autenticação.',
   'settings.ai.temperatureOverride': 'Substituição de temperatura',
   'settings.ai.temperatureOverrideSlider': 'Substituição de temperatura (controle deslizante)',
   'settings.ai.temperatureOverrideValue': 'Substituição de temperatura (valor)',

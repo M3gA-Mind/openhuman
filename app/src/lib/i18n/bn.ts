@@ -4715,6 +4715,12 @@ const messages: TranslationMap = {
     'Azure এন্ডপয়েন্ট শনাক্ত হয়েছে। এই প্রদানকারী নির্বাচন করার পর মডেল ফিল্ডে আপনার ডিপ্লয়মেন্টের নাম দিন।',
   'settings.ai.chooseModelFromList': 'তালিকা থেকে বেছে নিন',
   'settings.ai.enterModelIdManuallyAction': 'ম্যানুয়ালি মডেল আইডি লিখুন',
+  'settings.ai.enterDeploymentNameManuallyAction': 'ম্যানুয়ালি ডিপ্লয়মেন্ট নাম লিখুন',
+  'settings.ai.probeFailedHint':
+    'এই প্রদানকারীর মডেল তালিকা আমরা পড়তে পারিনি। ওই তালিকা কেবল ড্রপডাউন ভরাট করে, তাই আপনি এখনও প্রদানকারী যোগ করে নিজেই মডেল বা ডিপ্লয়মেন্টের নাম লিখতে পারেন।',
+  'settings.ai.probeFailedAddAnyway': 'যাচাই না করেই যোগ করুন',
+  'settings.ai.azureV1EndpointHint':
+    'Azure-এর জন্য v1 বেস URL ব্যবহার করুন: https://YOUR-RESOURCE.openai.azure.com/openai/v1। পুরোনো রিসোর্স URL কোনো মডেল তালিকা দেয় না এবং ভিন্ন প্রমাণীকরণ হেডার আশা করে।',
   'settings.ai.temperatureOverride': 'তাপমাত্রা ওভাররাইড',
   'settings.ai.temperatureOverrideSlider': 'তাপমাত্রা ওভাররাইড (স্লাইডার)',
   'settings.ai.temperatureOverrideValue': 'তাপমাত্রা ওভাররাইড (মান)',

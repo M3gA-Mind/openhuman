@@ -525,11 +525,115 @@ describe('AIPanel', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Choose from list/i }));
 
     // Back on the catalog dropdown, with the manual escape hatch offered again.
+    // The action is labelled for what the field actually holds on Azure — a
+    // deployment name, not a model ID.
     await waitFor(() =>
       expect(screen.queryByRole('textbox', { name: /Deployment name/i })).not.toBeInTheDocument()
     );
-    fireEvent.click(await screen.findByRole('button', { name: /Enter model ID manually/i }));
+    expect(
+      screen.queryByRole('button', { name: /Enter model ID manually/i })
+    ).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /Enter deployment name manually/i }));
     expect(await screen.findByRole('textbox', { name: /Deployment name/i })).toBeInTheDocument();
+  });
+
+  it('still lets a provider be added when the live /models probe fails', async () => {
+    // Regression: the `{base}/models` probe used to be a hard gate on creating
+    // a provider. Azure's classic `api-version` surface does not serve an
+    // OpenAI-shaped listing at all, so those users could never create the
+    // connection — which put the deployment-name field permanently out of
+    // reach. The probe now informs, it does not block.
+    vi.mocked(loadAISettings).mockResolvedValue(baseSettings);
+    vi.mocked(listProviderModels).mockRejectedValue(
+      new Error('provider returned 404: no /models endpoint')
+    );
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add Custom Provider/i }));
+
+    fireEvent.change(await screen.findByPlaceholderText('My Provider'), {
+      target: { value: 'Azure Foundry' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('https://api.openai.com/v1'), {
+      target: { value: 'https://my-resource.openai.azure.com/openai' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^Add Provider$/i }));
+
+    // The failure is explained rather than swallowed, and nothing is persisted
+    // behind the user's back on the first attempt.
+    expect(await screen.findByText(/could not read this provider/i)).toBeInTheDocument();
+    expect(saveAISettings).not.toHaveBeenCalled();
+
+    // The escape hatch is what makes the connection reachable at all.
+    fireEvent.click(screen.getByRole('button', { name: /Add without verifying/i }));
+
+    await waitFor(() => expect(saveAISettings).toHaveBeenCalled());
+    const [, nextSettings] = vi.mocked(saveAISettings).mock.calls.at(-1) ?? [];
+    expect(nextSettings?.cloudProviders.map(p => p.slug)).toContain('azure-foundry');
+  });
+
+  it('nudges an Azure endpoint that is not the v1 base towards /openai/v1', async () => {
+    // Only `/openai/v1` serves a `/models` listing and accepts the resource key
+    // as a bearer token. A user who pastes the portal's bare resource URL would
+    // otherwise fail the probe and then fail every inference call.
+    vi.mocked(loadAISettings).mockResolvedValue(baseSettings);
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add Custom Provider/i }));
+
+    const urlField = screen.getByPlaceholderText('https://api.openai.com/v1');
+    fireEvent.change(urlField, {
+      target: { value: 'https://my-resource.openai.azure.com/openai' },
+    });
+    expect(await screen.findByText(/use the v1 base URL/i)).toBeInTheDocument();
+
+    // Correcting the base URL clears the warning.
+    fireEvent.change(urlField, {
+      target: { value: 'https://my-resource.openai.azure.com/openai/v1' },
+    });
+    await waitFor(() => expect(screen.queryByText(/use the v1 base URL/i)).not.toBeInTheDocument());
+    // The deployment-name pointer stays for any Azure endpoint.
+    expect(screen.getByText(/Set your deployment name in the model field/i)).toBeInTheDocument();
+  });
+
+  it('leaves a non-Azure endpoint free of Azure guidance', async () => {
+    vi.mocked(loadAISettings).mockResolvedValue(baseSettings);
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add Custom Provider/i }));
+
+    fireEvent.change(screen.getByPlaceholderText('https://api.openai.com/v1'), {
+      target: { value: 'https://litellm.mycorp.dev/v1' },
+    });
+    expect(screen.queryByText(/use the v1 base URL/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Set your deployment name in the model field/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it('blocks a non-probe submit failure instead of offering to skip verification', async () => {
+    // The escape hatch is scoped to a rejected `/models` probe. A slug that
+    // collides with an existing provider is a different class of failure and
+    // must still block, or the dialog would offer to create a broken entry.
+    vi.mocked(loadAISettings).mockResolvedValue(azureSettings);
+    vi.mocked(listProviderModels).mockResolvedValue([{ id: 'gpt-4o' }]);
+
+    renderWithProviders(<AIPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: /Add Custom Provider/i }));
+
+    fireEvent.change(await screen.findByPlaceholderText('My Provider'), {
+      target: { value: 'Azure Foundry' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('https://api.openai.com/v1'), {
+      target: { value: 'https://my-resource.openai.azure.com/openai/v1' },
+    });
+
+    // `azure-foundry` is already taken by the fixture, so the slug check trips.
+    expect(screen.getByRole('button', { name: /^Add Provider$/i })).toBeDisabled();
+    expect(
+      screen.queryByRole('button', { name: /Add without verifying/i })
+    ).not.toBeInTheDocument();
   });
 
   it('offers a deployment-name field in the per-workload custom routing dialog', async () => {

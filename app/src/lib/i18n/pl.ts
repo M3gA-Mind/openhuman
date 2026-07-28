@@ -4786,6 +4786,12 @@ const messages: TranslationMap = {
     'Wykryto punkt końcowy Azure. Ustaw nazwę wdrożenia w polu modelu po wybraniu tego dostawcy.',
   'settings.ai.chooseModelFromList': 'Wybierz z listy',
   'settings.ai.enterModelIdManuallyAction': 'Wpisz identyfikator modelu ręcznie',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Wpisz nazwę wdrożenia ręcznie',
+  'settings.ai.probeFailedHint':
+    'Nie udało się odczytać listy modeli tego dostawcy. Ta lista wypełnia tylko listę rozwijaną, więc nadal możesz dodać dostawcę i samodzielnie wpisać nazwę modelu lub wdrożenia.',
+  'settings.ai.probeFailedAddAnyway': 'Dodaj bez weryfikacji',
+  'settings.ai.azureV1EndpointHint':
+    'W przypadku Azure użyj bazowego adresu v1: https://YOUR-RESOURCE.openai.azure.com/openai/v1. Starszy adres zasobu nie udostępnia listy modeli i oczekuje innego nagłówka uwierzytelniania.',
   'settings.ai.temperatureOverride': 'Nadpisanie temperatury',
   'settings.ai.temperatureOverrideSlider': 'Nadpisanie temperatury (suwak)',
   'settings.ai.temperatureOverrideValue': 'Nadpisanie temperatury (wartość)',

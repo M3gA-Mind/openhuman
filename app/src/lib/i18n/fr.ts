@@ -4825,6 +4825,12 @@ const messages: TranslationMap = {
     'Point de terminaison Azure détecté. Définissez le nom de votre déploiement dans le champ du modèle après avoir choisi ce fournisseur.',
   'settings.ai.chooseModelFromList': 'Choisir dans la liste',
   'settings.ai.enterModelIdManuallyAction': "Saisir l'identifiant du modèle manuellement",
+  'settings.ai.enterDeploymentNameManuallyAction': 'Saisir le nom du déploiement manuellement',
+  'settings.ai.probeFailedHint':
+    "Nous n'avons pas pu lire la liste des modèles de ce fournisseur. Cette liste ne sert qu'à remplir le menu déroulant : vous pouvez donc quand même ajouter le fournisseur et saisir vous-même le nom du modèle ou du déploiement.",
+  'settings.ai.probeFailedAddAnyway': 'Ajouter sans vérifier',
+  'settings.ai.azureV1EndpointHint':
+    "Pour Azure, utilisez l'URL de base v1 : https://YOUR-RESOURCE.openai.azure.com/openai/v1. L'ancienne URL de ressource ne fournit pas de liste de modèles et attend un autre en-tête d'authentification.",
   'settings.ai.temperatureOverride': 'Température override',
   'settings.ai.temperatureOverrideSlider': 'Override de température (curseur)',
   'settings.ai.temperatureOverrideValue': 'Override de température (valeur)',

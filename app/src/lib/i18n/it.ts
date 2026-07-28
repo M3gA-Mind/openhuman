@@ -4788,6 +4788,13 @@ const messages: TranslationMap = {
     'Endpoint Azure rilevato. Imposta il nome della distribuzione nel campo del modello dopo aver scelto questo fornitore.',
   'settings.ai.chooseModelFromList': "Scegli dall'elenco",
   'settings.ai.enterModelIdManuallyAction': "Inserisci manualmente l'ID del modello",
+  'settings.ai.enterDeploymentNameManuallyAction':
+    'Inserisci manualmente il nome della distribuzione',
+  'settings.ai.probeFailedHint':
+    "Non siamo riusciti a leggere l'elenco dei modelli di questo provider. Quell'elenco riempie solo il menu a tendina, quindi puoi comunque aggiungere il provider e scrivere tu stesso il nome del modello o della distribuzione.",
+  'settings.ai.probeFailedAddAnyway': 'Aggiungi senza verificare',
+  'settings.ai.azureV1EndpointHint':
+    "Per Azure usa l'URL di base v1: https://YOUR-RESOURCE.openai.azure.com/openai/v1. Il vecchio URL della risorsa non espone un elenco di modelli e si aspetta un'intestazione di autenticazione diversa.",
   'settings.ai.temperatureOverride': 'Ignora temperatura',
   'settings.ai.temperatureOverrideSlider': 'Ignora temperatura (cursore)',
   'settings.ai.temperatureOverrideValue': 'Ignora temperatura (valore)',

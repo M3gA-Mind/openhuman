@@ -4732,6 +4732,12 @@ const messages: TranslationMap = {
     'Endpoint Azure terdeteksi. Atur nama penerapan Anda di bidang model setelah memilih penyedia ini.',
   'settings.ai.chooseModelFromList': 'Pilih dari daftar',
   'settings.ai.enterModelIdManuallyAction': 'Masukkan ID model secara manual',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Masukkan nama penerapan secara manual',
+  'settings.ai.probeFailedHint':
+    'Kami tidak dapat membaca daftar model penyedia ini. Daftar itu hanya mengisi menu dropdown, jadi Anda tetap bisa menambahkan penyedia dan mengetik sendiri nama model atau penerapannya.',
+  'settings.ai.probeFailedAddAnyway': 'Tambahkan tanpa verifikasi',
+  'settings.ai.azureV1EndpointHint':
+    'Untuk Azure, gunakan URL dasar v1: https://YOUR-RESOURCE.openai.azure.com/openai/v1. URL sumber daya yang lama tidak menyediakan daftar model dan mengharapkan header autentikasi yang berbeda.',
   'settings.ai.temperatureOverride': 'Penggantian suhu',
   'settings.ai.temperatureOverrideSlider': 'Penggantian suhu (slider)',
   'settings.ai.temperatureOverrideValue': 'Penggantian suhu (nilai)',

@@ -4759,6 +4759,12 @@ const messages: TranslationMap = {
     'Обнаружена конечная точка Azure. Укажите имя развёртывания в поле модели после выбора этого поставщика.',
   'settings.ai.chooseModelFromList': 'Выбрать из списка',
   'settings.ai.enterModelIdManuallyAction': 'Ввести идентификатор модели вручную',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Ввести имя развёртывания вручную',
+  'settings.ai.probeFailedHint':
+    'Не удалось прочитать список моделей этого провайдера. Этот список только заполняет выпадающее меню, поэтому вы всё равно можете добавить провайдера и ввести имя модели или развёртывания вручную.',
+  'settings.ai.probeFailedAddAnyway': 'Добавить без проверки',
+  'settings.ai.azureV1EndpointHint':
+    'Для Azure используйте базовый адрес v1: https://YOUR-RESOURCE.openai.azure.com/openai/v1. Старый адрес ресурса не отдаёт список моделей и ожидает другой заголовок аутентификации.',
   'settings.ai.temperatureOverride': 'Переопределение температуры',
   'settings.ai.temperatureOverrideSlider': 'Переопределение температуры (ползунок)',
   'settings.ai.temperatureOverrideValue': 'Переопределение температуры (значение)',

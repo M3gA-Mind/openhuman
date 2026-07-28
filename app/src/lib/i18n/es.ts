@@ -4795,6 +4795,13 @@ const messages: TranslationMap = {
     'Punto de conexión de Azure detectado. Defina el nombre de su implementación en el campo de modelo tras elegir este proveedor.',
   'settings.ai.chooseModelFromList': 'Elegir de la lista',
   'settings.ai.enterModelIdManuallyAction': 'Introducir el ID del modelo manualmente',
+  'settings.ai.enterDeploymentNameManuallyAction':
+    'Introducir el nombre de implementación manualmente',
+  'settings.ai.probeFailedHint':
+    'No hemos podido leer la lista de modelos de este proveedor. Esa lista solo rellena el desplegable, así que puedes añadir el proveedor igualmente y escribir tú mismo el nombre del modelo o de la implementación.',
+  'settings.ai.probeFailedAddAnyway': 'Añadir sin verificar',
+  'settings.ai.azureV1EndpointHint':
+    'Para Azure, usa la URL base v1: https://YOUR-RESOURCE.openai.azure.com/openai/v1. La URL de recurso antigua no ofrece una lista de modelos y espera otra cabecera de autenticación.',
   'settings.ai.temperatureOverride': 'Anulación de temperatura',
   'settings.ai.temperatureOverrideSlider': 'Anulación de temperatura (control deslizante)',
   'settings.ai.temperatureOverrideValue': 'Anulación de temperatura (valor)',

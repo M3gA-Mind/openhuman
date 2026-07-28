@@ -4848,6 +4848,12 @@ const messages: TranslationMap = {
     'Azure-Endpunkt erkannt. Legen Sie Ihren Bereitstellungsnamen im Modellfeld fest, nachdem Sie diesen Anbieter ausgewählt haben.',
   'settings.ai.chooseModelFromList': 'Aus Liste wählen',
   'settings.ai.enterModelIdManuallyAction': 'Modell-ID manuell eingeben',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Bereitstellungsnamen manuell eingeben',
+  'settings.ai.probeFailedHint':
+    'Die Modellliste dieses Anbieters konnte nicht gelesen werden. Diese Liste füllt nur das Auswahlmenü, du kannst den Anbieter also trotzdem hinzufügen und den Modell- oder Bereitstellungsnamen selbst eintippen.',
+  'settings.ai.probeFailedAddAnyway': 'Ohne Prüfung hinzufügen',
+  'settings.ai.azureV1EndpointHint':
+    'Verwende für Azure die v1-Basis-URL: https://YOUR-RESOURCE.openai.azure.com/openai/v1. Die ältere Ressourcen-URL liefert keine Modellliste und erwartet einen anderen Auth-Header.',
   'settings.ai.temperatureOverride': 'Temperatur-Override',
   'settings.ai.temperatureOverrideSlider': 'Temperatur-Override (Schieberegler)',
   'settings.ai.temperatureOverrideValue': 'Temperatur-Override (Wert)',

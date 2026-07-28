@@ -4715,6 +4715,12 @@ const messages: TranslationMap = {
     'Azure एंडपॉइंट मिला। यह प्रदाता चुनने के बाद मॉडल फ़ील्ड में अपना परिनियोजन नाम दर्ज करें।',
   'settings.ai.chooseModelFromList': 'सूची से चुनें',
   'settings.ai.enterModelIdManuallyAction': 'मॉडल आईडी मैन्युअल रूप से दर्ज करें',
+  'settings.ai.enterDeploymentNameManuallyAction': 'डिप्लॉयमेंट नाम मैन्युअल रूप से दर्ज करें',
+  'settings.ai.probeFailedHint':
+    'हम इस प्रदाता की मॉडल सूची नहीं पढ़ सके। वह सूची केवल ड्रॉपडाउन भरती है, इसलिए आप प्रदाता को फिर भी जोड़ सकते हैं और मॉडल या डिप्लॉयमेंट का नाम खुद लिख सकते हैं।',
+  'settings.ai.probeFailedAddAnyway': 'सत्यापन के बिना जोड़ें',
+  'settings.ai.azureV1EndpointHint':
+    'Azure के लिए v1 बेस URL का उपयोग करें: https://YOUR-RESOURCE.openai.azure.com/openai/v1. पुराना रिसोर्स URL मॉडल सूची नहीं देता और अलग प्रमाणीकरण हेडर की अपेक्षा करता है।',
   'settings.ai.temperatureOverride': 'तापमान ओवरराइड',
   'settings.ai.temperatureOverrideSlider': 'तापमान ओवरराइड (स्लाइडर)',
   'settings.ai.temperatureOverrideValue': 'तापमान ओवरराइड (मान)',

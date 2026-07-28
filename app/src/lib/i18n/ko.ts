@@ -4661,6 +4661,12 @@ const messages: TranslationMap = {
     'Azure 엔드포인트가 감지되었습니다. 이 공급자를 선택한 후 모델 필드에 배포 이름을 설정하세요.',
   'settings.ai.chooseModelFromList': '목록에서 선택',
   'settings.ai.enterModelIdManuallyAction': '모델 ID 수동 입력',
+  'settings.ai.enterDeploymentNameManuallyAction': '배포 이름 수동 입력',
+  'settings.ai.probeFailedHint':
+    '이 제공업체의 모델 목록을 읽지 못했습니다. 그 목록은 드롭다운을 채우는 용도일 뿐이므로, 제공업체를 그대로 추가한 뒤 모델 또는 배포 이름을 직접 입력해도 됩니다.',
+  'settings.ai.probeFailedAddAnyway': '확인 없이 추가',
+  'settings.ai.azureV1EndpointHint':
+    'Azure에서는 v1 기본 URL을 사용하세요: https://YOUR-RESOURCE.openai.azure.com/openai/v1. 이전 리소스 URL은 모델 목록을 제공하지 않으며 다른 인증 헤더를 요구합니다.',
   'settings.ai.temperatureOverride': '온도 재정의',
   'settings.ai.temperatureOverrideSlider': '온도 재정의(슬라이더)',
   'settings.ai.temperatureOverrideValue': '온도 재정의(값)',

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   endpointHost,
   isAzureFoundryEndpoint,
+  isAzureV1BaseUrl,
   looksLikeAzureBaseModelId,
 } from '../azureDeployment';
 
@@ -32,8 +33,6 @@ describe('isAzureFoundryEndpoint', () => {
       'https://my-res.openai.azure.com/openai/v1',
       'https://contoso.services.ai.azure.com/models',
       'https://my-res.cognitiveservices.azure.com/openai/v1',
-      'https://team.inference.ai.azure.com/v1',
-      'https://team.models.ai.azure.com/v1',
       // Case and trailing path must not matter.
       'HTTPS://My-Res.OPENAI.AZURE.COM/openai/v1/',
       // Sovereign clouds: Azure Government and Azure operated by 21Vianet.
@@ -53,6 +52,11 @@ describe('isAzureFoundryEndpoint', () => {
       'https://api.groq.com/openai/v1',
       'http://localhost:11434/v1',
       'https://litellm.mycorp.dev/v1',
+      // Foundry *serverless* endpoints. They speak the Azure AI Model
+      // Inference API and key `model` on the model name, not a deployment
+      // name, so relabelling their field would mislead rather than help.
+      'https://team.inference.ai.azure.com/v1',
+      'https://team.models.ai.azure.com/v1',
       '',
       null,
       undefined,
@@ -92,5 +96,30 @@ describe('looksLikeAzureBaseModelId', () => {
     expect(looksLikeAzureBaseModelId('   ', catalog)).toBe(false);
     expect(looksLikeAzureBaseModelId(null, catalog)).toBe(false);
     expect(looksLikeAzureBaseModelId('gpt-4o', [])).toBe(false);
+  });
+});
+
+describe('isAzureV1BaseUrl', () => {
+  it('accepts only the OpenAI-compatible v1 base', () => {
+    expect(isAzureV1BaseUrl('https://my-res.openai.azure.com/openai/v1')).toBe(true);
+    expect(isAzureV1BaseUrl('https://my-res.openai.azure.com/openai/v1/')).toBe(true);
+    expect(isAzureV1BaseUrl('HTTPS://My-Res.OPENAI.AZURE.COM/openai/v1')).toBe(true);
+    expect(isAzureV1BaseUrl('https://contoso.services.ai.azure.com/openai/v1')).toBe(true);
+  });
+
+  it('rejects the classic api-version surface and bare resource URLs', () => {
+    // These serve no `{base}/models` listing and want an `api-key` header, so
+    // both the add-provider probe and inference fail on them.
+    expect(isAzureV1BaseUrl('https://my-res.openai.azure.com/openai')).toBe(false);
+    expect(isAzureV1BaseUrl('https://my-res.openai.azure.com')).toBe(false);
+    expect(isAzureV1BaseUrl('https://my-res.openai.azure.com/openai/deployments/my-dep')).toBe(
+      false
+    );
+  });
+
+  it('is false for a non-Azure endpoint', () => {
+    expect(isAzureV1BaseUrl('https://api.openai.com/v1')).toBe(false);
+    expect(isAzureV1BaseUrl('')).toBe(false);
+    expect(isAzureV1BaseUrl(null)).toBe(false);
   });
 });

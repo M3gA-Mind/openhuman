@@ -4601,6 +4601,12 @@ const messages: TranslationMap = {
     'تم اكتشاف نقطة نهاية Azure. حدد اسم النشر في حقل النموذج بعد اختيار هذا المزود.',
   'settings.ai.chooseModelFromList': 'اختر من القائمة',
   'settings.ai.enterModelIdManuallyAction': 'أدخل معرف النموذج يدويًا',
+  'settings.ai.enterDeploymentNameManuallyAction': 'أدخل اسم النشر يدويًا',
+  'settings.ai.probeFailedHint':
+    'تعذّر علينا قراءة قائمة النماذج لدى هذا المزوّد. تلك القائمة تملأ القائمة المنسدلة فقط، لذا لا يزال بإمكانك إضافة المزوّد وكتابة اسم النموذج أو النشر بنفسك.',
+  'settings.ai.probeFailedAddAnyway': 'أضِف دون التحقق',
+  'settings.ai.azureV1EndpointHint':
+    'مع Azure استخدم عنوان الإصدار v1‏: https://YOUR-RESOURCE.openai.azure.com/openai/v1. لا يوفّر عنوان المورد الأقدم قائمة نماذج ويتوقّع ترويسة مصادقة مختلفة.',
   'settings.ai.temperatureOverride': 'تجاوز درجة الحرارة',
   'settings.ai.temperatureOverrideSlider': 'تجاوز درجة الحرارة (شريط التمرير)',
   'settings.ai.temperatureOverrideValue': 'تجاوز درجة الحرارة (القيمة)',

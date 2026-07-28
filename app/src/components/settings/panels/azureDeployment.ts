@@ -29,11 +29,18 @@
  * `my-resource.openai.azure.com` are recognised.
  */
 const AZURE_ENDPOINT_HOSTS = [
+  // The two hosts Microsoft documents for the OpenAI-compatible v1 base URL
+  // (`https://<resource>.<host>/openai/v1/`), plus the resource host the older
+  // `api-version` surface is served from.
   'openai.azure.com',
   'services.ai.azure.com',
   'cognitiveservices.azure.com',
-  'inference.ai.azure.com',
-  'models.ai.azure.com',
+  // NOT `inference.ai.azure.com` / `models.ai.azure.com`. Those are the Foundry
+  // *serverless* endpoints, which speak the Azure AI Model Inference API at
+  // `{endpoint}/models/chat/completions` and key the `model` field on the model
+  // name, not on a deployment name. Classifying them here would relabel a
+  // correct model id as a "deployment name" and mislead the user in the one
+  // place this module exists to make clear.
   // Sovereign clouds. Azure OpenAI is offered in Azure Government
   // (`*.openai.azure.us`) and in Azure operated by 21Vianet / China
   // (`*.openai.azure.cn`). They are separate DNS parents, so the commercial
@@ -81,6 +88,32 @@ export function isAzureFoundryEndpoint(endpoint: string | null | undefined): boo
   const host = endpointHost(endpoint);
   if (!host) return false;
   return AZURE_ENDPOINT_HOSTS.some(known => host === known || host.endsWith(`.${known}`));
+}
+
+/**
+ * Whether an Azure endpoint points at the OpenAI-compatible **v1** base
+ * (`https://<resource>.<host>/openai/v1[/]`).
+ *
+ * This matters because only that base behaves like every other provider
+ * OpenHuman stores: it serves a `GET {base}/models` listing and accepts the
+ * resource key in the `authorization` header (Azure's published v1 spec
+ * declares both an `api-key` and an `authorization` API-key scheme), which is
+ * the `bearer` auth style custom providers are created with. The older
+ * `api-version` surface serves neither, so a bare resource URL copied out of
+ * the portal fails the probe and then fails inference.
+ *
+ * Returns `false` for a non-Azure endpoint — callers pair it with
+ * {@link isAzureFoundryEndpoint}.
+ */
+export function isAzureV1BaseUrl(endpoint: string | null | undefined): boolean {
+  if (!isAzureFoundryEndpoint(endpoint)) return false;
+  const trimmed = (endpoint ?? '').trim().toLowerCase();
+  const schemeIdx = trimmed.indexOf('://');
+  const afterScheme = schemeIdx === -1 ? trimmed : trimmed.slice(schemeIdx + 3);
+  const slashIdx = afterScheme.indexOf('/');
+  // No path at all (a bare host) is not the v1 base.
+  const path = slashIdx === -1 ? '' : afterScheme.slice(slashIdx);
+  return /^\/openai\/v1\/?$/.test(path);
 }
 
 /**

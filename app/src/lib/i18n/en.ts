@@ -5303,6 +5303,12 @@ const en: TranslationMap = {
     'Azure endpoint detected. Set your deployment name in the model field after choosing this provider.',
   'settings.ai.chooseModelFromList': 'Choose from list',
   'settings.ai.enterModelIdManuallyAction': 'Enter model ID manually',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Enter deployment name manually',
+  'settings.ai.probeFailedHint':
+    'We could not read this provider’s model list. That list only fills the dropdown, so you can still add the provider and type the model or deployment name yourself.',
+  'settings.ai.probeFailedAddAnyway': 'Add without verifying',
+  'settings.ai.azureV1EndpointHint':
+    'For Azure, use the v1 base URL: https://YOUR-RESOURCE.openai.azure.com/openai/v1. The older resource URL does not serve a model list and expects a different auth header.',
   'settings.ai.temperatureOverride': 'Temperature override',
   'settings.ai.temperatureOverrideSlider': 'Temperature override (slider)',
   'settings.ai.temperatureOverrideValue': 'Temperature override (value)',
