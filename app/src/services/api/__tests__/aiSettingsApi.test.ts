@@ -12,6 +12,7 @@ import {
   type AISettings,
   clearCloudProviderKey,
   completeOpenAiCodexOAuth,
+  describeProviderVerificationFailure,
   flushCloudProviders,
   importOpenAiCodexCliAuth,
   listProviderModels,
@@ -31,6 +32,7 @@ import {
   startOpenAiCodexOAuth,
   testProviderModel,
   upsertModelRegistryVision,
+  verifyCloudProviderConnection,
 } from '../aiSettingsApi';
 
 // ─── Mock declarations (must be hoisted before imports) ───────────────────────
@@ -1076,5 +1078,120 @@ describe('model registry vision helpers', () => {
     const flipped = upsertModelRegistryVision(reg, 'openai', 'text-only', true);
     expect(flipped.filter(e => e.id === 'text-only')).toHaveLength(1);
     expect(modelRegistryVision(flipped, 'openai', 'text-only')).toBe(true);
+  });
+});
+
+// ─── #5146 §2.4: connected-but-unusable providers ─────────────────────────────
+
+describe('describeProviderVerificationFailure', () => {
+  it('maps an auth rejection onto a key-checking remedy', () => {
+    const msg = describeProviderVerificationFailure('openai', 'HTTP 401 invalid_api_key');
+    expect(msg).toContain('openai');
+    expect(msg).toContain('rejected it');
+    // Must not leave the user thinking the save itself failed.
+    expect(msg).toContain('saved');
+  });
+
+  it('maps an unknown model onto a model-id remedy, not an auth remedy', () => {
+    const msg = describeProviderVerificationFailure(
+      'openai',
+      "The model `gpt-4p` does not exist or you do not have access to it."
+    );
+    expect(msg).toContain('does not recognise the selected model');
+    expect(msg).not.toContain('rejected it');
+  });
+
+  it('maps quota and rate-limit failures onto a billing remedy', () => {
+    for (const raw of ['429 Too Many Requests', 'insufficient_quota', 'billing hard limit reached']) {
+      expect(describeProviderVerificationFailure('deepseek', raw)).toContain(
+        'quota or billing reasons'
+      );
+    }
+  });
+
+  it('maps a bare 404 onto the /v1 base-url remedy', () => {
+    const msg = describeProviderVerificationFailure('custom', 'HTTP 404');
+    expect(msg).toContain('/v1');
+    expect(msg).toContain('base URL');
+  });
+
+  it('maps a timeout onto an endpoint/network remedy', () => {
+    expect(describeProviderVerificationFailure('custom', 'request timed out')).toContain(
+      'did not respond in time'
+    );
+  });
+
+  it('passes an unrecognised error through verbatim rather than inventing a diagnosis', () => {
+    const msg = describeProviderVerificationFailure('custom', 'kaboom: something novel');
+    expect(msg).toContain('kaboom: something novel');
+  });
+
+  it('does not produce a dangling colon when the error string is empty', () => {
+    expect(describeProviderVerificationFailure('custom', '   ')).toContain('unknown error');
+  });
+
+  it('classifies case-insensitively', () => {
+    expect(describeProviderVerificationFailure('openai', 'INVALID API KEY')).toContain(
+      'rejected it'
+    );
+  });
+});
+
+describe('verifyCloudProviderConnection', () => {
+  beforeEach(() => {
+    mockCallCoreRpc.mockReset();
+    mockIsTauri.mockReturnValue(true);
+  });
+
+  it('reports ok when the provider actually answers a test prompt', async () => {
+    mockCallCoreRpc.mockResolvedValue({ result: { reply: 'pong' } });
+
+    const result = await verifyCloudProviderConnection('openai');
+
+    expect(result).toEqual({ ok: true, message: '', detail: '' });
+    expect(mockCallCoreRpc).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'openhuman.inference_test_provider_model' })
+    );
+  });
+
+  it('defaults to the chat workload and sends a minimal prompt', async () => {
+    mockCallCoreRpc.mockResolvedValue({ result: { reply: 'pong' } });
+
+    await verifyCloudProviderConnection('openai');
+
+    expect(mockCallCoreRpc).toHaveBeenCalledWith(
+      expect.objectContaining({
+        params: { workload: 'chat', provider: 'openai', prompt: 'ping' },
+      })
+    );
+  });
+
+  it('treats an empty reply as unusable — this is the connected-but-unusable case', async () => {
+    mockCallCoreRpc.mockResolvedValue({ result: { reply: '   ' } });
+
+    const result = await verifyCloudProviderConnection('openai');
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('empty response');
+  });
+
+  it('returns the classified failure instead of throwing, so the caller never loses the save', async () => {
+    mockCallCoreRpc.mockRejectedValue(new Error('HTTP 401 invalid_api_key'));
+
+    const result = await verifyCloudProviderConnection('openai');
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('rejected it');
+    // Raw provider text stays available for the details expander.
+    expect(result.detail).toContain('401');
+  });
+
+  it('handles a non-Error rejection without stringifying to [object Object]', async () => {
+    mockCallCoreRpc.mockRejectedValue('plain string failure');
+
+    const result = await verifyCloudProviderConnection('openai');
+
+    expect(result.ok).toBe(false);
+    expect(result.detail).toBe('plain string failure');
   });
 });

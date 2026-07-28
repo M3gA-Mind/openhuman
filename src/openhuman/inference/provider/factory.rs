@@ -362,29 +362,29 @@ pub fn provider_for_role(role: &str, config: &Config) -> String {
             }
         }
 
-        // Diagnostic: when the user has a local provider configured for chat
-        // but this background workload is falling through to cloud, emit a
-        // warning so it's visible in logs (no silent fallback).
-        if !matches!(role, "chat" | "reasoning" | "coding") {
+        let resolved = resolve_primary_cloud_provider_string(config);
+
+        // #5146 §2.1: the fallback itself is correct and stays — background
+        // workloads run tier-specific models that local runtimes don't serve,
+        // and a local-chat + managed-subscription user genuinely wants them on
+        // the cloud. What was missing is the *explanation*: when this route
+        // later fails for want of a key, the user saw a bare slug-level auth
+        // error naming a provider they never configured. Emit the same
+        // user-facing sentence the error path uses, so the routing decision is
+        // visible in logs and support transcripts before anything goes wrong.
+        if super::fallback_diagnostics::role_falls_back_to_cloud(role) {
             if let Some(chat) = config.chat_provider.as_deref() {
                 if crate::openhuman::inference::local::profile::is_local_provider_string(chat) {
-                    let override_hint = if role == "burst" {
-                        "set agentic_provider explicitly to override".to_string()
-                    } else {
-                        format!("set {role}_provider explicitly to override")
-                    };
                     log::info!(
-                        "[providers][local-fallback] role={} using managed backend (chat is \
-                         local '{}' but background workloads require cloud — {})",
+                        "[providers][local-fallback] role={} {}",
                         role,
-                        chat,
-                        override_hint
+                        super::fallback_diagnostics::cloud_fallback_notice(role, chat, &resolved)
                     );
                 }
             }
         }
 
-        resolve_primary_cloud_provider_string(config)
+        resolved
     } else {
         s.to_string()
     }
@@ -2203,7 +2203,20 @@ fn resolve_cloud_slug<'a>(
         redact_endpoint(&entry.endpoint)
     );
 
-    let key = lookup_key_for_slug(slug, config)?;
+    // #5146 §2.1: a raw "failed to read API key for slug 'anthropic'" is
+    // baffling when the user never configured Anthropic — they set a local
+    // Ollama model and this is a background role that fell back to the cloud.
+    // Attach the role, and the local chat model that caused the fallback, so
+    // the message explains itself and names a concrete remedy.
+    let key = lookup_key_for_slug(slug, config).map_err(|e| {
+        let local_chat = config.chat_provider.as_deref().filter(|chat| {
+            crate::openhuman::inference::local::profile::is_local_provider_string(chat)
+        });
+        let guidance = super::fallback_diagnostics::missing_provider_credentials_message(
+            role, slug, local_chat,
+        );
+        anyhow::anyhow!("{guidance} (underlying error: {e})")
+    })?;
     let codex = resolve_openai_codex_routing(config, slug, &entry.endpoint, &key)
         .map_err(anyhow::Error::msg)?;
 

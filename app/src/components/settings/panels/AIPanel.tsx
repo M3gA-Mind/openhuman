@@ -19,6 +19,7 @@ import {
   type ProviderRef as ApiProviderRef,
   clearCloudProviderKey,
   type CloudProviderView,
+  describeProviderVerificationFailure,
   flushCloudProviders,
   importOpenAiCodexCliAuth,
   listProviderModels,
@@ -2152,7 +2153,11 @@ const CustomRoutingDialog = ({
       setTestReply(result.reply);
     } catch (err) {
       if (testRequestIdRef.current !== requestId) return;
-      setTestError(err instanceof Error ? err.message : String(err));
+      // #5146 §2.4: a raw upstream string ("401", "model_not_found", a bare
+      // 404) tells the user nothing about what to change. Map the common
+      // shapes onto a concrete next step; unrecognised errors pass through.
+      const raw = err instanceof Error ? err.message : String(err);
+      setTestError(describeProviderVerificationFailure(currentProviderString, raw));
     } finally {
       if (testRequestIdRef.current === requestId) {
         setTestBusy(false);

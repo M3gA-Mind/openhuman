@@ -1470,3 +1470,94 @@ async fn create_chat_model_local_runtime_does_not_emit_egress_realpath() {
         }
     }
 }
+
+// ─── #5146 §2.1: local chat + background workloads ────────────────────────────
+//
+// The fix for #5146 §2.1 is an *explanation* change, not a routing change. These
+// pin the routing so a future "never fall back" refactor cannot silently break
+// local-chat + managed-subscription users without a failing test.
+
+#[test]
+fn local_chat_still_routes_background_roles_to_the_managed_backend() {
+    let mut config = Config::default();
+    config.chat_provider = Some("ollama:gemma3:1b".to_string());
+
+    // Every background role keeps falling through to the managed backend: they
+    // run tier-specific models a local runtime does not serve, and the user's
+    // subscription is what pays for them.
+    for role in [
+        "vision",
+        "embeddings",
+        "memory",
+        "heartbeat",
+        "learning",
+        "subconscious",
+        "agentic",
+        "burst",
+    ] {
+        assert_eq!(
+            provider_for_role(role, &config),
+            "openhuman",
+            "role '{role}' must keep falling back to the managed backend when chat is local"
+        );
+    }
+}
+
+#[test]
+fn local_chat_role_is_returned_verbatim_and_never_falls_back() {
+    let mut config = Config::default();
+    config.chat_provider = Some("ollama:gemma3:1b".to_string());
+
+    assert_eq!(
+        provider_for_role("chat", &config),
+        "ollama:gemma3:1b",
+        "an explicitly configured local chat route must be honoured verbatim"
+    );
+}
+
+#[test]
+fn explicit_background_route_overrides_the_cloud_fallback() {
+    let mut config = Config::default();
+    config.chat_provider = Some("ollama:gemma3:1b".to_string());
+    config.vision_provider = Some("ollama:llava:7b".to_string());
+
+    // The remedy the new diagnostics point users at must actually work.
+    assert_eq!(
+        provider_for_role("vision", &config),
+        "ollama:llava:7b",
+        "setting vision_provider must take precedence over the cloud fallback"
+    );
+}
+
+#[test]
+fn cloud_fallback_roles_match_the_roles_provider_for_role_actually_falls_back() {
+    // `factory_tests` is a child module of `factory`, so `super` is `factory`,
+    // not `provider` — reach the sibling module by its crate path.
+    use crate::openhuman::inference::provider::fallback_diagnostics::role_falls_back_to_cloud;
+    let mut config = Config::default();
+    config.chat_provider = Some("ollama:gemma3:1b".to_string());
+
+    // The diagnostics module carries its own role list; if the two drift, users
+    // get either a missing explanation or one that names the wrong knob.
+    for role in [
+        "vision",
+        "embeddings",
+        "memory",
+        "heartbeat",
+        "learning",
+        "subconscious",
+        "agentic",
+        "burst",
+    ] {
+        assert!(
+            role_falls_back_to_cloud(role),
+            "'{role}' falls back in provider_for_role but is missing from CLOUD_FALLBACK_ROLES"
+        );
+    }
+    for role in ["chat", "reasoning", "coding"] {
+        assert!(
+            !role_falls_back_to_cloud(role),
+            "'{role}' is a chat-tier role and must not be described as a cloud fallback"
+        );
+    }
+}

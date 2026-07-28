@@ -462,6 +462,104 @@ export async function setCloudProviderKey(slug: string, apiKey: string): Promise
   });
 }
 
+/**
+ * Outcome of a post-save connection check (#5146 §2.4).
+ *
+ * `ok: false` means the credential was stored but the provider could not
+ * actually serve an inference call — the "connected but unusable" state where
+ * the UI previously showed a healthy provider that failed on first real use.
+ */
+export interface CloudProviderVerification {
+  ok: boolean;
+  /** Actionable, user-facing explanation. Empty when `ok`. */
+  message: string;
+  /** Raw provider error, kept for the details/expander. Empty when `ok`. */
+  detail: string;
+}
+
+/**
+ * Turn a raw provider/RPC failure into something a user can act on (#5146 §2.4).
+ *
+ * Storing a key only proves we wrote it to disk. The failures users actually
+ * hit — wrong model id, exhausted quota, a base URL that doesn't speak the
+ * endpoint we call — all surface as opaque upstream strings, so map the common
+ * shapes onto a concrete next step and pass anything unrecognised through
+ * verbatim rather than inventing a diagnosis.
+ */
+export function describeProviderVerificationFailure(slug: string, raw: string): string {
+  const detail = raw.trim();
+  const haystack = detail.toLowerCase();
+
+  if (
+    haystack.includes('401') ||
+    haystack.includes('invalid api key') ||
+    haystack.includes('invalid_api_key') ||
+    haystack.includes('incorrect api key') ||
+    haystack.includes('unauthorized') ||
+    haystack.includes('authentication')
+  ) {
+    return `The key was saved, but '${slug}' rejected it. Check that you pasted the whole key and that it is still active in the provider's dashboard.`;
+  }
+  if (
+    haystack.includes('model_not_found') ||
+    haystack.includes('does not exist') ||
+    haystack.includes('is not available') ||
+    haystack.includes('unknown model') ||
+    haystack.includes('invalid model')
+  ) {
+    return `The key was saved and accepted, but '${slug}' does not recognise the selected model. Pick a model id this provider actually serves (its default model is set on the provider entry).`;
+  }
+  if (
+    haystack.includes('quota') ||
+    haystack.includes('insufficient') ||
+    haystack.includes('billing') ||
+    haystack.includes('429') ||
+    haystack.includes('rate limit')
+  ) {
+    return `The key was saved and accepted, but '${slug}' refused the request for quota or billing reasons. Check your account balance and rate limits with the provider.`;
+  }
+  if (haystack.includes('404') || haystack.includes('not found')) {
+    return `The key was saved, but the configured endpoint for '${slug}' returned 404. Check the base URL — an OpenAI-compatible provider usually needs the '/v1' suffix (e.g. https://api.openai.com/v1).`;
+  }
+  if (haystack.includes('timeout') || haystack.includes('timed out')) {
+    return `The key was saved, but '${slug}' did not respond in time. Check the endpoint URL and your network, then test again.`;
+  }
+  return `The key was saved, but a test call to '${slug}' failed: ${detail || 'unknown error'}`;
+}
+
+/**
+ * Prove a freshly configured provider can actually run inference (#5146 §2.4).
+ *
+ * Runs one real, minimal completion through the existing
+ * `openhuman.inference_test_provider_model` RPC. Never throws: a provider that
+ * cannot serve a request is a *result*, not an exception, because the caller
+ * always wants to show it rather than lose the save.
+ */
+export async function verifyCloudProviderConnection(
+  slug: string,
+  workload: WorkloadId = 'chat'
+): Promise<CloudProviderVerification> {
+  try {
+    const result = await testProviderModel(workload, slug, 'ping');
+    const reply = (result?.reply ?? '').trim();
+    if (!reply) {
+      return {
+        ok: false,
+        message: `The key was saved, but '${slug}' returned an empty response to a test prompt. Check the model id configured for this provider.`,
+        detail: '',
+      };
+    }
+    return { ok: true, message: '', detail: '' };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      message: describeProviderVerificationFailure(slug, detail),
+      detail,
+    };
+  }
+}
+
 /** Clear a stored API key. */
 export async function clearCloudProviderKey(slug: string): Promise<void> {
   if (slug === 'openhuman') {
