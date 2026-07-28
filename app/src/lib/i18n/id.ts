@@ -4744,8 +4744,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "Kunci sudah disimpan, tetapi '{slug}' mengembalikan respons kosong untuk prompt uji. Periksa id model yang dikonfigurasi untuk penyedia ini.",
   'settings.ai.providerTest.unknown':
-    "Kunci sudah disimpan, tetapi panggilan uji ke '{slug}' gagal: {detail}",
-  'settings.ai.providerTest.unknownError': 'kesalahan tidak diketahui',
+    "Kunci sudah disimpan, tetapi panggilan uji ke '{slug}' gagal. Periksa halaman status penyedia dan URL endpoint, lalu uji lagi.",
   'settings.ai.testingModel': 'Pengujian model...',
   'settings.ai.modelResponse': 'Respons model',
   'settings.ai.providerWithValue': 'Penyedia: {value}',

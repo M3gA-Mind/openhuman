@@ -4467,8 +4467,8 @@ const messages: TranslationMap = {
     "密钥已保存，但 '{slug}' 未在规定时间内响应。请检查接口地址和网络后重新测试。",
   'settings.ai.providerTest.emptyReply':
     "密钥已保存，但 '{slug}' 对测试提示返回了空响应。请检查为该服务商配置的模型 ID。",
-  'settings.ai.providerTest.unknown': "密钥已保存，但对 '{slug}' 的测试调用失败：{detail}",
-  'settings.ai.providerTest.unknownError': '未知错误',
+  'settings.ai.providerTest.unknown':
+    "密钥已保存，但对 '{slug}' 的测试调用失败。请查看该服务商的状态页面和接口地址后重新测试。",
   'settings.ai.testingModel': '测试模型...',
   'settings.ai.modelResponse': '模型响应',
   'settings.ai.providerWithValue': '提供者：{value}',

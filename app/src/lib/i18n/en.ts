@@ -5315,8 +5315,7 @@ const en: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "The key was saved, but '{slug}' returned an empty response to a test prompt. Check the model id configured for this provider.",
   'settings.ai.providerTest.unknown':
-    "The key was saved, but a test call to '{slug}' failed: {detail}",
-  'settings.ai.providerTest.unknownError': 'unknown error',
+    "The key was saved, but a test call to '{slug}' failed. Check the provider's status page and the endpoint URL, then test again.",
   'settings.ai.testingModel': 'Testing model...',
   'settings.ai.modelResponse': 'Model response',
   'settings.ai.providerWithValue': 'Provider: {value}',

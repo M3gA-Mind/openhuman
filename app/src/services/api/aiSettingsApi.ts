@@ -501,7 +501,6 @@ export type ProviderVerificationReason =
   | 'quota'
   | 'endpoint'
   | 'timeout'
-  | 'empty'
   | 'unknown';
 
 /** Map a raw upstream error string onto a [`ProviderVerificationReason`]. */
@@ -520,6 +519,11 @@ export function classifyProviderVerificationFailure(raw: string): ProviderVerifi
   }
   if (
     haystack.includes('model_not_found') ||
+    // Must be tested here: the endpoint branch below matches a bare
+    // 'not found', which would otherwise claim every provider that phrases a
+    // missing model as "model not found" or "The model `x` was not found" and
+    // send the user off to check their base URL instead of their model id.
+    (haystack.includes('not found') && haystack.includes('model')) ||
     haystack.includes('does not exist') ||
     haystack.includes('is not available') ||
     haystack.includes('unknown model') ||
@@ -609,12 +613,17 @@ export function describeProviderVerificationFailure(
         { slug }
       );
     default:
+      // Deliberately generic. The upstream string can echo request material
+      // (headers, key fragments) and this lands in a screenshot-able banner, so
+      // it must not be interpolated into user-visible copy. The raw text stays
+      // on `CloudProviderVerification.detail` for the details surface and is
+      // logged by the caller for local diagnosis.
       return fillTemplate(
         t(
           'settings.ai.providerTest.unknown',
-          "The key was saved, but a test call to '{slug}' failed: {detail}"
+          "The key was saved, but a test call to '{slug}' failed. Check the provider's status page and the endpoint URL, then test again."
         ),
-        { slug, detail: detail || t('settings.ai.providerTest.unknownError', 'unknown error') }
+        { slug }
       );
   }
 }

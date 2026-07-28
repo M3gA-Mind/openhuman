@@ -4800,8 +4800,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "La chiave è stata salvata, ma '{slug}' ha restituito una risposta vuota a un prompt di prova. Controlla l'id del modello configurato per questo provider.",
   'settings.ai.providerTest.unknown':
-    "La chiave è stata salvata, ma una chiamata di prova a '{slug}' non è riuscita: {detail}",
-  'settings.ai.providerTest.unknownError': 'errore sconosciuto',
+    "La chiave è stata salvata, ma una chiamata di prova a '{slug}' non è riuscita. Controlla la pagina di stato del provider e l'URL dell'endpoint, poi riprova.",
   'settings.ai.testingModel': 'Test del modello...',
   'settings.ai.modelResponse': 'Risposta del modello',
   'settings.ai.providerWithValue': 'Fornitore: {value}',

@@ -1136,15 +1136,25 @@ describe('describeProviderVerificationFailure', () => {
     );
   });
 
-  it('passes an unrecognised error through verbatim rather than inventing a diagnosis', () => {
-    const msg = describeProviderVerificationFailure('custom', 'kaboom: something novel', tFallback);
-    expect(msg).toContain('kaboom: something novel');
+  it('keeps an unrecognised provider error out of the user-visible copy', () => {
+    // A raw upstream string can echo request material (headers, key
+    // fragments) and this lands in a screenshot-able banner, so the fallback
+    // branch must stay generic. The raw text is still returned on
+    // `CloudProviderVerification.detail` and logged by the caller.
+    const msg = describeProviderVerificationFailure(
+      'custom',
+      'kaboom: sk-secret-tail leaked in provider text',
+      tFallback
+    );
+    expect(msg).not.toContain('kaboom');
+    expect(msg).not.toContain('sk-secret-tail');
+    expect(msg).toContain('custom');
   });
 
-  it('does not produce a dangling colon when the error string is empty', () => {
-    expect(describeProviderVerificationFailure('custom', '   ', tFallback)).toContain(
-      'unknown error'
-    );
+  it('reads cleanly when the error string is empty', () => {
+    const msg = describeProviderVerificationFailure('custom', '   ', tFallback);
+    expect(msg).toContain('custom');
+    expect(msg).not.toMatch(/:\s*$/);
   });
 
   it('classifies case-insensitively', () => {
@@ -1195,6 +1205,11 @@ describe('classifyProviderVerificationFailure', () => {
     expect(classifyProviderVerificationFailure('unknown model')).toBe('model');
     expect(classifyProviderVerificationFailure('429 rate limit')).toBe('quota');
     expect(classifyProviderVerificationFailure('HTTP 404')).toBe('endpoint');
+    // The endpoint branch matches a bare 'not found'; these natural phrasings
+    // must still reach the model branch rather than sending the user to check
+    // their base URL (greptile #5254).
+    expect(classifyProviderVerificationFailure('model not found')).toBe('model');
+    expect(classifyProviderVerificationFailure('The model `x` was not found')).toBe('model');
     expect(classifyProviderVerificationFailure('request timed out')).toBe('timeout');
     expect(classifyProviderVerificationFailure('kaboom')).toBe('unknown');
     expect(classifyProviderVerificationFailure('')).toBe('unknown');

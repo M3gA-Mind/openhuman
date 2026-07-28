@@ -4860,8 +4860,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "Der Schlüssel wurde gespeichert, aber '{slug}' lieferte auf eine Testanfrage eine leere Antwort. Prüfen Sie die für diesen Anbieter konfigurierte Modell-ID.",
   'settings.ai.providerTest.unknown':
-    "Der Schlüssel wurde gespeichert, aber ein Testaufruf an '{slug}' ist fehlgeschlagen: {detail}",
-  'settings.ai.providerTest.unknownError': 'unbekannter Fehler',
+    "Der Schlüssel wurde gespeichert, aber ein Testaufruf an '{slug}' ist fehlgeschlagen. Prüfen Sie die Statusseite des Anbieters und die Endpunkt-URL und testen Sie erneut.",
   'settings.ai.testingModel': 'Modell wird getestet...',
   'settings.ai.modelResponse': 'Modellantwort',
   'settings.ai.providerWithValue': 'Anbieter: {value}',

@@ -4837,8 +4837,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "La clé a été enregistrée, mais '{slug}' a renvoyé une réponse vide à une invite de test. Vérifiez l'identifiant de modèle configuré pour ce fournisseur.",
   'settings.ai.providerTest.unknown':
-    "La clé a été enregistrée, mais un appel de test vers '{slug}' a échoué : {detail}",
-  'settings.ai.providerTest.unknownError': 'erreur inconnue',
+    "La clé a été enregistrée, mais un appel de test vers '{slug}' a échoué. Vérifiez la page d'état du fournisseur et l'URL du point de terminaison, puis réessayez.",
   'settings.ai.testingModel': 'Modèle de test...',
   'settings.ai.modelResponse': 'Réponse du modèle',
   'settings.ai.providerWithValue': 'Fournisseur : {value}',

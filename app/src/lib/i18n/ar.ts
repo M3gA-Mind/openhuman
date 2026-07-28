@@ -4613,8 +4613,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "تم حفظ المفتاح، لكن '{slug}' أعاد رداً فارغاً على رسالة اختبار. تحقق من معرّف النموذج المهيأ لهذا المزوّد.",
   'settings.ai.providerTest.unknown':
-    "تم حفظ المفتاح، لكن فشل استدعاء اختباري إلى '{slug}': {detail}",
-  'settings.ai.providerTest.unknownError': 'خطأ غير معروف',
+    "تم حفظ المفتاح، لكن فشل استدعاء اختباري إلى '{slug}'. تحقق من صفحة حالة المزوّد ومن عنوان نقطة النهاية ثم أعد الاختبار.",
   'settings.ai.testingModel': 'نموذج الاختبار...',
   'settings.ai.modelResponse': 'استجابة النموذج',
   'settings.ai.providerWithValue': 'الموفر: {value}',

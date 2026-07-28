@@ -4771,8 +4771,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "Ключ сохранён, но '{slug}' вернул пустой ответ на тестовый запрос. Проверьте идентификатор модели, настроенный для этого провайдера.",
   'settings.ai.providerTest.unknown':
-    "Ключ сохранён, но тестовый вызов к '{slug}' завершился ошибкой: {detail}",
-  'settings.ai.providerTest.unknownError': 'неизвестная ошибка',
+    "Ключ сохранён, но тестовый вызов к '{slug}' не удался. Проверьте страницу состояния провайдера и URL endpoint, затем повторите проверку.",
   'settings.ai.testingModel': 'Модель тестирования...',
   'settings.ai.modelResponse': 'Ответ модели',
   'settings.ai.providerWithValue': 'Поставщик: {value}',

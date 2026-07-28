@@ -4794,8 +4794,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "A chave foi salva, mas '{slug}' retornou uma resposta vazia a um prompt de teste. Verifique o id do modelo configurado para este provedor.",
   'settings.ai.providerTest.unknown':
-    "A chave foi salva, mas uma chamada de teste para '{slug}' falhou: {detail}",
-  'settings.ai.providerTest.unknownError': 'erro desconhecido',
+    "A chave foi salva, mas uma chamada de teste para '{slug}' falhou. Verifique a página de status do provedor e a URL do endpoint e teste novamente.",
   'settings.ai.testingModel': 'Modelo de teste...',
   'settings.ai.modelResponse': 'Resposta do modelo',
   'settings.ai.providerWithValue': 'Provedor: {value}',

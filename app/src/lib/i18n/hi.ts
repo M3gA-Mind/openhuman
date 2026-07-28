@@ -4727,8 +4727,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "कुंजी सहेज दी गई, लेकिन '{slug}' ने परीक्षण संकेत पर खाली उत्तर लौटाया। इस प्रदाता के लिए कॉन्फ़िगर किया गया मॉडल आईडी जाँचें।",
   'settings.ai.providerTest.unknown':
-    "कुंजी सहेज दी गई, लेकिन '{slug}' पर परीक्षण कॉल विफल रही: {detail}",
-  'settings.ai.providerTest.unknownError': 'अज्ञात त्रुटि',
+    "कुंजी सहेज दी गई, लेकिन '{slug}' पर परीक्षण कॉल विफल रही। प्रदाता का स्थिति पृष्ठ और एंडपॉइंट URL जाँचें, फिर दोबारा परीक्षण करें।",
   'settings.ai.testingModel': 'परीक्षण मॉडल...',
   'settings.ai.modelResponse': 'मॉडल प्रतिक्रिया',
   'settings.ai.providerWithValue': 'प्रदाता: {value}',

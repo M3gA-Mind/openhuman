@@ -4798,8 +4798,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "Klucz został zapisany, ale '{slug}' zwrócił pustą odpowiedź na zapytanie testowe. Sprawdź identyfikator modelu skonfigurowany dla tego dostawcy.",
   'settings.ai.providerTest.unknown':
-    "Klucz został zapisany, ale wywołanie testowe do '{slug}' nie powiodło się: {detail}",
-  'settings.ai.providerTest.unknownError': 'nieznany błąd',
+    "Klucz został zapisany, ale wywołanie testowe do '{slug}' nie powiodło się. Sprawdź stronę statusu dostawcy i adres endpointu, a następnie przetestuj ponownie.",
   'settings.ai.testingModel': 'Testowanie modelu...',
   'settings.ai.modelResponse': 'Odpowiedź modelu',
   'settings.ai.providerWithValue': 'Dostawca: {value}',

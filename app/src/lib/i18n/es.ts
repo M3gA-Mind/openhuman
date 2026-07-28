@@ -4807,8 +4807,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "La clave se guardó, pero '{slug}' devolvió una respuesta vacía a un mensaje de prueba. Revisa el identificador de modelo configurado para este proveedor.",
   'settings.ai.providerTest.unknown':
-    "La clave se guardó, pero una llamada de prueba a '{slug}' falló: {detail}",
-  'settings.ai.providerTest.unknownError': 'error desconocido',
+    "La clave se guardó, pero una llamada de prueba a '{slug}' falló. Revisa la página de estado del proveedor y la URL del endpoint, y vuelve a probar.",
   'settings.ai.testingModel': 'Modelo de prueba...',
   'settings.ai.modelResponse': 'Respuesta modelo',
   'settings.ai.providerWithValue': 'Proveedor: {value}',

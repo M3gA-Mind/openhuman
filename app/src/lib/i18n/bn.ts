@@ -4727,8 +4727,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "কী সংরক্ষণ করা হয়েছে, কিন্তু '{slug}' পরীক্ষামূলক প্রম্পটে খালি উত্তর ফেরত দিয়েছে। এই প্রদানকারীর জন্য কনফিগার করা মডেল আইডি দেখুন।",
   'settings.ai.providerTest.unknown':
-    "কী সংরক্ষণ করা হয়েছে, কিন্তু '{slug}' এ পরীক্ষামূলক কল ব্যর্থ হয়েছে: {detail}",
-  'settings.ai.providerTest.unknownError': 'অজানা ত্রুটি',
+    "কী সংরক্ষণ করা হয়েছে, কিন্তু '{slug}' এ পরীক্ষামূলক কল ব্যর্থ হয়েছে। প্রদানকারীর স্ট্যাটাস পৃষ্ঠা ও এন্ডপয়েন্ট URL দেখে আবার পরীক্ষা করুন।",
   'settings.ai.testingModel': 'পরীক্ষার মডেল...',
   'settings.ai.modelResponse': 'মডেল প্রতিক্রিয়া',
   'settings.ai.providerWithValue': 'প্রদানকারী: {value}',

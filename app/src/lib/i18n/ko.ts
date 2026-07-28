@@ -4673,8 +4673,7 @@ const messages: TranslationMap = {
   'settings.ai.providerTest.emptyReply':
     "키는 저장되었지만 '{slug}'가 테스트 프롬프트에 빈 응답을 반환했습니다. 이 제공업체에 설정된 모델 ID를 확인하세요.",
   'settings.ai.providerTest.unknown':
-    "키는 저장되었지만 '{slug}'에 대한 테스트 호출이 실패했습니다: {detail}",
-  'settings.ai.providerTest.unknownError': '알 수 없는 오류',
+    "키는 저장되었지만 '{slug}'에 대한 테스트 호출이 실패했습니다. 제공업체의 상태 페이지와 엔드포인트 URL을 확인한 뒤 다시 테스트하세요.",
   'settings.ai.testingModel': '모델 테스트 중...',
   'settings.ai.modelResponse': '모델 응답',
   'settings.ai.providerWithValue': '공급자: {value}',

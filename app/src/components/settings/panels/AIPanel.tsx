@@ -2157,6 +2157,10 @@ const CustomRoutingDialog = ({
       // 404) tells the user nothing about what to change. Map the common
       // shapes onto a concrete next step; unrecognised errors pass through.
       const raw = err instanceof Error ? err.message : String(err);
+      // The banner copy is deliberately generic (a provider error can echo
+      // request material), so keep the raw text on the console where it is
+      // still reachable for diagnosis.
+      console.error(`[ai-settings][test] provider test failed workload=${workload.id}`, raw);
       // The bare slug, not `currentProviderString` — that is the composite
       // `provider:model[@temp]` and would read as "'openai:gpt-4o' rejected it".
       setTestError(describeProviderVerificationFailure(registrySlug ?? '', raw, t));
