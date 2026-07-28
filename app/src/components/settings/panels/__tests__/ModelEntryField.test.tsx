@@ -81,11 +81,29 @@ describe('ModelEntryField', () => {
   });
 
   it('shows the loading placeholder while a catalog-mode provider probes', () => {
-    renderWithProviders(
-      <Harness endpoint="https://api.openai.com/v1" catalog={[{ id: 'gpt-4o' }]} catalogLoading />
-    );
+    // The realistic shape: the panel clears the catalog before fetching, so a
+    // provider in dropdown mode is loading with an *empty* catalog. Gating the
+    // placeholder on the effective mode would lose it in exactly this window.
+    renderWithProviders(<Harness endpoint="https://api.openai.com/v1" catalogLoading />);
 
     expect(screen.getByText(/Loading models/i)).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('omits the model-id retry copy for an Azure provider', () => {
+    // The retry hint names a model id, which is the wrong thing to ask an
+    // Azure user for; they get the deployment-name help under the field.
+    renderWithProviders(
+      <Harness
+        endpoint="https://my-resource.openai.azure.com/openai/v1"
+        catalogError="provider returned 404"
+        onRetry={() => {}}
+      />
+    );
+
+    expect(screen.queryByText(/enter model id manually:/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/This is not the model ID/i)).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Deployment name/i })).toBeInTheDocument();
   });
 
   it('surfaces a probe error with a retry and still accepts a typed value', () => {

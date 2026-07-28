@@ -123,10 +123,13 @@ export const ModelEntryField = ({
   const { isAzureProvider, manualEntry, useManualEntry, showAzureLegacyHint } = mode;
   const fieldLabel = isAzureProvider ? t('settings.ai.deploymentNameLabel') : label;
 
-  // A still-loading catalog only blocks the dropdown. In free-text mode (every
-  // Azure connection) the field is usable immediately — waiting on a listing
-  // whose values are the wrong ones anyway would be pure delay.
-  const showLoadingSelect = Boolean(catalogLoading) && !useManualEntry;
+  // A still-loading catalog only blocks the dropdown. Gate on the *explicit*
+  // mode rather than the effective one: while the probe is in flight the
+  // catalog is empty, so `useManualEntry` is transiently true for everyone and
+  // gating on it would drop the "loading" affordance entirely. In free-text
+  // mode (every Azure connection) the field is usable immediately — waiting on
+  // a listing whose values are the wrong ones anyway would be pure delay.
+  const showLoadingSelect = Boolean(catalogLoading) && !manualEntry;
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -142,9 +145,13 @@ export const ModelEntryField = ({
           <Button type="button" variant="tertiary" size="xs" onClick={onRetry}>
             {t('common.retry')}
           </Button>
-          <span className="text-xs text-content-faint">
-            {t('settings.ai.enterModelIdManually')}
-          </span>
+          {/* Azure gets `deploymentNameHelp` under the field instead — this
+              copy names a model id, which is the wrong thing to ask for. */}
+          {!isAzureProvider && (
+            <span className="text-xs text-content-faint">
+              {t('settings.ai.enterModelIdManually')}
+            </span>
+          )}
         </div>
       ) : null}
 
