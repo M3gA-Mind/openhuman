@@ -15,15 +15,23 @@ use crate::openhuman::inference::vision_models::{self, VISION_MODEL_SUGGESTIONS}
 
 pub(crate) const DEFAULT_OLLAMA_MODEL: &str = "gemma3:1b-it-qat";
 
-/// Default local vision model. Must name a genuinely vision-capable model:
-/// it is the fallback whenever a configured vision id turns out to be
-/// chat-only, so a chat model here would defeat the whole guard (#5146).
+/// The pinned Moondream build that the `moondream` / `moondream:1.8b`
+/// shorthands resolve to, and the low-RAM tier's bundled vision model.
 ///
-/// Moondream is the smallest vision model that is pullable with no extra
-/// setup (~1.7 GB across model + projector layers), which keeps the fallback
-/// affordable on the low-RAM tiers where vision is most likely to be enabled
-/// on demand.
-pub(crate) const DEFAULT_OLLAMA_VISION_MODEL: &str = "moondream:1.8b-v2-q4_K_S";
+/// Must name a genuinely vision-capable model: it is what an alias rewrite
+/// lands on, and what the "for example …" suggestions point users at.
+///
+/// Moondream is the smallest vision model pullable with no extra setup
+/// (~1.7 GB across model + projector layers), which keeps it affordable on the
+/// low-RAM tiers where vision is most likely to be enabled on demand.
+///
+/// There is deliberately no `DEFAULT_OLLAMA_VISION_MODEL` any more (#5146 P1).
+/// It existed only as the substitute for a chat-only `vision_model_id`, and
+/// that substitution is exactly the bug: the user's explicit choice was
+/// overridden, this model was auto-pulled behind their back, and the request
+/// then failed with `ollama vision returned empty content`. A misconfigured
+/// vision model is now an actionable error, so there is nothing left to
+/// default *to*.
 pub(crate) const DEFAULT_LOW_VISION_MODEL: &str = "moondream:1.8b-v2-q4_K_S";
 pub(crate) const DEFAULT_OLLAMA_EMBED_MODEL: &str = "bge-m3";
 
@@ -80,30 +88,52 @@ fn enforce_mvp_chat_allowlist(resolved: &str) -> String {
     MVP_DEFAULT_CHAT_MODEL.to_string()
 }
 
-/// Guarantee a vision request never reaches a chat-only model.
+/// Guarantee a vision request never reaches a chat-only model: `Ok(id)` when
+/// `resolved` accepts image input, `Err(actionable message)` when it does not.
 ///
-/// This replaces the previous `MVP_ALLOWED_VISION_MODELS = &[""]` allowlist,
-/// which matched only the empty string and therefore rewrote *every*
-/// configured vision model to `""` — including genuinely vision-capable ones.
-/// Callers then sent an empty model name to Ollama, which is not a clean
-/// failure: `ensure_ollama_model_available` tried to `POST /api/pull` a
-/// nameless model and retried three times before surfacing an opaque error
-/// (#5146 §Part 1).
+/// The tier restriction is enforced upstream by
+/// [`crate::openhuman::inference::presets::vision_mode_for_config`], which
+/// reports `VisionMode::Disabled` for the tiers that ship no vision model. What
+/// is left for this function is the capability question alone.
 ///
-/// The tier restriction that allowlist was standing in for is enforced
-/// upstream by [`crate::openhuman::inference::presets::vision_mode_for_config`],
-/// which reports `VisionMode::Disabled` for the tiers that ship no vision
-/// model. What is left for this function is the capability question alone.
-fn enforce_vision_capability(resolved: &str) -> String {
+/// # Why this errors instead of substituting (#5146 P1)
+///
+/// It used to swap in the default vision model and return that, which produced
+/// the worst failure in the whole vision path: a user who set a chat-only
+/// `vision_model_id` got a *different* model silently selected, that model
+/// auto-pulled (~1.7 GB with no visible progress), and then — since the
+/// substitute answers many prompt phrasings with an empty string — the cryptic
+/// `ollama vision returned empty content`. Three surprises deep, none of them
+/// naming the actual mistake.
+///
+/// Substituting is the wrong shape regardless of which default is chosen: the
+/// user made an explicit choice and it was silently overridden, the same class
+/// of bug as a silent provider switch (#5146 §2.1). Say what is wrong and let
+/// them fix it. The message deliberately mirrors the tinyagents Ollama
+/// embeddings adapter, which names the offending model and a concrete next step
+/// in one line.
+///
+/// An earlier incarnation of this guard was an allowlist
+/// (`MVP_ALLOWED_VISION_MODELS = &[""]`) that matched only the empty string and
+/// so rewrote *every* configured vision model to `""`, including capable ones —
+/// which is how the nameless `POST /api/pull` in `ensure_ollama_model_available`
+/// came about. Both that bug and its replacement failed the same way: they
+/// answered "which model?" with something the user never asked for.
+fn enforce_vision_capability(resolved: &str) -> Result<String, String> {
     if vision_models::is_vision_capable(resolved) {
-        return resolved.to_string();
+        return Ok(resolved.to_string());
     }
     tracing::warn!(
         resolved,
-        fallback = DEFAULT_OLLAMA_VISION_MODEL,
-        "[local_ai] configured vision model is chat-only, falling back to a vision-capable default"
+        "[local_ai] configured vision model is chat-only; refusing to substitute"
     );
-    DEFAULT_OLLAMA_VISION_MODEL.to_string()
+    let suggestions = VISION_MODEL_SUGGESTIONS.join("`, `");
+    Err(format!(
+        "the selected vision model `{resolved}` is not vision-capable — it cannot accept image \
+         input. Set `local_ai.vision_model_id` to a vision-capable model (for example \
+         `{suggestions}`) and pull it with `ollama pull <model>`, or route the vision workload \
+         to a cloud provider with `vision_provider`."
+    ))
 }
 
 fn enforce_mvp_embedding_allowlist(resolved: &str) -> String {
@@ -171,50 +201,57 @@ fn raw_chat_model_id(config: &Config) -> String {
     raw.to_string()
 }
 
+/// Apply the alias rewrite that maps a family name onto the pinned tag we
+/// actually ship (`moondream` -> `moondream:1.8b-v2-q4_K_S`).
+///
+/// This is *not* a substitution: it resolves to the same model the user asked
+/// for, so it never needs to be reported to them.
+fn apply_vision_alias(raw: &str) -> &str {
+    let lower = raw.to_ascii_lowercase();
+    if lower == "moondream:1.8b" || lower == "moondream" {
+        DEFAULT_LOW_VISION_MODEL
+    } else {
+        raw
+    }
+}
+
 /// Resolve the vision model for status / reporting surfaces.
 ///
-/// An empty return means "vision is not configured" and is a legitimate
-/// state (the low tiers ship no vision model). A non-empty return is
-/// **always** a vision-capable id. Call [`resolve_vision_model_choice`] instead
-/// when about to issue an actual vision request — it turns the
-/// not-configured case into an actionable error rather than an empty string
-/// that downstream code would send to Ollama verbatim.
+/// An empty return means "there is no **usable** vision model" — either none is
+/// configured (a legitimate state; the low tiers ship no vision model) or the
+/// configured one cannot accept images. A non-empty return is always a
+/// vision-capable id.
+///
+/// Since #5146 P1 this no longer substitutes a default for a chat-only
+/// configured model. That matters beyond reporting: several callers feed this
+/// straight into `ensure_ollama_model_available`, so a substituted id here was
+/// how a model the user never chose got auto-pulled. Returning empty keeps the
+/// pull paths off a model nobody asked for, and
+/// `ensure_ollama_model_available` rejects a blank id outright rather than
+/// pulling a nameless model.
+///
+/// Call [`resolve_vision_model_id`] instead when about to issue an actual
+/// vision request — it distinguishes "not configured" from "not vision-capable"
+/// and returns an actionable message for each.
 pub(crate) fn effective_vision_model_id(config: &Config) -> String {
     let raw = config.local_ai.vision_model_id.trim();
     if raw.is_empty() {
         return String::new();
     }
-    let lower = raw.to_ascii_lowercase();
-    let resolved = if lower == "moondream:1.8b" || lower == "moondream" {
-        DEFAULT_LOW_VISION_MODEL
-    } else {
-        raw
-    };
-    enforce_vision_capability(resolved)
+    enforce_vision_capability(apply_vision_alias(raw)).unwrap_or_default()
 }
 
-/// The vision model a request will actually use, plus what it displaced.
-pub(crate) struct VisionModelChoice {
-    /// The vision-capable model id to send to Ollama.
-    pub(crate) model: String,
-    /// The configured id that was swapped out because it is chat-only.
-    ///
-    /// `Some` means the user asked for one model and is getting another, which
-    /// every downstream *error* must say out loud: a bare "`moondream:...` is
-    /// not available, pull it" is actively misleading when the user configured
-    /// `gemma3:1b-it-qat` and never mentioned moondream (greptile, #5253).
-    pub(crate) replaced: Option<String>,
-}
-
-/// Resolve the vision model for a real vision request, reporting any
-/// capability substitution.
+/// Resolve the vision model for a real vision request.
 ///
-/// Never returns an empty id: when no vision model is configured the caller
-/// gets a message naming what to set and which models to pull, instead of
-/// silently shipping an empty model name to Ollama (#5146 §Part 1).
-pub(crate) fn resolve_vision_model_choice(config: &Config) -> Result<VisionModelChoice, String> {
-    let resolved = effective_vision_model_id(config);
-    if resolved.trim().is_empty() {
+/// Never returns an empty id, and never silently swaps the user's choice. The
+/// two failure modes get distinct, actionable messages (#5146 §Part 1, P1):
+///
+/// - **nothing configured** — say what to set and which models to pull;
+/// - **configured but chat-only** — name the offending model, because "pull
+///   `moondream:…`" is a non-sequitur to someone who configured `gemma3:1b`.
+pub(crate) fn resolve_vision_model_id(config: &Config) -> Result<String, String> {
+    let raw = config.local_ai.vision_model_id.trim();
+    if raw.is_empty() {
         let suggestions = VISION_MODEL_SUGGESTIONS.join("`, `");
         tracing::warn!("[local_ai] vision request with no vision model configured");
         return Err(format!(
@@ -224,20 +261,7 @@ pub(crate) fn resolve_vision_model_choice(config: &Config) -> Result<VisionModel
              with `vision_provider`."
         ));
     }
-
-    // Report only a *capability* substitution. An alias rewrite (`moondream` ->
-    // the pinned tag) resolves to a different string but is the same model the
-    // user asked for, so it is not something they need to be told about.
-    let configured = config.local_ai.vision_model_id.trim();
-    let replaced = (!configured.is_empty()
-        && !vision_models::is_vision_capable(configured)
-        && !resolved.eq_ignore_ascii_case(configured))
-    .then(|| configured.to_string());
-
-    Ok(VisionModelChoice {
-        model: resolved,
-        replaced,
-    })
+    enforce_vision_capability(apply_vision_alias(raw))
 }
 
 pub(crate) fn effective_embedding_model_id(config: &Config) -> String {
@@ -447,29 +471,32 @@ mod tests {
         }
     }
 
-    /// #5146 §Part 1: a chat-only model must never be returned as the vision
-    /// model. Ollama silently drops the `images` array for such a model, so
-    /// passing it through would produce a fabricated description instead of an
-    /// error.
+    /// #5146 §Part 1 / P1: a chat-only model must never be returned as the
+    /// vision model — and must not be quietly swapped for one either. Both
+    /// resolvers report it as unusable so no pull path can act on it.
     #[test]
-    fn chat_only_vision_model_falls_back_to_a_vision_capable_default() {
+    fn chat_only_vision_model_resolves_to_nothing_usable() {
         let mut config = test_config();
         for chat_only in ["gemma3n:e4b-it-q8_0", "gemma3:1b-it-qat", "llama3.1:8b"] {
             config.local_ai.vision_model_id = chat_only.to_string();
-            let resolved = effective_vision_model_id(&config);
-            assert_eq!(resolved, DEFAULT_OLLAMA_VISION_MODEL);
-            assert!(vision_models::is_vision_capable(&resolved));
+            assert_eq!(
+                effective_vision_model_id(&config),
+                "",
+                "{chat_only} must not resolve to a substitute"
+            );
+            assert!(
+                resolve_vision_model_id(&config).is_err(),
+                "{chat_only} must be an actionable error at request time"
+            );
         }
     }
 
-    /// The default must itself be vision-capable — it is the fallback the
-    /// guard above lands on, so a chat-only default would defeat the guard.
+    /// The pinned default must itself be vision-capable: it is what the
+    /// `moondream` alias resolves to, and what the "for example …" suggestions
+    /// point users at, so a chat-only default would send them in a circle.
     #[test]
     fn default_vision_model_is_vision_capable() {
-        assert!(!DEFAULT_OLLAMA_VISION_MODEL.is_empty());
-        assert!(vision_models::is_vision_capable(
-            DEFAULT_OLLAMA_VISION_MODEL
-        ));
+        assert!(!DEFAULT_LOW_VISION_MODEL.is_empty());
         assert!(vision_models::is_vision_capable(DEFAULT_LOW_VISION_MODEL));
     }
 
@@ -480,7 +507,7 @@ mod tests {
         let mut config = test_config();
         config.local_ai.vision_model_id = String::new();
 
-        let err = resolve_vision_model_choice(&config)
+        let err = resolve_vision_model_id(&config)
             .err()
             .expect("expected a vision error");
         assert!(
@@ -493,47 +520,111 @@ mod tests {
         );
         // Whitespace-only is the same "not configured" state.
         config.local_ai.vision_model_id = "   ".to_string();
-        assert!(resolve_vision_model_choice(&config).is_err());
+        assert!(resolve_vision_model_id(&config).is_err());
     }
 
     #[test]
-    fn resolve_vision_model_id_returns_a_vision_capable_model_when_configured() {
+    fn resolve_vision_model_id_returns_the_configured_model_when_it_can_see() {
         let mut config = test_config();
         config.local_ai.vision_model_id = "llava:7b".to_string();
+        assert_eq!(resolve_vision_model_id(&config).unwrap(), "llava:7b");
+    }
+
+    /// An alias rewrite resolves to a different string but is the *same* model
+    /// the user asked for, so it stays silent and must keep working.
+    #[test]
+    fn resolve_vision_model_id_still_applies_the_moondream_alias() {
+        let mut config = test_config();
+        for alias in ["moondream", "moondream:1.8b", "MoonDream"] {
+            config.local_ai.vision_model_id = alias.to_string();
+            let resolved = resolve_vision_model_id(&config)
+                .unwrap_or_else(|e| panic!("alias {alias} must resolve, got: {e}"));
+            assert_eq!(resolved, DEFAULT_LOW_VISION_MODEL);
+            assert!(vision_models::is_vision_capable(&resolved));
+        }
+    }
+
+    // ── #5146 P1: a chat-only vision model errors, never substitutes ─────────
+
+    /// The headline P1 regression. A chat-only `vision_model_id` used to be
+    /// silently swapped for the default vision model, which was then
+    /// auto-pulled (~1.7 GB, no progress) and answered many prompts with an
+    /// empty string — surfacing as `ollama vision returned empty content`.
+    #[test]
+    fn resolve_vision_model_id_errors_on_a_chat_only_model_instead_of_substituting() {
+        let mut config = test_config();
+        config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
+
+        let err = resolve_vision_model_id(&config)
+            .err()
+            .expect("a chat-only vision model must be an error, not a substitution");
+
+        assert!(
+            err.contains("gemma3n:e4b-it-q8_0"),
+            "the error must name the model the user actually configured: {err}"
+        );
+        assert!(
+            err.contains("not vision-capable"),
+            "the error must say what is wrong with it: {err}"
+        );
+        assert!(
+            err.contains("vision_model_id"),
+            "the error must name the key to change: {err}"
+        );
+        assert!(
+            !err.contains(DEFAULT_LOW_VISION_MODEL),
+            "the error must not tell the user to pull a model they never chose: {err}"
+        );
+    }
+
+    /// The auto-pull half of P1: several callers feed
+    /// `effective_vision_model_id` straight into `ensure_ollama_model_available`,
+    /// so a substituted id here is exactly how an unchosen model got downloaded.
+    /// Empty keeps those paths off it (and `ensure_ollama_model_available`
+    /// rejects a blank id rather than pulling a nameless model).
+    #[test]
+    fn effective_vision_model_id_is_empty_for_a_chat_only_model() {
+        let mut config = test_config();
+        config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
         assert_eq!(
-            resolve_vision_model_choice(&config).unwrap().model,
-            "llava:7b"
+            effective_vision_model_id(&config),
+            "",
+            "a chat-only model must not resolve to a substitute that a pull path would download"
         );
 
-        // Even a chat-only configured id resolves to something that can see.
-        config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
-        let resolved = resolve_vision_model_choice(&config).unwrap().model;
-        assert!(vision_models::is_vision_capable(&resolved));
+        // Unchanged for the two states that already worked.
+        config.local_ai.vision_model_id = String::new();
+        assert_eq!(effective_vision_model_id(&config), "");
+        config.local_ai.vision_model_id = "llava:7b".to_string();
+        assert_eq!(effective_vision_model_id(&config), "llava:7b");
     }
 
+    /// `effective_vision_model_id` and `resolve_vision_model_id` must agree on
+    /// which models are usable — a non-empty effective id that the resolver
+    /// rejects (or vice versa) would put status surfaces and request-time
+    /// behaviour out of sync.
     #[test]
-    fn resolve_vision_model_choice_reports_only_capability_substitutions() {
+    fn effective_and_resolved_vision_ids_agree_on_usability() {
         let mut config = test_config();
-
-        // A vision-capable id is used as-is, with nothing to report.
-        config.local_ai.vision_model_id = "llava:7b".to_string();
-        let choice = resolve_vision_model_choice(&config).unwrap();
-        assert_eq!(choice.model, "llava:7b");
-        assert_eq!(choice.replaced, None);
-
-        // A chat-only id is replaced, and the configured id is reported so the
-        // caller can explain the swap instead of naming a model out of nowhere.
-        config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
-        let choice = resolve_vision_model_choice(&config).unwrap();
-        assert!(vision_models::is_vision_capable(&choice.model));
-        assert_eq!(choice.replaced.as_deref(), Some("gemma3n:e4b-it-q8_0"));
-
-        // An alias rewrite resolves to a different string but is the same model
-        // the user asked for, so it must not be reported as a substitution.
-        config.local_ai.vision_model_id = "moondream".to_string();
-        let choice = resolve_vision_model_choice(&config).unwrap();
-        assert!(vision_models::is_vision_capable(&choice.model));
-        assert_eq!(choice.replaced, None);
+        for candidate in [
+            "llava:7b",
+            "gemma3n:e4b-it-q8_0",
+            "moondream",
+            "llama3.2:3b",
+            "",
+        ] {
+            config.local_ai.vision_model_id = candidate.to_string();
+            let effective = effective_vision_model_id(&config);
+            let resolved = resolve_vision_model_id(&config);
+            assert_eq!(
+                effective.is_empty(),
+                resolved.is_err(),
+                "disagreement for {candidate:?}: effective={effective:?} resolved={resolved:?}"
+            );
+            if let Ok(model) = resolved {
+                assert_eq!(effective, model);
+            }
+        }
     }
 
     #[test]

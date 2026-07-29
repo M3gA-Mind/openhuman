@@ -1,14 +1,38 @@
 //! Which local model IDs can actually accept image input.
 //!
-//! Routing a vision request at a chat-only model is **not** a loud failure on
-//! Ollama. `POST /api/generate` accepts the `images` array against any model,
-//! silently discards it when the model has no vision encoder, and answers from
-//! the prompt text alone. The caller gets back a confident, entirely
-//! hallucinated description rather than an error (#5146, §Part 1).
+//! Every vision path resolves its model through this registry first, so a
+//! vision tool-call either reaches a genuinely vision-capable model or surfaces
+//! a clear error. See [`crate::openhuman::inference::model_ids`].
 //!
-//! Every vision path therefore resolves its model through this registry first,
-//! so a vision tool-call either reaches a genuinely vision-capable model or
-//! surfaces a clear error. See [`crate::openhuman::inference::model_ids`].
+//! ## Why resolve up front rather than let Ollama reject it
+//!
+//! This module originally claimed that routing a vision request at a chat-only
+//! model is *not* a loud failure — that Ollama accepts the `images` array
+//! against any model, silently discards it, and answers from the prompt text
+//! alone, yielding a confident hallucination.
+//!
+//! **That was measured against Ollama 0.32.5 and does not hold** (#5146 P5).
+//! All three endpoints — `/api/generate`, `/api/chat`, and the OpenAI-compatible
+//! `/v1/chat/completions` — reject the request cleanly:
+//!
+//! ```text
+//! HTTP 400 {"error":{"code":400,
+//!   "message":"Multimodal data provided, but model does not support multimodal requests.",
+//!   "type":"invalid_request_error"}}
+//! ```
+//!
+//! The registry is still worth having, for reasons that do not depend on the
+//! old claim:
+//!
+//! - a raw upstream 400 is not an actionable message — resolving first lets us
+//!   name the model, the capability, and the remedy;
+//! - it lets the caller fail *before* spending a model load or a pull;
+//! - older Ollama builds, and other OpenAI-compatible local servers reached
+//!   through the same code path, make no such guarantee.
+//!
+//! Keep this note accurate: a future reader deciding whether the registry can
+//! be deleted must not rely on a silent-discard premise that no current Ollama
+//! exhibits.
 //!
 //! The families below were verified against the live Ollama library registry
 //! (`GET https://registry.ollama.ai/v2/library/<name>/manifests/<tag>` plus the
@@ -181,9 +205,10 @@ mod tests {
 
     #[test]
     fn every_suggested_vision_model_is_vision_capable() {
-        // The suggestions are quoted verbatim in the user-facing error from
-        // `model_ids::resolve_vision_model_choice`; a chat-only entry here would
-        // send users to a model that silently ignores their image.
+        // The suggestions are quoted verbatim in the user-facing errors from
+        // `model_ids::resolve_vision_model_id` — both the "nothing configured"
+        // and the "not vision-capable" arms. A chat-only entry here would send
+        // a user straight back into the error they are trying to escape.
         for suggestion in VISION_MODEL_SUGGESTIONS {
             assert!(
                 is_vision_capable(suggestion),

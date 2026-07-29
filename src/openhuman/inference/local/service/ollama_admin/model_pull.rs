@@ -58,6 +58,22 @@ impl LocalAiService {
         model_id: &str,
         label: &str,
     ) -> Result<(), String> {
+        // #5146 P1: never pull a nameless model. `effective_*_model_id` returns
+        // an empty string when there is no usable model for a role, and several
+        // callers feed that straight in here. Without this guard that became a
+        // `POST /api/pull` with a blank name, retried three times, ending in an
+        // opaque error — and it is the same code path that silently pulled a
+        // ~1.7 GB vision substitute the user never chose. Fail immediately and
+        // say which role is unconfigured instead.
+        let model_id = model_id.trim();
+        if model_id.is_empty() {
+            return Err(format!(
+                "no {label} model is configured for the local runtime, so there is nothing to \
+                 download. Set the {label} model in Settings → Local AI (or pick a provider for \
+                 the {label} workload) before retrying."
+            ));
+        }
+
         let base_url = ollama_base_url_from_config(config);
         if self.has_model_at(&base_url, model_id).await? {
             return Ok(());

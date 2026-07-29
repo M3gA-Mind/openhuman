@@ -2,7 +2,10 @@ use crate::openhuman::agent::messages::ChatMessage;
 use crate::openhuman::config::{
     build_runtime_proxy_client_with_timeouts, MultimodalConfig, MultimodalFileConfig,
 };
-use base64::{engine::general_purpose::STANDARD, Engine as _};
+use base64::{
+    engine::general_purpose::{STANDARD, STANDARD_NO_PAD},
+    Engine as _,
+};
 use flate2::read::GzDecoder;
 use reqwest::Client;
 use sha2::{Digest, Sha256};
@@ -196,19 +199,41 @@ fn latest_user_message(messages: &[ChatMessage]) -> Option<&ChatMessage> {
     messages.iter().rev().find(|m| m.role == "user")
 }
 
+/// The base64 payload Ollama's `images` array expects, or `None` when
+/// `image_ref` does not carry one.
+///
+/// Accepts a `data:` URI (payload after the comma) or a bare base64 string.
+///
+/// **Both forms are validated as base64** (#5146 P6). This used to return any
+/// non-`data:` string verbatim, so a caller that passed a filesystem path — a
+/// very natural reading of the `image_refs` parameter name — had that path
+/// forwarded to Ollama as if it were image bytes, and got back
+/// `illegal base64 data at input byte 19`. That error names neither the
+/// parameter nor the path, and points at Ollama rather than at the caller.
+/// Returning `None` instead lets the caller say something useful about which
+/// reference it could not use.
 pub fn extract_ollama_image_payload(image_ref: &str) -> Option<String> {
-    if image_ref.starts_with("data:") {
+    let payload = if image_ref.starts_with("data:") {
         let comma_idx = image_ref.find(',')?;
-        let (_, payload) = image_ref.split_at(comma_idx + 1);
-        let payload = payload.trim();
-        if payload.is_empty() {
-            None
-        } else {
-            Some(payload.to_string())
-        }
+        image_ref.split_at(comma_idx + 1).1.trim()
     } else {
-        Some(image_ref.trim().to_string()).filter(|value| !value.is_empty())
+        image_ref.trim()
+    };
+    if payload.is_empty() {
+        return None;
     }
+    // Decode to validate only — the encoded form is what goes on the wire, and
+    // re-encoding would just burn a copy of a multi-MB image. Accept both
+    // padded and unpadded alphabets: real data URIs are padded, but some
+    // producers omit the `=`, and rejecting those would be a new regression
+    // rather than the fix this is.
+    if STANDARD.decode(payload).is_err() && STANDARD_NO_PAD.decode(payload).is_err() {
+        tracing::debug!(
+            "[multimodal] image reference is not base64 (a filesystem path is not accepted here)"
+        );
+        return None;
+    }
+    Some(payload.to_string())
 }
 
 /// Strip every `[FILE:…]` marker from `content` and return the cleaned

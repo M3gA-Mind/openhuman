@@ -1461,3 +1461,46 @@ async fn non_404_status_does_not_trigger_the_fallback() {
         "the /api/tags fallback must not run for a non-404 status"
     );
 }
+
+// ── #5146 P1: never pull a model the user did not choose ────────────────────
+
+/// A blank model id must fail immediately with a message about configuration,
+/// never becoming a `POST /api/pull` for a nameless model.
+///
+/// `effective_*_model_id` returns an empty string when a role has no usable
+/// model, and several callers feed that straight into
+/// `ensure_ollama_model_available`. Before this guard that produced a nameless
+/// pull retried three times before failing opaquely — and it is the same path
+/// that silently downloaded a ~1.7 GB vision substitute.
+///
+/// No mock server is needed: the guard must reject before any network work, so
+/// a test that reaches the network would itself be the failure.
+#[tokio::test]
+async fn ensure_ollama_model_available_rejects_a_blank_model_id() {
+    let _guard = crate::openhuman::inference::inference_test_guard();
+
+    let config = Config::default();
+    let service = LocalAiService::new(&config);
+
+    for blank in ["", "   ", "\t"] {
+        let err = service
+            .ensure_ollama_model_available(&config, blank, "vision")
+            .await
+            .expect_err("a blank model id must not be pulled");
+        assert!(
+            err.contains("vision"),
+            "error must name the role that is unconfigured: {err}"
+        );
+        assert!(
+            err.contains("nothing to download"),
+            "error must say no download will happen: {err}"
+        );
+    }
+
+    // The label is carried through, so embedding reads as an embedding problem.
+    let err = service
+        .ensure_ollama_model_available(&config, "", "embedding")
+        .await
+        .expect_err("a blank model id must not be pulled");
+    assert!(err.contains("embedding"), "got: {err}");
+}
