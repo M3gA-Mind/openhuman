@@ -233,12 +233,26 @@ fn apply_vision_alias(raw: &str) -> &str {
 /// Call [`resolve_vision_model_id`] instead when about to issue an actual
 /// vision request — it distinguishes "not configured" from "not vision-capable"
 /// and returns an actionable message for each.
+///
+/// The capability predicate is consulted directly here rather than by calling
+/// [`enforce_vision_capability`] and discarding its `Err`: that helper emits a
+/// `tracing::warn!` and formats the full suggestion message, and this resolver
+/// feeds polled status/diagnostics surfaces. Routing through it would log a
+/// warning and burn a `format!` on *every poll* for anyone with a misconfigured
+/// `vision_model_id`. The warning belongs at request time, where it is
+/// actionable; `effective_and_resolved_vision_ids_agree_on_usability` keeps the
+/// two paths pinned to the same verdict.
 pub(crate) fn effective_vision_model_id(config: &Config) -> String {
     let raw = config.local_ai.vision_model_id.trim();
     if raw.is_empty() {
         return String::new();
     }
-    enforce_vision_capability(apply_vision_alias(raw)).unwrap_or_default()
+    let resolved = apply_vision_alias(raw);
+    if vision_models::is_vision_capable(resolved) {
+        resolved.to_string()
+    } else {
+        String::new()
+    }
 }
 
 /// Resolve the vision model for a real vision request.
@@ -571,9 +585,18 @@ mod tests {
             err.contains("vision_model_id"),
             "the error must name the key to change: {err}"
         );
+        // `DEFAULT_LOW_VISION_MODEL` is also `VISION_MODEL_SUGGESTIONS[0]`, so
+        // asserting its absence would assert against the suggestion list
+        // itself. The contract is the framing: it is offered as one example to
+        // pick from, not announced as the model that replaced the user's.
         assert!(
-            !err.contains(DEFAULT_LOW_VISION_MODEL),
-            "the error must not tell the user to pull a model they never chose: {err}"
+            err.contains("for example"),
+            "a vision-capable model must be offered as an example to choose, never as a \
+             substitute that was already applied: {err}"
+        );
+        assert!(
+            !err.contains("selected vision model `moondream"),
+            "the error must name the user's model as the problem, not a suggestion: {err}"
         );
     }
 

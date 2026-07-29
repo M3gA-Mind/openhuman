@@ -26,12 +26,30 @@ impl LocalAiService {
             VisionMode::Ondemand => {
                 self.status.lock().vision_state = "idle".to_string();
             }
-            VisionMode::Bundled => {
-                let vision_model = model_ids::effective_vision_model_id(config);
-                self.ensure_ollama_model_available(config, &vision_model, "vision")
-                    .await?;
-                self.status.lock().vision_state = "ready".to_string();
-            }
+            VisionMode::Bundled => match model_ids::resolve_vision_model_id(config) {
+                Ok(vision_model) => {
+                    self.ensure_ollama_model_available(config, &vision_model, "vision")
+                        .await?;
+                    self.status.lock().vision_state = "ready".to_string();
+                }
+                Err(err) => {
+                    // A vision model the user misconfigured must not take the
+                    // whole local runtime down with it. `bootstrap()` returns
+                    // on the first `ensure_models_available` error, so
+                    // propagating here would leave the service `degraded` and
+                    // skip the embedding/STT/TTS preloads and the ready state —
+                    // punishing chat for a vision-only mistake. Record it and
+                    // carry on; `resolve_vision_model_id` raises the same
+                    // message again, actionably, at request time.
+                    tracing::warn!(
+                        %err,
+                        "[local_ai] bundled vision model is unusable; continuing without vision"
+                    );
+                    let mut status = self.status.lock();
+                    status.vision_state = "missing".to_string();
+                    status.warning = Some(err);
+                }
+            },
         }
 
         let embedding_model = model_ids::effective_embedding_model_id(config);

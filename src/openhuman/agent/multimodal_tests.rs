@@ -143,6 +143,47 @@ fn extract_ollama_image_payload_rejects_a_filesystem_path() {
     assert!(extract_ollama_image_payload("~/Pictures/shot.png").is_none());
 }
 
+/// The fixtures above are rejected by the base64 alphabet (`.`, `-`, `~`), so
+/// they never exercised the path check. An absolute path built only from
+/// alphabet characters decodes cleanly and used to be forwarded as image bytes.
+#[test]
+fn extract_ollama_image_payload_rejects_a_path_that_is_also_valid_base64() {
+    // `/tmp/foo` is 8 alphabet characters: valid unpadded base64 for 6 bytes.
+    assert!(base64::engine::general_purpose::STANDARD_NO_PAD
+        .decode("/tmp/foo")
+        .is_ok());
+    assert!(extract_ollama_image_payload("/tmp/foo").is_none());
+    assert!(extract_ollama_image_payload("/Users/alice/tmp/foo").is_none());
+}
+
+/// The counterweight to the check above: base64 for a JPEG starts `/9j/`, so
+/// rejecting every leading `/` would break real payloads. Length decides.
+#[test]
+fn extract_ollama_image_payload_still_accepts_a_bare_jpeg_payload() {
+    let jpeg = format!("/9j/4AAQSkZJRgABAQ{}", "A".repeat(64));
+    assert!(jpeg.len() >= 64, "fixture must clear the path-shape bound");
+    assert_eq!(
+        extract_ollama_image_payload(&jpeg).as_deref(),
+        Some(jpeg.as_str())
+    );
+}
+
+/// Documents the residual ambiguity rather than pretending it is closed: a
+/// relative path of pure base64 characters, of a length base64 permits, cannot
+/// be told apart from a short payload, so it is still accepted. See
+/// `looks_like_absolute_path`.
+#[test]
+fn extract_ollama_image_payload_cannot_reject_a_base64_shaped_relative_path() {
+    // 14 characters — `len % 4 == 2`, which unpadded base64 accepts. (A
+    // 13-character name like `photos/catpic` is `len % 4 == 1`, a length base64
+    // never produces, so the decode below already rejects that one.)
+    assert_eq!(
+        extract_ollama_image_payload("photos/catpics").as_deref(),
+        Some("photos/catpics")
+    );
+    assert!(extract_ollama_image_payload("photos/catpic").is_none());
+}
+
 #[test]
 fn extract_ollama_image_payload_rejects_a_non_base64_data_uri_payload() {
     assert!(extract_ollama_image_payload("data:image/png;base64,/tmp/not-base64.png").is_none());

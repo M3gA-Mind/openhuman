@@ -703,7 +703,12 @@ impl LocalAiService {
                     );
                 }
                 self.ensure_ollama_server(config).await?;
-                let model = model_ids::effective_vision_model_id(config);
+                // Resolve rather than take the effective id: the latter blanks
+                // a chat-only model, and a blank id makes
+                // `ensure_ollama_model_available` answer "no vision model is
+                // configured" to a user who configured one. Naming the model
+                // that cannot accept images is the whole point of #5146 P1.
+                let model = model_ids::resolve_vision_model_id(config)?;
                 self.ensure_ollama_model_available(config, &model, "vision")
                     .await?;
             }

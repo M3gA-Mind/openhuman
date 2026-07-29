@@ -199,6 +199,33 @@ fn latest_user_message(messages: &[ChatMessage]) -> Option<&ChatMessage> {
     messages.iter().rev().find(|m| m.role == "user")
 }
 
+/// Longest bare reference still treated as a possible filesystem path.
+///
+/// 64 base64 characters decode to 48 bytes. No real image comes in under that
+/// (a minimal GIF is ~35 bytes, the smallest valid PNG ~67), so a path-prefixed
+/// reference this short cannot be image data.
+const MAX_PATH_SHAPED_REF_LEN: usize = 64;
+
+/// `true` when a **bare** reference is shaped like an absolute filesystem path
+/// rather than base64 image data.
+///
+/// Shape alone cannot decide this: `/` is in the standard base64 alphabet, and
+/// a bare base64 JPEG legitimately begins `/9j/`. The length bound is what
+/// separates the two — a real payload carrying that prefix runs to thousands of
+/// characters, while `/tmp/foo` does not.
+///
+/// Relative paths (`./x`, `~/x`, `../x`) need no check here: `.` and `~` are
+/// outside the base64 alphabet, so the decode below already rejects them, as it
+/// does every Windows path (`:` and `\` are likewise outside it).
+///
+/// **Known residual ambiguity:** a relative path built only from base64
+/// characters, of a length base64 permits — `photos/catpics` — is genuinely
+/// indistinguishable from a short payload and is still accepted. Tightening
+/// that would start rejecting real base64, so it is left alone deliberately.
+fn looks_like_absolute_path(payload: &str) -> bool {
+    payload.starts_with('/') && payload.len() < MAX_PATH_SHAPED_REF_LEN
+}
+
 /// The base64 payload Ollama's `images` array expects, or `None` when
 /// `image_ref` does not carry one.
 ///
@@ -213,13 +240,20 @@ fn latest_user_message(messages: &[ChatMessage]) -> Option<&ChatMessage> {
 /// Returning `None` instead lets the caller say something useful about which
 /// reference it could not use.
 pub fn extract_ollama_image_payload(image_ref: &str) -> Option<String> {
-    let payload = if image_ref.starts_with("data:") {
+    let is_data_uri = image_ref.starts_with("data:");
+    let payload = if is_data_uri {
         let comma_idx = image_ref.find(',')?;
         image_ref.split_at(comma_idx + 1).1.trim()
     } else {
         image_ref.trim()
     };
     if payload.is_empty() {
+        return None;
+    }
+    if !is_data_uri && looks_like_absolute_path(payload) {
+        tracing::debug!(
+            "[multimodal] image reference is shaped like a filesystem path, not image bytes"
+        );
         return None;
     }
     // Decode to validate only — the encoded form is what goes on the wire, and

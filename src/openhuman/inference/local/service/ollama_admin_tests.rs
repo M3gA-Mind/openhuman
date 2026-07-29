@@ -1504,3 +1504,68 @@ async fn ensure_ollama_model_available_rejects_a_blank_model_id() {
         .expect_err("a blank model id must not be pulled");
     assert!(err.contains("embedding"), "got: {err}");
 }
+
+/// A vision model the user misconfigured must not take the whole local runtime
+/// down with it.
+///
+/// `bootstrap()` returns on the first `ensure_models_available` error, so
+/// propagating a chat-only vision model out of the `Bundled` branch left the
+/// service `degraded` and skipped the remaining preloads and the ready state —
+/// punishing chat for a vision-only mistake. The reason is recorded on the
+/// status instead, and `resolve_vision_model_id` raises it again, actionably,
+/// at request time.
+#[tokio::test]
+async fn bundled_vision_misconfiguration_does_not_abort_the_rest_of_bootstrap() {
+    let _guard = crate::openhuman::inference::inference_test_guard();
+
+    // The chat model is present, so only vision can fail here.
+    let app = Router::new().route(
+        "/api/tags",
+        get(|| async {
+            Json(json!({
+                "models": [
+                    {"name": "gemma3:1b-it-qat", "modified_at": "", "size": 1u64, "digest": "d"}
+                ]
+            }))
+        }),
+    );
+    let base = spawn_mock(app).await;
+    unsafe {
+        std::env::set_var("OPENHUMAN_OLLAMA_BASE_URL", &base);
+    }
+
+    let mut config = Config::default();
+    config.local_ai.runtime_enabled = true;
+    config.local_ai.selected_tier = Some("custom".to_string());
+    config.local_ai.chat_model_id = "gemma3:1b-it-qat".to_string();
+    // A valid chat model on Ollama, but it cannot accept images.
+    config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
+    config.local_ai.preload_vision_model = true;
+
+    let service = LocalAiService::new(&config);
+    let result = service.ensure_models_available(&config).await;
+
+    unsafe {
+        std::env::remove_var("OPENHUMAN_OLLAMA_BASE_URL");
+    }
+
+    result.expect("a chat-only vision model must not fail the whole bootstrap");
+
+    let status = service.status.lock();
+    assert_eq!(
+        status.vision_state, "missing",
+        "the unusable vision model must be visible as missing, not ready"
+    );
+    let warning = status
+        .warning
+        .clone()
+        .expect("the reason vision is unavailable must be surfaced");
+    assert!(
+        warning.contains("gemma3n:e4b-it-q8_0"),
+        "the warning must name the model the user configured: {warning}"
+    );
+    assert!(
+        warning.contains("not vision-capable"),
+        "the warning must say what is wrong with it: {warning}"
+    );
+}

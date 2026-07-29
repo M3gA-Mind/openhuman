@@ -470,50 +470,6 @@ mod tests {
         );
     }
 
-    /// A chat-only model configured for vision must never be the model that
-    /// receives the images.
-    ///
-    /// Ollama accepts an `images` array against a text-only model, discards it,
-    /// and answers from the prompt alone, so passing `gemma3n` through would
-    /// return a fabricated description rather than an error.
-    #[tokio::test]
-    async fn vision_prompt_never_routes_images_at_a_chat_only_model() {
-        let _guard = crate::openhuman::inference::inference_test_guard();
-
-        let base = spawn_mock(mock_ollama_echoing_requested_model(
-            "moondream:1.8b-v2-q4_K_S",
-        ))
-        .await;
-        unsafe {
-            std::env::set_var("OPENHUMAN_OLLAMA_BASE_URL", &base);
-        }
-
-        let mut config = enabled_config();
-        // Text-only on Ollama, despite sharing a prefix with multimodal gemma3.
-        config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
-        let service = ready_service(&config);
-
-        let result = service
-            .vision_prompt(
-                &config,
-                "describe",
-                &["data:image/png;base64,QUJD".to_string()],
-                None,
-            )
-            .await;
-
-        unsafe {
-            std::env::remove_var("OPENHUMAN_OLLAMA_BASE_URL");
-        }
-
-        let model_used = result.expect("vision prompt should succeed");
-        assert_ne!(
-            model_used, "gemma3n:e4b-it-q8_0",
-            "images must never be sent to a chat-only model"
-        );
-        assert_eq!(model_used, "moondream:1.8b-v2-q4_K_S");
-    }
-
     /// A configured-but-unpullable vision model must report a vision problem
     /// naming the model and the `ollama pull` that fixes it.
     #[tokio::test]
@@ -626,9 +582,15 @@ mod tests {
             err.contains("not vision-capable"),
             "error must explain what is wrong with it: {err}"
         );
+        // The suggestion list legitimately contains `DEFAULT_LOW_VISION_MODEL`,
+        // so its mere presence proves nothing. What must not happen is the
+        // message presenting it as the model that *ran*; the `pulls` and
+        // `vision_state` assertions below pin that nothing was fetched behind
+        // the user's back.
         assert!(
-            !err.contains(crate::openhuman::inference::model_ids::DEFAULT_LOW_VISION_MODEL),
-            "error must not point the user at a model they never chose: {err}"
+            err.contains("for example"),
+            "a vision-capable model must be offered as an example to choose, never as a \
+             substitute that was already applied: {err}"
         );
         assert_eq!(
             pulls.load(Ordering::SeqCst),
