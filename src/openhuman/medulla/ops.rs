@@ -262,12 +262,19 @@ mod tests {
     /// Serialize env mutation: tests modify process-globals.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+    /// Clearing every base-URL env var no longer produces `MedullaNoBaseUrl`.
+    ///
+    /// Since #5245 `resolve::base_url` falls back to
+    /// `effective_backend_api_url`, which ends at the compiled-in
+    /// `DEFAULT_API_BASE_URL` — so it never returns `None` and the
+    /// `NoBaseUrl` arm is unreachable. "No backend configured" stopped being a
+    /// state the product can be in; the unconfigured state that remains is
+    /// "signed out", which is what this now pins. The env isolation is kept
+    /// because it is what proves the fallback, rather than an override, is
+    /// answering.
     #[test]
     fn not_configured_encodes_an_expected_user_state_envelope() {
         let config = Config::default();
-        // No api_url and no env override, so resolution fails on base URL.
-        // Isolate environment to ensure BACKEND_URL and VITE_BACKEND_URL do not
-        // provide a fallback through effective_backend_api_url.
         let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let _env_medulla = EnvGuard::remove(resolve::MEDULLA_BASE_URL_ENV);
         let _env_backend = EnvGuard::remove("BACKEND_URL");
@@ -282,7 +289,7 @@ mod tests {
             decoded
                 .data
                 .and_then(|d| d["kind"].as_str().map(String::from)),
-            Some("MedullaNoBaseUrl".to_string())
+            Some("MedullaNoSessionToken".to_string())
         );
     }
 
@@ -344,6 +351,10 @@ mod tests {
             .await
             .expect("status never errors");
         assert!(!out.value.configured);
-        assert_eq!(out.value.reason.as_deref(), Some("MedullaNoBaseUrl"));
+        // `NoSessionToken`, not `NoBaseUrl` — see
+        // `not_configured_encodes_an_expected_user_state_envelope`: the base URL
+        // always resolves to a compiled-in default, so signed-out is the only
+        // unconfigured state left to report.
+        assert_eq!(out.value.reason.as_deref(), Some("MedullaNoSessionToken"));
     }
 }
