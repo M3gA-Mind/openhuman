@@ -19,6 +19,12 @@ impl LocalAiService {
         self.ensure_ollama_model_available(config, &chat_model, "chat")
             .await?;
 
+        // Held until every other preload has run. `ensure_ollama_model_available`
+        // writes `status.warning` for its own transient "Pulling …" progress, so
+        // publishing the vision reason here would let a later embedding/STT/TTS
+        // pull bury it and leave `vision_state = "missing"` with no explanation.
+        let mut vision_warning: Option<String> = None;
+
         match presets::vision_mode_for_config(&config.local_ai) {
             VisionMode::Disabled => {
                 self.status.lock().vision_state = "disabled".to_string();
@@ -42,12 +48,13 @@ impl LocalAiService {
                     // carry on; `resolve_vision_model_id` raises the same
                     // message again, actionably, at request time.
                     tracing::warn!(
+                        vision_model_id = %config.local_ai.vision_model_id.trim(),
+                        vision_state = "missing",
                         %err,
                         "[local_ai] bundled vision model is unusable; continuing without vision"
                     );
-                    let mut status = self.status.lock();
-                    status.vision_state = "missing".to_string();
-                    status.warning = Some(err);
+                    self.status.lock().vision_state = "missing".to_string();
+                    vision_warning = Some(err);
                 }
             },
         }
@@ -65,6 +72,13 @@ impl LocalAiService {
 
         if config.local_ai.preload_tts_voice {
             self.ensure_tts_asset_available(config).await?;
+        }
+
+        // Last write wins, which is the point: whatever the preloads left behind
+        // is transient progress text, while this is a standing configuration
+        // problem the user has to act on.
+        if let Some(err) = vision_warning {
+            self.status.lock().warning = Some(err);
         }
 
         Ok(())

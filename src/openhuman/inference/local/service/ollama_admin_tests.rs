@@ -1569,3 +1569,91 @@ async fn bundled_vision_misconfiguration_does_not_abort_the_rest_of_bootstrap() 
         "the warning must say what is wrong with it: {warning}"
     );
 }
+
+/// The vision reason must still be readable after a later preload runs.
+///
+/// `ensure_ollama_model_available` writes `status.warning` for its own transient
+/// "Pulling …" progress, so publishing the vision failure at the point it
+/// happens let the embedding pull bury it — leaving `vision_state = "missing"`
+/// with no explanation of why. The reason is published after every other
+/// preload for exactly this reason.
+#[tokio::test]
+async fn a_later_preload_does_not_bury_the_vision_failure_reason() {
+    use axum::routing::post;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let _guard = crate::openhuman::inference::inference_test_guard();
+
+    // The embedding model appears only once it has been pulled, so the preload
+    // takes the full download path — the one that writes `status.warning`.
+    let pulled = Arc::new(AtomicBool::new(false));
+    let tags_flag = pulled.clone();
+    let pull_flag = pulled.clone();
+    let app = Router::new()
+        .route(
+            "/api/tags",
+            get(move || {
+                let pulled = tags_flag.clone();
+                async move {
+                    let mut models = vec![
+                        json!({"name": "gemma3:1b-it-qat", "modified_at": "", "size": 1u64, "digest": "d"}),
+                    ];
+                    if pulled.load(Ordering::SeqCst) {
+                        models.push(
+                            json!({"name": "bge-m3", "modified_at": "", "size": 2u64, "digest": "d"}),
+                        );
+                    }
+                    Json(json!({ "models": models }))
+                }
+            }),
+        )
+        .route(
+            "/api/pull",
+            post(move || {
+                let pulled = pull_flag.clone();
+                async move {
+                    pulled.store(true, Ordering::SeqCst);
+                    Json(json!({ "status": "success" }))
+                }
+            }),
+        );
+    let base = spawn_mock(app).await;
+    unsafe {
+        std::env::set_var("OPENHUMAN_OLLAMA_BASE_URL", &base);
+    }
+
+    let mut config = Config::default();
+    config.local_ai.runtime_enabled = true;
+    config.local_ai.selected_tier = Some("custom".to_string());
+    config.local_ai.chat_model_id = "gemma3:1b-it-qat".to_string();
+    config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
+    config.local_ai.preload_vision_model = true;
+    config.local_ai.embedding_model_id = "bge-m3".to_string();
+    config.local_ai.preload_embedding_model = true;
+
+    let service = LocalAiService::new(&config);
+    let result = service.ensure_models_available(&config).await;
+
+    unsafe {
+        std::env::remove_var("OPENHUMAN_OLLAMA_BASE_URL");
+    }
+
+    result.expect("a chat-only vision model must not fail the whole bootstrap");
+    assert!(
+        pulled.load(Ordering::SeqCst),
+        "the embedding preload must have pulled"
+    );
+
+    let status = service.status.lock();
+    assert_eq!(status.vision_state, "missing");
+    assert_eq!(status.embedding_state, "ready");
+    let warning = status
+        .warning
+        .clone()
+        .expect("the vision reason must survive the embedding preload");
+    assert!(
+        warning.contains("gemma3n:e4b-it-q8_0"),
+        "the embedding pull's progress text must not have buried it: {warning}"
+    );
+}
