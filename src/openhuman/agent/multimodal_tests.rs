@@ -174,14 +174,22 @@ fn extract_ollama_image_payload_still_accepts_a_bare_jpeg_payload() {
 /// `looks_like_absolute_path`.
 #[test]
 fn extract_ollama_image_payload_cannot_reject_a_base64_shaped_relative_path() {
-    // 14 characters — `len % 4 == 2`, which unpadded base64 accepts. (A
-    // 13-character name like `photos/catpic` is `len % 4 == 1`, a length base64
-    // never produces, so the decode below already rejects that one.)
+    // 12 characters — a whole number of 4-character groups, so it decodes and
+    // is trivially canonical.
     assert_eq!(
-        extract_ollama_image_payload("photos/catpics").as_deref(),
-        Some("photos/catpics")
+        extract_ollama_image_payload("photos/cats1").as_deref(),
+        Some("photos/cats1")
     );
+
+    // Most relative paths are NOT ambiguous, for two reasons that are easy to
+    // mistake for the check above doing the work:
+    //   - `len % 4 == 1` is a length base64 never produces;
+    //   - a partial trailing group must have its discarded low bits zero, and
+    //     an arbitrary word almost never does. `photos/catpics` decodes as far
+    //     as the alphabet is concerned, but its final `s` carries non-zero
+    //     spare bits, so the decoder rejects it as non-canonical.
     assert!(extract_ollama_image_payload("photos/catpic").is_none());
+    assert!(extract_ollama_image_payload("photos/catpics").is_none());
 }
 
 #[test]

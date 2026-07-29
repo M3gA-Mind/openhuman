@@ -219,9 +219,12 @@ const MAX_PATH_SHAPED_REF_LEN: usize = 64;
 /// does every Windows path (`:` and `\` are likewise outside it).
 ///
 /// **Known residual ambiguity:** a relative path built only from base64
-/// characters, of a length base64 permits — `photos/catpics` — is genuinely
+/// characters that also decodes cleanly — `photos/cats1` — is genuinely
 /// indistinguishable from a short payload and is still accepted. Tightening
 /// that would start rejecting real base64, so it is left alone deliberately.
+/// The window is narrower than it looks: the length must not be `4n + 1`, and a
+/// partial trailing group must carry zero spare bits, which an arbitrary word
+/// rarely does.
 fn looks_like_absolute_path(payload: &str) -> bool {
     payload.starts_with('/') && payload.len() < MAX_PATH_SHAPED_REF_LEN
 }

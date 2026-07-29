@@ -1541,6 +1541,11 @@ async fn bundled_vision_misconfiguration_does_not_abort_the_rest_of_bootstrap() 
     // A valid chat model on Ollama, but it cannot accept images.
     config.local_ai.vision_model_id = "gemma3n:e4b-it-q8_0".to_string();
     config.local_ai.preload_vision_model = true;
+    // `preload_embedding_model` defaults to TRUE, and the mock serves no
+    // `/api/pull`, so leaving it on made the embedding preload 404 and this
+    // test fail for a reason that has nothing to do with vision. The
+    // later-preload interaction is covered by its own test below.
+    config.local_ai.preload_embedding_model = false;
 
     let service = LocalAiService::new(&config);
     let result = service.ensure_models_available(&config).await;
