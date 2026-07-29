@@ -261,7 +261,18 @@ pub fn extract_ollama_image_payload(image_ref: &str) -> Option<String> {
     // padded and unpadded alphabets: real data URIs are padded, but some
     // producers omit the `=`, and rejecting those would be a new regression
     // rather than the fix this is.
-    if STANDARD.decode(payload).is_err() && STANDARD_NO_PAD.decode(payload).is_err() {
+    //
+    // Length picks the engine rather than trying both: a complete group
+    // (`len % 4 == 0`) is exactly what `STANDARD` accepts, with or without
+    // trailing `=`, and only a partial group needs `STANDARD_NO_PAD`. Trying
+    // both in sequence decoded a multi-MB image twice for every unpadded
+    // payload.
+    let is_base64 = if payload.len() % 4 == 0 {
+        STANDARD.decode(payload).is_ok()
+    } else {
+        STANDARD_NO_PAD.decode(payload).is_ok()
+    };
+    if !is_base64 {
         tracing::debug!(
             "[multimodal] image reference is not base64 (a filesystem path is not accepted here)"
         );
