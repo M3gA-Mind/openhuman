@@ -32,6 +32,17 @@ interface ThreadState {
   isLoadingThreads: boolean;
   isLoadingMessages: boolean;
   messagesError: string | null;
+  /**
+   * Why the last `createNewThread` failed, or `null` when the last attempt
+   * succeeded (or none has run). Recorded centrally so a failed create is never
+   * invisible: before #5156 nothing in the store observed
+   * `createNewThread.rejected`, so every call site had to remember its own
+   * `.catch` — one that forgot produced `UnhandledRejection: Core RPC
+   * openhuman.threads_create_new timed out after 30000ms` (Sentry
+   * TAURI-REACT-10) and one that caught-and-ignored left the user staring at a
+   * dead "New chat" button. The chat surface renders this.
+   */
+  createThreadError: string | null;
 }
 
 const initialState: ThreadState = {
@@ -44,6 +55,7 @@ const initialState: ThreadState = {
   isLoadingThreads: false,
   isLoadingMessages: false,
   messagesError: null,
+  createThreadError: null,
 };
 
 function appendMessageToCache(
@@ -77,6 +89,26 @@ export const loadThreads = createAsyncThunk(
   }
 );
 
+/**
+ * Normalise whatever `dispatch(createNewThread()).unwrap()` throws into a
+ * displayable string.
+ *
+ * `createAsyncThunk` throws the `rejectWithValue` payload (a bare string) or, if
+ * the thunk threw, Redux's `SerializedError` — a plain object, not an `Error`.
+ * Neither carries a stack, which is why the original report surfaced as
+ * "Non-Error promise rejection captured with value: …" (#5156). Mirrors
+ * `formatThreadLoadError` in `features/conversations/Conversations.tsx`.
+ */
+export function formatThreadCreateError(error: unknown): string {
+  if (typeof error === 'string' && error.trim().length > 0) return error;
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) return message;
+  }
+  return 'Failed to create thread';
+}
+
 export const createNewThread = createAsyncThunk(
   'thread/createNewThread',
   async (labels: string[] | undefined, { dispatch, rejectWithValue }) => {
@@ -85,7 +117,10 @@ export const createNewThread = createAsyncThunk(
       await dispatch(loadThreads()).unwrap();
       return thread;
     } catch (error) {
-      return rejectWithValue(error instanceof Error ? error.message : 'Failed to create thread');
+      // Keep the payload a plain string (redux-serializable) but normalise every
+      // throw shape, including the `SerializedError` a nested `.unwrap()` raises
+      // when `loadThreads` is what actually failed (#5156).
+      return rejectWithValue(formatThreadCreateError(error));
     }
   }
 );
@@ -330,6 +365,13 @@ const threadSlice = createSlice({
   name: 'thread',
   initialState,
   reducers: {
+    /**
+     * Dismiss the "couldn't start a new chat" surface (#5156) — the user has
+     * seen it and moved on (typed into the composer, navigated away).
+     */
+    clearCreateThreadError: state => {
+      state.createThreadError = null;
+    },
     setSelectedThread: (state, action: { payload: string }) => {
       state.selectedThreadId = action.payload;
       state.messages = state.messagesByThreadId[action.payload] ?? [];
@@ -427,6 +469,17 @@ const threadSlice = createSlice({
       .addCase(loadThreads.rejected, state => {
         state.isLoadingThreads = false;
       })
+      // A create in flight supersedes the previous attempt's failure, so the
+      // banner clears the moment the user retries rather than lingering.
+      .addCase(createNewThread.pending, state => {
+        state.createThreadError = null;
+      })
+      .addCase(createNewThread.fulfilled, state => {
+        state.createThreadError = null;
+      })
+      .addCase(createNewThread.rejected, (state, action) => {
+        state.createThreadError = formatThreadCreateError(action.payload ?? action.error?.message);
+      })
       .addCase(loadThreadMessages.pending, state => {
         state.isLoadingMessages = true;
         state.messagesError = null;
@@ -498,6 +551,7 @@ const threadSlice = createSlice({
 });
 
 export const {
+  clearCreateThreadError,
   setSelectedThread,
   clearSelectedThread,
   setActiveThread,

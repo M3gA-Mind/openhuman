@@ -96,6 +96,7 @@ import { selectSocketStatus } from '../../store/socketSelectors';
 import {
   addInferenceResponse,
   addMessageLocal,
+  clearCreateThreadError,
   clearThreadInferenceActive,
   createNewThread,
   deleteThread,
@@ -205,6 +206,30 @@ export function formatThreadLoadError(err: unknown): string {
   return String(err);
 }
 
+/**
+ * What the error strip above the composer renders: this turn's send failure if
+ * there is one, otherwise a thread-create failure recorded by `threadSlice`.
+ *
+ * A create that blew the 30 s RPC budget used to have no surface at all — the
+ * shell's "New chat" / Home actions caught the rejection and dropped it, so the
+ * button just did nothing, and a call site that forgot to catch turned the same
+ * failure into `UnhandledRejection: … threads_create_new timed out after
+ * 30000ms` (#5156). Routing the slice-recorded failure through the existing
+ * banner gives every create path one visible outcome. Exported so the precedence
+ * rule is unit-testable without mounting the page.
+ */
+export function deriveChatErrorBanner(
+  sendError: ChatSendError | null,
+  createThreadError: string | null,
+  createThreadFailedMessage: string
+): ChatSendError | null {
+  if (sendError) return sendError;
+  if (createThreadError) {
+    return chatSendError('create_thread_failed', createThreadFailedMessage);
+  }
+  return null;
+}
+
 const Conversations = ({
   variant = 'page',
   composer: composerProp = 'text',
@@ -264,6 +289,12 @@ const Conversations = ({
   const selectedLabel = GENERAL_TAB_VALUE;
   const [threadSearch, setThreadSearch] = useState('');
   const [sendError, setSendError] = useState<ChatSendError | null>(null);
+  // Recorded by the slice for *every* create path (#5156) — including the shell's
+  // "New chat" button and the home-nav shortcut, which have no UI of their own —
+  // so a failed create always has somewhere to show up.
+  // Optional-chain + default, same as `activeThreadIds` below: narrow test
+  // stores predate this field.
+  const createThreadError = useAppSelector(state => state.thread.createThreadError ?? null);
   const [attachError, setAttachError] = useState<ChatSendError | null>(null);
   const [sendAdvisory, setSendAdvisory] = useState<string | null>(null);
   // Refs mirroring error/advisory state for effects that read them without
@@ -271,6 +302,13 @@ const Conversations = ({
   // that contributes to "Maximum update depth exceeded" (TAURI-REACT-2G).
   const sendErrorRef = useRef(sendError);
   sendErrorRef.current = sendError;
+  const createThreadErrorRef = useRef(createThreadError);
+  createThreadErrorRef.current = createThreadError;
+  const displayedSendError = deriveChatErrorBanner(
+    sendError,
+    createThreadError,
+    t('chat.createThreadFailed')
+  );
   const sendAdvisoryRef = useRef(sendAdvisory);
   sendAdvisoryRef.current = sendAdvisory;
   const [openRouterStatus, setOpenRouterStatus] = useState<'idle' | 'saving' | 'error'>('idle');
@@ -730,6 +768,11 @@ const Conversations = ({
   useEffect(() => {
     if (sendErrorRef.current && inputValue.length > 0) {
       setSendError(null);
+    }
+    // The store-recorded create failure (#5156) dismisses on the same signal:
+    // the user is composing, so they have seen it.
+    if (createThreadErrorRef.current && inputValue.length > 0) {
+      dispatch(clearCreateThreadError());
     }
     if (sendAdvisoryRef.current && inputValue.length > 0) {
       setSendAdvisory(null);
@@ -2008,16 +2051,18 @@ const Conversations = ({
           </div>
         )}
 
-        {sendError && (
+        {displayedSendError && (
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-coral-500" data-chat-send-error-code={sendError.code}>
-              {sendError.message}
+            <p
+              className="text-xs text-coral-500"
+              data-chat-send-error-code={displayedSendError.code}>
+              {displayedSendError.message}
             </p>
             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-              {(sendError.code === 'stt_not_ready' ||
-                sendError.code === 'voice_transcription' ||
-                sendError.code === 'tts_not_ready' ||
-                sendError.code === 'voice_synthesis') && (
+              {(displayedSendError.code === 'stt_not_ready' ||
+                displayedSendError.code === 'voice_transcription' ||
+                displayedSendError.code === 'tts_not_ready' ||
+                displayedSendError.code === 'voice_synthesis') && (
                 <button
                   type="button"
                   data-analytics-id="chat-send-error-setup"
@@ -2035,7 +2080,10 @@ const Conversations = ({
               <button
                 type="button"
                 data-analytics-id="chat-send-error-dismiss"
-                onClick={() => setSendError(null)}
+                onClick={() => {
+                  setSendError(null);
+                  dispatch(clearCreateThreadError());
+                }}
                 className="text-xs text-content-muted hover:text-content-secondary dark:text-neutral-200 dark:hover:text-neutral-200 transition-colors">
                 {t('common.dismiss')}
               </button>
