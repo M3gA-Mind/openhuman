@@ -938,6 +938,12 @@ mod tests {
 
     /// Sibling contract for the document arm: `modified_at` is likewise
     /// optional (`#[serde(default = "now_utc")]` in tinycortex).
+    ///
+    /// The payload is deliberately minimal — `title` and `body` are the only
+    /// required fields on `DocumentInput`. `provider` (`default_provider`),
+    /// `source_ref` (`Option`) and `modified_at` (`now_utc`) all carry serde
+    /// defaults, so omitting them together pins the whole optional set rather
+    /// than just the timestamp.
     #[test]
     fn document_payload_without_modified_at_is_accepted() {
         let payload = json!({ "title": "Launch plan", "body": "ship it" });
