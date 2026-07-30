@@ -1,6 +1,7 @@
 import debugFactory from 'debug';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { isMethodNotFoundCoreRpcError } from '../../services/coreRpcClient';
 import {
   fetchHarnessInitStatus,
   type HarnessInitSnapshot,
@@ -11,6 +12,26 @@ import InitProgressScreen from './InitProgressScreen';
 const log = debugFactory('harness-init');
 
 const POLL_MS = 2000;
+
+// A status poll can legitimately fail while the core is still coming up, so a
+// failure is retried. But the retry must be *bounded*: before #5157 any failure
+// rescheduled the poll unconditionally every 2s for the life of the window. A
+// core that never serves this method (version skew / domain-gated build) turned
+// that into a permanent 30-calls-per-minute loop, and because each miss is
+// recorded core-side it produced ~9k Sentry events/day from a single client.
+//
+// Two guards now bound it:
+//   - a permanent failure (`method_not_found`) stops the loop immediately —
+//     retrying an absent method can never succeed;
+//   - any other failure gets a capped number of attempts with exponential
+//     backoff, so even an unforeseen persistent fault decays and stops.
+const MAX_TRANSIENT_FAILURES = 5;
+const MAX_BACKOFF_MS = 30_000;
+
+/** Backoff for the Nth consecutive transient failure (1-based), capped. */
+function transientRetryDelayMs(consecutiveFailures: number): number {
+  return Math.min(POLL_MS * 2 ** (consecutiveFailures - 1), MAX_BACKOFF_MS);
+}
 
 // Persist the "Run in background" dismissal for the *current* provisioning run
 // so a remount or reload does not reopen the overlay (GH-5047). A run is keyed
@@ -107,12 +128,16 @@ export default function HarnessInitOverlay() {
     cancelledRef.current = false;
     let timeoutId: number | null = null;
 
+    let consecutiveFailures = 0;
+
     const poll = async () => {
+      let retryDelayMs = POLL_MS;
       try {
         const next = await fetchHarnessInitStatusCoalesced();
         if (cancelledRef.current || dismissedRef.current) {
           return;
         }
+        consecutiveFailures = 0;
         if (next) {
           setSnapshot(next);
           // If this run was already dismissed to the background (possibly in a
@@ -134,11 +159,34 @@ export default function HarnessInitOverlay() {
           }
         }
       } catch (err) {
-        // Status can fail while the core is still coming up — keep polling.
-        log('status poll failed: %O', err);
+        if (cancelledRef.current || dismissedRef.current) {
+          return;
+        }
+        // The running core has no `harness_init_status` at all (version skew,
+        // domain-gated or slim build). Permanent — stop, and render nothing.
+        // There is no init run to report, so there is nothing to show (#5157).
+        if (isMethodNotFoundCoreRpcError(err)) {
+          log('status poll: core does not expose harness_init_status — stopping poll');
+          return;
+        }
+        consecutiveFailures += 1;
+        // Status can fail while the core is still coming up — keep polling, but
+        // only for a bounded number of attempts, backing off between each.
+        if (consecutiveFailures >= MAX_TRANSIENT_FAILURES) {
+          log('status poll failed %d consecutive times — giving up: %O', consecutiveFailures, err);
+          return;
+        }
+        retryDelayMs = transientRetryDelayMs(consecutiveFailures);
+        log(
+          'status poll failed (attempt %d/%d), retrying in %dms: %O',
+          consecutiveFailures,
+          MAX_TRANSIENT_FAILURES,
+          retryDelayMs,
+          err
+        );
       }
       if (!cancelledRef.current && !dismissedRef.current) {
-        timeoutId = window.setTimeout(() => void poll(), POLL_MS);
+        timeoutId = window.setTimeout(() => void poll(), retryDelayMs);
       }
     };
 
