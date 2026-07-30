@@ -28,9 +28,32 @@ const POLL_MS = 2000;
 const MAX_TRANSIENT_FAILURES = 5;
 const MAX_BACKOFF_MS = 30_000;
 
+// Exhausting the retries must not strand a *blocking* overlay on stale
+// progress. While a `running` snapshot is on screen the UI is covering the app
+// and waiting for a terminal snapshot, so a transient outage (brief core
+// overload, network blip) that outlasts the cap has to stay watchable — giving
+// up there would freeze the overlay on a half-finished run until the user hits
+// "Run in background", and the pre-#5157 loop did recover from exactly that.
+//
+// So the cap still applies whenever nothing blocking is displayed (the #5157
+// case: a core that never serves this method, with no UI on screen), and
+// otherwise the loop drops to this much slower cadence instead of stopping.
+// 2 calls/min is 15x below the runaway loop #5157 fixed, and only ever runs
+// while a blocking overlay is actually up.
+const STALLED_POLL_MS = MAX_BACKOFF_MS;
+
 /** Backoff for the Nth consecutive transient failure (1-based), capped. */
 function transientRetryDelayMs(consecutiveFailures: number): number {
   return Math.min(POLL_MS * 2 ** (consecutiveFailures - 1), MAX_BACKOFF_MS);
+}
+
+/**
+ * Whether this snapshot puts the blocking overlay on screen. `running` is also
+ * the only non-terminal blocking state, so it is what the poll loop must keep
+ * watching for a terminal result.
+ */
+function isBlockingSnapshot(snapshot: HarnessInitSnapshot): boolean {
+  return snapshot.overall === 'running' || snapshot.overall === 'failed';
 }
 
 // Persist the "Run in background" dismissal for the *current* provisioning run
@@ -123,6 +146,10 @@ export default function HarnessInitOverlay() {
   const cancelledRef = useRef(false);
   // Mirrors `dismissed` so the poll loop can stop without re-running the effect.
   const dismissedRef = useRef(false);
+  // Mirrors "a blocking overlay is currently on screen, still waiting on a
+  // terminal snapshot", so the failure branch can tell a stranded user from a
+  // silent background loop without re-running the effect.
+  const awaitingTerminalRef = useRef(false);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -140,6 +167,7 @@ export default function HarnessInitOverlay() {
         consecutiveFailures = 0;
         if (next) {
           setSnapshot(next);
+          awaitingTerminalRef.current = next.overall === 'running';
           // If this run was already dismissed to the background (possibly in a
           // prior mount / before a reload), stay hidden and stop polling —
           // don't let a remount reopen the overlay (GH-5047).
@@ -173,17 +201,36 @@ export default function HarnessInitOverlay() {
         // Status can fail while the core is still coming up — keep polling, but
         // only for a bounded number of attempts, backing off between each.
         if (consecutiveFailures >= MAX_TRANSIENT_FAILURES) {
-          log('status poll failed %d consecutive times — giving up: %O', consecutiveFailures, err);
-          return;
+          // Nothing blocking on screen: this is the #5157 runaway loop, stop.
+          if (!awaitingTerminalRef.current) {
+            log(
+              'status poll failed %d consecutive times — giving up: %O',
+              consecutiveFailures,
+              err
+            );
+            return;
+          }
+          // A `running` overlay is covering the app. Stopping here would pin it
+          // to stale progress for the rest of the session even after the core
+          // recovers, so keep watching at a much slower cadence instead.
+          retryDelayMs = STALLED_POLL_MS;
+          log(
+            'status poll failed %d consecutive times but a running overlay is on screen — ' +
+              'continuing at %dms: %O',
+            consecutiveFailures,
+            retryDelayMs,
+            err
+          );
+        } else {
+          retryDelayMs = transientRetryDelayMs(consecutiveFailures);
+          log(
+            'status poll failed (attempt %d/%d), retrying in %dms: %O',
+            consecutiveFailures,
+            MAX_TRANSIENT_FAILURES,
+            retryDelayMs,
+            err
+          );
         }
-        retryDelayMs = transientRetryDelayMs(consecutiveFailures);
-        log(
-          'status poll failed (attempt %d/%d), retrying in %dms: %O',
-          consecutiveFailures,
-          MAX_TRANSIENT_FAILURES,
-          retryDelayMs,
-          err
-        );
       }
       if (!cancelledRef.current && !dismissedRef.current) {
         timeoutId = window.setTimeout(() => void poll(), retryDelayMs);
@@ -221,6 +268,10 @@ export default function HarnessInitOverlay() {
     log('user dismissed overlay to background for run %s', runKey(snapshot));
     writeDismissedRun(runKey(snapshot));
     dismissedRef.current = true;
+    // Nothing is blocking any more, so a later failure must not keep the slow
+    // watch alive. (`dismissedRef` already stops the loop; this keeps the two
+    // flags from disagreeing.)
+    awaitingTerminalRef.current = false;
     setDismissed(true);
   }, [snapshot]);
 
@@ -236,8 +287,7 @@ export default function HarnessInitOverlay() {
   // Block only while a run is actively in progress, or hold a failed run on
   // screen until the user explicitly continues. `idle` (no run started yet)
   // and `done` never block.
-  const shouldShow = snapshot.overall === 'running' || snapshot.overall === 'failed';
-  if (!shouldShow) {
+  if (!isBlockingSnapshot(snapshot)) {
     return null;
   }
 

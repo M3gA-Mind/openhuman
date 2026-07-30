@@ -161,6 +161,51 @@ describe('HarnessInitOverlay', () => {
     expect(fetchHarnessInitStatus).toHaveBeenCalledTimes(5);
   });
 
+  // Review follow-up on #5157: the failure cap must not strand the *blocking*
+  // overlay. If the core has a transient outage that outlasts the budget while
+  // a `running` snapshot is on screen, giving up would pin the app behind stale
+  // progress for the rest of the session — the pre-#5157 loop recovered from
+  // exactly that. The cap still applies when nothing blocking is displayed
+  // (covered by the give-up test above); here the loop drops to a slow cadence
+  // instead of stopping.
+  it('keeps watching a running overlay through an outage longer than the failure budget', async () => {
+    vi.useFakeTimers();
+    fetchHarnessInitStatus
+      // A provisioning run is live — the overlay is now blocking the app.
+      .mockResolvedValueOnce(snapshot({ startedAt: 'stall-run' }))
+      // The core drops out for well past MAX_TRANSIENT_FAILURES attempts.
+      .mockRejectedValueOnce(new Error('error sending request for url'))
+      .mockRejectedValueOnce(new Error('error sending request for url'))
+      .mockRejectedValueOnce(new Error('error sending request for url'))
+      .mockRejectedValueOnce(new Error('error sending request for url'))
+      .mockRejectedValueOnce(new Error('error sending request for url'))
+      .mockRejectedValueOnce(new Error('error sending request for url'))
+      .mockRejectedValueOnce(new Error('error sending request for url'))
+      .mockRejectedValueOnce(new Error('error sending request for url'))
+      // ...and then comes back, having finished the run.
+      .mockResolvedValue(
+        snapshot({ overall: 'done', startedAt: 'stall-run', finishedAt: '2026-07-20T00:05:00Z' })
+      );
+
+    renderWithProviders(<HarnessInitOverlay />);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByText('Run in background')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300_000);
+    });
+
+    // It kept polling past the 5-attempt cap instead of freezing...
+    expect(fetchHarnessInitStatus.mock.calls.length).toBeGreaterThan(6);
+    // ...so the recovered core's terminal snapshot was observed and the
+    // blocking overlay cleared itself. (Asserted directly rather than through
+    // `waitFor`, which would wait on real timers while fake ones are installed.)
+    expect(screen.queryByText('Run in background')).not.toBeInTheDocument();
+  });
+
   it('keeps polling after a transient failure while the core is still booting', async () => {
     vi.useFakeTimers();
     // The legitimate cold-start case the retry exists for: fail once, then the
