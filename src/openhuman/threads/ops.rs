@@ -1,5 +1,6 @@
 //! RPC operations for conversation thread management.
 
+use crate::core::runtime::context::CoreContext;
 use crate::openhuman::config::Config;
 use crate::openhuman::inference::provider;
 use crate::openhuman::memory::{
@@ -76,6 +77,49 @@ async fn workspace_dir() -> Result<PathBuf, String> {
         .await
         .map(|c| c.workspace_dir)
         .map_err(|e| format!("load config: {e}"))
+}
+
+/// Run a destructive sequence to completion even if the caller's future is
+/// dropped (client disconnect, RPC timeout).
+///
+/// Moving the store onto the blocking pool (#5156) introduced a cancellation
+/// point that did not exist before. `spawn_blocking` work is never cancelled
+/// when its `JoinHandle` is dropped, so the store mutation lands regardless —
+/// but the `.await` on that handle *is* a yield point, and previously the
+/// synchronous store call had none. Dropping the handler there leaves the thread
+/// deleted while the cleanup that follows it never runs: the web-channel session
+/// stays live and can append to a thread index row that no longer exists,
+/// detached sub-agents keep running and queueing completions, and the turn
+/// snapshot survives to resurface as `Interrupted` for a thread that is gone.
+/// Those are precisely the invariants `thread_delete`'s ordering comments exist
+/// to hold.
+///
+/// Owning the mutation *and* its cleanup in one spawned task decouples the
+/// sequence from the caller's lifetime. The ambient [`CoreContext`] is carried
+/// across explicitly: a bare `tokio::spawn` drops the `task_local` scope, and
+/// `CoreContext::current` then silently falls back to the process default —
+/// which under multi-tenant scoped dispatch is the wrong workspace.
+async fn run_to_completion<T, F>(operation: &'static str, fut: F) -> Result<T, String>
+where
+    F: std::future::Future<Output = Result<T, String>> + Send + 'static,
+    T: Send + 'static,
+{
+    let ctx = CoreContext::current();
+    tokio::spawn(async move {
+        match ctx {
+            Some(ctx) => CoreContext::scope(ctx, fut).await,
+            None => fut.await,
+        }
+    })
+    .await
+    .unwrap_or_else(|error| {
+        tracing::warn!(
+            operation,
+            error = %error,
+            "[threads] destructive task failed to join"
+        );
+        Err(format!("{operation} task failed: {error}"))
+    })
 }
 
 fn thread_to_summary(thread: ConversationThread) -> ConversationThreadSummary {
@@ -552,10 +596,22 @@ pub async fn message_update(
 }
 
 /// Deletes a conversation thread and its message log.
+///
+/// The store mutation and every cleanup step it implies run inside one
+/// [`run_to_completion`] task, so a caller that disconnects mid-delete cannot
+/// leave the thread gone from the store with its sessions, sub-agents and turn
+/// snapshot still live.
 pub async fn thread_delete(
     request: DeleteConversationThreadRequest,
 ) -> Result<RpcOutcome<ApiEnvelope<DeleteConversationThreadResponse>>, String> {
     let dir = workspace_dir().await?;
+    run_to_completion("thread_delete", thread_delete_inner(dir, request)).await
+}
+
+async fn thread_delete_inner(
+    dir: PathBuf,
+    request: DeleteConversationThreadRequest,
+) -> Result<RpcOutcome<ApiEnvelope<DeleteConversationThreadResponse>>, String> {
     let deleted = conversations::blocking::delete_thread(
         dir.clone(),
         request.thread_id.clone(),
@@ -608,10 +664,20 @@ pub async fn thread_delete(
 }
 
 /// Purges all conversation threads and messages.
+///
+/// Same cancellation contract as [`thread_delete`]: the purge and its sub-agent
+/// / turn-snapshot cleanup are one [`run_to_completion`] unit, so a dropped
+/// caller cannot leave every thread wiped while their sub-agents keep running.
 pub async fn threads_purge(
     _request: EmptyRequest,
 ) -> Result<RpcOutcome<ApiEnvelope<PurgeConversationThreadsResponse>>, String> {
     let dir = workspace_dir().await?;
+    run_to_completion("threads_purge", threads_purge_inner(dir)).await
+}
+
+async fn threads_purge_inner(
+    dir: PathBuf,
+) -> Result<RpcOutcome<ApiEnvelope<PurgeConversationThreadsResponse>>, String> {
     let stats = conversations::blocking::purge_threads(dir.clone()).await?;
     // No parent thread survives a purge, so cancel every detached sub-agent and
     // wipe every queued result. Same ordering as `thread_delete`: abort the

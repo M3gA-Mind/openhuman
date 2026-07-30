@@ -43,6 +43,18 @@ interface ThreadState {
    * dead "New chat" button. The chat surface renders this.
    */
   createThreadError: string | null;
+  /**
+   * `requestId` of the most recently *started* `createNewThread`, so a
+   * completion from a superseded attempt can be ignored.
+   *
+   * Two creates can overlap — the user hits New Chat again while the first RPC
+   * is still hung on its 30 s budget. Without this, the newer request could
+   * succeed and clear the banner, and then the older one would time out and set
+   * `createThreadError` again, showing "Couldn't create a new thread" on a chat
+   * that was in fact created. Only the latest attempt is allowed to write this
+   * slice's create-error state.
+   */
+  createThreadRequestId: string | null;
 }
 
 const initialState: ThreadState = {
@@ -56,6 +68,7 @@ const initialState: ThreadState = {
   isLoadingMessages: false,
   messagesError: null,
   createThreadError: null,
+  createThreadRequestId: null,
 };
 
 function appendMessageToCache(
@@ -101,7 +114,11 @@ export const loadThreads = createAsyncThunk(
  */
 export function formatThreadCreateError(error: unknown): string {
   if (typeof error === 'string' && error.trim().length > 0) return error;
-  if (error instanceof Error) return error.message;
+  // `new Error()` carries an empty `message`. Returning it would store a falsy
+  // `createThreadError`, which `deriveChatErrorBanner` treats as "no failure" —
+  // the user would get a dead New Chat button and no banner, the exact outcome
+  // #5156 exists to prevent. Fall through to the generic fallback instead.
+  if (error instanceof Error && error.message.trim().length > 0) return error.message;
   if (error && typeof error === 'object' && 'message' in error) {
     const message = (error as { message?: unknown }).message;
     if (typeof message === 'string' && message.trim().length > 0) return message;
@@ -470,14 +487,21 @@ const threadSlice = createSlice({
         state.isLoadingThreads = false;
       })
       // A create in flight supersedes the previous attempt's failure, so the
-      // banner clears the moment the user retries rather than lingering.
-      .addCase(createNewThread.pending, state => {
+      // banner clears the moment the user retries rather than lingering. The
+      // starting request also becomes the only one allowed to write the error
+      // state — see `createThreadRequestId`.
+      .addCase(createNewThread.pending, (state, action) => {
+        state.createThreadRequestId = action.meta.requestId;
         state.createThreadError = null;
       })
-      .addCase(createNewThread.fulfilled, state => {
+      .addCase(createNewThread.fulfilled, (state, action) => {
+        if (action.meta.requestId !== state.createThreadRequestId) return;
         state.createThreadError = null;
       })
       .addCase(createNewThread.rejected, (state, action) => {
+        // A superseded attempt failing late must not repaint the banner over a
+        // newer create that already succeeded.
+        if (action.meta.requestId !== state.createThreadRequestId) return;
         state.createThreadError = formatThreadCreateError(action.payload ?? action.error?.message);
       })
       .addCase(loadThreadMessages.pending, state => {

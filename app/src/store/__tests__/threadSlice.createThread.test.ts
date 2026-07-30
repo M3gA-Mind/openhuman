@@ -157,5 +157,78 @@ describe('createNewThread failure handling (#5156)', () => {
       expect(formatThreadCreateError('   ')).toBe('Failed to create thread');
       expect(formatThreadCreateError({})).toBe('Failed to create thread');
     });
+
+    // A native `new Error()` has `message === ''`. Returning it verbatim stored
+    // a falsy `createThreadError`, which `deriveChatErrorBanner` reads as "no
+    // failure" — so the user got the dead New Chat button with no banner, the
+    // exact outcome #5156 exists to prevent.
+    it('falls back for an Error carrying an empty or blank message', () => {
+      expect(formatThreadCreateError(new Error())).toBe('Failed to create thread');
+      expect(formatThreadCreateError(new Error(''))).toBe('Failed to create thread');
+      expect(formatThreadCreateError(new Error('   '))).toBe('Failed to create thread');
+      expect(formatThreadCreateError({ name: 'Error', message: '   ' })).toBe(
+        'Failed to create thread'
+      );
+    });
+  });
+
+  // Two creates overlap when the user hits New Chat again while the first RPC
+  // is still hung on its 30 s budget. Only the latest attempt may write the
+  // create-error state, or a late failure from the superseded one repaints the
+  // banner over a chat that was actually created.
+  describe('overlapping create attempts', () => {
+    it('ignores a stale rejection that lands after a newer create succeeded', async () => {
+      const store = createStore();
+
+      // Request A hangs; we hold its rejection until after B has succeeded.
+      let failA: (reason: unknown) => void = () => {};
+      mockedThreadApi.createNewThread.mockImplementationOnce(
+        () =>
+          new Promise<Thread>((_resolve, reject) => {
+            failA = reject;
+          })
+      );
+      const a = store.dispatch(createNewThread(undefined));
+
+      // Request B starts and succeeds while A is still in flight.
+      mockedThreadApi.createNewThread.mockResolvedValueOnce(makeThread());
+      mockedThreadApi.getThreads.mockResolvedValueOnce({ threads: [makeThread()], count: 1 });
+      await store.dispatch(createNewThread(undefined));
+      expect(store.getState().thread.createThreadError).toBeNull();
+
+      // Only now does A time out.
+      failA(new CoreRpcError(TIMEOUT_MESSAGE, 'timeout'));
+      await a;
+
+      // The banner must stay clear — B's chat exists.
+      expect(store.getState().thread.createThreadError).toBeNull();
+    });
+
+    it('still records the failure when the latest attempt is the one that fails', async () => {
+      const store = createStore();
+
+      let succeedA: (thread: Thread) => void = () => {};
+      mockedThreadApi.createNewThread.mockImplementationOnce(
+        () =>
+          new Promise<Thread>(resolve => {
+            succeedA = resolve;
+          })
+      );
+      const a = store.dispatch(createNewThread(undefined));
+
+      // B starts after A and fails — B is the live attempt, so its failure counts.
+      mockedThreadApi.createNewThread.mockRejectedValueOnce(
+        new CoreRpcError(TIMEOUT_MESSAGE, 'timeout')
+      );
+      await store.dispatch(createNewThread(undefined));
+      expect(store.getState().thread.createThreadError).toBe(TIMEOUT_MESSAGE);
+
+      // A's late *success* must not clear a banner it no longer owns.
+      mockedThreadApi.getThreads.mockResolvedValueOnce({ threads: [makeThread()], count: 1 });
+      succeedA(makeThread());
+      await a;
+
+      expect(store.getState().thread.createThreadError).toBe(TIMEOUT_MESSAGE);
+    });
   });
 });
