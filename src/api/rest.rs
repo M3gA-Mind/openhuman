@@ -110,6 +110,33 @@ pub fn flatten_authed_error(err: anyhow::Error) -> String {
     }
 }
 
+/// Whether a 404 body came from *no route matching* rather than from a handler
+/// reporting a missing resource.
+///
+/// The backend registers no catch-all 404, so an unmatched route falls through
+/// to Express's built-in `finalhandler`, which answers with an HTML page whose
+/// body reads `Cannot PATCH /channels/…`. Every handler-level 404 answers with a
+/// JSON envelope instead — `DELETE /channels/:channel/messages/:messageId`
+/// already returns `{"success": false, "error": …}`, and a future `PATCH`
+/// handler would mirror it.
+///
+/// So: parses as JSON ⇒ a handler answered ⇒ the message is missing, not the
+/// route. Anything else (HTML, plain text, empty) ⇒ treat as route absence.
+///
+/// The asymmetry is deliberate. Misreading route absence as message absence only
+/// costs one wasted edit attempt per message; misreading a message-missing 404 as
+/// route absence disables progressive edits for the entire provider for the rest
+/// of the process (#5230 review). Defaulting the ambiguous shapes to route
+/// absence also preserves today's behaviour, where no backend implements the
+/// route at all.
+fn is_unmatched_route_404(body: &str) -> bool {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    serde_json::from_str::<Value>(trimmed).is_err()
+}
+
 /// Extract `(provider, message_id)` from a backend channel path of the
 /// shape `…/channels/<provider>/messages/<id>`. Returns `None` for paths
 /// that do not contain this four-segment subsequence.
@@ -653,16 +680,25 @@ impl BackendOAuthClient {
             // `report_error`. Targets `OPENHUMAN-TAURI-2Y` (~454 events).
             if status_code == 404 {
                 let channel_message = parse_message_path(url.path());
-                // A 404 on the *edit* route is route absence, never message
-                // absence — the backend implements no `PATCH
+                // A 404 on the *edit* route is normally route absence, not
+                // message absence — today the backend implements no `PATCH
                 // /channels/:channel/messages/:messageId` at all (#5230). Answer
                 // with a distinct typed error so `bus.rs` keeps the message id
                 // (it still owns that message and must be able to delete it)
                 // and only disables the edit capability. Checked before the
                 // `MessageNotFound` arm below, which would otherwise swallow it.
+                //
+                // `is_unmatched_route_404` is what keeps this honest once the
+                // route *does* exist (staging, a custom backend, or after the
+                // backend PR lands): a handler-level "that message is gone" 404
+                // must stay a per-message `MessageNotFound`, because
+                // `ChannelEditUnsupported` makes `bus.rs` call
+                // `mark_channel_edits_unsupported` and disable progressive edits
+                // for the whole provider for the rest of the process.
                 if method == Method::PATCH
                     && (channel_message.is_some()
                         || (url.path().contains("/channels/") && url.path().contains("/messages/")))
+                    && is_unmatched_route_404(&text)
                 {
                     let (provider, message_id) = channel_message
                         .map(|(provider, id)| (provider.to_string(), id.to_string()))

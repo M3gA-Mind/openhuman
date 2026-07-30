@@ -1,7 +1,7 @@
 use super::{
     backend_api_body_shape, flatten_authed_error, is_announcements_latest_path,
-    key_bytes_from_string, parse_message_path, sanitize_client_version, BackendApiError,
-    BackendOAuthClient, BACKEND_API_BODY_SHAPE_MAX_BYTES,
+    is_unmatched_route_404, key_bytes_from_string, parse_message_path, sanitize_client_version,
+    BackendApiError, BackendOAuthClient, BACKEND_API_BODY_SHAPE_MAX_BYTES,
 };
 use axum::extract::State;
 use axum::http::HeaderMap;
@@ -985,6 +985,50 @@ async fn send_channel_edit_404_is_route_absence_not_a_missing_message() {
 }
 
 #[tokio::test]
+async fn channel_edit_404_from_a_real_handler_stays_a_missing_message() {
+    // #5230 review: the twin of the test above, for the world where the edit
+    // route DOES exist (staging, a custom backend, or after the backend PR
+    // lands). A handler answering "that message is gone" returns a JSON
+    // envelope, exactly as `DELETE /channels/:channel/messages/:messageId`
+    // already does. Classifying that as `ChannelEditUnsupported` would make
+    // `bus.rs` call `mark_channel_edits_unsupported` and switch progressive
+    // edits off for the whole provider for the rest of the process — because
+    // one message expired.
+    let app = Router::new().route(
+        "/channels/telegram/messages/1103",
+        axum::routing::patch(|| async {
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                "{\"success\":false,\"error\":\"message not found\"}",
+            )
+        }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let client = BackendOAuthClient::new(&format!("http://{addr}")).unwrap();
+    let err = client
+        .send_channel_edit("telegram", "1103", "mock-jwt", serde_json::json!({}))
+        .await
+        .unwrap_err();
+
+    let typed = err
+        .downcast_ref::<BackendApiError>()
+        .expect("edit 404 must carry a typed BackendApiError");
+    assert!(
+        matches!(typed, BackendApiError::MessageNotFound { .. }),
+        "a handler-level edit 404 must stay per-message, got {typed:?}"
+    );
+    assert!(
+        !matches!(typed, BackendApiError::ChannelEditUnsupported { .. }),
+        "one missing message must not disable edits for the whole provider"
+    );
+}
+
+#[tokio::test]
 async fn channel_edit_404_on_unparseable_path_is_still_route_absence() {
     // Defense-in-depth twin of the test above: a channel-message path
     // `parse_message_path` cannot decompose (extra segments) must still be
@@ -1148,4 +1192,39 @@ async fn sdk_backed_calls_send_the_core_version_header() {
         seen.lock().unwrap().as_deref(),
         Some(env!("CARGO_PKG_VERSION"))
     );
+}
+
+// ── is_unmatched_route_404 (#5230 review) ──────────────────────────────────
+//
+// A PATCH 404 becomes `ChannelEditUnsupported`, which disables progressive edits
+// for the whole provider for the rest of the process. That is only correct when
+// the *route* is absent. Once the backend implements the route, a handler-level
+// "that message is gone" 404 has to stay a per-message `MessageNotFound`, or one
+// deleted message would switch edits off for everyone.
+
+#[test]
+fn unmatched_route_404_is_expresss_html_page() {
+    // Express's built-in finalhandler — what the backend returns today, since it
+    // registers no catch-all 404 and implements no PATCH route.
+    assert!(is_unmatched_route_404(
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<title>Error</title>\n</head>\n<body>\n         <pre>Cannot PATCH /channels/telegram/messages/1103</pre>\n</body>\n</html>"
+    ));
+}
+
+#[test]
+fn unmatched_route_404_covers_empty_and_plain_text_bodies() {
+    // Ambiguous shapes default to route absence, preserving today's behaviour.
+    assert!(is_unmatched_route_404(""));
+    assert!(is_unmatched_route_404("   "));
+    assert!(is_unmatched_route_404("Not Found"));
+}
+
+#[test]
+fn handler_level_404_json_envelope_is_not_route_absence() {
+    // The shape `DELETE /channels/:channel/messages/:messageId` already returns,
+    // and the one a future PATCH handler would mirror.
+    assert!(!is_unmatched_route_404(
+        r#"{"success": false, "error": "message not found"}"#
+    ));
+    assert!(!is_unmatched_route_404(r#"{"error":"gone"}"#));
 }
