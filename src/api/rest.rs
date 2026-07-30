@@ -39,6 +39,37 @@ pub enum BackendApiError {
         /// Request path the 401 came back from (no query string).
         path: String,
     },
+    /// `PATCH /channels/<provider>/messages/<id>` returned 404 because the
+    /// backend **implements no such route** — not because the message is gone.
+    ///
+    /// The backend's channel router serves `POST /:channel/messages` and
+    /// `DELETE /:channel/messages/:messageId` only; the `PATCH` edit route was
+    /// never added (the deployed OpenAPI contract has no entry for it, and it
+    /// is absent from the SDK's generated public-route registry). Every edit
+    /// therefore hits the unmatched-route 404, and always has (#5230).
+    ///
+    /// This must stay distinct from [`Self::MessageNotFound`]: that variant
+    /// means "this specific message no longer exists", so its handlers
+    /// correctly forget the message id. A missing *route* says nothing about
+    /// the message — it is still there and we still own it, so callers must
+    /// keep the id (to delete or finally edit it) and only disable the edit
+    /// capability. Collapsing the two made the live "💭 Thinking:" bubble and
+    /// the streaming draft leak into the chat un-updated and un-deleted.
+    ///
+    /// Note the backend's `DELETE` handler answers only 400/403/502 and never
+    /// 404, so on the deployed contract a 404 on this path can *only* mean
+    /// route absence today. `MessageNotFound` is retained for `DELETE` because
+    /// the provider-side-deletion semantics are what its callers want and a
+    /// future backend revision may start returning it.
+    #[error(
+        "channel message edit route not implemented by backend ({provider}, message {message_id})"
+    )]
+    ChannelEditUnsupported {
+        /// Channel provider segment (e.g. `"telegram"`, `"discord"`).
+        provider: String,
+        /// Provider-specific message id from the URL.
+        message_id: String,
+    },
     /// `GET /announcements/latest` returned 404. The announcements feature is
     /// a best-effort, cosmetic fetch (`app/src/services/announcementService.ts`:
     /// "a missing announcement is never worth surfacing an error for") — a 404
@@ -621,7 +652,41 @@ impl BackendOAuthClient {
             // ids and skip retry, without funneling the 404 into
             // `report_error`. Targets `OPENHUMAN-TAURI-2Y` (~454 events).
             if status_code == 404 {
-                if let Some((provider, message_id)) = parse_message_path(url.path()) {
+                let channel_message = parse_message_path(url.path());
+                // A 404 on the *edit* route is route absence, never message
+                // absence — the backend implements no `PATCH
+                // /channels/:channel/messages/:messageId` at all (#5230). Answer
+                // with a distinct typed error so `bus.rs` keeps the message id
+                // (it still owns that message and must be able to delete it)
+                // and only disables the edit capability. Checked before the
+                // `MessageNotFound` arm below, which would otherwise swallow it.
+                if method == Method::PATCH
+                    && (channel_message.is_some()
+                        || (url.path().contains("/channels/") && url.path().contains("/messages/")))
+                {
+                    let (provider, message_id) = channel_message
+                        .map(|(provider, id)| (provider.to_string(), id.to_string()))
+                        .unwrap_or_else(|| ("unknown".to_string(), "unknown".to_string()));
+                    tracing::warn!(
+                        domain = "backend_api",
+                        operation = "authed_json",
+                        provider = provider,
+                        message_id = message_id,
+                        "[backend_api] channel-message edit 404 on {} {} — backend implements no \
+                         edit route; surfacing ChannelEditUnsupported so callers degrade instead \
+                         of forgetting the message id (#5230)",
+                        method.as_str(),
+                        url.path(),
+                    );
+                    return Err(anyhow::Error::new(
+                        BackendApiError::ChannelEditUnsupported {
+                            provider,
+                            message_id,
+                        },
+                    ));
+                }
+
+                if let Some((provider, message_id)) = channel_message {
                     tracing::info!(
                         domain = "backend_api",
                         operation = "authed_json",
@@ -636,11 +701,13 @@ impl BackendOAuthClient {
                         message_id: message_id.to_string(),
                     }));
                 }
-                // Defense-in-depth: PATCH/DELETE 404s on any channel-message path that
+                // Defense-in-depth: DELETE 404s on any channel-message path that
                 // parse_message_path could not parse (e.g. exotic URL variant with extra
                 // segments). Still an expected backend state — suppress the Sentry event
                 // without propagating a typed error. Targets OPENHUMAN-TAURI-R7.
-                if (method == Method::PATCH || method == Method::DELETE)
+                // PATCH is handled above and returns the typed
+                // `ChannelEditUnsupported` for both the parsed and unparsed shapes.
+                if method == Method::DELETE
                     && url.path().contains("/channels/")
                     && url.path().contains("/messages/")
                 {
@@ -871,6 +938,14 @@ impl BackendOAuthClient {
     /// updated message record, or an `Err` if the backend does not
     /// support editing for this channel (caller should fall back to
     /// atomic-final delivery).
+    ///
+    /// **The deployed backend does not implement this route yet** (#5230): its
+    /// channel router has `POST /:channel/messages` and `DELETE
+    /// /:channel/messages/:messageId` only, so every call currently returns the
+    /// unmatched-route 404, which [`authed_json`](Self::authed_json) surfaces as
+    /// [`BackendApiError::ChannelEditUnsupported`]. Callers must degrade rather
+    /// than treat that as the message having been deleted. Keep this method: it
+    /// starts working unchanged the moment the backend adds the route.
     pub async fn send_channel_edit(
         &self,
         channel: &str,
