@@ -86,10 +86,12 @@ import {
   fetchAndHydrateTurnState,
   hydrateThreadUsage,
   markThreadSendPending,
+  type ProcessingTranscriptItem,
   type QueuedFollowup,
   registerParallelRequest,
   setTaskBoardForThread,
   setToolTimelineForThread,
+  type ToolTimelineEntry,
 } from '../../store/chatRuntimeSlice';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { selectSocketStatus } from '../../store/socketSelectors';
@@ -160,6 +162,13 @@ const EMPTY_ACTIVE_THREADS: Record<string, true> = {};
 // Stable empty reference for the queued-follow-ups map, so the selector keeps
 // the same identity when the slice field is absent (narrow test stores).
 const EMPTY_QUEUED_FOLLOWUPS: Record<string, QueuedFollowup[]> = {};
+
+// Stable empty live tool-timeline / processing-transcript for the selected
+// thread. A fresh `[]` here took a new identity every render, invalidating the
+// `backgroundProcesses` memo below on each pass and adding avoidable re-render
+// churn to the chat's hot path (#5162).
+const EMPTY_TOOL_TIMELINE: ToolTimelineEntry[] = [];
+const EMPTY_PROCESSING: ProcessingTranscriptItem[] = [];
 
 export function isComposerInteractionBlocked(args: {
   /** Whether the *currently selected* thread has an in-flight inference turn. */
@@ -1594,11 +1603,11 @@ const Conversations = ({
   // the global `selectedThreadId`. What remains here is what the header badge
   // and the composer footer still need directly.
   const selectedThreadToolTimeline = selectedThreadId
-    ? (toolTimelineByThread[selectedThreadId] ?? [])
-    : [];
+    ? (toolTimelineByThread[selectedThreadId] ?? EMPTY_TOOL_TIMELINE)
+    : EMPTY_TOOL_TIMELINE;
   const selectedThreadProcessing = selectedThreadId
-    ? (processingByThread[selectedThreadId] ?? [])
-    : [];
+    ? (processingByThread[selectedThreadId] ?? EMPTY_PROCESSING)
+    : EMPTY_PROCESSING;
   // Detached background sub-agents (mode === 'async') spawned in this thread.
   // Kept here (in addition to ChatThreadView's own copy) because the header's
   // background-processes badge needs the count/status without reaching into
@@ -1745,7 +1754,13 @@ const Conversations = ({
     if (!el) return;
     const measure = () => {
       const next = Math.round(el.getBoundingClientRect().height);
-      if (next > 0) setComposerFooterHeight(next);
+      if (next <= 0) return;
+      // Skip no-op updates. This observer watches the footer that *contains* the
+      // composer, while `composerFooterHeight` feeds the message list's bottom
+      // padding — so re-rendering on an unchanged measurement lets a sub-pixel
+      // rounding oscillation cascade into React's nested-update limit
+      // ("Maximum update depth exceeded", #5162 / TAURI-REACT-2G).
+      setComposerFooterHeight(prev => (prev === next ? prev : next));
     };
     measure();
     const observer = new ResizeObserver(measure);
