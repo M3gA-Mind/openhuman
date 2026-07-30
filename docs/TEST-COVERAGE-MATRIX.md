@@ -442,6 +442,7 @@ End-to-end coverage of the agent harness via the web-chat RPC surface against an
 | 10.4.2 | Reply to Thread       | WD    | `gmail-flow.spec.ts`                          | ✅     |                                       |
 | 10.4.3 | Initiate Conversation | WD    | `gmail-flow.spec.ts`                          | 🟡     | Telegram/WhatsApp/Slack not exercised |
 | 10.4.4 | Attachment Handling   | WD    | `gmail-flow.spec.ts`                          | 🟡     | Attachment branch shallow             |
+| 10.4.5 | Outbound Message Edit | RU    | `src/api/rest_tests.rs`, `src/openhuman/channels/bus_tests.rs` | 🟡     | #5230 — drives the progressive draft + ephemeral "💭 Thinking:" bubble. RU covers 404 classification (route absence vs deleted message), the message-id retention invariant each recovery depends on, and the per-provider capability latch. The backend implements no `PATCH /channels/:channel/messages/:messageId`, so edits degrade (post-once + replace) instead of updating in place; live-edit coverage needs that route first — separate `tinyhumansai/backend` PR. |
 
 ### 10.5 Cross-Channel Behavior
 
