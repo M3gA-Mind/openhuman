@@ -715,7 +715,10 @@ class Gradient {
       (this.initGradientColors(),
         this.initMesh(),
         this.resize(),
-        requestAnimationFrame(this.animate),
+        // Track this first frame like every other one: `disconnect()` only
+        // cancels `animateRaf`, so leaving this handle unstored let the opening
+        // frame outlive teardown — the exact leak this change set closes.
+        (this.animateRaf = requestAnimationFrame(this.animate)),
         window.addEventListener('resize', this.resize));
     } catch (err) {
       console.warn('[MeshGradient] init failed, gradient disabled:', err);

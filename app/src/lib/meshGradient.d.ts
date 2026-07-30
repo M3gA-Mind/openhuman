@@ -31,6 +31,7 @@ export class Gradient {
    * `play`, `pause` and `disconnect`.
    */
   init(): void;
+  initGradientColors(): void;
   initMesh(): void;
   resize(): void;
   waitForCssVars(): void;

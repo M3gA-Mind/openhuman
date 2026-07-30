@@ -125,6 +125,27 @@ describe('Gradient teardown (#5160)', () => {
     expect(initMesh).not.toHaveBeenCalled();
   });
 
+  it("cancels init()'s opening animation frame on disconnect()", () => {
+    const gradient = mountedGradient();
+    // Stub the WebGL setup so init() reaches its requestAnimationFrame call
+    // without a real GL context. init() swallows throws, so the size assertion
+    // below is what proves the frame was actually scheduled.
+    vi.spyOn(gradient, 'initGradientColors').mockImplementation(() => {});
+    vi.spyOn(gradient, 'initMesh').mockImplementation(() => {});
+    vi.spyOn(gradient, 'resize').mockImplementation(() => {});
+
+    gradient.init();
+    expect(rafQueue.size).toBe(1);
+    const openingFrame = nextRafHandle;
+
+    gradient.disconnect();
+
+    // Pre-fix this handle was never stored on `animateRaf`, so disconnect() had
+    // nothing to cancel and the opening frame outlived teardown.
+    expect(cancelled).toContain(openingFrame);
+    expect(rafQueue.size).toBe(0);
+  });
+
   it('drops an animation frame that lands after disconnect() instead of throwing', () => {
     const gradient = mountedGradient();
     gradient.conf = { playing: true };
