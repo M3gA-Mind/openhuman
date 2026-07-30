@@ -1029,11 +1029,12 @@ async fn channel_edit_404_from_a_real_handler_stays_a_missing_message() {
 }
 
 #[tokio::test]
-async fn channel_edit_404_on_unparseable_path_is_still_route_absence() {
-    // Defense-in-depth twin of the test above: a channel-message path
-    // `parse_message_path` cannot decompose (extra segments) must still be
-    // classified as route absence for PATCH, not fall through to the generic
-    // untyped bail! that the DELETE branch uses.
+async fn channel_edit_404_on_a_prefixed_path_keeps_the_parsed_ids() {
+    // A `BACKEND_URL` with a base-path prefix plus a trailing segment. The
+    // sliding window in `parse_message_path` still finds
+    // `[channels, telegram, messages, 9999]`, so this must be classified as
+    // route absence for PATCH *and* carry the parsed ids — not fall through to
+    // the generic untyped bail! that the DELETE branch uses.
     let app = axum::Router::new().route(
         "/api/v1/channels/telegram/messages/9999/extra",
         axum::routing::any(|| async { (axum::http::StatusCode::NOT_FOUND, "Not Found") }),
@@ -1057,11 +1058,61 @@ async fn channel_edit_404_on_unparseable_path_is_still_route_absence() {
 
     let typed = err
         .downcast_ref::<BackendApiError>()
-        .expect("unparseable edit path must still carry a typed error");
-    assert!(
-        matches!(typed, BackendApiError::ChannelEditUnsupported { .. }),
-        "expected ChannelEditUnsupported, got {typed:?}"
+        .expect("prefixed edit path must still carry a typed error");
+    match typed {
+        BackendApiError::ChannelEditUnsupported {
+            provider,
+            message_id,
+        } => {
+            assert_eq!(provider, "telegram");
+            assert_eq!(message_id, "9999");
+        }
+        other => panic!("expected ChannelEditUnsupported, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn channel_edit_404_on_an_undecomposable_path_falls_back_to_unknown_ids() {
+    // The case that actually exercises `authed_json`'s
+    // `unwrap_or_else(("unknown", "unknown"))`: an empty message-id segment.
+    // `parse_message_path` drops empty segments, so this yields only
+    // `[channels, telegram, messages]` — no 4-window, hence `None` — while the
+    // path still satisfies the `/channels/` + `/messages/` substring guard, so
+    // the PATCH branch is entered with nothing parsed.
+    let app = axum::Router::new().route(
+        "/channels/telegram/messages/",
+        axum::routing::any(|| async { (axum::http::StatusCode::NOT_FOUND, "Not Found") }),
     );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let client = BackendOAuthClient::new(&format!("http://{addr}")).unwrap();
+    let err = client
+        .authed_json(
+            "mock-jwt",
+            Method::PATCH,
+            "/channels/telegram/messages/",
+            None,
+        )
+        .await
+        .unwrap_err();
+
+    let typed = err
+        .downcast_ref::<BackendApiError>()
+        .expect("undecomposable edit path must still carry a typed error");
+    match typed {
+        BackendApiError::ChannelEditUnsupported {
+            provider,
+            message_id,
+        } => {
+            assert_eq!(provider, "unknown");
+            assert_eq!(message_id, "unknown");
+        }
+        other => panic!("expected ChannelEditUnsupported, got {other:?}"),
+    }
 }
 
 #[tokio::test]
