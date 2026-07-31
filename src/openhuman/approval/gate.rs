@@ -2251,6 +2251,41 @@ mod tests {
         }
     }
 
+    /// T-M3 (flows `cancel_flow_run`): the gate has no special-casing per tool
+    /// name — any call intercepted under a chat origin/context with no
+    /// matching auto-allowlist entry parks and, absent a human decision,
+    /// times out to `Deny` rather than executing. This pins that
+    /// `cancel_flow_run` — now that `builder_tools::CancelFlowRunTool`
+    /// reports `external_effect() == true` (T-M3) so
+    /// `ApprovalSecurityMiddleware` routes it through exactly this call —
+    /// genuinely parks for a real approval decision instead of running
+    /// unapproved, mirroring `timeout_returns_deny` above.
+    #[tokio::test]
+    async fn cancel_flow_run_parks_for_approval_when_a_gate_is_present() {
+        let (gate, _dir) = test_gate(); // TTL = 500ms
+        let gate = Arc::new(gate);
+        let outcome = turn_origin::with_origin(
+            web_origin(),
+            APPROVAL_CHAT_CONTEXT.scope(
+                chat_ctx(),
+                gate.intercept(
+                    "cancel_flow_run",
+                    "cancel run r-1 of flow f-1",
+                    serde_json::json!({ "flow_id": "f-1", "run_id": "r-1" }),
+                ),
+            ),
+        )
+        .await;
+        // No decision ever arrives — the call must NOT auto-execute. It
+        // parks until the gate's TTL elapses, then denies (never `Allow`).
+        match outcome {
+            GateOutcome::Deny { reason } => assert!(reason.contains("timed out")),
+            other => panic!(
+                "expected the parked cancel_flow_run call to time out to Deny, got {other:?}"
+            ),
+        }
+    }
+
     #[tokio::test]
     async fn decide_unknown_id_is_noop() {
         let (gate, _dir) = test_gate();

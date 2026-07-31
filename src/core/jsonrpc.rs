@@ -217,6 +217,24 @@ pub async fn rpc_handler(State(state): State<AppState>, Json(req): Json<RpcReque
                         &[("method", method.as_str()), ("elapsed_ms", &ms.to_string())],
                     );
                 }
+            } else if crate::openhuman::memory_tree::tree::rpc::is_invalid_ingest_payload_message(
+                &display_message,
+            ) {
+                // The caller submitted an ingest payload that does not match
+                // the canonicaliser schema for its `source_kind` (#5169). The
+                // handler already returned a precise error naming the missing
+                // or malformed field, and no core-side change can fix a
+                // producer sending the wrong shape — so this is a caller
+                // error, not an actionable core defect. Same treatment as an
+                // unrecognised method above: still captured for triage (a
+                // spike means a producer regressed) but at warn severity, so
+                // it does not page.
+                crate::core::observability::report_warning_message(
+                    display_message.as_str(),
+                    "rpc",
+                    "invoke_method",
+                    &[("method", method.as_str()), ("elapsed_ms", &ms.to_string())],
+                );
             } else {
                 crate::core::observability::report_error_or_expected(
                     display_message.as_str(),

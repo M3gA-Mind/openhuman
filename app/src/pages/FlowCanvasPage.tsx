@@ -42,11 +42,20 @@ import Button from '../components/ui/Button';
 import { CenteredLoadingState, ErrorBanner } from '../components/ui/LoadingState';
 import { useFlowPreauthorization } from '../hooks/useFlowPreauthorization';
 import { asFlowCanvasDraftState } from '../lib/flows/canvasDraft';
-import { workflowGraphToXyflow } from '../lib/flows/graphAdapter';
+import {
+  normalizeWorkflowGraphForDirtyCheck,
+  workflowGraphToXyflow,
+} from '../lib/flows/graphAdapter';
 import { buildPreviewGraph, diffGraphs } from '../lib/flows/graphDiff';
 import type { WorkflowGraph } from '../lib/flows/types';
 import { useT } from '../lib/i18n/I18nContext';
-import { createFlow, type Flow, getFlow, runFlow, updateFlow } from '../services/api/flowsApi';
+import {
+  createFlow,
+  type Flow,
+  getFlow,
+  runFlowDetached,
+  updateFlow,
+} from '../services/api/flowsApi';
 import type { WorkflowProposal } from '../store/chatRuntimeSlice';
 import type { ToastNotification } from '../types/intelligence';
 
@@ -443,7 +452,19 @@ function FlowEditor({
   // nodes — "graph appears later". `graphRevealed` latches true the first time
   // a proposal preview arrives or the draft gains a node beyond the lone
   // trigger, and never flips back (so rejecting a proposal can't re-hide it).
-  const chatFirst = initialBuildSeed?.chatFirst === true;
+  //
+  // F-m2 fix: `chatFirst` itself must ALSO latch at mount, not re-derive from
+  // the live `initialBuildSeed` prop every render. `onBuildSeedConsumed`
+  // (`clearBuildSeed` in the parent) strips `copilotBuild` from
+  // `location.state` once the copilot has dispatched the seeded build turn —
+  // deliberately, so a later remount doesn't re-fire it. But if that turn's
+  // FIRST reply was a clarifying question (no proposal yet, so `graphRevealed`
+  // is still false), re-deriving `chatFirst` from the now-cleared prop flipped
+  // it to `false` mid-conversation, which un-hid the blank trigger-only canvas
+  // while the user was still answering the agent's question. Reading
+  // `initialBuildSeed` only inside a `useState` initializer freezes the value
+  // as of first mount, immune to the prop later going away.
+  const [chatFirst] = useState(() => initialBuildSeed?.chatFirst === true);
   const [graphRevealed, setGraphRevealed] = useState(!chatFirst);
   if (!graphRevealed && (preview !== null || draftGraph.nodes.length > 1)) {
     setGraphRevealed(true);
@@ -895,11 +916,26 @@ function FlowEditor({
   // `name` without yet persisting it (`persistedNameRef` only advances on a
   // real Save/rename) — a name-only proposal (same graph, new name) must
   // still enable Save, or the adopted title can never be persisted.
+  //
+  // F-m3 fix: normalize BOTH sides through the same `workflowGraphToXyflow` /
+  // `xyflowToWorkflowGraph` round-trip the canvas itself performs (see
+  // `normalizeWorkflowGraphForDirtyCheck`'s doc comment) before comparing,
+  // rather than diffing `editorGraph` against the raw, possibly
+  // position-less `persistedGraphRef.current` directly. A graph saved
+  // without per-node `position` (e.g. agent-authored) otherwise reads as
+  // dirty the instant a REMOUNTED canvas instance (e.g. after a copilot
+  // Reject) reports its now-positioned `editorGraph` back — even with zero
+  // real edits — because `persistedGraphRef.current` was never updated to
+  // match. Normalizing here (rather than pre-normalizing the ref at seed
+  // time) keeps this correct on the very FIRST mount too, where `editorGraph`
+  // is still raw and `persistedGraphRef.current` must compare equal to it
+  // before any canvas effect has run.
   const initialDirty = useMemo(
     () =>
-      JSON.stringify(editorGraph) !== JSON.stringify(persistedGraphRef.current) ||
+      JSON.stringify(normalizeWorkflowGraphForDirtyCheck(editorGraph, meta)) !==
+        JSON.stringify(normalizeWorkflowGraphForDirtyCheck(persistedGraphRef.current, meta)) ||
       name !== persistedNameRef.current,
-    [editorGraph, name]
+    [editorGraph, name, meta]
   );
 
   // Repair seed for the copilot: bind the run context to the CURRENT draft.
@@ -930,19 +966,28 @@ function FlowEditor({
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
 
-  // Run the *persisted* flow and hand its thread_id to the canvas so it can
+  // Run the *persisted* flow and hand its run id to the canvas so it can
   // overlay live per-node status (Phase 3e). Runs the saved version — not the
   // (possibly dirty) draft — matching the "Save is explicit, running is live"
   // model. The durable run row + poller remain the source of truth.
+  //
+  // F-M1 fix: uses `runFlowDetached` (`openhuman.flows_run_detached`), which
+  // registers the run and returns its id immediately, INSTEAD of the old
+  // `runFlow` (`openhuman.flows_run`), which blocked until the run reached a
+  // terminal status — by the time that resolved, every `flow:run_progress`
+  // event for the run had already fired and been dropped, because
+  // `useFlowRunProgress` only subscribes once `activeRunId` is set (see its
+  // doc comment). `setActiveRunId` below now runs BEFORE the engine has
+  // executed a single node, so the subscription is live for the whole run.
   const handleRun = useCallback(async () => {
     if (flowId === null) return; // drafts aren't runnable until saved
     setRunning(true);
     setRunError(null);
     try {
-      log('run: starting flow id=%s', flowId);
-      const result = await runFlow(flowId);
-      log('run: started flow id=%s thread_id=%s', flowId, result.thread_id);
-      setActiveRunId(result.thread_id);
+      log('run: starting (detached) flow id=%s', flowId);
+      const result = await runFlowDetached(flowId);
+      log('run: started (detached) flow id=%s run_id=%s', flowId, result.run_id);
+      setActiveRunId(result.run_id);
     } catch (err) {
       const message = errorMessage(err);
       log('run: failed id=%s err=%o', flowId, err);

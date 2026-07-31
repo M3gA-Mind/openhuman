@@ -79,7 +79,7 @@ type NodeConfigForm = (props: NodeConfigFormProps) => React.ReactElement;
 const TRIGGER_KINDS = ['manual', 'schedule', 'webhook', 'app_event'] as const;
 
 function TriggerForm({ config, onChange, connections }: NodeConfigFormProps) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const kind = configString(config, 'trigger_kind') || 'manual';
   const toolkit = configString(config, 'toolkit');
   return (
@@ -118,7 +118,7 @@ function TriggerForm({ config, onChange, connections }: NodeConfigFormProps) {
             <div
               className="rounded-lg border border-primary-200 bg-primary-50/60 px-2.5 py-1.5 text-xs font-medium text-primary-700 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300"
               data-testid="node-config-trigger-schedule-readonly">
-              {describeSchedule(rawSchedule)}
+              {describeSchedule(rawSchedule, t, locale)}
             </div>
           );
         })()}

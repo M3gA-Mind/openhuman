@@ -683,13 +683,64 @@ impl LlmProvider for OpenHumanLlm {
 ///
 /// **Per-item cost.** In per-item execution mode the engine calls
 /// [`run_agent`](AgentRunner::run_agent) once per input item, so a full harness
-/// turn (with memory injection) fans out one `Agent` per item. The batch size is
-/// not visible inside a single `run_agent` call (the engine drives the fan-out),
-/// so a "> 25 items" warning is not reachable here; it belongs to a future
-/// host-side per-item guard. Memory injection per node turn is accepted for this
+/// turn (with memory injection) fans out one `Agent` per item. Since the engine
+/// gained bounded per-item concurrency those calls also arrive *simultaneously*,
+/// so the host-side guard this doc used to defer is now
+/// [`HARNESS_AGENT_SLOTS`] — see it for why the engine's own `concurrency`
+/// bound is not enough. Memory injection per node turn is accepted for this
 /// first cut (skip-memory is a follow-up).
+///
+/// **Concurrency safety.** `run_agent` is re-entrant by construction: it builds
+/// a fresh [`Agent`](crate::openhuman::agent::Agent) per call and stamps any
+/// model override onto a *cloned* `Config`, so concurrent calls never mutate
+/// shared state. The origin escalation and approval-run context are task-locals
+/// propagated by the engine's `buffer_unordered` (which polls every item on the
+/// caller's task), so HITL gating still applies to every fanned-out turn.
 pub struct OpenHumanAgentRunner {
     pub config: Arc<Config>,
+}
+
+/// Process-wide ceiling on **simultaneous harness agent turns started by flow
+/// nodes**, honoured by [`run_via_harness`](OpenHumanAgentRunner::run_via_harness).
+///
+/// The engine's per-node `concurrency` bounds one node's fan-out; this bounds
+/// the host. Those are different limits and the host one is the load-bearing
+/// one: a graph can fan out `concurrency: "all"` over a 200-item array, and
+/// several nodes (or several concurrent runs) can be fanning out at once, so
+/// without a shared ceiling a single workflow could open hundreds of full agent
+/// sessions — each with its own model context and tool loop — and exhaust
+/// memory or the inference provider's rate limit.
+///
+/// Default 8; override with `OPENHUMAN_FLOWS_MAX_PARALLEL_AGENTS`. Waiting on a
+/// permit is *not* an error — an over-wide fan-out is throttled to this width
+/// rather than rejected, so the workflow still completes, just more slowly.
+static HARNESS_AGENT_SLOTS: std::sync::LazyLock<tokio::sync::Semaphore> =
+    std::sync::LazyLock::new(|| {
+        let permits = max_parallel_harness_agents(
+            std::env::var("OPENHUMAN_FLOWS_MAX_PARALLEL_AGENTS")
+                .ok()
+                .as_deref(),
+        );
+        tracing::debug!(
+            target: "flows",
+            permits,
+            "[flows] agent_runner: harness concurrency ceiling"
+        );
+        tokio::sync::Semaphore::new(permits)
+    });
+
+/// Default value for [`HARNESS_AGENT_SLOTS`].
+const DEFAULT_MAX_PARALLEL_HARNESS_AGENTS: usize = 8;
+
+/// Resolves the harness concurrency ceiling from the raw env-var value.
+///
+/// A malformed or zero override falls back to the default rather than erroring
+/// or, worse, yielding a zero-permit semaphore that would deadlock every flow
+/// agent node in the process.
+fn max_parallel_harness_agents(raw: Option<&str>) -> usize {
+    raw.and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_MAX_PARALLEL_HARNESS_AGENTS)
 }
 
 /// Which execution path an `agent_ref` routes to (see [`OpenHumanAgentRunner`]).
@@ -1097,6 +1148,17 @@ impl OpenHumanAgentRunner {
         entry_model: Option<&str>,
     ) -> Result<Value> {
         use crate::openhuman::agent::Agent;
+
+        // Hold a slot for the whole turn: a fanned-out node can call this
+        // hundreds of times at once, and each call below builds a full agent
+        // session. Acquired before any work so waiters queue rather than pile
+        // up half-built agents. `_permit` is released on drop at end of scope,
+        // including on every early return below.
+        let _permit = HARNESS_AGENT_SLOTS.acquire().await.map_err(|_| {
+            EngineError::Capability(
+                "agent node: harness concurrency limiter closed unexpectedly".to_string(),
+            )
+        })?;
 
         if let Some(c) = conn {
             tracing::debug!(
@@ -1506,10 +1568,16 @@ pub(crate) fn composio_connection_id(conn: &str) -> Option<&str> {
     (!id.is_empty()).then_some(id)
 }
 
-/// Parses a `"http_cred:<name>"` `connection_ref` for [`OpenHumanHttp`]. No
-/// host-side HTTP credential store exists yet — this only extracts the name
-/// so the adapter can log a clear, actionable warning instead of silently
-/// ignoring the reference. See [`OpenHumanHttp::request`]'s doc.
+/// Parses a `"http_cred:<name>"` `connection_ref` for [`OpenHumanHttp`],
+/// returning the trailing credential name. The host-side
+/// [`HttpCredentialsStore`] (encrypted-at-rest bearer/basic/header
+/// templates) is real and load-bearing — [`resolve_http_credential`] looks
+/// the extracted name up in it and injects the resolved auth header
+/// server-side. This function only does the parse; a malformed or missing
+/// name (`None`) is what lets the caller fail the request closed instead of
+/// silently sending it unauthenticated. See [`OpenHumanHttp::request`]'s doc
+/// and the "Phase 2" note on the [`OpenHumanHttp`] struct for the full
+/// resolution flow.
 pub(crate) fn http_cred_name(conn: &str) -> Option<&str> {
     let name = conn.strip_prefix("http_cred:")?.trim();
     (!name.is_empty()).then_some(name)
@@ -1807,9 +1875,15 @@ async fn resolve_composio_account(
 ///   now parsed and forwarded to `direct_execute` (Composio Direct mode).
 ///   Backend mode's `execute_tool` still has no per-call account-scoping
 ///   path — that's a backend API gap, not something this seam can close
-///   alone — so a `connection_ref` under Backend mode logs a warning and
-///   falls back to the ambient signed-in account (documented stub; see
-///   `composio_connection_id`).
+///   alone — so under Backend mode, a `connection_ref` naming a SPECIFIC
+///   connected account is NOT honored: the call executes against whatever
+///   account happens to be the ambient signed-in session instead (E-m3),
+///   which — when the flow author connected/expected a *different* account
+///   for this action — means the action runs as the wrong identity, not a
+///   graceful no-op. This proceeds rather than failing closed; it logs a
+///   `warn!` naming both the requested and actually-used account so the
+///   mismatch is at least visible in logs, but nothing currently blocks the
+///   call. Documented backend-API-gap stub; see `composio_connection_id`.
 /// - **Trust gate**: invocation is also routed through the OpenHuman
 ///   `ApprovalGate` (mirrors `tinyagents/middleware.rs::ApprovalSecurityMiddleware`)
 ///   before dispatch, closing the Codex P1 finding that flow tool nodes
@@ -1905,10 +1979,58 @@ pub struct ToolContract {
     pub is_curated: bool,
 }
 
+/// A [`LIVE_CATALOG_CACHE`] / [`PROBE_CACHE`] entry, timestamped so a lookup
+/// can tell a fresh hit from an expired one (E-m8).
+#[derive(Debug, Clone)]
+struct CacheEntry<T> {
+    value: T,
+    cached_at: std::time::Instant,
+}
+
+impl<T> CacheEntry<T> {
+    fn fresh(value: T) -> Self {
+        Self {
+            value,
+            cached_at: std::time::Instant::now(),
+        }
+    }
+
+    /// `Some(&value)` while still within [`COMPOSIO_CATALOG_CACHE_TTL`],
+    /// `None` once expired — callers treat an expired entry as a cache miss
+    /// and re-fetch, same as no entry at all.
+    fn if_fresh(&self) -> Option<&T> {
+        (self.cached_at.elapsed() < COMPOSIO_CATALOG_CACHE_TTL).then_some(&self.value)
+    }
+
+    /// Backdates a fresh entry by `age` — test-only seam for exercising TTL
+    /// expiry deterministically, without a mockable clock or a real 30-minute
+    /// sleep (E-m8).
+    #[cfg(test)]
+    fn backdated_by(mut self, age: std::time::Duration) -> Self {
+        self.cached_at -= age;
+        self
+    }
+}
+
+/// TTL for [`LIVE_CATALOG_CACHE`] and [`PROBE_CACHE`] entries (E-m8). Both
+/// caches were previously permanent for the life of the process: a Composio
+/// action published to a toolkit (or a corrected probe result) after the
+/// first fetch stayed invisible — rejected by `flow_tool_allowed` Path B, or
+/// serving a stale `primary_array_path`/`output_fields` — until the next
+/// core restart. A support-visible gotcha, not a correctness bug: the
+/// rejection direction is fail-CLOSED (an unknown/stale action is refused,
+/// never silently permitted), so a bounded TTL only changes how long that
+/// staleness can persist before self-healing, never which way an ambiguous
+/// case resolves. 30 minutes comfortably outlasts a single builder session's
+/// worth of repeat lookups (the reason these are caches at all) while
+/// keeping "add a Composio action, come back later today" working without a
+/// restart.
+const COMPOSIO_CATALOG_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
 /// Process-level cache backing [`fetch_live_toolkit_catalog`]: lowercase
 /// toolkit slug → every [`ToolContract`] the LIVE Composio catalog published
-/// for it. One fetch per toolkit per process — schemas are effectively
-/// static within a session.
+/// for it. One fetch per toolkit per TTL window — schemas are effectively
+/// static within a session, but not forever (E-m8).
 ///
 /// Replaces the narrower `REQUIRED_ARGS_CACHE` / `RESPONSE_FIELDS_CACHE`
 /// pair (single-purpose, args-only / fields-only) that predated this fix:
@@ -1916,7 +2038,7 @@ pub struct ToolContract {
 /// delegate to this one cache/fetch instead of each running its own
 /// independent `composio_list_tools` round trip.
 static LIVE_CATALOG_CACHE: std::sync::OnceLock<
-    std::sync::Mutex<std::collections::HashMap<String, Vec<ToolContract>>>,
+    std::sync::Mutex<std::collections::HashMap<String, CacheEntry<Vec<ToolContract>>>>,
 > = std::sync::OnceLock::new();
 
 /// Seeds the live-catalog cache for a toolkit — test hook so preflight /
@@ -1929,7 +2051,25 @@ pub(crate) fn seed_live_catalog_cache(toolkit: &str, contracts: Vec<ToolContract
         .get_or_init(Default::default)
         .lock()
         .expect("live catalog cache poisoned")
-        .insert(toolkit.trim().to_ascii_lowercase(), contracts);
+        .insert(
+            toolkit.trim().to_ascii_lowercase(),
+            CacheEntry::fresh(contracts),
+        );
+}
+
+/// Like [`seed_live_catalog_cache`], but backdates the entry so it is
+/// already expired — E-m8 TTL-expiry test seam.
+#[cfg(test)]
+pub(crate) fn seed_live_catalog_cache_expired(toolkit: &str, contracts: Vec<ToolContract>) {
+    LIVE_CATALOG_CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .expect("live catalog cache poisoned")
+        .insert(
+            toolkit.trim().to_ascii_lowercase(),
+            CacheEntry::fresh(contracts)
+                .backdated_by(COMPOSIO_CATALOG_CACHE_TTL + std::time::Duration::from_secs(1)),
+        );
 }
 
 /// Fetches a toolkit's tool schemas STRAIGHT from the Composio client,
@@ -2018,11 +2158,12 @@ pub(crate) async fn fetch_live_toolkit_catalog(
         .lock()
         .ok()?
         .get(&key)
+        .and_then(CacheEntry::if_fresh)
     {
         return Some(cached.clone());
     }
 
-    tracing::debug!(target: "flows", toolkit = %key, "[flows] live catalog: fetching (cache miss)");
+    tracing::debug!(target: "flows", toolkit = %key, "[flows] live catalog: fetching (cache miss or expired)");
     let resp = fetch_raw_toolkit_tools(config, &key).await?;
 
     let curated_catalog = get_provider(&key)
@@ -2066,7 +2207,7 @@ pub(crate) async fn fetch_live_toolkit_catalog(
         .collect();
 
     if let Ok(mut cache) = LIVE_CATALOG_CACHE.get_or_init(Default::default).lock() {
-        cache.insert(key, contracts.clone());
+        cache.insert(key, CacheEntry::fresh(contracts.clone()));
     }
     Some(contracts)
 }
@@ -2259,14 +2400,14 @@ pub(crate) struct ProbedOutputSample {
 
 /// Process-level cache backing [`probe_tool_output_sample`]: action slug
 /// (uppercased) → the [`ProbedOutputSample`] it produced. One real probe per
-/// slug per process — mirrors [`LIVE_CATALOG_CACHE`]'s one-fetch-per-process
-/// shape, and for the same reason: a probe is a real, potentially
-/// rate-limited/billed external call, not something to repeat every turn.
+/// slug per TTL window (E-m8) — mirrors [`LIVE_CATALOG_CACHE`]'s shape, and
+/// for the same reason: a probe is a real, potentially rate-limited/billed
+/// external call, not something to repeat every turn.
 ///
 /// Entries here always have `sample` redacted to `Value::Null` — see
 /// [`cache_probe_result`] and [`ProbedOutputSample::sample`]'s doc.
 static PROBE_CACHE: std::sync::OnceLock<
-    std::sync::Mutex<std::collections::HashMap<String, ProbedOutputSample>>,
+    std::sync::Mutex<std::collections::HashMap<String, CacheEntry<ProbedOutputSample>>>,
 > = std::sync::OnceLock::new();
 
 /// Seeds the probe cache for a slug — test hook so [`apply_probe_override`]
@@ -2279,7 +2420,22 @@ pub(crate) fn seed_probe_cache(slug: &str, sample: ProbedOutputSample) {
         .get_or_init(Default::default)
         .lock()
         .expect("probe cache poisoned")
-        .insert(slug.trim().to_ascii_uppercase(), sample);
+        .insert(slug.trim().to_ascii_uppercase(), CacheEntry::fresh(sample));
+}
+
+/// Like [`seed_probe_cache`], but backdates the entry so it is already
+/// expired — E-m8 TTL-expiry test seam.
+#[cfg(test)]
+pub(crate) fn seed_probe_cache_expired(slug: &str, sample: ProbedOutputSample) {
+    PROBE_CACHE
+        .get_or_init(Default::default)
+        .lock()
+        .expect("probe cache poisoned")
+        .insert(
+            slug.trim().to_ascii_uppercase(),
+            CacheEntry::fresh(sample)
+                .backdated_by(COMPOSIO_CATALOG_CACHE_TTL + std::time::Duration::from_secs(1)),
+        );
 }
 
 /// Caches the DERIVED metadata from a real probe — never the raw `sample`
@@ -2294,19 +2450,21 @@ fn cache_probe_result(slug: &str, sample: ProbedOutputSample) {
         ..sample
     };
     if let Ok(mut cache) = PROBE_CACHE.get_or_init(Default::default).lock() {
-        cache.insert(slug.trim().to_ascii_uppercase(), cached);
+        cache.insert(slug.trim().to_ascii_uppercase(), CacheEntry::fresh(cached));
     }
 }
 
 /// Looks up a cached [`ProbedOutputSample`] for `slug`, or `None` when
-/// [`probe_tool_output_sample`] has never successfully probed it this
-/// process.
+/// [`probe_tool_output_sample`] has never successfully probed it within the
+/// current TTL window (E-m8) — an expired probe is treated exactly like a
+/// process that never probed it at all, and re-probes on next use.
 pub(crate) fn probed_output_sample(slug: &str) -> Option<ProbedOutputSample> {
     PROBE_CACHE
         .get_or_init(Default::default)
         .lock()
         .ok()?
         .get(&slug.trim().to_ascii_uppercase())
+        .and_then(CacheEntry::if_fresh)
         .cloned()
 }
 
@@ -2842,7 +3000,7 @@ impl ToolInvoker for OpenHumanTools {
             let tier_decision = enforce_node_tier_gate(&self.security, class, "tool_call")?;
             let summary = crate::openhuman::approval::summarize_action(tool_name, &args);
             let redacted = crate::openhuman::approval::redact_args(&args);
-            let (outcome, _request_id) =
+            let (outcome, audit_id) =
                 gate_call_for_tier(tier_decision, tool_name, &summary, redacted).await;
             if let crate::openhuman::approval::GateOutcome::Deny { reason } = outcome {
                 return Err(EngineError::Capability(reason));
@@ -2854,16 +3012,52 @@ impl ToolInvoker for OpenHumanTools {
                 ?tier_decision,
                 "[flows] tool_call: dispatching NATIVE OpenHuman tool"
             );
-            let outcome = crate::openhuman::runtime_node::ops::execute_tool(
+            let exec_result = crate::openhuman::runtime_node::ops::execute_tool(
                 &self.config,
                 tool_name,
                 args,
                 false,
             )
             .await
-            .map_err(EngineError::Capability)?;
-            return reject_failed_native_tool_result(slug, &outcome.result)
-                .map(|_| native_tool_payload(&outcome.result));
+            .map_err(EngineError::Capability)
+            .and_then(|outcome| {
+                reject_failed_native_tool_result(slug, &outcome.result)
+                    .map(|_| native_tool_payload(&outcome.result))
+            });
+
+            // E-m1: close out the approval audit row (unlike the http/code/
+            // Composio paths, this used to discard the request id and never
+            // call `record_execution`, leaving every prompted-and-approved
+            // native `oh:` tool_call's audit trail stuck open with no
+            // Success/Failure terminal outcome).
+            if let Some(id) = &audit_id {
+                if let Some(gate) = crate::openhuman::approval::ApprovalGate::try_global() {
+                    let exec = if exec_result.is_ok() {
+                        crate::openhuman::approval::ExecutionOutcome::Success
+                    } else {
+                        crate::openhuman::approval::ExecutionOutcome::Failure
+                    };
+                    tracing::debug!(
+                        target: "flows",
+                        %tool_name,
+                        audit_id = %id,
+                        success = exec_result.is_ok(),
+                        "[flows] tool_call: recording native tool execution outcome on the \
+                         approval audit trail"
+                    );
+                    gate.record_execution(
+                        id,
+                        exec,
+                        exec_result
+                            .as_ref()
+                            .err()
+                            .map(ToString::to_string)
+                            .as_deref(),
+                    );
+                }
+            }
+
+            return exec_result;
         }
 
         // Autonomy-tier gate (Phase 2, made effect-aware): the node's
@@ -2980,19 +3174,25 @@ impl ToolInvoker for OpenHumanTools {
                             %slug,
                             connection_id = %id,
                             %toolkit,
-                            account = label.as_deref().unwrap_or("<unlabeled>"),
-                            "[flows] tool_call: connection_ref resolves to a specific account, but \
-                             backend mode has no per-call account-scoping path yet — using the \
-                             ambient session account instead (documented stub, see caps.rs's \
-                             OpenHumanTools doc)"
+                            requested_account = label.as_deref().unwrap_or("<unlabeled>"),
+                            "[flows] tool_call: EXECUTING ON THE WRONG ACCOUNT — connection_ref \
+                             names a specific connected account, but backend mode has no per-call \
+                             account-scoping path yet, so this call runs against the AMBIENT \
+                             signed-in session account instead of the one requested (E-m3, \
+                             documented backend-API-gap stub, see caps.rs's OpenHumanTools doc). \
+                             Proceeds rather than failing closed."
                         ),
                         None => tracing::warn!(
                             target: "flows",
                             %slug,
                             connection_id = %id,
-                            "[flows] tool_call: connection_ref set but backend mode has no per-call \
-                             account-scoping path yet — using the ambient session account \
-                             (documented stub, see caps.rs's OpenHumanTools doc)"
+                            "[flows] tool_call: POSSIBLY EXECUTING ON THE WRONG ACCOUNT — \
+                             connection_ref names a connection id not found among the user's live \
+                             connected accounts, and backend mode has no per-call account-scoping \
+                             path to validate it against anyway — this call runs against the \
+                             AMBIENT signed-in session account regardless (E-m3, documented \
+                             backend-API-gap stub, see caps.rs's OpenHumanTools doc). Proceeds \
+                             rather than failing closed."
                         ),
                     }
                 }
@@ -3642,6 +3842,44 @@ pub fn open_flow_checkpointer(
 
 #[cfg(test)]
 mod tests {
+
+    // --- harness fan-out concurrency ceiling ---
+
+    #[test]
+    fn harness_ceiling_defaults_when_unset_or_nonsense() {
+        // A malformed override must never produce a zero-permit semaphore —
+        // that would deadlock every flow agent node in the process.
+        for raw in [None, Some(""), Some("0"), Some("-4"), Some("lots")] {
+            assert_eq!(
+                super::max_parallel_harness_agents(raw),
+                super::DEFAULT_MAX_PARALLEL_HARNESS_AGENTS,
+                "{raw:?} should fall back to the default"
+            );
+        }
+    }
+
+    #[test]
+    fn harness_ceiling_honours_a_valid_override() {
+        assert_eq!(super::max_parallel_harness_agents(Some("3")), 3);
+        assert_eq!(super::max_parallel_harness_agents(Some(" 16 ")), 16);
+    }
+
+    #[tokio::test]
+    async fn the_harness_ceiling_throttles_rather_than_rejects() {
+        // The contract the fan-out relies on: an over-wide batch waits for a
+        // slot and still completes. If this ever started returning an error
+        // instead, `concurrency: "all"` over a large array would fail the run
+        // rather than run it more slowly.
+        let slots = tokio::sync::Semaphore::new(2);
+        let held = slots.acquire().await.expect("first permit");
+        let held2 = slots.acquire().await.expect("second permit");
+        assert_eq!(slots.available_permits(), 0);
+        // A third acquirer is pending, not refused.
+        assert!(slots.try_acquire().is_err(), "no permits left");
+        drop(held);
+        assert!(slots.try_acquire().is_ok(), "a released slot is reusable");
+        drop(held2);
+    }
     use super::*;
     use crate::openhuman::agent::prompts::types::IntegrationConnection;
     use crate::openhuman::composio::{ComposioExecuteResponse, ConnectedIntegration};
@@ -4272,6 +4510,51 @@ mod tests {
                 Some(&["FlowsTestKit".to_string()])
             )
             .await
+        );
+    }
+
+    /// E-m8: an EXPIRED `LIVE_CATALOG_CACHE` entry must be treated as a cache
+    /// miss, not a permanent hit. Before the TTL fix, seeding the cache once
+    /// (as `connected_uncatalogued_toolkit_now_passes` does above) made a
+    /// slug pass forever, for the life of the process — a Composio action
+    /// added after the first fetch would stay invisible until restart. Here
+    /// the seeded entry is pre-expired, so `fetch_live_toolkit_catalog` must
+    /// re-fetch — which fails in this test (no live Composio backend) — and
+    /// `flow_tool_allowed` must fail CLOSED, unlike the fresh-seed case above
+    /// which passes.
+    #[tokio::test]
+    async fn expired_live_catalog_entry_is_treated_as_a_cache_miss() {
+        use crate::openhuman::memory_sync::composio::providers::{
+            catalog_for_toolkit, get_provider,
+        };
+        assert!(catalog_for_toolkit("flowsexpiredkit").is_none());
+        assert!(get_provider("flowsexpiredkit").is_none());
+
+        let config = Config::default();
+        seed_live_catalog_cache_expired(
+            "flowsexpiredkit",
+            vec![ToolContract {
+                slug: "FLOWSEXPIREDKIT_DO_THING".to_string(),
+                toolkit: "flowsexpiredkit".to_string(),
+                description: None,
+                required_args: Vec::new(),
+                input_schema: None,
+                output_fields: Vec::new(),
+                output_schema: None,
+                primary_array_path: None,
+                is_curated: false,
+            }],
+        );
+
+        assert!(
+            !flow_tool_allowed(
+                &config,
+                "FLOWSEXPIREDKIT_DO_THING",
+                Some(&["flowsexpiredkit".to_string()])
+            )
+            .await,
+            "an expired cache entry must be re-fetched (and, with no live backend in this test, \
+             fail closed) rather than served as a permanent hit"
         );
     }
 
@@ -5441,6 +5724,31 @@ mod tests {
         let overridden = apply_probe_override(contract.clone());
         assert_eq!(overridden.primary_array_path, contract.primary_array_path);
         assert_eq!(overridden.output_fields, contract.output_fields);
+    }
+
+    /// E-m8: an EXPIRED `PROBE_CACHE` entry must behave exactly like "never
+    /// probed" — `apply_probe_override` must NOT apply it. Before the TTL
+    /// fix a probe result was permanent for the process's lifetime, so a
+    /// corrected/changed real response stayed masked by the first-ever probe
+    /// until restart.
+    #[test]
+    fn apply_probe_override_ignores_an_expired_cached_probe() {
+        seed_probe_cache_expired(
+            "PROBETEST_EXPIRED_ACTION",
+            ProbedOutputSample {
+                primary_array_path: Some("data.issues".to_string()),
+                output_fields: vec!["issues".to_string()],
+                sample: json!({ "data": { "issues": [] } }),
+            },
+        );
+        let contract = bare_contract("PROBETEST_EXPIRED_ACTION");
+        let overridden = apply_probe_override(contract.clone());
+        assert_eq!(
+            overridden.primary_array_path, contract.primary_array_path,
+            "an expired probe must not overlay onto the contract"
+        );
+        assert_eq!(overridden.output_fields, contract.output_fields);
+        assert!(probed_output_sample("PROBETEST_EXPIRED_ACTION").is_none());
     }
 
     /// CodeRabbit (PR #4702 review): a probe that OBSERVED the real response

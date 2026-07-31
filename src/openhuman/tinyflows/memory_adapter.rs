@@ -39,7 +39,9 @@ use crate::openhuman::agent::harness::memory_context_safety::{
     is_potentially_untrusted, wrap_untrusted_for_agent,
 };
 use crate::openhuman::agent::turn_origin::{self, AgentTurnOrigin, TrustedAutomationSource};
-use crate::openhuman::approval::{redact_args, summarize_action, GateOutcome};
+use crate::openhuman::approval::{
+    redact_args, summarize_action, ApprovalGate, ExecutionOutcome, GateOutcome,
+};
 use crate::openhuman::config::Config;
 use crate::openhuman::flows::{cross_flow_recall, flow_namespace};
 use crate::openhuman::memory::tools::flavour::{lookup_flavour, FlavourLookup};
@@ -139,18 +141,58 @@ impl OpenHumanMemory {
     /// `require_approval: true` toggle set, and only `intercept_audited`
     /// (reached via `gate_call_for_tier`) consults that. Mirrors
     /// `OpenHumanCode::run`'s gating exactly.
-    async fn tier_gate_write(&self, op: &str, action: &Value) -> Result<()> {
+    ///
+    /// Returns the approval audit request id (`None` when no
+    /// [`ApprovalGate`] is installed, or the tier decision never went
+    /// through a `Prompt` round-trip). Callers MUST thread it into
+    /// [`Self::record_write_execution`] once the actual write resolves —
+    /// see that function's doc for why (E-m1).
+    async fn tier_gate_write(&self, op: &str, action: &Value) -> Result<Option<String>> {
         let tool_name = format!("flows_memory_{op}");
         let tier_decision = enforce_node_tier_gate(&self.security, CommandClass::Write, op)?;
         let summary = summarize_action(&tool_name, action);
         let redacted = redact_args(action);
-        let (outcome, _audit_id) =
+        let (outcome, audit_id) =
             gate_call_for_tier(tier_decision, &tool_name, &summary, redacted).await;
         if let GateOutcome::Deny { reason } = outcome {
             tracing::warn!(target: "flows", op, "{LOG_PREFIX} write: approval gate denied");
             return Err(EngineError::Capability(reason));
         }
-        Ok(())
+        Ok(audit_id)
+    }
+
+    /// Closes out the approval audit row opened by [`Self::tier_gate_write`]
+    /// (E-m1): unlike the http/code/Composio node paths, this used to
+    /// discard the request id (`_audit_id`) and never call
+    /// `record_execution`, so an approved `remember`/`forget` left its audit
+    /// row stuck open with no terminal Success/Failure outcome. A no-op when
+    /// `audit_id` is `None` (no gate installed, or the decision never
+    /// prompted). Takes `success`/`error` rather than a `Result` so callers
+    /// don't need `EngineError: Clone` to both record the outcome and
+    /// propagate the original error.
+    fn record_write_execution(
+        op: &str,
+        audit_id: Option<&str>,
+        success: bool,
+        error: Option<&str>,
+    ) {
+        let Some(id) = audit_id else { return };
+        let Some(gate) = ApprovalGate::try_global() else {
+            return;
+        };
+        let exec = if success {
+            ExecutionOutcome::Success
+        } else {
+            ExecutionOutcome::Failure
+        };
+        tracing::debug!(
+            target: "flows",
+            op,
+            audit_id = %id,
+            success,
+            "{LOG_PREFIX} write: recording execution outcome on the approval audit trail"
+        );
+        gate.record_execution(id, exec, error);
     }
 
     /// Shapes a batch of [`MemoryEntry`] hits into the node's `recall`/
@@ -418,11 +460,11 @@ impl MemoryProvider for OpenHumanMemory {
         }
 
         let action = json!({ "operation": "remember", "scope": scope, "key": key });
-        self.tier_gate_write("remember", &action).await?;
+        let audit_id = self.tier_gate_write("remember", &action).await?;
 
         let namespace = self.flow_memory_namespace()?;
         let memory = self.memory().await?;
-        memory
+        let store_result = memory
             .store_with_taint(
                 &namespace,
                 key,
@@ -432,7 +474,18 @@ impl MemoryProvider for OpenHumanMemory {
                 MemoryTaint::ExternalSync,
             )
             .await
-            .map_err(|e| EngineError::Capability(format!("memory node: remember failed: {e}")))?;
+            .map_err(|e| EngineError::Capability(format!("memory node: remember failed: {e}")));
+        Self::record_write_execution(
+            "remember",
+            audit_id.as_deref(),
+            store_result.is_ok(),
+            store_result
+                .as_ref()
+                .err()
+                .map(ToString::to_string)
+                .as_deref(),
+        );
+        store_result?;
 
         tracing::debug!(
             target: "flows",
@@ -467,14 +520,25 @@ impl MemoryProvider for OpenHumanMemory {
         }
 
         let action = json!({ "operation": "forget", "scope": scope, "key": key });
-        self.tier_gate_write("forget", &action).await?;
+        let audit_id = self.tier_gate_write("forget", &action).await?;
 
         let namespace = self.flow_memory_namespace()?;
         let memory = self.memory().await?;
-        let removed = memory
+        let forget_result = memory
             .forget(&namespace, key)
             .await
-            .map_err(|e| EngineError::Capability(format!("memory node: forget failed: {e}")))?;
+            .map_err(|e| EngineError::Capability(format!("memory node: forget failed: {e}")));
+        Self::record_write_execution(
+            "forget",
+            audit_id.as_deref(),
+            forget_result.is_ok(),
+            forget_result
+                .as_ref()
+                .err()
+                .map(ToString::to_string)
+                .as_deref(),
+        );
+        let removed = forget_result?;
 
         tracing::debug!(
             target: "flows",
