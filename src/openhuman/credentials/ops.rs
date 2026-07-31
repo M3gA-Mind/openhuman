@@ -796,13 +796,29 @@ pub async fn auth_get_me(config: &Config) -> Result<RpcOutcome<serde_json::Value
     let user = client
         .fetch_current_user(&token)
         .await
-        // `{e:#}` walks the full anyhow context chain so the underlying
-        // reqwest transport error (timeout / connection reset / TLS / DNS)
-        // reaches `core::observability::is_transient_message_failure`. Bare
-        // `e.to_string()` only renders the top context layer
-        // ("GET /auth/me") and collapsed every transient transport failure
-        // into Sentry TAURI-RUST-10.
-        .map_err(|e| format!("{e:#}"))?;
+        // `flatten_authed_error` maps the typed `BackendApiError::Unauthorized`
+        // onto the `SESSION_EXPIRED:` sentinel and falls through to `{e:#}` for
+        // everything else, so both properties this call site needs are kept:
+        //
+        // * Non-401s still render the full anyhow context chain, so the
+        //   underlying reqwest transport error (timeout / connection reset /
+        //   TLS / DNS) reaches `observability::is_transient_message_failure`.
+        //   Bare `e.to_string()` renders only the top context layer
+        //   ("GET /auth/me") and collapsed every transient transport failure
+        //   into Sentry TAURI-RUST-10.
+        // * A 401 is recognised by `jsonrpc::is_session_expired_error`, which
+        //   skips the Sentry report AND publishes `DomainEvent::SessionExpired`
+        //   so `SessionExpiredSubscriber` clears the dead JWT.
+        //
+        // Until #5232 routed `fetch_current_user` through `authed_json`, a 401
+        // here surfaced as `"GET /auth/me failed (401 Unauthorized): …"`, which
+        // `is_session_expired_error` matched on its HTTP-verb prefix. The typed
+        // error renders as `"backend rejected session token on GET /auth/me"`,
+        // which matches neither classifier — so on 0.63.9 every lapsed session
+        // reported to Sentry as a code defect (TAURI-RUST-RYD) and, because the
+        // stale token was never cleared, re-fired the same 401 on the next
+        // revalidation: the forced sign-out loop in #5307.
+        .map_err(crate::api::flatten_authed_error)?;
 
     Ok(RpcOutcome::single_log(user, "current user fetched"))
 }
@@ -855,8 +871,9 @@ pub async fn auth_create_channel_link_token(
     let payload = client
         .create_channel_link_token(&channel, &token)
         .await
-        // See `auth_get_me` above for why we walk the full anyhow chain.
-        .map_err(|e| format!("{e:#}"))?;
+        // See `auth_get_me` above: same authed backend route, same need to keep
+        // the typed 401 classifiable while non-401s keep their full anyhow chain.
+        .map_err(crate::api::flatten_authed_error)?;
 
     Ok(RpcOutcome::single_log(
         payload,

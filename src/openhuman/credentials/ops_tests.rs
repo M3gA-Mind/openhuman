@@ -68,6 +68,46 @@ async fn spawn_auth_me_status(status: StatusCode) -> String {
     format!("http://{addr}")
 }
 
+/// Persist a live (unexpired) app-session profile for `user_id` and return the
+/// user-scoped `Config` that reads it back, mirroring the on-disk state of an
+/// already-signed-in install.
+///
+/// Written directly through `AuthService` rather than via `store_session` so the
+/// caller's mock backend only has to answer the route under test — `store_session`
+/// would additionally need `/auth/me` to succeed first, and re-scopes the profile
+/// to the resolved user directory as a side effect.
+fn store_live_session(user_id: &str) -> Config {
+    let root_dir = default_root_openhuman_dir().unwrap();
+    write_active_user_id(&root_dir, user_id).unwrap();
+    let user_dir = user_openhuman_dir(&root_dir, user_id);
+    std::fs::create_dir_all(user_dir.join("workspace")).unwrap();
+    let config = Config {
+        config_path: user_dir.join("config.toml"),
+        workspace_dir: user_dir.join("workspace"),
+        action_dir: user_dir.join("workspace"),
+        ..Config::default()
+    };
+    let token = jwt_with_payload(json!({
+        "exp": (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp()
+    }));
+    let mut metadata = std::collections::HashMap::new();
+    metadata.insert("user_id".to_string(), user_id.to_string());
+    metadata.insert(
+        "user_json".to_string(),
+        json!({ "id": user_id }).to_string(),
+    );
+    AuthService::from_config(&config)
+        .store_provider_token(
+            APP_SESSION_PROVIDER,
+            DEFAULT_AUTH_PROFILE_NAME,
+            &token,
+            metadata,
+            true,
+        )
+        .unwrap();
+    config
+}
+
 // ── secret_store_for_config ────────────────────────────────────
 
 #[test]
@@ -450,6 +490,85 @@ async fn store_session_rejects_live_jwt_when_auth_me_unauthorized() {
     );
     let state = auth_get_state(&config).await.unwrap().value;
     assert!(!state.is_authenticated);
+}
+
+/// #5307 — a lapsed session on `GET /auth/me` must stay classifiable as
+/// session expiry all the way out of `auth_get_me`.
+///
+/// The dispatcher (`core::jsonrpc::invoke_method`) keys BOTH behaviours off the
+/// error string this function returns: it skips the Sentry report and publishes
+/// `DomainEvent::SessionExpired`, which is what makes `SessionExpiredSubscriber`
+/// clear the dead JWT. Before #5232 routed `fetch_current_user` through
+/// `authed_json`, a 401 surfaced as `"GET /auth/me failed (401 Unauthorized): …"`
+/// and matched the dispatcher's HTTP-verb-prefixed 401 rule. The typed
+/// `BackendApiError::Unauthorized` renders as
+/// `"backend rejected session token on GET /auth/me"` and matches nothing, so on
+/// 0.63.9 every lapsed session reported to Sentry as a code defect
+/// (TAURI-RUST-RYD) and the stale token was never cleared — so the next
+/// revalidation re-fired the same 401 and forced the user out again, forever.
+///
+/// Pinned through the real `auth_get_me` entry point rather than on the
+/// classifier alone: `is_session_expired_error` already recognised the flattened
+/// form (`jsonrpc_tests::is_session_expired_error_matches_flattened_backend_unauthorized`)
+/// — the only thing wrong was that this call site never produced it.
+#[tokio::test]
+async fn auth_get_me_401_stays_classifiable_as_session_expiry() {
+    let _env_guard = crate::openhuman::config::TEST_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let tmp = TempDir::new().unwrap();
+    let _home = EnvVarGuard::set_to_path("HOME", tmp.path());
+    let mut config = store_live_session("user-5307");
+    config.api_url = Some(spawn_auth_me_status(StatusCode::UNAUTHORIZED).await);
+
+    let err = auth_get_me(&config).await.unwrap_err();
+
+    // Assert on the sentinel specifically, not merely on
+    // `is_session_expired_message`: the local "session JWT required" guard also
+    // satisfies that predicate, so a test that only checked classification
+    // would pass even if the backend 401 were never reached.
+    assert!(
+        err.starts_with("SESSION_EXPIRED:"),
+        "a 401 from GET /auth/me must carry the SESSION_EXPIRED sentinel that \
+         `flatten_authed_error` produces, so the dispatcher suppresses the Sentry \
+         report and publishes SessionExpired (which clears the dead JWT and breaks \
+         the forced-logout loop), got: {err}"
+    );
+    assert!(
+        crate::core::observability::is_session_expired_message(&err),
+        "the flattened 401 must classify as session expiry, got: {err}"
+    );
+}
+
+/// The sibling authed route in this module must not regress the same way.
+#[tokio::test]
+async fn auth_create_channel_link_token_401_stays_classifiable_as_session_expiry() {
+    let _env_guard = crate::openhuman::config::TEST_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let tmp = TempDir::new().unwrap();
+    let _home = EnvVarGuard::set_to_path("HOME", tmp.path());
+    let mut config = store_live_session("user-5307");
+    let app = Router::new().route(
+        "/auth/channels/telegram/link-token",
+        axum::routing::post(|| async { StatusCode::UNAUTHORIZED }),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    config.api_url = Some(format!("http://{addr}"));
+
+    let err = auth_create_channel_link_token(&config, "telegram")
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.starts_with("SESSION_EXPIRED:"),
+        "a 401 on the channel link-token route must carry the SESSION_EXPIRED \
+         sentinel, got: {err}"
+    );
 }
 
 // ── store_session (local session) ─────────────────────────────
