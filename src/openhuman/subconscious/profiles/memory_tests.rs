@@ -122,3 +122,24 @@ fn render_world_diff_caps_items_and_falls_back_to_item_id() {
     assert!(rendered.contains("[added] item_0"), "uses item_id fallback");
     assert!(rendered.contains("…and 3 more"), "caps the per-source list");
 }
+
+// ── Managed-credits gate on the background scout (#5308, TAURI-RUST-HMW) ─
+
+/// A `subconscious_provider` on a local on-device runtime is funded by the
+/// user's own hardware, so an exhausted OpenHuman balance is irrelevant: the
+/// gate must short-circuit *before* the usage probe and let the scout run.
+///
+/// This is also the assertion that keeps the gate honest about network cost —
+/// `role_bypasses_managed_credits` resolving to a local runtime needs no key
+/// lookup and no backend call, so the test runs fully offline. If someone
+/// reorders the gate to probe first, this test starts hitting the network.
+#[tokio::test]
+async fn local_subconscious_route_is_not_gated_by_managed_credits() {
+    let mut config = Config::default();
+    config.subconscious_provider = Some("ollama:qwen3:8b".to_string());
+
+    assert!(
+        !credits_gate_blocks_scout(&config).await,
+        "a BYO/local-funded subconscious route must never be gated on the managed balance"
+    );
+}

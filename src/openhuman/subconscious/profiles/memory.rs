@@ -48,6 +48,38 @@ const SUBCONSCIOUS_TOOL_CATALOG: &str = "\
 - spawn_subagent: Delegate deeper research or multi-step work (runs inline; its result comes back to you).
 ";
 
+/// Provider-routing role this background tick runs under (`subconscious_provider`).
+const SUBCONSCIOUS_ROLE: &str = "subconscious";
+
+/// Should stage 2 skip spawning the `context_scout` because the user's managed
+/// OpenHuman credits are exhausted?
+///
+/// The tick is a background surface the user never asked for, so attempting a
+/// model call that is *certain* to come back
+/// `400 {"errorCode":"USER_INSUFFICIENT_CREDITS"}` buys nothing: the scout dies,
+/// the tick proceeds without a bundle anyway, and every tick of every
+/// out-of-credits user burned a backend round-trip and a Sentry error
+/// (TAURI-RUST-HMW, #5308). Gating here stops the load at source; the
+/// emit-site demotion in `agent_prepare_context` remains the backstop for the
+/// races this can't see (a balance that runs out mid-flight, or the 30s
+/// [`crate::openhuman::team::managed_tool_budget_exhausted`] cache being stale).
+///
+/// Scoped to *managed* funding: a `subconscious_provider` pointing at a BYO key
+/// or a local runtime is unaffected by the OpenHuman balance, so
+/// [`role_bypasses_managed_credits`] short-circuits the probe entirely and the
+/// scout runs as before. A failed probe reports "not exhausted", so a backend
+/// outage degrades to today's attempt-and-fail rather than silently disabling
+/// the scout.
+async fn credits_gate_blocks_scout(config: &Config) -> bool {
+    if crate::openhuman::inference::provider::factory::role_bypasses_managed_credits(
+        SUBCONSCIOUS_ROLE,
+        config,
+    ) {
+        return false;
+    }
+    crate::openhuman::team::managed_tool_budget_exhausted(config).await
+}
+
 /// Construct the live `memory` instance from config (used by the registry /
 /// bootstrap). The only place `MemoryProfile` is wired into a runner.
 pub fn memory_instance(config: &Config) -> SubconsciousInstance {
@@ -77,13 +109,23 @@ impl MemoryProfile {
 
     /// Stage 2: run the read-only `context_scout` over the world diff to gather
     /// grounding context. Best-effort — on any error the decision agent simply
-    /// runs without a prepared-context section.
+    /// runs without a prepared-context section, and the same fallback covers a
+    /// scout skipped by the managed-credits gate ([`credits_gate_blocks_scout`]).
     ///
     /// The tick is a controller-spawned background surface with **no enclosing
     /// agent turn**, so the scout spawn has no ambient `current_parent()`. We
     /// establish a root parent via [`with_root_parent`] — without it every
     /// tick's scout died with `NoParentContext` (Sentry TAURI-RUST-HMW; #4337).
     async fn run_scout(&self, config: &Config, world_diff: &str) -> String {
+        // Preventable user-state: don't spawn a scout whose model call is
+        // certain to 400 on exhausted credits. See `credits_gate_blocks_scout`.
+        if credits_gate_blocks_scout(config).await {
+            debug!(
+                "[subconscious:memory] skipping context scout — managed OpenHuman credits exhausted"
+            );
+            return String::new();
+        }
+
         let question = format!(
             "Background awareness check. Here is what changed in the user's connected sources \
              since the last check:\n\n{world_diff}\n\nSurface what the user should be aware of or \

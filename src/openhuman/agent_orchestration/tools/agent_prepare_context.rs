@@ -17,7 +17,7 @@ use crate::openhuman::agent::harness::fork_context::{
     current_agent_context_prepared_sources, current_parent, AgentContextPreparedSource,
 };
 use crate::openhuman::agent::harness::subagent_runner::{
-    run_subagent, SubagentRunOptions, SubagentRunStatus,
+    run_subagent, SubagentRunError, SubagentRunOptions, SubagentRunStatus,
 };
 use crate::openhuman::agent::progress::AgentProgress;
 use crate::openhuman::tinyagents::thread_context::current_thread_id;
@@ -152,6 +152,79 @@ pub async fn run_context_scout_with_catalog(
     tool_catalog: &str,
 ) -> anyhow::Result<ToolResult> {
     run_context_scout_with_catalog_and_workspace(question, focus, tool_catalog, None).await
+}
+
+/// The text [`log_scout_failure`] classifies: a failed run flattened into one
+/// string, `source` chain included.
+///
+/// The billing classifiers key on the **provider wire body**
+/// (`… "errorCode":"USER_INSUFFICIENT_CREDITS"`), which arrives inside
+/// [`SubagentRunError::Provider`]'s `anyhow` error — often as a *cause* under a
+/// context layer, so `to_string()` alone renders only `"provider call failed:
+/// <top-level context>"` and would miss the very failure this exists to demote.
+/// Walk `anyhow`'s chain for that variant; every other variant is a flat
+/// `thiserror` message already. Used for classification only — the
+/// user-visible `message` stays `err.to_string()`, unchanged.
+fn scout_failure_signal(err: &SubagentRunError) -> String {
+    let SubagentRunError::Provider(inner) = err else {
+        return err.to_string();
+    };
+    let mut chain = inner.to_string();
+    for cause in inner.chain().skip(1) {
+        chain.push_str(": ");
+        chain.push_str(&cause.to_string());
+    }
+    chain
+}
+
+/// Is a failed `context_scout` run just the user being out of credits?
+///
+/// Two billing shapes reach here, both **user-state, not defects**:
+/// * the managed OpenHuman backend's budget-exhausted 400
+///   (`{"error":"Insufficient budget","errorCode":"USER_INSUFFICIENT_CREDITS"}`),
+///   matched by [`crate::openhuman::inference::provider::is_budget_exhausted_message`];
+/// * a BYO provider's insufficient-credits 402, matched by
+///   [`crate::core::observability::is_insufficient_credits_message`].
+///
+/// Both delegate to the crate's single-source classifiers so the phrase sets
+/// can't drift from the cron halt / `before_send` nets that share them.
+fn is_expected_billing_failure(message: &str) -> bool {
+    crate::openhuman::inference::provider::is_budget_exhausted_message(message)
+        || crate::core::observability::is_insufficient_credits_message(message)
+}
+
+/// Log a failed `context_scout` run at the severity its cause deserves.
+///
+/// The scout is a **background/best-effort** pass: every caller already
+/// degrades to the un-augmented message on failure. When the cause is the user
+/// being out of credits (`USER_INSUFFICIENT_CREDITS`) that is a preventable
+/// billing state OpenHuman has no lever over, yet `tracing::error!` maps to
+/// `EventFilter::Event` in `core::logging::sentry_tracing_layer` — so every
+/// tick of every out-of-credits user paged Sentry (TAURI-RUST-HMW: 8314 events
+/// / 13 users, #5308). The existing `is_budget_event` `before_send` net cannot
+/// catch it: that filter is tag-gated (`failure=non_2xx` + `status=400`) and
+/// keys on the event *message*, but this event's message is the static
+/// `"context_scout run failed"` with the wire body only in a breadcrumb.
+///
+/// So demote at the emit site: `warn!` maps to `EventFilter::Breadcrumb`, which
+/// keeps the local log line (and the Sentry breadcrumb trail for any *real*
+/// error that follows) without raising an issue. Every other cause still
+/// `error!`s and keeps paging.
+fn log_scout_failure(error_kind: &str, message: &str) {
+    if is_expected_billing_failure(message) {
+        // Metadata-only — never log the raw provider body (see CLAUDE.md).
+        tracing::warn!(
+            target: "agent_prepare_context",
+            error_kind = %error_kind,
+            "[agent_prepare_context] context_scout run skipped — account is out of credits (expected user-state, not reported)"
+        );
+        return;
+    }
+    tracing::error!(
+        target: "agent_prepare_context",
+        error_kind = %error_kind,
+        "[agent_prepare_context] context_scout run failed"
+    );
 }
 
 async fn run_context_scout_with_catalog_and_workspace(
@@ -475,11 +548,7 @@ async fn run_context_scout_with_catalog_and_workspace(
                 .next()
                 .map(str::trim)
                 .unwrap_or("unknown");
-            tracing::error!(
-                target: "agent_prepare_context",
-                error_kind = %error_kind,
-                "[agent_prepare_context] context_scout run failed"
-            );
+            log_scout_failure(error_kind, &scout_failure_signal(&err));
             crate::openhuman::agent_orchestration::subagent_events::publish_subagent_failed(
                 parent_session.clone(),
                 task_id.clone(),
@@ -900,5 +969,124 @@ mod tests {
                 .as_deref(),
             Some("[context_bundle]\nsummary: x\n[/context_bundle]")
         );
+    }
+
+    // ── Credits-exhausted scout failures stay off Sentry (#5308) ────────
+
+    /// Verbatim wire body from Sentry TAURI-RUST-HMW's breadcrumb — the
+    /// managed backend's budget-exhausted 400. Pinning the exact string makes a
+    /// backend phrasing drift fail CI rather than silently re-flood Sentry.
+    const CREDITS_400_BODY: &str = "OpenHuman returned HTTP 400: \
+        {\"success\":false,\"error\":\"Insufficient budget\",\
+        \"errorCode\":\"USER_INSUFFICIENT_CREDITS\"}";
+
+    #[test]
+    fn classifies_managed_credits_400_and_byo_402_as_expected_billing() {
+        assert!(
+            is_expected_billing_failure(CREDITS_400_BODY),
+            "the managed USER_INSUFFICIENT_CREDITS 400 is user-state, not a defect"
+        );
+        // The BYO sibling: a provider 402 whose body names the credit shortfall.
+        assert!(is_expected_billing_failure(
+            "openrouter API error (402 Payment Required): {\"error\":\"Insufficient credits\"}"
+        ));
+    }
+
+    #[test]
+    fn real_scout_failures_are_not_classified_as_billing() {
+        for message in [
+            "provider call failed: connection reset by peer",
+            "agent definition 'context_scout' not found in registry",
+            "sub-agent exceeded maximum iterations (8)",
+            "OpenHuman returned HTTP 400: {\"error\":\"model not found\"}",
+            // A healthy-balance readout must not be swallowed.
+            "You have 100 remaining credits this month",
+            "",
+        ] {
+            assert!(
+                !is_expected_billing_failure(message),
+                "{message:?} must keep paging Sentry"
+            );
+        }
+    }
+
+    #[test]
+    fn scout_failure_signal_flattens_the_provider_cause_chain() {
+        // The wire body arrives as a *cause* under the runner's own context, so
+        // `to_string()` alone loses it — the classifier would then miss the very
+        // failure the demotion exists for.
+        let inner = anyhow::Error::msg(CREDITS_400_BODY).context("chat completion failed");
+        let err = SubagentRunError::Provider(inner);
+
+        assert!(
+            !err.to_string().contains("USER_INSUFFICIENT_CREDITS"),
+            "precondition: the flat Display drops the cause carrying the wire body"
+        );
+        let signal = scout_failure_signal(&err);
+        assert!(signal.contains("USER_INSUFFICIENT_CREDITS"));
+        assert!(is_expected_billing_failure(&signal));
+
+        // Non-`Provider` variants are already flat thiserror messages.
+        assert_eq!(
+            scout_failure_signal(&SubagentRunError::MaxIterationsExceeded(8)),
+            "sub-agent exceeded maximum iterations (8)"
+        );
+    }
+
+    /// The regression this issue is about: a background `context_scout` run that
+    /// fails on exhausted credits must NOT become a Sentry error event, while
+    /// every other failure still does.
+    ///
+    /// Asserted end-to-end through the real `sentry-tracing` bridge (mirroring
+    /// `core::logging::sentry_tracing_layer`'s level mapping) rather than by
+    /// inspecting the log level, because the level→event mapping *is* the
+    /// mechanism: `ERROR` → `EventFilter::Event`, `WARN` → `Breadcrumb`.
+    #[cfg(feature = "crash-reporting")]
+    #[test]
+    fn credits_exhausted_scout_failure_does_not_reach_sentry() {
+        use sentry::test::TestTransport;
+        use std::sync::Arc;
+        use tracing::Level;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        let transport = TestTransport::new();
+        let options = sentry::ClientOptions {
+            dsn: Some("https://public@sentry.invalid/1".parse().unwrap()),
+            transport: Some(Arc::new(transport.clone())),
+            ..Default::default()
+        };
+        let hub = Arc::new(sentry::Hub::new(
+            Some(Arc::new(options.into())),
+            Arc::new(Default::default()),
+        ));
+        let _hub_guard = sentry::HubSwitchGuard::new(hub);
+
+        let subscriber = tracing_subscriber::registry().with(
+            sentry::integrations::tracing::layer().event_filter(|metadata| {
+                match *metadata.level() {
+                    Level::ERROR => sentry::integrations::tracing::EventFilter::Event,
+                    Level::WARN | Level::INFO => {
+                        sentry::integrations::tracing::EventFilter::Breadcrumb
+                    }
+                    _ => sentry::integrations::tracing::EventFilter::Ignore,
+                }
+            }),
+        );
+        let _subscriber_guard = tracing::subscriber::set_default(subscriber);
+
+        log_scout_failure("provider call failed", CREDITS_400_BODY);
+        assert!(
+            transport.fetch_and_clear_events().is_empty(),
+            "an out-of-credits background scout must not page Sentry (TAURI-RUST-HMW)"
+        );
+
+        log_scout_failure("provider call failed", "connection reset by peer");
+        let events = transport.fetch_and_clear_events();
+        assert_eq!(
+            events.len(),
+            1,
+            "a genuine scout failure must still reach Sentry"
+        );
+        assert_eq!(events[0].level, sentry::Level::Error);
     }
 }
