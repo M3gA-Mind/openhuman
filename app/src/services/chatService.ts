@@ -180,6 +180,7 @@ export interface ChatErrorEvent {
     | 'model_unavailable'
     | 'payload_too_large'
     | 'provider_request_rejected'
+    | 'chat_template_rejected'
     | 'budget_exhausted';
   round: number | null;
 }
