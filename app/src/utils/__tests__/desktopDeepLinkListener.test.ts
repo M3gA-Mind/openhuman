@@ -142,15 +142,26 @@ describe('desktopDeepLinkListener', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
       logged.push(args.map(a => JSON.stringify(a)).join(' '));
     });
-    vi.mocked(confirmWaitlistDownload).mockRejectedValue({
-      success: false,
-      error: 'Waitlist entry not found',
-    });
+    // The token in the message is the point: a rejection on this path can carry
+    // the credential, and `sanitizeError` would have preserved it.
+    vi.mocked(confirmWaitlistDownload).mockRejectedValue(new Error('super-secret-token'));
 
     await handleDeepLinkUrls(['openhuman://waitlist?token=super-secret-token']);
 
     expect(logged.join(' ')).not.toContain('super-secret-token');
     warn.mockRestore();
+  });
+
+  it('waits for the core before confirming, and skips the call when it never comes up', async () => {
+    // Cold open from a download link runs before BootCheckGate starts the core,
+    // and the backend base resolves through it — confirming early would post to
+    // nothing and be swallowed as an ordinary failure.
+    waitForOAuthAuthReadiness.mockResolvedValue({ ready: false, reason: 'core_unreachable' });
+
+    await handleDeepLinkUrls(['openhuman://waitlist?token=dl-token-123']);
+
+    expect(confirmWaitlistDownload).not.toHaveBeenCalled();
+    expect(windowControls.setFocus).toHaveBeenCalled();
   });
 
   it('turns Twitter OAuth error deep links into actionable UI and event diagnostics', async () => {

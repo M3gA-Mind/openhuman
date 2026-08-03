@@ -21,7 +21,6 @@ import {
 } from './oauthAppVersionGate';
 import { clearOAuthReturnRoute, takeOAuthReturnRoute } from './oauthReturnRoute';
 import { openUrl } from './openUrl';
-import { sanitizeError } from './sanitize';
 import { storeSession } from './tauriCommands';
 import { isTauri as coreIsTauri } from './tauriCommands/common';
 
@@ -612,13 +611,31 @@ const handleWaitlistDeepLink = async (parsed: URL) => {
     return;
   }
 
+  // A cold open from a download link is the path this feature exists for, and it
+  // is the one that would have failed: `setupDesktopDeepLinkListener` runs before
+  // `bootRender`, so this fires before BootCheckGate has started the core — and
+  // `apiClient` resolves its base URL from that core over RPC. Confirming
+  // straight away would post to a base that is not resolvable yet, and the
+  // catch below would swallow it as an ordinary failure.
+  //
+  // This is the same gate the auth deep link waits on, for the same reason: it
+  // commits a core mode, starts the local core, and polls `core.ping`. The name
+  // says OAuth but the behaviour is core readiness and nothing more.
+  const readiness = await waitForOAuthAuthReadiness();
+  if (!readiness.ready) {
+    console.warn('[DeepLink][waitlist] Core not ready; leaving the reward for a later open');
+    return;
+  }
+
   try {
     await confirmWaitlistDownload(token);
     console.log('[DeepLink][waitlist] Download confirmed');
-  } catch (error) {
-    // Sanitized rather than raw: the failure is worth knowing about, the token
-    // that produced it is not.
-    console.warn('[DeepLink][waitlist] Could not confirm download:', sanitizeError(error));
+  } catch {
+    // No error detail, deliberately. A rejection on this path can carry the
+    // token in its message — `sanitizeError` preserves `Error.message` — and a
+    // credential must never reach a log. That the confirmation failed is the
+    // whole of what is safe to record here.
+    console.warn('[DeepLink][waitlist] Could not confirm download');
   }
 };
 

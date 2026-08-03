@@ -1,16 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockPost = vi.fn();
+// Hoisted: `vi.mock` is lifted above this file's declarations, so the factory
+// needs a binding that already exists when it runs.
+const { mockLog } = vi.hoisted(() => ({ mockLog: vi.fn() }));
 
-vi.mock('../apiClient', () => ({
-  apiClient: {
-    post: (...args: unknown[]) => mockPost(...args),
-  },
-}));
+vi.mock('debug', () => ({ default: () => mockLog }));
+vi.mock('../apiClient', () => ({ apiClient: { post: (...args: unknown[]) => mockPost(...args) } }));
 
 describe('confirmWaitlistDownload', () => {
   beforeEach(() => {
     mockPost.mockReset();
+    mockLog.mockReset();
   });
 
   it('posts the token to the confirm endpoint', async () => {
@@ -34,15 +35,24 @@ describe('confirmWaitlistDownload', () => {
     expect(options.requireAuth).toBe(false);
   });
 
-  it('bounds the request so it cannot hold up app startup', async () => {
+  it('bounds the request at ten seconds so it cannot hold up app startup', async () => {
     mockPost.mockResolvedValueOnce({ success: true, data: {} });
 
     const { confirmWaitlistDownload } = await import('./waitlistApi');
     await confirmWaitlistDownload('tok_abc123');
 
     const options = mockPost.mock.calls[0][2] as { timeout?: number };
-    expect(options.timeout).toBeGreaterThan(0);
-    expect(options.timeout).toBeLessThan(120_000);
+    expect(options.timeout).toBe(10_000);
+  });
+
+  it('logs the token length and never the token', async () => {
+    mockPost.mockResolvedValueOnce({ success: true, data: {} });
+
+    const { confirmWaitlistDownload } = await import('./waitlistApi');
+    await confirmWaitlistDownload('tok_abc123');
+
+    expect(mockLog).toHaveBeenCalledWith(expect.stringContaining('tokenLength'), 10);
+    expect(JSON.stringify(mockLog.mock.calls)).not.toContain('tok_abc123');
   });
 
   it('propagates failures so the caller decides how to degrade', async () => {
