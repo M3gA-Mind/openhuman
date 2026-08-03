@@ -138,18 +138,18 @@ describe('desktopDeepLinkListener', () => {
   });
 
   it('keeps the download token out of the logs on failure', async () => {
-    const logged: string[] = [];
-    const warn = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
-      logged.push(args.map(a => JSON.stringify(a)).join(' '));
-    });
     // The token in the message is the point: a rejection on this path can carry
     // the credential, and `sanitizeError` would have preserved it.
     vi.mocked(confirmWaitlistDownload).mockRejectedValue(new Error('super-secret-token'));
 
     await handleDeepLinkUrls(['openhuman://waitlist?token=super-secret-token']);
 
-    expect(logged.join(' ')).not.toContain('super-secret-token');
-    warn.mockRestore();
+    // Reads the suite-wide console spy from `src/test/setup.ts` rather than
+    // installing its own. A local spy would have to be restored, and restoring
+    // it un-spies `console.warn` for every test that runs after this one —
+    // `restoreMocks` is off, so nothing puts it back.
+    expect(console.warn).toHaveBeenCalledWith('[DeepLink][waitlist] Could not confirm download');
+    expect(JSON.stringify(vi.mocked(console.warn).mock.calls)).not.toContain('super-secret-token');
   });
 
   it('waits for the core before confirming, and skips the call when it never comes up', async () => {
