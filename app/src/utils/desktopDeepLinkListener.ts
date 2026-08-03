@@ -4,6 +4,7 @@ import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
 
 import { getCoreStateSnapshot, patchCoreStateSnapshot } from '../lib/coreState/store';
 import { consumeLoginToken } from '../services/api/authApi';
+import { confirmWaitlistDownload } from '../services/api/waitlistApi';
 import { clearCoreRpcTokenCache, clearCoreRpcUrlCache } from '../services/coreRpcClient';
 import {
   beginDeepLinkAuthProcessing,
@@ -20,6 +21,7 @@ import {
 } from './oauthAppVersionGate';
 import { clearOAuthReturnRoute, takeOAuthReturnRoute } from './oauthReturnRoute';
 import { openUrl } from './openUrl';
+import { sanitizeError } from './sanitize';
 import { storeSession } from './tauriCommands';
 import { isTauri as coreIsTauri } from './tauriCommands/common';
 
@@ -586,6 +588,41 @@ const handleOAuthDeepLink = async (parsed: URL) => {
 };
 
 /**
+ * `openhuman://waitlist?token=...` — the app was opened from a tokenmaxxxing
+ * download link.
+ *
+ * Unlike the auth and oauth hosts, there is nothing here to apply to the app:
+ * the token is a one-time download handle belonging to a waitlist entry, not a
+ * session credential, and it is never stored. The only job is to tell the
+ * backend the app really was opened, which is what releases that entry's
+ * download reward.
+ *
+ * The window is focused first and regardless of the outcome. Someone who just
+ * launched the app should see it whatever the network did, and the reward is
+ * idempotent — a confirmation that fails now is simply retried the next time the
+ * link is opened. Nothing in this path may throw: it runs during startup, and a
+ * missed reward is a far smaller failure than an app that will not open.
+ */
+const handleWaitlistDeepLink = async (parsed: URL) => {
+  await focusMainWindow();
+
+  const token = parsed.searchParams.get('token');
+  if (!token) {
+    console.warn('[DeepLink][waitlist] URL did not contain a token query parameter');
+    return;
+  }
+
+  try {
+    await confirmWaitlistDownload(token);
+    console.log('[DeepLink][waitlist] Download confirmed');
+  } catch (error) {
+    // Sanitized rather than raw: the failure is worth knowing about, the token
+    // that produced it is not.
+    console.warn('[DeepLink][waitlist] Could not confirm download:', sanitizeError(error));
+  }
+};
+
+/**
  * Handle a list of deep link URLs delivered by the Tauri deep-link plugin.
  * Routes to the appropriate handler based on the URL hostname:
  *   - `openhuman://auth?token=...` → login flow
@@ -593,6 +630,7 @@ const handleOAuthDeepLink = async (parsed: URL) => {
  *   - `openhuman://oauth/error?...` → OAuth failure
  *   - `openhuman://payment/success?session_id=...` → Stripe payment confirmation
  *   - `openhuman://payment/cancel` → Stripe payment cancellation
+ *   - `openhuman://waitlist?token=...` → tokenmaxxxing download confirmation
  */
 export const handleDeepLinkUrls = async (
   urls: string[] | null | undefined,
@@ -620,6 +658,9 @@ export const handleDeepLinkUrls = async (
         break;
       case 'payment':
         await handlePaymentDeepLink(parsed);
+        break;
+      case 'waitlist':
+        await handleWaitlistDeepLink(parsed);
         break;
       default:
         console.warn('[DeepLink] Unknown deep link hostname:', parsed.hostname);
