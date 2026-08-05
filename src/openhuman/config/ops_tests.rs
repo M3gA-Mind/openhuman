@@ -468,6 +468,128 @@ async fn apply_model_settings_updates_fields_and_persists_snapshot() {
     );
 }
 
+/// #5324 (CodeRabbit): the failed-job un-park must be scoped to an embedder
+/// change. Saving an unrelated model setting (temperature, chat model, …)
+/// through this shared path must leave terminally-`failed` embedding jobs
+/// parked, not restart them into the same external failure. Switching the
+/// embeddings provider is what un-parks them.
+#[tokio::test]
+async fn apply_model_settings_requeues_failed_jobs_only_on_embedder_change() {
+    use crate::openhuman::memory::queue::store;
+    use crate::openhuman::memory::queue::types::{FlushStalePayload, JobStatus, NewJob};
+    use crate::openhuman::memory::tree::health::{FailureCode, PipelineFailure};
+
+    let tmp = tempdir().unwrap();
+    let mut cfg = tmp_config(&tmp);
+
+    // Park a job exactly the way an exhausted managed budget does.
+    let new_job = NewJob::flush_stale(&FlushStalePayload::default(), "2026-08-05", 3).unwrap();
+    let id = store::enqueue(&cfg, &new_job).unwrap().expect("enqueue");
+    let job = store::get_job(&cfg, &id).unwrap().expect("job exists");
+    store::mark_failed_typed(
+        &cfg,
+        &job,
+        "Insufficient budget",
+        Some(&PipelineFailure::new(FailureCode::BudgetExhausted)),
+    )
+    .unwrap();
+    assert_eq!(store::count_by_status(&cfg, JobStatus::Failed).unwrap(), 1);
+
+    // Unrelated save (temperature only) — the job must stay parked.
+    let unrelated = ModelSettingsPatch {
+        default_temperature: Some(0.5),
+        ..Default::default()
+    };
+    let outcome = apply_model_settings(&mut cfg, unrelated)
+        .await
+        .expect("apply");
+    assert_eq!(
+        store::count_by_status(&cfg, JobStatus::Failed).unwrap(),
+        1,
+        "an unrelated model save must not un-park failed embedding jobs"
+    );
+    assert!(
+        outcome.logs.iter().any(|m| m.contains("requeued_failed=0")),
+        "messages: {:?}",
+        outcome.logs
+    );
+
+    // Now change the embeddings provider — this is the remediation, so the
+    // parked job must be flipped back to `ready`.
+    let switch = ModelSettingsPatch {
+        embeddings_provider: Some("ollama:bge-m3".into()),
+        ..Default::default()
+    };
+    let outcome = apply_model_settings(&mut cfg, switch).await.expect("apply");
+    assert_eq!(
+        store::count_by_status(&cfg, JobStatus::Ready).unwrap(),
+        1,
+        "switching the embeddings provider must un-park the failed job"
+    );
+    assert_eq!(store::count_by_status(&cfg, JobStatus::Failed).unwrap(), 0);
+    assert!(
+        outcome.logs.iter().any(|m| m.contains("requeued_failed=1")),
+        "messages: {:?}",
+        outcome.logs
+    );
+}
+
+/// #5324 (CodeRabbit): mirror of the model-settings gate for the memory path.
+/// A `memory_window` / `auto_save` / `backend` save shares this function but
+/// does not remediate the embedder, so failed jobs must stay parked; changing
+/// the embedding provider un-parks them.
+#[tokio::test]
+async fn apply_memory_settings_requeues_failed_jobs_only_on_embedder_change() {
+    use crate::openhuman::memory::queue::store;
+    use crate::openhuman::memory::queue::types::{FlushStalePayload, JobStatus, NewJob};
+    use crate::openhuman::memory::tree::health::{FailureCode, PipelineFailure};
+
+    let tmp = tempdir().unwrap();
+    let mut cfg = tmp_config(&tmp);
+
+    let new_job = NewJob::flush_stale(&FlushStalePayload::default(), "2026-08-05", 3).unwrap();
+    let id = store::enqueue(&cfg, &new_job).unwrap().expect("enqueue");
+    let job = store::get_job(&cfg, &id).unwrap().expect("job exists");
+    store::mark_failed_typed(
+        &cfg,
+        &job,
+        "Insufficient budget",
+        Some(&PipelineFailure::new(FailureCode::BudgetExhausted)),
+    )
+    .unwrap();
+
+    // Unrelated save (memory window preset only) — job stays parked.
+    let unrelated = MemorySettingsPatch {
+        memory_window: Some("balanced".into()),
+        ..Default::default()
+    };
+    let outcome = apply_memory_settings(&mut cfg, unrelated)
+        .await
+        .expect("apply");
+    assert_eq!(
+        store::count_by_status(&cfg, JobStatus::Failed).unwrap(),
+        1,
+        "a memory-window save must not un-park failed embedding jobs"
+    );
+    assert!(outcome.logs.iter().any(|m| m.contains("requeued_failed=0")));
+
+    // Change the embedding provider — un-parks.
+    let switch = MemorySettingsPatch {
+        embedding_provider: Some("ollama".into()),
+        ..Default::default()
+    };
+    let outcome = apply_memory_settings(&mut cfg, switch)
+        .await
+        .expect("apply");
+    assert_eq!(
+        store::count_by_status(&cfg, JobStatus::Ready).unwrap(),
+        1,
+        "switching the embedding provider must un-park the failed job"
+    );
+    assert_eq!(store::count_by_status(&cfg, JobStatus::Failed).unwrap(), 0);
+    assert!(outcome.logs.iter().any(|m| m.contains("requeued_failed=1")));
+}
+
 #[tokio::test]
 async fn apply_search_settings_sets_and_clears_allowed_domains() {
     let tmp = tempdir().unwrap();
@@ -1861,7 +1983,7 @@ async fn apply_agent_settings_updates_timeout_and_persists_snapshot() {
         .any(|l| l.contains("agent settings saved to")));
     // With no env override, the live runtime now reflects the saved value.
     assert_eq!(
-        crate::openhuman::tool_timeout::tool_execution_timeout_secs(),
+        crate::openhuman::tools::timeout::tool_execution_timeout_secs(),
         300
     );
 }

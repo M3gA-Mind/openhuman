@@ -16,19 +16,25 @@ use crate::openhuman::tools::traits::Tool;
 use crate::rpc::RpcOutcome;
 
 pub fn all_controller_schemas() -> Vec<ControllerSchema> {
-    vec![
+    #[allow(unused_mut)]
+    let mut v = vec![
         tools_schemas("tools_composio_execute"),
         tools_schemas("tools_web_search"),
         tools_schemas("tools_seltz_search"),
         tools_schemas("tools_querit_search"),
         tools_schemas("tools_searxng_search"),
         tools_schemas("tools_apify_linkedin_scrape"),
-        tools_schemas("tools_polymarket_execute"),
-    ]
+    ];
+    // Leaf gate: with `prediction-markets` off the method is absent from
+    // `/schema` and unknown over `/rpc`, rather than advertised and failing.
+    #[cfg(feature = "prediction-markets")]
+    v.push(tools_schemas("tools_polymarket_execute"));
+    v
 }
 
 pub fn all_registered_controllers() -> Vec<RegisteredController> {
-    vec![
+    #[allow(unused_mut)]
+    let mut v = vec![
         RegisteredController {
             schema: tools_schemas("tools_composio_execute"),
             handler: handle_composio_execute,
@@ -53,11 +59,13 @@ pub fn all_registered_controllers() -> Vec<RegisteredController> {
             schema: tools_schemas("tools_apify_linkedin_scrape"),
             handler: handle_apify_linkedin_scrape,
         },
-        RegisteredController {
-            schema: tools_schemas("tools_polymarket_execute"),
-            handler: handle_polymarket_execute,
-        },
-    ]
+    ];
+    #[cfg(feature = "prediction-markets")]
+    v.push(RegisteredController {
+        schema: tools_schemas("tools_polymarket_execute"),
+        handler: handle_polymarket_execute,
+    });
+    v
 }
 
 pub fn tools_schemas(function: &str) -> ControllerSchema {
@@ -435,7 +443,7 @@ fn handle_composio_execute(params: Map<String, Value>) -> ControllerFuture {
         // backend-only `build_composio_client` and silently 4xx'd for
         // direct-mode users (#1710). Mirrors
         // `composio::ops::composio_execute`.
-        use crate::openhuman::composio::client::{
+        use crate::openhuman::integrations::composio::client::{
             create_composio_client, direct_execute, ComposioClientKind,
         };
         let kind =
@@ -797,17 +805,18 @@ fn handle_apify_linkedin_scrape(params: Map<String, Value>) -> ControllerFuture 
             "Apify scrape unavailable — no backend session token. Sign in first.".to_string()
         })?;
 
-        let data = crate::openhuman::learning::linkedin_enrichment::scrape_linkedin_profile(
+        let data = crate::openhuman::agent::learning::linkedin_enrichment::scrape_linkedin_profile(
             &client,
             &profile_url,
         )
         .await
         .map_err(|e| format!("Apify LinkedIn scrape failed: {e:#}"))?;
 
-        let markdown = crate::openhuman::learning::linkedin_enrichment::render_profile_markdown(
-            &profile_url,
-            &data,
-        );
+        let markdown =
+            crate::openhuman::agent::learning::linkedin_enrichment::render_profile_markdown(
+                &profile_url,
+                &data,
+            );
 
         let payload = json!({ "data": data, "markdown": markdown });
         let log = vec![format!(
@@ -840,6 +849,7 @@ fn optional_string_array(params: &Map<String, Value>, key: &str) -> Result<Vec<S
         .collect()
 }
 
+#[cfg(feature = "prediction-markets")]
 fn handle_polymarket_execute(params: Map<String, Value>) -> ControllerFuture {
     Box::pin(async move {
         let action = params
@@ -912,14 +922,38 @@ fn handle_polymarket_execute(params: Map<String, Value>) -> ControllerFuture {
 mod tests {
     use super::*;
 
+    /// Six always-on controllers, plus `polymarket_execute` when
+    /// `prediction-markets` is compiled in.
+    ///
+    /// Asserted in both directions rather than as one number: the OFF half is
+    /// what proves the gate actually removes the controller instead of leaving
+    /// it registered and failing at call time, which is the whole point of a
+    /// leaf gate. A single hard-coded count could only ever check one build.
+    const BASE_CONTROLLERS: usize = 6;
+
     #[test]
-    fn all_schemas_returns_seven() {
-        assert_eq!(all_controller_schemas().len(), 7);
+    fn all_schemas_covers_the_base_surface() {
+        let expected = BASE_CONTROLLERS + usize::from(cfg!(feature = "prediction-markets"));
+        assert_eq!(all_controller_schemas().len(), expected);
     }
 
     #[test]
-    fn all_controllers_returns_seven() {
-        assert_eq!(all_registered_controllers().len(), 7);
+    fn all_controllers_covers_the_base_surface() {
+        let expected = BASE_CONTROLLERS + usize::from(cfg!(feature = "prediction-markets"));
+        assert_eq!(all_registered_controllers().len(), expected);
+    }
+
+    #[test]
+    fn polymarket_controller_presence_follows_its_gate() {
+        let has = all_registered_controllers()
+            .iter()
+            .any(|c| c.schema.function == "polymarket_execute");
+        assert_eq!(
+            has,
+            cfg!(feature = "prediction-markets"),
+            "the polymarket controller must be absent (unknown-method) when \
+             `prediction-markets` is off, not registered-and-failing"
+        );
     }
 
     #[test]

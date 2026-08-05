@@ -34,6 +34,7 @@ import SecurityBanner from './components/SecurityBanner';
 import SettingsModal from './components/settings/modal/SettingsModal';
 import { resolveSettingsOverlay } from './components/settings/modal/settingsOverlay';
 import GlobalUpsellBanner from './components/upsell/GlobalUpsellBanner';
+import MemoryEmbeddingBudgetBanner from './components/upsell/MemoryEmbeddingBudgetBanner';
 import UserErrorCenter from './components/userErrors/UserErrorCenter';
 import AppWalkthrough from './components/walkthrough/AppWalkthrough';
 import { MascotFrameProducer } from './features/meet/MascotFrameProducer';
@@ -292,6 +293,12 @@ export function AppShellDesktop() {
   const content = (
     <div ref={scrollRef} className="relative h-full overflow-y-auto">
       <GlobalUpsellBanner />
+      {/* #5324: memory-specific budget warning. Distinct from the banner
+          above — that one sells a plan upgrade, this one steers to the
+          embedding fixes (local Ollama / BYO key) that keep memory growing.
+          Only renders for users whose embeddings actually bill against the
+          managed budget. */}
+      <MemoryEmbeddingBudgetBanner />
       <AppRoutes location={baseLocation} />
       {activeProviderAccount && !accountsOverlayOpen && (
         <div className="absolute inset-0 z-30">

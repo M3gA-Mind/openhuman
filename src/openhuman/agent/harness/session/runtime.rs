@@ -12,12 +12,12 @@ use crate::core::event_bus::{publish_global, DomainEvent};
 use crate::openhuman::agent::dispatcher::ParsedToolCall;
 use crate::openhuman::agent::error::AgentError;
 use crate::openhuman::agent::messages::ConversationMessage;
-use crate::openhuman::agent_tool_policy::ToolPolicyEngine;
 use crate::openhuman::inference::provider::{self, ToolCall};
 use crate::openhuman::memory::Memory;
-use crate::openhuman::prompt_injection::{
+use crate::openhuman::security::prompt_injection::{
     enforce_prompt_input, PromptEnforcementAction, PromptEnforcementContext,
 };
+use crate::openhuman::tools::agent_policy::ToolPolicyEngine;
 use crate::openhuman::tools::{Tool, ToolSpec};
 use crate::openhuman::util::truncate_with_ellipsis;
 use anyhow::Result;
@@ -62,7 +62,7 @@ impl Agent {
     /// parent-context builder to share the parent's provider instance with
     /// spawned sub-agents (so they share connection pools, retry budgets, and
     /// rate-limit state) — issue #4249, Phase 3 / Motion A.
-    pub fn turn_model_source(&self) -> crate::openhuman::tinyagents::TurnModelSource {
+    pub fn turn_model_source(&self) -> crate::openhuman::agent::tinyagents::TurnModelSource {
         self.turn_model_source.clone()
     }
 
@@ -106,6 +106,66 @@ impl Agent {
         Arc::clone(&self.memory)
     }
 
+    /// The full host [`Config`](crate::openhuman::config::Config) this session
+    /// was built with, when it was built through the factory.
+    ///
+    /// `None` on the bare-builder path (`AgentBuilder` without
+    /// `AgentFactory`), which is used by tests and by callers assembling a
+    /// session by hand. Every capability adapter that needs host config treats
+    /// `None` as "not available" rather than loading one itself — see
+    /// [`Self::host_capabilities_available`].
+    pub fn runtime_config(&self) -> Option<Arc<crate::openhuman::config::Config>> {
+        self.runtime_config.clone()
+    }
+
+    /// Whether the config-dependent capability adapters can be built from this
+    /// session.
+    ///
+    /// Four of the ten host capabilities (`BudgetGate`, `ContextComposer`,
+    /// `ModelResolver`, and the policy half of `SecurityGate`) need a full
+    /// `Config`, which only the factory path supplies. This is the one-line
+    /// check a caller uses before reaching for them, so "this session cannot
+    /// answer that" stays distinguishable from "the capability failed" — the
+    /// same absence-versus-failure rule the traits themselves are built on.
+    pub fn host_capabilities_available(&self) -> bool {
+        self.runtime_config.is_some()
+    }
+
+    /// OpenHuman's [`AgentMemory`](tinyagents::harness::host::AgentMemory)
+    /// capability over this session's memory backend.
+    ///
+    /// Built on demand rather than stored: it is a thin adapter over an `Arc`
+    /// the session already holds, so constructing one is a refcount bump, and
+    /// storing it would create a second handle that could drift from
+    /// `self.memory` if the backend were ever swapped.
+    pub fn host_agent_memory(
+        &self,
+    ) -> crate::openhuman::agent::tinyagents::host::OpenHumanAgentMemory {
+        crate::openhuman::agent::tinyagents::host::OpenHumanAgentMemory::new(self.memory_arc())
+    }
+
+    /// OpenHuman's [`ExperienceStore`](tinyagents::harness::host::ExperienceStore)
+    /// capability, scoped to this session's agent profile.
+    ///
+    /// Writes go to this session's own `memory`; recall additionally consults
+    /// `shared_experience_memory` when the session was given one.
+    ///
+    /// That asymmetry mirrors the live turn path in `session/turn/core.rs`. For
+    /// a dedicated-profile session `memory` is the profile-local store and
+    /// `shared_experience_memory` is the global one holding unstamped records
+    /// from pre-profile builds — so reading both is what keeps old experience
+    /// reachable, while writing only to the profile-local store is what keeps
+    /// new records inside the profile subtree.
+    pub fn host_experience_store(
+        &self,
+    ) -> crate::openhuman::agent::tinyagents::host::OpenHumanExperienceStore {
+        crate::openhuman::agent::tinyagents::host::OpenHumanExperienceStore::with_profile(
+            self.memory_arc(),
+            self.active_profile_id.clone(),
+        )
+        .with_shared_recall_memory(self.shared_experience_memory.clone())
+    }
+
     /// The agent's working directory.
     pub fn workspace_dir(&self) -> &std::path::Path {
         &self.workspace_dir
@@ -130,7 +190,7 @@ impl Agent {
     /// Active Composio integrations fetched at session start.
     pub fn connected_integrations(
         &self,
-    ) -> &[crate::openhuman::context::prompt::ConnectedIntegration] {
+    ) -> &[crate::openhuman::agent::context::prompt::ConnectedIntegration] {
         &self.connected_integrations
     }
 
@@ -153,12 +213,14 @@ impl Agent {
     /// fetch result when the agent was built outside the normal turn loop).
     pub fn set_connected_integrations(
         &mut self,
-        integrations: Vec<crate::openhuman::context::prompt::ConnectedIntegration>,
+        integrations: Vec<crate::openhuman::agent::context::prompt::ConnectedIntegration>,
     ) {
         self.connected_integrations = integrations;
         self.connected_integrations_initialized = true;
         self.last_seen_integrations_hash =
-            crate::openhuman::composio::connected_set_hash(&self.connected_integrations);
+            crate::openhuman::integrations::composio::connected_set_hash(
+                &self.connected_integrations,
+            );
     }
 
     /// The agent's runtime config snapshot.
@@ -434,13 +496,30 @@ impl Agent {
             return false;
         }
 
-        let session_raw_dir = self.workspace_dir.join(&self.session_raw_subdir);
+        // The thread's conversation belongs to the THREAD, not the active
+        // profile. Resolve via the cross-dir finder, which scans the shared
+        // `session_raw/` AND every profile-scoped `session_raw-<id>/` for this
+        // exact `thread_id` and returns the NEWEST match. So switching the active
+        // profile mid-thread (e.g. the Quick↔Reasoning toggle) continues the same
+        // conversation even when earlier turns were written under a different
+        // profile's subtree — a dedicated-memory personality, or a profile an
+        // earlier build wrongly scoped (#5351).
+        //
+        // Deliberately NOT own-dir-first (`in_dir(session_raw_subdir).or_else(…)`):
+        // that would let an *older* transcript in the agent's own dir shadow a
+        // *newer* one a sibling scoped dir holds for the same thread — dropping
+        // the most recent turns, and diverging from the transcript view + turn
+        // mirror, which both use this same newest-across-dirs resolver. The own
+        // dir is already included in the scan, so newest-wins is a superset.
+        // Keyed on `thread_id`, so it never bleeds an unrelated session across
+        // profiles; a blank id short-circuits to `None`.
         let Some(path) =
-            super::transcript::find_root_transcript_for_thread_in_dir(&session_raw_dir, thread_id)
+            super::transcript::find_root_transcript_for_thread(&self.workspace_dir, thread_id)
         else {
             log::debug!(
-                "[web-channel] no root session_raw transcript for thread={thread_id} — \
-                 falling back to conversation-log prose seeding"
+                "[web-channel] no root session_raw transcript for thread={thread_id} in any \
+                 (shared or profile-scoped) session_raw dir — falling back to \
+                 conversation-log prose seeding"
             );
             return false;
         };
@@ -497,7 +576,7 @@ impl Agent {
     /// Drain and return memory citations collected for the latest completed turn.
     pub fn take_last_turn_citations(
         &mut self,
-    ) -> Vec<crate::openhuman::agent_memory::memory_loader::MemoryCitation> {
+    ) -> Vec<crate::openhuman::memory::agent::memory_loader::MemoryCitation> {
         std::mem::take(&mut self.last_turn_citations)
     }
 

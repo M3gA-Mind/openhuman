@@ -232,10 +232,29 @@ const en: TranslationMap = {
   'agentWorld.ledger.loadMore': 'Load more',
   'agentWorld.ledger.loadingMore': 'Loading more…',
   'agentWorld.ledger.loadMoreError': 'Could not load more transactions. Try again.',
+  'agentWorld.ledger.filterAsset': 'Asset',
+  'agentWorld.ledger.filterAllAssets': 'All assets',
+  'agentWorld.ledger.direction': 'Direction',
+  'agentWorld.ledger.directionAll': 'All',
+  'agentWorld.ledger.directionIn': 'In',
+  'agentWorld.ledger.directionOut': 'Out',
+  'agentWorld.ledger.copyTxId': 'Copy transaction ID',
+  'agentWorld.ledger.copied': 'Copied',
+  'agentWorld.ledger.noMatch': 'No transactions match these filters.',
+  'agentWorld.ledger.noMatchHint': 'Try widening or clearing the filters.',
   'agentWorld.jobs': 'Jobs',
   'agentWorld.bounties': 'Bounties',
   'agentWorld.explore': 'Explore',
   'agentWorld.directory': 'Directory',
+  'agentWorld.directory.empty': 'No agents found',
+  'agentWorld.directory.emptyHint': 'No agents are registered in the directory yet.',
+  'agentWorld.directory.searchLabel': 'Search agents',
+  'agentWorld.directory.searchPlaceholder': 'Search agents by handle or name',
+  'agentWorld.directory.noResults': 'No agents match your search.',
+  'agentWorld.directory.noResultsHint': 'Try a different handle or name.',
+  'agentWorld.directory.loadMore': 'Load more',
+  'agentWorld.directory.loadingMore': 'Loading…',
+  'agentWorld.directory.loadMoreError': "Couldn't load more agents.",
   'agentWorld.directory.profile.verified': 'Verified',
   'agentWorld.directory.profile.joined': 'Joined',
   'agentWorld.directory.profile.noBio': 'No bio yet.',
@@ -1191,6 +1210,9 @@ const en: TranslationMap = {
   'memoryTree.status.statusError': 'Error',
   'memoryTree.status.statusIdle': 'Idle',
   'memoryTree.status.statusDegraded': 'Degraded',
+  // #5324: a spent embedding budget is a distinct state from a generic error —
+  // memory is paused, not broken, and the fix is the user's to make.
+  'memoryTree.status.statusBudgetExhausted': 'Paused: embedding budget reached',
   'memoryTree.status.never': 'Never',
   // #002: degraded badges + typed remediation strings. The Rust core sends a
   // `remediation_key` (one of memory.health.remediation.*) which the status
@@ -2520,6 +2542,15 @@ const en: TranslationMap = {
   'voice.providers.piperReady': 'Piper is ready.',
   'voice.providers.piperInstallStarted': 'Piper install started',
   'voice.providers.failedToInstallPiper': 'Failed to install Piper',
+  'voice.mode.title': 'Voice mode',
+  'voice.mode.desc': 'Choose how the assistant talks in the Human tab.',
+  'voice.mode.realtime': 'Realtime voice (beta)',
+  'voice.mode.realtimeDesc': 'Stream a live conversation instead of taking turns.',
+  'voice.mode.start': 'Start voice chat',
+  'voice.mode.stop': 'End voice chat',
+  'voice.mode.connecting': 'Connecting…',
+  'voice.mode.listening': 'Listening',
+  'voice.mode.speaking': 'Speaking',
   'voice.providers.title': 'Voice Providers',
   'voice.providers.desc':
     'Choose where transcription and synthesis run. Use the Install locally buttons to download the binaries and models into your workspace. Local providers can be saved before the install finishes: no manual WHISPER_BIN or PIPER_BIN setup required.',
@@ -4741,7 +4772,7 @@ const en: TranslationMap = {
   'flows.copilot.continueBuilding': 'Continue building',
 
   // ── Workflow Canvas (issue B5b.1): the read-only graph view of a saved
-  // flow at /flows/:id. `flows.nodeKind.*` labels the 12 tinyflows node
+  // flow at /flows/:id. `flows.nodeKind.*` labels the 13 tinyflows node
   // kinds (`tinyflows::model::NodeKind`) shown in each canvas node card.
   'flows.canvas.title': 'Workflow',
   'flows.canvas.loading': 'Loading workflow…',
@@ -4766,6 +4797,54 @@ const en: TranslationMap = {
   'flows.nodeKind.transform': 'Transform',
   'flows.nodeKind.output_parser': 'Output parser',
   'flows.nodeKind.sub_workflow': 'Sub-workflow',
+  'flows.nodeKind.memory': 'Memory',
+  'flows.nodeKind.dedup': 'Dedup',
+  'flows.nodeKind.loop': 'Loop',
+
+  // ── describeNode (F-M3): the dynamic per-node card summary text shown on
+  // every canvas node (`FlowNodeComponent`) and in the config drawer header.
+  'flows.nodeSummary.trigger.manual': 'Runs on demand',
+  'flows.nodeSummary.trigger.webhook': 'Runs on an incoming webhook',
+  'flows.nodeSummary.trigger.appEventOn': 'On {parts}',
+  'flows.nodeSummary.trigger.appEvent': 'Runs on an app event',
+  'flows.nodeSummary.trigger.unknownKind': 'Trigger: {kind}',
+  'flows.nodeSummary.agent.defaultModel': 'default model',
+  'flows.nodeSummary.agent.withPrompt': '“{prompt}” · {model}',
+  'flows.nodeSummary.agent.default': 'Asks the {model}',
+  'flows.nodeSummary.toolCall.runsNative': 'Runs {name}',
+  'flows.nodeSummary.toolCall.pickNative': 'Runs an OpenHuman tool (pick one)',
+  'flows.nodeSummary.toolCall.runs': 'Runs {slug}',
+  'flows.nodeSummary.toolCall.pick': 'Runs an app action (pick one)',
+  'flows.nodeSummary.http.withUrl': '{method} {url}',
+  'flows.nodeSummary.http.noUrl': '{method} request (set a URL)',
+  'flows.nodeSummary.code.runs': 'Runs {lang} code',
+  'flows.nodeSummary.condition.withField': 'If {field} → true / false',
+  'flows.nodeSummary.condition.default': 'Branches to true / false',
+  'flows.nodeSummary.switch.byExpr': 'Routes by {expr}',
+  'flows.nodeSummary.switch.byExprWithRoutes': 'Routes by {expr} ({count} routes)',
+  'flows.nodeSummary.switch.byValue': 'Routes by a value',
+  'flows.nodeSummary.switch.byValueWithRoutes': 'Routes by a value ({count} routes)',
+  'flows.nodeSummary.merge': 'Merges parallel branches',
+  'flows.nodeSummary.splitOut.withPath': 'Splits each {path}',
+  'flows.nodeSummary.splitOut.default': 'Splits a list into items',
+  'flows.nodeSummary.transform.default': 'Reshapes each item',
+  'flows.nodeSummary.transform.setFieldsSingular': 'Sets {n} field on each item',
+  'flows.nodeSummary.transform.setFieldsPlural': 'Sets {n} fields on each item',
+  'flows.nodeSummary.outputParser': 'Parses the previous output',
+  'flows.nodeSummary.subWorkflow': 'Runs a nested workflow',
+  'flows.nodeSummary.memory.flavourWith': 'Reads the "{flavour}" flavour',
+  'flows.nodeSummary.memory.flavour': 'Reads a memory flavour',
+  'flows.nodeSummary.memory.people': 'Looks up people memory',
+  'flows.nodeSummary.memory.remember': 'Remembers a value in this workflow',
+  'flows.nodeSummary.memory.forget': 'Forgets a value from this workflow',
+  'flows.nodeSummary.memory.searchScoped': 'Searches memory ({scope})',
+  'flows.nodeSummary.memory.search': 'Searches memory',
+  'flows.nodeSummary.memory.recallScoped': 'Recalls memory ({scope})',
+  'flows.nodeSummary.memory.recall': 'Recalls memory',
+  'flows.nodeSummary.dedup.withKey': 'Skips items already seen by {key}',
+  'flows.nodeSummary.dedup.default': 'Skips items already processed',
+  'flows.nodeSummary.loop.upTo': 'Repeats up to {max} times',
+  'flows.nodeSummary.loop.whileCondition': 'Repeats up to {max} times while {condition}',
 
   // ── Editable Workflow Canvas (issue B5b.2 / Phase 3a): the node palette
   // and editor toolbar layered on top of the read-only canvas above.
@@ -4858,6 +4937,32 @@ const en: TranslationMap = {
   'flows.nodeConfig.trigger.scheduleDays': 'On days (optional: leave empty for every day)',
   'flows.nodeConfig.trigger.scheduleAdvanced': 'Advanced (edit cron)',
   'flows.nodeConfig.trigger.scheduleSimple': 'Back to simple schedule',
+  // ── describeCron / describeEveryMs / describeSchedule (F-M3): the live
+  // plain-language schedule summary shown in `ScheduleField` and the
+  // read-only trigger-node summary for `every`/`at` schedules.
+  'flows.cron.customSchedule': 'Custom schedule ({expr})',
+  'flows.cron.noScheduleSet': 'No schedule set',
+  'flows.cron.weekdays': 'weekdays',
+  'flows.cron.weekends': 'weekends',
+  'flows.cron.everyMinute': 'Every minute',
+  'flows.cron.everyMinuteOnDays': 'Every minute on {days}',
+  'flows.cron.everyNMinutes': 'Every {n} minutes',
+  'flows.cron.everyNMinutesOnDays': 'Every {n} minutes on {days}',
+  'flows.cron.everyHour': 'Every hour',
+  'flows.cron.everyHourOnDays': 'Every hour on {days}',
+  'flows.cron.everyNHours': 'Every {n} hours',
+  'flows.cron.everyNHoursOnDays': 'Every {n} hours on {days}',
+  'flows.cron.everyDayAtTime': 'Every day at {time}',
+  'flows.cron.atTimeOnDays': 'At {time} on {days}',
+  'flows.cron.invalidInterval': 'Invalid interval',
+  'flows.cron.dailyEvery24h': 'Daily (every 24h)',
+  'flows.cron.everyNDays': 'Every {n} days',
+  'flows.cron.everyNHoursShort': 'Every {n}h',
+  'flows.cron.everyNMinutesShort': 'Every {n}m',
+  'flows.cron.everySecond': 'Every second',
+  'flows.cron.everyNSeconds': 'Every {n}s',
+  'flows.cron.onceAtRaw': 'Once at {at}',
+  'flows.cron.onceAt': 'Once at {at}',
   'flows.nodeConfig.trigger.toolkitLabel': 'App',
   'flows.nodeConfig.trigger.triggerSlugLabel': 'Trigger',
   'flows.nodeConfig.trigger.pickApp': 'Pick a connected app first.',
@@ -4917,10 +5022,73 @@ const en: TranslationMap = {
   'flows.nodeConfig.code.language_javascript': 'JavaScript',
   'flows.nodeConfig.code.language_python': 'Python',
   'flows.nodeConfig.code.sourceLabel': 'Source',
+  // `memory` node (issue #5226): recall/search/flavour/people read; remember/forget write.
+  'flows.nodeConfig.memory.operationLabel': 'Operation',
+  'flows.nodeConfig.memory.operation_recall': 'Recall',
+  'flows.nodeConfig.memory.operation_search': 'Search',
+  'flows.nodeConfig.memory.operation_flavour': 'Flavour',
+  'flows.nodeConfig.memory.operation_people': 'People',
+  'flows.nodeConfig.memory.operation_remember': 'Remember',
+  'flows.nodeConfig.memory.operation_forget': 'Forget',
+  'flows.nodeConfig.memory.scopeLabel': 'Scope',
+  'flows.nodeConfig.memory.scopeHint': 'Where to look for this memory.',
+  'flows.nodeConfig.memory.scopeWriteHint':
+    'Writes are only allowed within this workflow, never to your personal memory.',
+  'flows.nodeConfig.memory.scope_user': 'You (read-only)',
+  'flows.nodeConfig.memory.scope_flow': 'This workflow',
+  'flows.nodeConfig.memory.scope_flows': 'All workflows (read-only)',
+  'flows.nodeConfig.memory.queryLabel': 'Query',
+  'flows.nodeConfig.memory.queryOptionalHint': 'Optional: narrows the people lookup.',
+  'flows.nodeConfig.memory.flavourLabel': 'Flavour',
+  'flows.nodeConfig.memory.flavourHint': 'Which persona facet to read, e.g. communication.',
+  'flows.nodeConfig.memory.flavour_communication': 'Communication',
+  'flows.nodeConfig.memory.flavour_coding_style': 'Coding style',
+  'flows.nodeConfig.memory.flavour_stack': 'Stack',
+  'flows.nodeConfig.memory.flavour_workflow': 'Workflow',
+  'flows.nodeConfig.memory.flavour_environment': 'Environment',
+  'flows.nodeConfig.memory.flavour_directives': 'Directives',
+  'flows.nodeConfig.memory.flavour_anti_preferences': 'Anti-preferences',
+  'flows.nodeConfig.memory.keyLabel': 'Key',
+  'flows.nodeConfig.memory.valueLabel': 'Value',
+  'flows.nodeConfig.memory.limitLabel': 'Limit',
+  'flows.nodeConfig.memory.limitHint': 'Maximum number of results.',
+  'flows.nodeConfig.memory.minScoreLabel': 'Minimum score',
+  'flows.nodeConfig.memory.minScoreHint': 'Relevance threshold from 0 to 1.',
+  // `dedup` node (issue #5263): skips items already seen by a stable per-item key.
+  'flows.nodeConfig.dedup.keyLabel': 'Key',
+  'flows.nodeConfig.dedup.keyHint':
+    'A stable per-item id expression, e.g. =item.id. Items with a key already seen are skipped.',
+
+  // `loop` node: a bounded loop head. Emits on `body` until its cap or
+  // condition says stop, then on `done`.
+  'flows.nodeConfig.loop.maxIterationsLabel': 'Max iterations',
+  'flows.nodeConfig.loop.maxIterationsHint':
+    'How many times the body may run before the loop stops. Always finite.',
+  'flows.nodeConfig.loop.onExceededLabel': 'When the cap is reached',
+  'flows.nodeConfig.loop.onExceededHint':
+    "Fail the run, or stop looping and continue through the done port with the last pass's items.",
+  'flows.nodeConfig.loop.onExceeded_error': 'Fail the run',
+  'flows.nodeConfig.loop.onExceeded_continue': 'Continue with partial results',
+  'flows.nodeConfig.loop.conditionLabel': 'Continue while',
+  'flows.nodeConfig.loop.conditionHint':
+    'Optional. While this resolves truthy the loop continues; the first falsey result exits through the done port.',
 
   // Phase 4a "New workflow" chooser + Phase 4c templates gallery. The chooser
   // offers scratch / template / describe; the gallery lists the curated
   // `WorkflowGraph` templates bundled under `lib/flows/templates/`.
+  // ── Save+enable pre-authorization card (consolidated Approve all / Deny)
+  'flows.enableApproval.title': 'Allow this workflow to act?',
+  'flows.enableApproval.intro':
+    'This workflow needs your permission for the actions below. Approving applies to this workflow only.',
+  'flows.enableApproval.approveAll': 'Approve all',
+  'flows.enableApproval.deny': 'Deny',
+  'flows.enableApproval.enableAnyway': 'Enable anyway',
+  'flows.enableApproval.granting': 'Approving…',
+  'flows.enableApproval.error': 'Could not save the approvals. Please try again.',
+  'flows.enableApproval.blockedHint': 'Blocked by your agent access settings.',
+  'flows.enableApproval.dynamicHint': 'Chosen while the workflow runs; it will ask you if needed.',
+  'flows.enableApproval.agentHint': 'This AI step may ask separately for its own actions.',
+  'flows.enableApproval.deniedDisabled': 'Saved, but the workflow was left turned off.',
   'flows.chooser.title': 'Create a workflow',
   'flows.chooser.subtitle': 'Choose how you want to start.',
   'flows.chooser.scratchTitle': 'Start from scratch',
@@ -5172,6 +5340,8 @@ const en: TranslationMap = {
   'settings.ai.claudeCode.signInUnknown': 'Sign-in state unknown',
   'settings.ai.claudeCode.connectedNotSignedIn': 'Connected · not signed in',
   'settings.ai.claudeCode.modalTitle': 'Claude Code CLI',
+  'settings.ai.claudeCode.modelHelp':
+    'A model id the claude CLI accepts: an alias (sonnet, opus) or a full name (claude-sonnet-4-5). It is passed verbatim to claude --model, so marketing strings like sonnet-4-5 are rejected.',
   'settings.ai.claudeCode.modalDescription':
     "Routes chat, agentic and reasoning workloads through your locally-installed Claude Code CLI. No API key: it uses the CLI's own login.",
   'settings.ai.claudeCode.close': 'Close',
@@ -5293,6 +5463,22 @@ const en: TranslationMap = {
   'settings.ai.modelIdPlaceholderForProvider': '{slug} model id',
   'settings.ai.modelIdPlaceholder': 'model-id',
   'settings.ai.selectModel': 'Select a model...',
+  'settings.ai.deploymentNameLabel': 'Deployment name',
+  'settings.ai.deploymentNamePlaceholder': 'my-gpt-deployment',
+  'settings.ai.deploymentNameHelp':
+    'Enter the deployment name you set in Azure AI Foundry. This is not the model ID.',
+  'settings.ai.deploymentNameLegacyHint':
+    'This matches a base model ID from the provider catalog. Azure routes by deployment name, so confirm this is the name you gave your deployment.',
+  'settings.ai.deploymentNameProviderHint':
+    'Azure endpoint detected. Set your deployment name in the model field after choosing this provider.',
+  'settings.ai.chooseModelFromList': 'Choose from list',
+  'settings.ai.enterModelIdManuallyAction': 'Enter model ID manually',
+  'settings.ai.enterDeploymentNameManuallyAction': 'Enter deployment name manually',
+  'settings.ai.probeFailedHint':
+    'We could not read this provider’s model list. That list only fills the dropdown, so you can still add the provider and type the model or deployment name yourself.',
+  'settings.ai.probeFailedAddAnyway': 'Add without verifying',
+  'settings.ai.azureV1EndpointHint':
+    'For Azure, use the v1 base URL: https://YOUR-RESOURCE.openai.azure.com/openai/v1. The older resource URL does not serve a model list and expects a different auth header.',
   'settings.ai.temperatureOverride': 'Temperature override',
   'settings.ai.temperatureOverrideSlider': 'Temperature override (slider)',
   'settings.ai.temperatureOverrideValue': 'Temperature override (value)',
@@ -5302,6 +5488,20 @@ const en: TranslationMap = {
   'settings.ai.modelVisionDesc':
     'Enable if this model accepts images. Lets the chat composer attach images when this model is selected.',
   'settings.ai.testFailed': 'Test failed',
+  'settings.ai.providerTest.authRejected':
+    "The key was saved, but '{slug}' rejected it. Check that you pasted the whole key and that it is still active in the provider's dashboard.",
+  'settings.ai.providerTest.modelNotRecognized':
+    "The key was saved and accepted, but '{slug}' does not recognise the selected model. Pick a model id this provider actually serves (its default model is set on the provider entry).",
+  'settings.ai.providerTest.quotaOrBilling':
+    "The key was saved and accepted, but '{slug}' refused the request for quota or billing reasons. Check your account balance and rate limits with the provider.",
+  'settings.ai.providerTest.endpointNotFound':
+    "The key was saved, but the configured endpoint for '{slug}' returned 404. Check the base URL: an OpenAI-compatible provider usually needs the '/v1' suffix (e.g. https://api.openai.com/v1).",
+  'settings.ai.providerTest.timeout':
+    "The key was saved, but '{slug}' did not respond in time. Check the endpoint URL and your network, then test again.",
+  'settings.ai.providerTest.emptyReply':
+    "The key was saved, but '{slug}' returned an empty response to a test prompt. Check the model id configured for this provider.",
+  'settings.ai.providerTest.unknown':
+    "The key was saved, but a test call to '{slug}' failed. Check the provider's status page and the endpoint URL, then test again.",
   'settings.ai.testingModel': 'Testing model...',
   'settings.ai.modelResponse': 'Model response',
   'settings.ai.providerWithValue': 'Provider: {value}',
@@ -7361,6 +7561,7 @@ const en: TranslationMap = {
   'userErrors.dismiss': 'Dismiss',
   'userErrors.action.openBilling': 'Open billing',
   'userErrors.action.openProviderSettings': 'Provider settings',
+  'userErrors.action.openEmbeddingsSettings': 'Set up embeddings',
   'userErrors.budgetExceeded.title': 'Managed budget reached',
   'userErrors.budgetExceeded.body':
     'Your managed AI budget is used up. Add budget or change your plan to continue.',
@@ -7370,13 +7571,37 @@ const en: TranslationMap = {
   'userErrors.apiKeyMissing.title': 'API key required',
   'userErrors.apiKeyMissing.body':
     'Your AI provider has no API key set. Add one in provider settings to continue.',
+  'userErrors.memoryBudgetExhausted.title': 'Memory has stopped growing',
+  'userErrors.memoryBudgetExhausted.body':
+    'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
+  'userErrors.localModelUnavailable.title': 'Local model unavailable',
+  'userErrors.localModelUnavailable.body':
+    'Ollama is not reachable at the configured endpoint, or the required model is not installed there. Start Ollama and pull the model at that endpoint, or switch this workload to a cloud provider.',
   'userErrors.scope.chat': 'Chat',
   'userErrors.scope.cron': 'Scheduled job',
+  'userErrors.scope.workspace': 'Workspace',
+  'userErrors.scope.memory': 'Memory',
+
+  // Memory embedding budget banners (#5324)
+  'memoryBudget.approachingTitle': 'Memory is approaching its embedding limit',
+  'memoryBudget.approachingMessage':
+    "You've used {pct}% of your embedding budget. Set up local embeddings or add your own API key to keep building memory without interruption.",
+  'memoryBudget.exhaustedTitle': 'Memory has stopped growing',
+  'memoryBudget.exhaustedMessage':
+    'Your embedding budget is used up, so new content is no longer being added to memory. Set up local embeddings or add your own API key to resume.',
+  'memoryBudget.cta': 'Set up embeddings',
   'memorySources.codingSessions.title': 'Coding-agent sessions',
   'memorySources.codingSessions.description':
     'Turn your Codex and Claude Code decisions and corrections into private persona memory.',
-  'memorySources.codingSessions.ingest': 'Ingest new sessions',
-  'memorySources.codingSessions.ingesting': 'Ingesting…',
+  'memorySources.codingSessions.importAll': 'Import all sessions',
+  'memorySources.codingSessions.draining': 'Importing… pass {passes}',
+  'memorySources.codingSessions.stop': 'Stop',
+  'memorySources.codingSessions.progress':
+    '{processed} sessions imported · {observations} observations',
+  'memorySources.codingSessions.remaining': 'about {remaining} left',
+  'memorySources.codingSessions.stopped': 'Import paused',
+  'memorySources.codingSessions.stoppedMessage':
+    'Imported {processed} sessions. Run import again to continue the remaining {remaining}.',
   'memorySources.codingSessions.claude': 'Claude Code',
   'memorySources.codingSessions.codex': 'Codex',
   'memorySources.codingSessions.counts': '{files} sessions · {evidence} human turns',
@@ -7388,9 +7613,10 @@ const en: TranslationMap = {
     '{processed} sessions produced {observations} persona observations.',
   'memorySources.codingSessions.partialFailure':
     '{failed} sessions failed while {processed} were processed. Run ingestion again to retry them.',
-  'memorySources.codingSessions.moreRemaining':
-    'The session batch limit was reached. Run ingestion again to continue importing your history.',
   'memorySources.codingSessions.failed': 'Coding-session ingestion failed',
+  'notifications.configRecovered.title': 'Settings file recovered',
+  'notifications.configRecovered.body':
+    'Your settings file could not be read, so it was restored from a backup or reset to defaults. The unreadable file was kept with a ".corrupted" suffix in case you need it.',
 };
 
 export default en;

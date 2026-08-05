@@ -36,8 +36,8 @@ use crate::openhuman::agent::harness::agent_graph::{
 use crate::openhuman::agent::harness::subagent_runner::types::SubagentRunError;
 use crate::openhuman::agent::messages::{ChatMessage, ConversationMessage};
 use crate::openhuman::agent::progress::AgentProgress;
-use crate::openhuman::tinyagents::{run_turn_via_tinyagents_shared, SubagentScope};
-use crate::openhuman::tokenjuice::AgentTokenjuiceCompression;
+use crate::openhuman::agent::tinyagents::{run_turn_via_tinyagents_shared, SubagentScope};
+use crate::openhuman::inference::tokenjuice::AgentTokenjuiceCompression;
 use crate::openhuman::tools::{Tool, ToolSpec};
 use tinyagents::harness::workspace::WorkspaceDescriptor;
 
@@ -82,6 +82,7 @@ pub(crate) async fn run_agent_turn_request_via_default_graph(
         provider_label,
         handoff_cache,
         tokenjuice_compression,
+        config,
     } = req;
 
     let (output, iterations, usage, early_exit_tool, hit_cap, breaker_halt) =
@@ -109,6 +110,7 @@ pub(crate) async fn run_agent_turn_request_via_default_graph(
             &provider_label,
             handoff_cache,
             tokenjuice_compression,
+            config.as_deref(),
         )
         .await?;
 
@@ -134,7 +136,7 @@ pub(crate) async fn run_agent_turn_request_via_default_graph(
 /// (the caller surfaces this as `SubagentRunStatus::Incomplete`, #4096).
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_subagent_via_graph(
-    source: crate::openhuman::tinyagents::TurnModelSource,
+    source: crate::openhuman::agent::tinyagents::TurnModelSource,
     model: &str,
     temperature: f64,
     history: &mut Vec<ChatMessage>,
@@ -171,6 +173,11 @@ pub(super) async fn run_subagent_via_graph(
     // tool outputs get the same content-aware compaction the chat path applies
     // instead of a blunt byte-cap truncation.
     tokenjuice_compression: AgentTokenjuiceCompression,
+    // Host config for the `[context]` middleware knobs. Passed in rather than
+    // loaded here (plan-agents Phase 3): this function is slated to move into
+    // TinyAgents, where there is no config file. `None` yields the safe
+    // byte-cap-only defaults.
+    config: Option<&crate::openhuman::config::Config>,
 ) -> Result<
     (
         String,
@@ -250,7 +257,7 @@ pub(super) async fn run_subagent_via_graph(
     // content-aware TokenJuice compaction the definition asked for. Honor the
     // `[context]` enabled / autocompact opt-outs, microcompact keep-recent, and
     // per-result byte budget too, so a sub-agent turn compacts like a chat turn.
-    let context_mw = build_subagent_context_mw(tokenjuice_compression).await;
+    let context_mw = build_subagent_context_mw(tokenjuice_compression, config);
 
     // Live transcript snapshot sink (#4466): the harness owns the working message
     // vector and drops it on a mid-run `Err`, so a failed sub-agent run used to
@@ -258,7 +265,7 @@ pub(super) async fn run_subagent_via_graph(
     // worker thread. Attach a snapshot middleware that mirrors each `before_model`
     // request's transcript here, so the error path below can still persist the
     // rounds that completed before the failure.
-    let transcript_snapshot: crate::openhuman::tinyagents::TranscriptSnapshotSink =
+    let transcript_snapshot: crate::openhuman::agent::tinyagents::TranscriptSnapshotSink =
         std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
 
     // A sub-agent turn runs *nested inside* the parent agent's turn (parent
@@ -311,7 +318,7 @@ pub(super) async fn run_subagent_via_graph(
         {
             let mut mw = context_mw;
             if let Some(cache) = handoff_cache {
-                mw.handoff = Some(crate::openhuman::tinyagents::HandoffConfig {
+                mw.handoff = Some(crate::openhuman::agent::tinyagents::HandoffConfig {
                     cache,
                     agent_id: agent_id.to_string(),
                     task_id: task_id.to_string(),
@@ -435,7 +442,7 @@ pub(super) async fn run_subagent_via_graph(
                         if u.charged_amount_usd.is_finite() && u.charged_amount_usd > 0.0 {
                             u.charged_amount_usd
                         } else {
-                            crate::openhuman::cost::catalog::estimate_cost_usd(
+                            crate::openhuman::platform::cost::catalog::estimate_cost_usd(
                                 model,
                                 u.input_tokens,
                                 u.output_tokens,
@@ -443,7 +450,7 @@ pub(super) async fn run_subagent_via_graph(
                             )
                         };
                     usage.charged_amount_usd += call_cost;
-                    crate::openhuman::cost::record_provider_usage(
+                    crate::openhuman::platform::cost::record_provider_usage(
                         model,
                         &crate::openhuman::inference::provider::UsageInfo {
                             input_tokens: u.input_tokens,
@@ -550,15 +557,16 @@ pub(super) async fn run_subagent_via_graph(
 /// [`TurnContextMiddleware::defaults`] when the config can't be loaded so a
 /// config glitch degrades to the safe (byte-cap-only) behavior rather than
 /// erroring the run.
-async fn build_subagent_context_mw(
+fn build_subagent_context_mw(
     tokenjuice_compression: AgentTokenjuiceCompression,
-) -> crate::openhuman::tinyagents::TurnContextMiddleware {
-    let mut mw = crate::openhuman::tinyagents::TurnContextMiddleware::defaults();
+    config: Option<&crate::openhuman::config::Config>,
+) -> crate::openhuman::agent::tinyagents::TurnContextMiddleware {
+    let mut mw = crate::openhuman::agent::tinyagents::TurnContextMiddleware::defaults();
     // Always thread the agent's compression profile — even on the config-default
     // path — so the definition's TokenJuice choice is honored.
     mw.tokenjuice_compression = tokenjuice_compression;
-    match crate::openhuman::config::Config::load_or_init().await {
-        Ok(config) => {
+    match config {
+        Some(config) => {
             let ctx = &config.context;
             // TokenJuice content-aware compaction gates on the same master
             // `[context].compaction_enabled` the chat path reads
@@ -583,10 +591,9 @@ async fn build_subagent_context_mw(
                 "[subagent_runner:graph] built sub-agent context middleware from config (#4466)"
             );
         }
-        Err(err) => {
+        None => {
             tracing::debug!(
-                error = %err,
-                "[subagent_runner:graph] config load failed building sub-agent context mw; using defaults + compression profile"
+                "[subagent_runner:graph] no config available building sub-agent context mw; using defaults + compression profile"
             );
         }
     }
@@ -661,7 +668,7 @@ fn persist_subagent_transcript(
         output_tokens: usage.output_tokens,
         cached_input_tokens: usage.cached_input_tokens,
         charged_amount_usd: usage.charged_amount_usd,
-        thread_id: crate::openhuman::tinyagents::thread_context::current_thread_id(),
+        thread_id: crate::openhuman::agent::tinyagents::thread_context::current_thread_id(),
         task_id: Some(task_id.to_string()),
     };
     if let Err(err) = transcript::write_transcript(&path, history, &meta, Some(&turn_usage)) {
@@ -727,7 +734,7 @@ fn persist_failed_run(
     }
 }
 
-/// Append a worker-thread [`StoredMessage`](crate::openhuman::memory_conversations::ConversationMessage)
+/// Append a worker-thread [`StoredMessage`](crate::openhuman::memory::conversations::ConversationMessage)
 /// with the restored legacy [`SubagentObserver`] metadata (#4466): `scope`,
 /// `agent_id`, `task_id`, plus the per-message `iteration`, `final`, `mode`, and
 /// (for assistant tool rounds / tool results) `tool_calls` / `tool_call_id` /
@@ -743,7 +750,7 @@ fn append_worker_message(
     sender: &str,
     metadata: serde_json::Value,
 ) {
-    use crate::openhuman::memory_conversations::{
+    use crate::openhuman::memory::conversations::{
         append_message, ConversationMessage as StoredMessage,
     };
     let mut extra = serde_json::json!({
@@ -950,7 +957,7 @@ fn mirror_worker_thread_from_history(
 /// every call succeeded.
 fn build_cap_digest(
     conversation: &[ConversationMessage],
-    tool_outcomes: &[crate::openhuman::tinyagents::ToolCallOutcome],
+    tool_outcomes: &[crate::openhuman::agent::tinyagents::ToolCallOutcome],
 ) -> String {
     use std::collections::HashMap;
     use std::fmt::Write as _;
@@ -1086,7 +1093,7 @@ mod tests {
         let mut history = vec![ChatMessage::user("please echo hi")];
 
         let (output, iterations, usage, early_exit, hit_cap, _breaker) = run_subagent_via_graph(
-            crate::openhuman::tinyagents::TurnModelSource::from_model(provider),
+            crate::openhuman::agent::tinyagents::TurnModelSource::from_model(provider),
             "mock-model",
             0.0,
             &mut history,
@@ -1109,6 +1116,10 @@ mod tests {
             "mock-channel",
             None,
             AgentTokenjuiceCompression::Off,
+            // No host config in tests: the graph takes byte-cap-only
+            // context defaults instead of reading the developer machine's
+            // real config.toml, which is what the old in-graph load did.
+            None,
         )
         .await
         .expect("graph subagent runs");
@@ -1167,7 +1178,7 @@ mod tests {
         let mut history = vec![ChatMessage::user("hi")];
 
         let (output, _iters, _usage, _early, _hit_cap, _breaker) = run_subagent_via_graph(
-            crate::openhuman::tinyagents::TurnModelSource::from_model(Arc::new(
+            crate::openhuman::agent::tinyagents::TurnModelSource::from_model(Arc::new(
                 ThinkingStreamProvider,
             )),
             "mock-model",
@@ -1192,6 +1203,10 @@ mod tests {
             "mock-channel",
             None,
             AgentTokenjuiceCompression::Off,
+            // No host config in tests: the graph takes byte-cap-only
+            // context defaults instead of reading the developer machine's
+            // real config.toml, which is what the old in-graph load did.
+            None,
         )
         .await
         .expect("child-delta subagent runs");
@@ -1300,7 +1315,7 @@ mod tests {
         let mut history = vec![ChatMessage::user("help me")];
 
         let (output, iterations, _usage, early_exit, _hit_cap, _breaker) = run_subagent_via_graph(
-            crate::openhuman::tinyagents::TurnModelSource::from_model(provider.clone()),
+            crate::openhuman::agent::tinyagents::TurnModelSource::from_model(provider.clone()),
             "mock-model",
             0.0,
             &mut history,
@@ -1323,6 +1338,10 @@ mod tests {
             "mock-channel",
             None,
             AgentTokenjuiceCompression::Off,
+            // No host config in tests: the graph takes byte-cap-only
+            // context defaults instead of reading the developer machine's
+            // real config.toml, which is what the old in-graph load did.
+            None,
         )
         .await
         .expect("ask-clarification subagent runs");
@@ -1387,7 +1406,7 @@ mod tests {
         let mut history = vec![ChatMessage::user("do a big task")];
 
         let (output, iterations, _usage, early_exit, hit_cap, _breaker) = run_subagent_via_graph(
-            crate::openhuman::tinyagents::TurnModelSource::from_model(Arc::new(
+            crate::openhuman::agent::tinyagents::TurnModelSource::from_model(Arc::new(
                 LoopForeverProvider,
             )),
             "mock-model",
@@ -1412,6 +1431,10 @@ mod tests {
             "mock-channel",
             None,
             AgentTokenjuiceCompression::Off,
+            // No host config in tests: the graph takes byte-cap-only
+            // context defaults instead of reading the developer machine's
+            // real config.toml, which is what the old in-graph load did.
+            None,
         )
         .await
         .expect("cap-hit subagent runs");

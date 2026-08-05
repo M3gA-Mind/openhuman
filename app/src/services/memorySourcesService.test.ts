@@ -4,6 +4,8 @@ import { callCoreRpc } from './coreRpcClient';
 import {
   addMemorySource,
   applyAllIn,
+  type CodingSessionDrainProgress,
+  drainCodingSessions,
   getCodingSessionStatus,
   ingestCodingSessions,
   listMemorySources,
@@ -234,5 +236,73 @@ describe('memorySourcesService', () => {
       timeoutMs: 585_000,
     });
     expect(result.sessions_processed).toBe(2);
+  });
+
+  const ingestResult = (over: Partial<Record<string, number | boolean>> = {}) =>
+    ({
+      result: {
+        mode: 'incremental',
+        files_seen: 40,
+        sessions_processed: 15,
+        sessions_skipped: 0,
+        sessions_failed: 0,
+        evidence_units: 30,
+        observations: 20,
+        budget_hit: true,
+        ...over,
+      },
+      logs: [],
+    }) as never;
+
+  it('drains across bounded passes until the backlog reports no more budget', async () => {
+    // Two budget-hit passes, then a final pass that clears the backlog.
+    mockedCall
+      .mockResolvedValueOnce(ingestResult({ sessions_skipped: 0, budget_hit: true }))
+      .mockResolvedValueOnce(ingestResult({ sessions_skipped: 15, budget_hit: true }))
+      .mockResolvedValueOnce(
+        ingestResult({ sessions_processed: 10, sessions_skipped: 30, budget_hit: false })
+      );
+
+    const seen: CodingSessionDrainProgress[] = [];
+    const result = await drainCodingSessions({ onProgress: p => seen.push(p) });
+
+    expect(mockedCall).toHaveBeenCalledTimes(3);
+    // Every pass stays bounded to the timeout-safe per-call maximum.
+    expect(mockedCall).toHaveBeenLastCalledWith(
+      expect.objectContaining({ params: { backfill: false, max_sessions: 15 } })
+    );
+    expect(result.passes).toBe(3);
+    expect(result.sessionsProcessed).toBe(40); // 15 + 15 + 10
+    expect(result.observations).toBe(60); // 20 * 3
+    expect(result.moreRemaining).toBe(false);
+    expect(seen).toHaveLength(3);
+  });
+
+  it('stops before a pass when shouldStop is asserted', async () => {
+    mockedCall.mockResolvedValue(ingestResult({ budget_hit: true }));
+    let calls = 0;
+
+    const result = await drainCodingSessions({
+      // Allow one pass, then request a stop before the next.
+      shouldStop: () => calls++ >= 1,
+    });
+
+    expect(mockedCall).toHaveBeenCalledTimes(1);
+    expect(result.passes).toBe(1);
+    expect(result.moreRemaining).toBe(true);
+  });
+
+  it('stops when a budget-hit pass makes no forward progress', async () => {
+    // Backlog still reports budget_hit, but nothing new is distilled — avoid an
+    // infinite loop on sessions that only ever fail.
+    mockedCall.mockResolvedValue(
+      ingestResult({ sessions_processed: 0, sessions_failed: 3, budget_hit: true })
+    );
+
+    const result = await drainCodingSessions();
+
+    expect(mockedCall).toHaveBeenCalledTimes(1);
+    expect(result.sessionsFailed).toBe(3);
+    expect(result.moreRemaining).toBe(true);
   });
 });

@@ -65,6 +65,14 @@ interface AppStateSnapshotResult {
    * gracefully — the daemon store simply isn't refreshed from those.
    */
   health?: RawHealthSnapshot;
+  /**
+   * `true` when the core recovered a corrupted `config.toml` this session — the
+   * on-disk settings were unreadable/unparseable, so the file was renamed to
+   * `.corrupted.<ts>` and reset to defaults (#5167). Latched at boot so it stays
+   * reported after the file is healed. Optional so older cores that omit it
+   * degrade to "no recovery". `CoreStateProvider` raises a one-shot notice.
+   */
+  configRecovered?: boolean;
 }
 
 /** Raw (snake_case) health payload embedded in the app-state snapshot. */
@@ -78,7 +86,7 @@ interface RawHealthSnapshot {
       status: string;
       updated_at: string;
       // Rust serializes absent `Option<String>` as `null` (no skip attribute),
-      // so match `src/openhuman/health/core.rs` — not `string | undefined`.
+      // so match `src/openhuman/platform/health/core.rs` — not `string | undefined`.
       last_ok?: string | null;
       last_error?: string | null;
       restart_count: number;

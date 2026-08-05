@@ -38,6 +38,62 @@ fn write_and_clear_active_user_roundtrip() {
 }
 
 #[test]
+fn read_active_user_checked_returns_none_when_no_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    assert!(read_active_user_id_checked(tmp.path()).unwrap().is_none());
+}
+
+#[test]
+fn read_active_user_checked_returns_none_when_empty() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join(ACTIVE_USER_STATE_FILE), "").unwrap();
+    assert!(read_active_user_id_checked(tmp.path()).unwrap().is_none());
+}
+
+#[test]
+fn read_active_user_checked_returns_id_when_present() {
+    let tmp = tempfile::tempdir().unwrap();
+    write_active_user_id(tmp.path(), "user-checked").unwrap();
+    assert_eq!(
+        read_active_user_id_checked(tmp.path()).unwrap(),
+        Some("user-checked".to_string())
+    );
+}
+
+#[test]
+fn read_active_user_checked_errors_when_marker_unreadable() {
+    // A marker that EXISTS but cannot be read as a file (here: a directory at
+    // the marker path) must surface an error rather than being laundered into
+    // "signed out". Otherwise a returning user is silently downgraded to the
+    // pre-login profile and their data under users/<id> is orphaned (#5334).
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(ACTIVE_USER_STATE_FILE)).unwrap();
+    assert!(read_active_user_id_checked(tmp.path()).is_err());
+
+    // The best-effort wrapper still collapses to `None` for hint-only callers.
+    assert!(read_active_user_id(tmp.path()).is_none());
+}
+
+#[tokio::test]
+async fn resolve_dirs_errors_instead_of_pre_login_when_marker_unreadable() {
+    // End-to-end: an unreadable active_user.toml must make directory
+    // resolution FAIL rather than silently resolve to users/local — the path
+    // that presents a signed-in user with a fresh, empty profile (#5334).
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join(ACTIVE_USER_STATE_FILE)).unwrap();
+
+    let default_workspace = root.join("workspace");
+    let result =
+        resolve_runtime_config_dirs_with(root, &default_workspace, &MapEnv::default()).await;
+
+    assert!(
+        result.is_err(),
+        "unreadable marker must not silently fall back to the pre-login profile"
+    );
+}
+
+#[test]
 fn user_openhuman_dir_builds_correct_path() {
     let root = PathBuf::from("/home/test/.openhuman");
     let dir = user_openhuman_dir(&root, "user-123");
@@ -87,6 +143,14 @@ fn pre_login_user_dir_is_under_users_tree() {
 
 #[test]
 fn default_root_dir_name_uses_staging_suffix_for_staging_env() {
+    // APP_ENV is process-global and `default_root_dir_name()` reads it on every
+    // call, so flipping it here races any concurrent test that resolves the root
+    // openhuman dir (e.g. the credentials active-session guard, which silently
+    // stops finding `active_user.toml` once the root becomes `.openhuman-staging`).
+    // Take the same lock those tests hold.
+    let _env_guard = crate::openhuman::config::TEST_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let prior = std::env::var(crate::api::config::APP_ENV_VAR).ok();
 
     std::env::set_var(crate::api::config::APP_ENV_VAR, "staging");
@@ -1125,7 +1189,7 @@ fn env_overlay_context_tool_result_budget_env_suppresses_legacy_migration() {
     // migration must NOT run — even when the explicit env value equals
     // the default. This protects users who explicitly set the env to
     // the default.
-    let default_budget = crate::openhuman::context::DEFAULT_TOOL_RESULT_BUDGET_BYTES;
+    let default_budget = crate::openhuman::agent::context::DEFAULT_TOOL_RESULT_BUDGET_BYTES;
     let mut cfg = Config::default();
     cfg.context.tool_result_budget_bytes = default_budget;
     cfg.agent.tool_result_budget_bytes = 999_999;
@@ -1192,7 +1256,7 @@ fn env_overlay_super_context_default_off_and_toggle() {
 #[test]
 fn env_overlay_context_tool_result_budget_legacy_migration_when_env_absent() {
     // Env absent, context at default, agent customised → agent value copies forward.
-    let default_budget = crate::openhuman::context::DEFAULT_TOOL_RESULT_BUDGET_BYTES;
+    let default_budget = crate::openhuman::agent::context::DEFAULT_TOOL_RESULT_BUDGET_BYTES;
     let mut cfg = Config::default();
     cfg.context.tool_result_budget_bytes = default_budget;
     cfg.agent.tool_result_budget_bytes = 777_777;
@@ -1696,6 +1760,10 @@ default_temperature = 0.7
         Some("gpt-valid"),
         "valid config must load normally without recovery"
     );
+    assert!(
+        !config.recovered_from_corruption,
+        "a valid config must not set the recovery flag"
+    );
 }
 
 #[tokio::test]
@@ -1885,6 +1953,13 @@ async fn load_or_init_recovers_from_non_utf8_config() {
         "must load defaults from non-UTF-8 config"
     );
 
+    // The runtime recovery flag must be set so the boot path can surface a
+    // user-visible notice (#5167).
+    assert!(
+        config.recovered_from_corruption,
+        "recovered_from_corruption must be set after non-UTF-8 recovery"
+    );
+
     // The original binary file should have been renamed to .corrupted.<ts>.
     let dir = std::fs::read_dir(root).unwrap();
     let mut found_corrupted = false;
@@ -2018,6 +2093,32 @@ default_temperature = 0.7
     assert!(
         bak_contents.contains("preserve-backup-test"),
         "backup content must be preserved: {bak_contents}"
+    );
+}
+
+#[tokio::test]
+async fn load_from_config_path_sets_recovery_flag_on_non_utf8() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let workspace = root.join("workspace");
+
+    // The snapshot-reload path (`load_from_config_path`) must set the per-load
+    // recovery flag on the returned `Config`. This test asserts only that flag;
+    // the surfacing itself is wired one layer up in `app_state_snapshot`, which
+    // latches this flag on every poll (see `desktop::app_state::recovery_signal`
+    // and its `latch_from_config` call in `snapshot`), so a long-lived runtime
+    // that reloads a since-corrupted config does surface the notice (#5167).
+    let config_path = root.join("config.toml");
+    let binary_bytes: Vec<u8> = vec![0xff, 0xfe, 0x00, 0x01, 0x02];
+    write_binary(&config_path, &binary_bytes).await;
+
+    let config = Config::load_from_config_path(&config_path, &workspace)
+        .await
+        .expect("load_from_config_path must recover, not error");
+
+    assert!(
+        config.recovered_from_corruption,
+        "load_from_config_path must set the recovery flag on non-UTF-8 content"
     );
 }
 

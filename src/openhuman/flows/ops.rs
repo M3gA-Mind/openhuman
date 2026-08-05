@@ -8,14 +8,11 @@ use std::sync::{Arc, LazyLock};
 
 use chrono::Utc;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use tinyflows::model::{NodeKind, TriggerKind, WorkflowGraph};
 use tokio_util::sync::CancellationToken;
 
 use crate::openhuman::agent::turn_origin::{with_origin, AgentTurnOrigin, TrustedAutomationSource};
-use crate::openhuman::approval::{
-    ApprovalChatContext, FlowRunContext, APPROVAL_CHAT_CONTEXT, APPROVAL_COPILOT_STREAM_CONTEXT,
-    APPROVAL_FLOW_RUN_CONTEXT,
-};
 use crate::openhuman::config::Config;
 use crate::openhuman::flows::build_registry;
 use crate::openhuman::flows::bus;
@@ -26,7 +23,11 @@ use crate::openhuman::flows::types::{
     FlowConnection, FlowRunStep, FlowRunTrigger, FlowSuggestion, SuggestionStatus,
 };
 use crate::openhuman::flows::{flow_namespace, Flow, FlowRun};
-use crate::openhuman::memory_store::MemoryClientRef;
+use crate::openhuman::memory::store::MemoryClientRef;
+use crate::openhuman::security::approval::{
+    ApprovalChatContext, FlowRunContext, APPROVAL_CHAT_CONTEXT, APPROVAL_COPILOT_STREAM_CONTEXT,
+    APPROVAL_FLOW_RUN_CONTEXT,
+};
 use crate::rpc::RpcOutcome;
 
 /// Overall safety bound on a single `flows_run` / `flows_resume`. Individual
@@ -37,7 +38,7 @@ const FLOW_RUN_TIMEOUT_SECS: u64 = 600;
 /// How long a run may sit parked at a human-in-the-loop approval gate
 /// (`pending_approval`) before the TTL sweep expires it to a terminal
 /// `"cancelled"` (issue G4). Aligned with the agent tool-call `ApprovalGate`'s
-/// 10-minute fail-closed TTL (`src/openhuman/approval/`), so a flow HITL gate a
+/// 10-minute fail-closed TTL (`src/openhuman/security/approval/`), so a flow HITL gate a
 /// human never answers doesn't wedge a run — and its durable checkpoint —
 /// forever. The two are distinct mechanisms (flow runs execute as
 /// `TrustedAutomation { Workflow }`, which the tool-call gate lets through), so
@@ -48,6 +49,15 @@ const FLOW_PARKED_TTL_SECS: i64 = 600;
 /// TinyFlows/TinyAgents barrier-relief implementation cannot execute safely.
 const UNSUPPORTED_NESTED_CONDITIONAL_FAN_IN: &str = "unsupported_nested_conditional_fan_in";
 const UNSUPPORTED_MAIN_PORT_CONDITIONAL_FAN_IN: &str = "unsupported_main_port_conditional_fan_in";
+
+/// T-M1 fail-closed refusal: the graph hash pinned when this run parked no
+/// longer matches the flow's current graph (`save_workflow` rewrote it while
+/// the approval sat pending). Distinct wording from every other
+/// `flows_resume` rejection so the UI/agent can tell a stale-approval refusal
+/// apart from an ordinary invalid-resume error and explain it plainly rather
+/// than surfacing a generic "resume failed".
+const GRAPH_CHANGED_SINCE_PARK_ERROR: &str = "the workflow changed after this run was paused — \
+     the pending approval no longer matches the current graph";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 2 — autonomy-tier gating of acting flow nodes
@@ -61,7 +71,7 @@ const UNSUPPORTED_MAIN_PORT_CONDITIONAL_FAN_IN: &str = "unsupported_main_port_co
 // `tinyflows::caps::build_capabilities`.
 //
 // Before an acting node dispatches, its capability adapter
-// (`src/openhuman/tinyflows/caps.rs::enforce_node_tier_gate`) maps the node to a
+// (`src/openhuman/flows/tinyflows/caps.rs::enforce_node_tier_gate`) maps the node to a
 // `CommandClass` and consults `SecurityPolicy::gate_decision`. `Block` refuses
 // outright (`[policy-blocked]` error, no dispatch); `Prompt`/`Allow` fall through
 // to the process-global `ApprovalGate`, which performs the human round-trip for
@@ -123,18 +133,50 @@ pub(crate) fn validate_and_migrate_graph(graph_json: Value) -> Result<WorkflowGr
 pub(crate) fn engine_compatibility_errors(
     graph: &WorkflowGraph,
 ) -> Vec<crate::openhuman::flows::FlowValidationError> {
+    engine_compatibility_errors_with_max_depth(graph, max_sub_workflow_depth(graph))
+}
+
+/// Same walk as [`engine_compatibility_errors`], but with the inline-nesting
+/// budget passed in rather than recomputed from `graph`'s own trigger.
+///
+/// [`referenced_workflow_compatibility_errors`] needs this: a saved child
+/// reached partway through the root's referenced-workflow chain must still be
+/// checked to the *remaining* depth the root's own `max_sub_workflow_depth`
+/// allows, not to the child's own (possibly lower/default) declared cap —
+/// the engine's runtime depth counter is one budget shared across the whole
+/// inline-plus-referenced call chain, so a fan-in the child's own cap would
+/// not reach can still be reached from the root.
+pub(crate) fn engine_compatibility_errors_with_max_depth(
+    graph: &WorkflowGraph,
+    max_depth: u64,
+) -> Vec<crate::openhuman::flows::FlowValidationError> {
     let mut errors = Vec::new();
-    collect_engine_compatibility_errors(graph, 0, &mut errors);
+    collect_engine_compatibility_errors(graph, 0, max_depth, &mut errors);
     errors
+}
+
+/// The nesting cap this graph declares on its trigger, or the engine default.
+///
+/// The static walk below has to descend as deep as the run actually will, or a
+/// graph that legitimately nests past the default would stop being checked
+/// exactly where it starts being interesting.
+pub(crate) fn max_sub_workflow_depth(graph: &WorkflowGraph) -> u64 {
+    graph
+        .trigger()
+        .and_then(|t| t.config.get("max_sub_workflow_depth"))
+        .and_then(serde_json::Value::as_u64)
+        .filter(|n| *n > 0)
+        .unwrap_or(tinyflows::engine::MAX_SUB_WORKFLOW_DEPTH)
 }
 
 fn collect_engine_compatibility_errors(
     graph: &WorkflowGraph,
     depth: u64,
+    max_depth: u64,
     errors: &mut Vec<crate::openhuman::flows::FlowValidationError>,
 ) {
     errors.extend(graph_engine_compatibility_errors(graph));
-    if depth >= tinyflows::engine::MAX_SUB_WORKFLOW_DEPTH {
+    if depth >= max_depth {
         return;
     }
 
@@ -152,7 +194,7 @@ fn collect_engine_compatibility_errors(
             continue;
         };
         let first_child_error = errors.len();
-        collect_engine_compatibility_errors(&child, depth + 1, errors);
+        collect_engine_compatibility_errors(&child, depth + 1, max_depth, errors);
         for error in &mut errors[first_child_error..] {
             error.message = format!("Inline sub_workflow node '{}': {}", node.id, error.message);
         }
@@ -167,11 +209,19 @@ fn graph_engine_compatibility_errors(
     };
     let mut errors = Vec::new();
 
+    // The edges that close a cycle, from the engine's own classifier rather
+    // than a second implementation here — this gate mirrors TinyFlows' fan-in
+    // lowering, so the two must agree on which edges count. A back-edge is a
+    // loop head's re-entry, not a predecessor it barriers on, and counting it
+    // would report every legal loop as an unrelieved fan-in.
+    let loop_edges = tinyflows::engine::back_edges(graph);
+
     for fan_in in &graph.nodes {
         let incoming: Vec<&str> = graph
             .edges
             .iter()
             .filter(|edge| edge.to_node == fan_in.id)
+            .filter(|edge| !loop_edges.contains(&(edge.from_node.clone(), edge.to_node.clone())))
             .map(|edge| edge.from_node.as_str())
             .collect();
         if incoming.len() <= 1 {
@@ -567,6 +617,9 @@ pub(crate) async fn run_builder_gates(config: &Config, graph: &WorkflowGraph) ->
 /// missing ids, and store failures retain their existing runtime diagnostics;
 /// this gate only rejects a saved graph whose topology is demonstrably unsafe.
 fn referenced_workflow_compatibility_errors(config: &Config, graph: &WorkflowGraph) -> Vec<String> {
+    // Descend as deep as the root graph declared it may nest, for the same
+    // reason as the inline walk above.
+    let max_depth = max_sub_workflow_depth(graph);
     let mut pending = vec![(graph.clone(), 0_u64, Vec::<String>::new())];
     // Record the shallowest visit, not just whether an id was seen. The same
     // child can be referenced by multiple branches; a deep DFS visit must not
@@ -574,7 +627,7 @@ fn referenced_workflow_compatibility_errors(config: &Config, graph: &WorkflowGra
     let mut visited_depths = std::collections::HashMap::<String, u64>::new();
 
     while let Some((current, depth, path)) = pending.pop() {
-        if depth >= tinyflows::engine::MAX_SUB_WORKFLOW_DEPTH {
+        if depth >= max_depth {
             continue;
         }
 
@@ -623,7 +676,14 @@ fn referenced_workflow_compatibility_errors(config: &Config, graph: &WorkflowGra
             let Ok(Some(child)) = load_flow_graph(config, workflow_id) else {
                 continue;
             };
-            if let Some(error) = engine_compatibility_errors(&child).into_iter().next() {
+            // Thread the root's remaining depth budget through, not the
+            // child's own cap — see `engine_compatibility_errors_with_max_depth`'s
+            // doc comment.
+            let remaining_depth = max_depth.saturating_sub(child_depth);
+            if let Some(error) = engine_compatibility_errors_with_max_depth(&child, remaining_depth)
+                .into_iter()
+                .next()
+            {
                 return vec![format!(
                     "Sub_workflow path '{}' references workflow_id '{}' with an unsupported \
                      engine topology: {}: {}",
@@ -994,7 +1054,7 @@ pub(crate) fn graph_trigger_warnings(graph: &WorkflowGraph) -> Vec<String> {
 /// Composio schema). Best-effort like the runtime preflight — no schema, no
 /// warning, never a block.
 pub(crate) async fn graph_wiring_warnings(config: &Config, graph: &WorkflowGraph) -> Vec<String> {
-    use crate::openhuman::tinyflows::caps::{composio_required_args, missing_required_args};
+    use crate::openhuman::flows::tinyflows::caps::{composio_required_args, missing_required_args};
 
     let mut warnings = Vec::new();
     for node in &graph.nodes {
@@ -1045,7 +1105,7 @@ pub(crate) async fn graph_wiring_warnings(config: &Config, graph: &WorkflowGraph
 /// message) when the binding is missing the `data.` segment entirely — a
 /// Composio `tool_call`'s real runtime output always wraps its payload in
 /// `data` (`ComposioExecuteResponse`; see
-/// [`crate::openhuman::tinyflows::caps::ToolContract::output_fields`]'s doc),
+/// [`crate::openhuman::flows::tinyflows::caps::ToolContract::output_fields`]'s doc),
 /// so `=nodes.<id>.item.json.<field>` (no `data.`) is GUARANTEED to resolve
 /// `null` even when `<field>` names a real output field — that used to be
 /// silently accepted here (B1: the exact bug that produces a hollow run).
@@ -1072,8 +1132,8 @@ pub(crate) async fn graph_wiring_warnings(config: &Config, graph: &WorkflowGraph
 /// "missing the `data.` segment" would rewire an already-correct binding to
 /// a nonsense path (e.g. suggesting `.item.json.data.successful`).
 async fn graph_output_field_warnings(config: &Config, graph: &WorkflowGraph) -> Vec<String> {
-    use crate::openhuman::memory_sync::composio::providers::toolkit_from_slug;
-    use crate::openhuman::tinyflows::caps::fetch_live_toolkit_catalog;
+    use crate::openhuman::flows::tinyflows::caps::fetch_live_toolkit_catalog;
+    use crate::openhuman::memory::sync::composio::providers::toolkit_from_slug;
 
     let mut warnings = Vec::new();
     for node in &graph.nodes {
@@ -1113,7 +1173,7 @@ async fn graph_output_field_warnings(config: &Config, graph: &WorkflowGraph) -> 
             // relevant for an action whose live listing publishes no output
             // schema at all (e.g. every GitHub action, verified live).
             let contract =
-                crate::openhuman::tinyflows::caps::apply_probe_override(contract.clone());
+                crate::openhuman::flows::tinyflows::caps::apply_probe_override(contract.clone());
             // Nothing real to check `field_path` against — schema unknown AND
             // no probed output fields either.
             if contract.output_schema.is_none() && contract.output_fields.is_empty() {
@@ -1185,7 +1245,7 @@ async fn graph_output_field_warnings(config: &Config, graph: &WorkflowGraph) -> 
 }
 
 /// Given a Composio action's payload-only `output_schema` (see
-/// [`crate::openhuman::tinyflows::caps::ToolContract::output_fields`]'s doc —
+/// [`crate::openhuman::flows::tinyflows::caps::ToolContract::output_fields`]'s doc —
 /// NEVER includes the runtime `data` envelope) and a `split_out.path`
 /// addressed relative to the ENVELOPE (`json.<envelope_field…>`, e.g.
 /// `"json.data"` or `"json.data.issues"`), resolves whether the path lands on
@@ -1224,11 +1284,11 @@ fn schema_says_path_is_non_array(output_schema: &Value, configured_path: &str) -
 /// a REAL Composio action, checked two ways:
 ///
 /// 1. **KNOWN `primary_array_path`** (see
-///    [`crate::openhuman::tinyflows::caps::compute_composio_array_path`] —
+///    [`crate::openhuman::flows::tinyflows::caps::compute_composio_array_path`] —
 ///    this already bakes in the `data.` segment Composio's execute-response
 ///    wrapper adds, so `expected` below comes out `"json.data.<…>"` with no
 ///    extra handling needed here — and, via
-///    [`crate::openhuman::tinyflows::caps::apply_probe_override`], a real
+///    [`crate::openhuman::flows::tinyflows::caps::apply_probe_override`], a real
 ///    `get_tool_output_sample` probe for this slug overrides a schema that
 ///    never named an array at all): if the configured `config.path` doesn't match the
 ///    `json.<primary_array_path>` convention, suggest the real path.
@@ -1250,8 +1310,10 @@ fn schema_says_path_is_non_array(output_schema: &Value, configured_path: &str) -
 /// `primary_array_path` NOR an `output_schema` is known (truly nothing to
 /// check against).
 async fn graph_split_out_path_warnings(config: &Config, graph: &WorkflowGraph) -> Vec<String> {
-    use crate::openhuman::memory_sync::composio::providers::toolkit_from_slug;
-    use crate::openhuman::tinyflows::caps::{apply_probe_override, fetch_live_toolkit_catalog};
+    use crate::openhuman::flows::tinyflows::caps::{
+        apply_probe_override, fetch_live_toolkit_catalog,
+    };
+    use crate::openhuman::memory::sync::composio::providers::toolkit_from_slug;
 
     let mut warnings = Vec::new();
     for node in &graph.nodes {
@@ -1363,7 +1425,7 @@ async fn graph_split_out_path_warnings(config: &Config, graph: &WorkflowGraph) -
 // the wiring rather than merely being told about it.
 
 /// Node kinds whose real capability adapter wraps its structured output in
-/// the stable `{ json, text, raw }` envelope (`src/openhuman/tinyflows/caps.rs`):
+/// the stable `{ json, text, raw }` envelope (`src/openhuman/flows/tinyflows/caps.rs`):
 /// a binding into one of these must dereference `.item.json.<field>`, never
 /// `.item.<field>` directly — the latter reads the envelope wrapper itself
 /// (an object with `json`/`text`/`raw` keys), not the field inside it, and
@@ -1422,7 +1484,7 @@ fn collect_expressions(value: &Value) -> Vec<(String, String)> {
 /// `field_path` captures the FULL remaining dotted path, not just its first
 /// segment — e.g. `"data.messages"` for `.item.json.data.messages`. This
 /// matters for a Composio `tool_call` ref, whose real output additionally
-/// wraps the field in `data` (see [`crate::openhuman::tinyflows::caps::ToolContract::output_fields`]'s
+/// wraps the field in `data` (see [`crate::openhuman::flows::tinyflows::caps::ToolContract::output_fields`]'s
 /// doc): callers that need to check field membership against a schema with
 /// no such wrapper (e.g. an `agent` node's `output_parser.schema`) should
 /// compare against just `field_path`'s first segment.
@@ -1704,12 +1766,12 @@ pub(crate) fn validate_binding_resolvability(graph: &WorkflowGraph) -> Vec<Strin
 /// Rejects an `agent` node whose `config.agent_ref` would hit the runtime's
 /// `RegistryFallback` "unknown agent_ref" hard error mid-run
 /// (`run_via_registry_fallback` in `tinyflows/caps.rs`) — a real ref is one
-/// that resolves via [`crate::openhuman::tinyflows::caps::route_for_agent_ref`]
+/// that resolves via [`crate::openhuman::flows::tinyflows::caps::route_for_agent_ref`]
 /// to a harness [`AgentDefinition`](crate::openhuman::agent::harness::definition::AgentDefinition)
 /// (`AgentRoute::Harness`), OR — when it routes to `AgentRoute::RegistryFallback`
 /// — resolves to an *enabled*
-/// [`AgentRegistryEntry`](crate::openhuman::agent_registry::AgentRegistryEntry)
-/// via [`crate::openhuman::agent_registry::get_agent`]. Both are exactly the
+/// [`AgentRegistryEntry`](crate::openhuman::agent::registry::AgentRegistryEntry)
+/// via [`crate::openhuman::agent::registry::get_agent`]. Both are exactly the
 /// checks `OpenHumanAgentRunner::run_agent` performs at run time, reused here
 /// rather than duplicated so the two planes cannot drift.
 ///
@@ -1742,8 +1804,8 @@ pub(crate) fn validate_binding_resolvability(graph: &WorkflowGraph) -> Vec<Strin
 /// still never reads it at all.
 pub(crate) async fn validate_agent_refs(config: &Config, graph: &WorkflowGraph) -> Vec<String> {
     use crate::openhuman::agent::harness::AgentDefinitionRegistry;
-    use crate::openhuman::agent_registry::AgentRegistryEntry;
-    use crate::openhuman::tinyflows::caps::{route_for_agent_ref, AgentRoute};
+    use crate::openhuman::agent::registry::AgentRegistryEntry;
+    use crate::openhuman::flows::tinyflows::caps::{route_for_agent_ref, AgentRoute};
 
     let mut errors = Vec::new();
     let mut harness_registry_init_attempted = false;
@@ -1785,7 +1847,7 @@ pub(crate) async fn validate_agent_refs(config: &Config, graph: &WorkflowGraph) 
             AgentRoute::RegistryFallback => {
                 if custom_registry.is_none() {
                     custom_registry =
-                        Some(crate::openhuman::agent_registry::list_agents(true).await);
+                        Some(crate::openhuman::agent::registry::list_agents(true).await);
                 }
                 match custom_registry.as_ref().expect("just populated") {
                     Ok(entries) => match entries.iter().find(|entry| entry.id == agent_ref) {
@@ -1950,7 +2012,7 @@ static INFERENCE_PROBE_CACHE: LazyLock<std::sync::Mutex<InferenceProbeCacheMap>>
 /// window. Clears the whole cache rather than just the current key: a
 /// sign-out is a session-wide event, not scoped to one role.
 fn invalidate_inference_probe_cache_if_signed_out() {
-    if crate::openhuman::scheduler_gate::is_signed_out() {
+    if crate::openhuman::cron::scheduler_gate::is_signed_out() {
         INFERENCE_PROBE_CACHE
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -1997,12 +2059,12 @@ async fn cached_probe_inference_readiness(role: &str, config: &Config) -> Result
 /// 1. Node `config.model` — a managed tier or `hint:*` alias, translated via
 ///    [`role_for_model_tier`](crate::openhuman::inference::provider::role_for_model_tier).
 /// 2. A static (non-`=`) `agent_ref` whose custom
-///    [`AgentRegistryEntry`](crate::openhuman::agent_registry::AgentRegistryEntry)
+///    [`AgentRegistryEntry`](crate::openhuman::agent::registry::AgentRegistryEntry)
 ///    itself pins a `model` (e.g. `hint:reasoning`) — resolved the same way
-///    [`OpenHumanAgentRunner::run_via_harness`](crate::openhuman::tinyflows::caps::OpenHumanAgentRunner)
+///    [`OpenHumanAgentRunner::run_via_harness`](crate::openhuman::flows::tinyflows::caps::OpenHumanAgentRunner)
 ///    does via `resolve_node_model(&request, entry_model)`, using the same
 ///    sync, config-only accessor
-///    ([`find_custom_in_config`](crate::openhuman::agent_registry::find_custom_in_config))
+///    ([`find_custom_in_config`](crate::openhuman::agent::registry::find_custom_in_config))
 ///    it calls.
 /// 3. Otherwise, caps.rs's own default role (`"summarization"`, its fallback
 ///    absent a `role` field on the completion request).
@@ -2036,7 +2098,7 @@ fn agent_node_role(config: &Config, node: &tinyflows::model::Node) -> &'static s
         .filter(|s| !s.is_empty() && !s.starts_with('='));
     if let Some(agent_ref) = static_agent_ref {
         if let Some(entry_model) =
-            crate::openhuman::agent_registry::find_custom_in_config(config, agent_ref)
+            crate::openhuman::agent::registry::find_custom_in_config(config, agent_ref)
                 .and_then(|entry| entry.model)
         {
             let entry_model = entry_model.trim();
@@ -2116,7 +2178,7 @@ async fn evaluate_inference_readiness(
 
     // Layer 1: signed-out is the cheapest, most decisive check. Session-wide
     // — checked once for the whole graph, not per node/role.
-    if crate::openhuman::scheduler_gate::is_signed_out() {
+    if crate::openhuman::cron::scheduler_gate::is_signed_out() {
         tracing::debug!(
             target: "flows",
             node = %first_node.id,
@@ -2311,7 +2373,7 @@ pub(crate) async fn validate_inference_readiness(
 // which 404s at runtime) or omit a genuinely required arg, and
 // `validate_binding_resolvability` would have nothing to say about either.
 // [`validate_tool_contracts`] is that missing HARD gate, grounded in
-// [`crate::openhuman::tinyflows::caps::fetch_live_toolkit_catalog`] — the
+// [`crate::openhuman::flows::tinyflows::caps::fetch_live_toolkit_catalog`] — the
 // FULL LIVE Composio catalog, not the static curated subset.
 
 /// Statically proves every `tool_call` node's `config.slug` is a REAL action
@@ -2345,7 +2407,7 @@ pub(crate) async fn validate_inference_readiness(
 /// builder-tool warnings (`get_tool_contract` / `search_tool_catalog`) must all
 /// agree on it — one home for the check so they cannot drift.
 pub(crate) fn toolkit_has_curated_catalog(toolkit: &str) -> bool {
-    use crate::openhuman::memory_sync::composio::providers::{catalog_for_toolkit, get_provider};
+    use crate::openhuman::memory::sync::composio::providers::{catalog_for_toolkit, get_provider};
     get_provider(toolkit)
         .and_then(|p| p.curated_tools())
         .or_else(|| catalog_for_toolkit(toolkit))
@@ -2353,10 +2415,10 @@ pub(crate) fn toolkit_has_curated_catalog(toolkit: &str) -> bool {
 }
 
 pub(crate) async fn validate_tool_contracts(config: &Config, graph: &WorkflowGraph) -> Vec<String> {
-    use crate::openhuman::memory_sync::composio::providers::toolkit_from_slug;
-    use crate::openhuman::tinyflows::caps::{
+    use crate::openhuman::flows::tinyflows::caps::{
         fetch_live_toolkit_catalog, missing_required_args, unsupported_arg_names,
     };
+    use crate::openhuman::memory::sync::composio::providers::toolkit_from_slug;
 
     let mut errors = Vec::new();
     for node in &graph.nodes {
@@ -2536,7 +2598,7 @@ pub(crate) async fn validate_tool_contracts(config: &Config, graph: &WorkflowGra
 // account of that toolkit, naming the correct ref when it can.
 
 /// Parses a `composio:<toolkit>:<id>` connection_ref into its `(toolkit, id)`
-/// segments. Mirrors [`crate::openhuman::tinyflows::caps::composio_connection_id`]'s
+/// segments. Mirrors [`crate::openhuman::flows::tinyflows::caps::composio_connection_id`]'s
 /// rsplit for the id (everything after the LAST `:`), taking everything between
 /// the `composio:` prefix and that last `:` as the toolkit. Returns `None` for
 /// anything that isn't this shape (missing `composio:` prefix, no `:` after it,
@@ -2579,7 +2641,8 @@ pub(crate) async fn validate_connection_refs(
     graph: &WorkflowGraph,
 ) -> Vec<String> {
     let connections: Option<Vec<FlowConnection>> =
-        match crate::openhuman::composio::ops::composio_list_connections(config).await {
+        match crate::openhuman::integrations::composio::ops::composio_list_connections(config).await
+        {
             Ok(outcome) => Some(build_flow_connections(
                 outcome.value.connections,
                 Vec::new(),
@@ -2609,7 +2672,7 @@ fn validate_connection_refs_against(
     graph: &WorkflowGraph,
     connections: Option<&[FlowConnection]>,
 ) -> Vec<String> {
-    use crate::openhuman::memory_sync::composio::providers::toolkit_from_slug;
+    use crate::openhuman::memory::sync::composio::providers::toolkit_from_slug;
 
     let mut errors = Vec::new();
     for node in &graph.nodes {
@@ -2821,7 +2884,7 @@ const REQUIRED_ARG_NULL_CHECK_TIMEOUT_SECS: u64 = 15;
 /// `subject`), which stays broken no matter what the trigger payload is.
 ///
 /// Deliberately does **not** wrap the mock `ToolInvoker` in
-/// [`crate::openhuman::tinyflows::caps::PreflightToolInvoker`] the way
+/// [`crate::openhuman::flows::tinyflows::caps::PreflightToolInvoker`] the way
 /// `DryRunWorkflowTool` does: that wrapper aborts the WHOLE sandbox run the
 /// instant a node with a `stop` `on_error` policy (the default) hits a
 /// schema-required null arg, which would lose the per-field diagnostic this
@@ -2838,7 +2901,9 @@ const REQUIRED_ARG_NULL_CHECK_TIMEOUT_SECS: u64 = 15;
 /// check only ever adds a diagnostic the sandbox actually observed.
 pub(crate) async fn validate_required_arg_resolvability(graph: &WorkflowGraph) -> Vec<String> {
     use crate::openhuman::flows::builder_tools::CapturingObserver;
-    use crate::openhuman::tinyflows::caps::{SchemaAwareMockAgentRunner, SchemaAwareMockLlm};
+    use crate::openhuman::flows::tinyflows::caps::{
+        SchemaAwareMockAgentRunner, SchemaAwareMockLlm,
+    };
 
     let Ok(compiled) = tinyflows::compiler::compile(graph) else {
         return Vec::new();
@@ -3013,7 +3078,7 @@ fn explicit_nodes_ref(expr: &str) -> Option<&str> {
 /// doc comment and the Codex feedback it links).
 ///
 /// - `=run...` always addresses the trigger payload/metadata directly
-///   (`crate::openhuman::tinyflows`'s `expr_scope` docs) — always
+///   (`crate::openhuman::flows::tinyflows`'s `expr_scope` docs) — always
 ///   trigger-scoped.
 /// - `=nodes.<id>...` / `=.nodes["<id>"]...` explicitly names an upstream
 ///   node. Trigger-scoped only if `<id>` IS the trigger node; naming any
@@ -3444,6 +3509,7 @@ pub async fn flows_duplicate(config: &Config, id: &str) -> Result<RpcOutcome<Flo
         store::insert_duplicate_flow(config, &source, new_name).map_err(|e| e.to_string())?;
     // Intentionally NO bind_trigger: a duplicate is disabled and must stay
     // inert (no schedule/trigger dispatch) until the user enables it.
+    publish_flow_changed(&flow.id, "created", "system");
     Ok(RpcOutcome::single_log(
         flow,
         format!("flow duplicated from {id}"),
@@ -3461,7 +3527,7 @@ pub async fn flows_get(config: &Config, id: &str) -> Result<RpcOutcome<Flow>, St
 /// Loads a saved flow's portable [`WorkflowGraph`] by id, for the
 /// `sub_workflow`-by-`workflow_id` resolver capability
 /// (`tinyflows::caps::WorkflowResolver`, implemented in
-/// `src/openhuman/tinyflows/caps.rs`).
+/// `src/openhuman/flows/tinyflows/caps.rs`).
 ///
 /// Returns `Ok(None)` when no flow with that id exists (the resolver turns that
 /// into a capability error naming the missing id), and `Err` only on a store
@@ -3497,9 +3563,32 @@ pub(crate) fn load_engine_compatible_flow_graph(
 }
 
 /// Lists every saved flow.
+///
+/// A corrupt or newer-schema-than-this-build `graph_json` row is skipped
+/// rather than failing the whole list (R-M4 — see `store::list_flow_rows`);
+/// when that happens it must not be silent, so a skip is both logged
+/// (`[flows]`-prefixed, id + error only — never row content) and surfaced in
+/// the RPC's `logs` so the UI can tell the user "N workflows could not be
+/// loaded" instead of silently rendering a shorter list than actually exists.
 pub async fn flows_list(config: &Config) -> Result<RpcOutcome<Vec<Flow>>, String> {
-    let flows = store::list_flows(config).map_err(|e| e.to_string())?;
-    Ok(RpcOutcome::single_log(flows, "flows listed"))
+    let (flows, skipped) = store::list_flows(config).map_err(|e| e.to_string())?;
+    if skipped > 0 {
+        tracing::warn!(
+            target: "flows",
+            skipped,
+            loaded = flows.len(),
+            "[flows] flows_list: skipped corrupt/unmigratable flow_definitions rows"
+        );
+        Ok(RpcOutcome::new(
+            flows,
+            vec![format!(
+                "flows listed ({skipped} workflow{} could not be loaded and were skipped)",
+                if skipped == 1 { "" } else { "s" }
+            )],
+        ))
+    } else {
+        Ok(RpcOutcome::single_log(flows, "flows listed"))
+    }
 }
 
 /// Lists the connection sources a flow node's `connection_ref` can attach to:
@@ -3526,7 +3615,8 @@ pub async fn flows_list_connections(
     //    error); a backend outage returns Err — tolerate it so the picker still
     //    surfaces HTTP credentials.
     let composio_conns =
-        match crate::openhuman::composio::ops::composio_list_connections(config).await {
+        match crate::openhuman::integrations::composio::ops::composio_list_connections(config).await
+        {
             Ok(outcome) => {
                 tracing::debug!(
                     count = outcome.value.connections.len(),
@@ -3551,7 +3641,9 @@ pub async fn flows_list_connections(
     //    out secret material here; injection happens server-side in
     //    `tinyflows::caps::OpenHumanHttp`).
     let http_creds =
-        match crate::openhuman::credentials::HttpCredentialsStore::from_config(config).list() {
+        match crate::openhuman::security::credentials::HttpCredentialsStore::from_config(config)
+            .list()
+        {
             Ok(list) => {
                 tracing::debug!(
                     count = list.len(),
@@ -3576,7 +3668,8 @@ pub async fn flows_list_connections(
     // via each toolkit's whoami-style call (e.g. Slack `SLACK_TEST_AUTH`) on
     // connection sync. Loaded once here so `build_flow_connections` can stay
     // a pure, unit-testable matcher.
-    let identities = crate::openhuman::composio::providers::profile::load_connected_identities();
+    let identities =
+        crate::openhuman::integrations::composio::providers::profile::load_connected_identities();
     tracing::debug!(
         count = identities.len(),
         "[flows] flows_list_connections: identity-cache load"
@@ -3608,11 +3701,11 @@ pub async fn flows_list_connections(
 /// self-targeted action ("DM me") to the user's own account instead of
 /// guessing a public channel.
 fn build_flow_connections(
-    composio: Vec<crate::openhuman::composio::ComposioConnection>,
-    http: Vec<crate::openhuman::credentials::HttpCredentialSummary>,
-    identities: &[crate::openhuman::composio::providers::profile::ConnectedIdentity],
+    composio: Vec<crate::openhuman::integrations::composio::ComposioConnection>,
+    http: Vec<crate::openhuman::security::credentials::HttpCredentialSummary>,
+    identities: &[crate::openhuman::integrations::composio::providers::profile::ConnectedIdentity],
 ) -> Vec<FlowConnection> {
-    use crate::openhuman::composio::providers::profile::normalize_connection_identifier;
+    use crate::openhuman::integrations::composio::providers::profile::normalize_connection_identifier;
 
     let identity_lookup: std::collections::HashMap<(String, String), &_> = identities
         .iter()
@@ -3683,7 +3776,7 @@ fn build_flow_connections(
 /// `composio_list_connections`), never secret material.
 fn composio_connection_display(
     toolkit: &str,
-    conn: &crate::openhuman::composio::ComposioConnection,
+    conn: &crate::openhuman::integrations::composio::ComposioConnection,
 ) -> String {
     let title = title_case_toolkit(toolkit);
     let identity = conn
@@ -3701,7 +3794,9 @@ fn composio_connection_display(
 
 /// Human-readable picker label for a named HTTP credential, e.g.
 /// `"stripe (bearer)"`. Only the (non-secret) name + scheme — never the value.
-fn http_credential_display(cred: &crate::openhuman::credentials::HttpCredentialSummary) -> String {
+fn http_credential_display(
+    cred: &crate::openhuman::security::credentials::HttpCredentialSummary,
+) -> String {
     format!("{} ({})", cred.name, cred.scheme)
 }
 
@@ -3737,6 +3832,14 @@ fn publish_flow_changed(flow_id: &str, kind: &str, actor: &str) {
         kind: kind.to_string(),
         actor: actor.to_string(),
     });
+    // Re-advertise the workflow set to the medulla backend. This is the single
+    // funnel every store mutation passes through (create / duplicate / update /
+    // delete / enable), and the backend replaces a socket's whole entry on each
+    // registration — so re-sending here is what keeps a remote orchestrator from
+    // reasoning about a set that no longer exists. A no-op (one debug log, no
+    // task spawned) when no bridge is installed, which is every build that is
+    // not talking to a backend, and every test.
+    crate::openhuman::platform::socket::medulla::workflows::emit_register_workflows();
 }
 
 /// Maps a store-level [`FlowUpdateError`](store::FlowUpdateError) to the RPC
@@ -3810,6 +3913,54 @@ pub async fn flows_update(
     require_approval: Option<bool>,
     expected_version: Option<String>,
 ) -> Result<RpcOutcome<Flow>, String> {
+    flows_update_inner(
+        config,
+        id,
+        name,
+        graph_json,
+        require_approval,
+        expected_version,
+        false,
+    )
+    .await
+}
+
+/// Update a flow while atomically disarming any automatic-trigger graph.
+///
+/// Remote authoring surfaces use this variant so revising a schedule,
+/// app-event, or webhook flow never preserves a prior local opt-in to run the
+/// old graph. The same guarded store write persists the graph and
+/// `enabled=false`, so no trigger can observe the revised graph armed between
+/// two writes.
+pub(crate) async fn flows_update_disarming_automatic(
+    config: &Config,
+    id: &str,
+    name: Option<String>,
+    graph_json: Option<Value>,
+    require_approval: Option<bool>,
+    expected_version: Option<String>,
+) -> Result<RpcOutcome<Flow>, String> {
+    flows_update_inner(
+        config,
+        id,
+        name,
+        graph_json,
+        require_approval,
+        expected_version,
+        true,
+    )
+    .await
+}
+
+async fn flows_update_inner(
+    config: &Config,
+    id: &str,
+    name: Option<String>,
+    graph_json: Option<Value>,
+    require_approval: Option<bool>,
+    expected_version: Option<String>,
+    disarm_automatic: bool,
+) -> Result<RpcOutcome<Flow>, String> {
     let existing = store::get_flow(config, id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("flow '{id}' not found"))?;
@@ -3829,27 +3980,26 @@ pub async fn flows_update(
         }
     };
     // B29 Rule 1 analogue: disarm every manual/none → automatic trigger
-    // transition, unconditionally — see the doc comment above for why this
-    // must NOT gate on the (possibly stale) `existing.enabled` read.
-    let was_auto = trigger_is_automatic(&existing.graph);
+    // transition, unconditionally. `now_auto` is safe to compute here (it
+    // only depends on `graph`, THIS call's own incoming graph — never
+    // stale). The "was it automatic before" half of the transition,
+    // however, is NOT decided here: R-m2 found that gating on the
+    // ops-level `existing.graph` read let a concurrent write race this
+    // call and slip an automatic-trigger graph through with `enabled: true`
+    // — `existing` can be arbitrarily stale by the time
+    // `store::update_flow_graph` actually performs its guarded write. That
+    // decision now lives inside `update_flow_graph`, computed against the
+    // row it just re-read there (see its doc comment).
     let now_auto = trigger_is_automatic(&graph);
-    let is_manual_to_auto_transition = now_auto && !was_auto;
-    let enabled_override = is_manual_to_auto_transition.then_some(false);
-    // Best-effort flag for the info log / result message below: whether the
-    // flow *appeared* live going into this update. Not used for the
-    // override decision itself (that's unconditional, see above) — only to
-    // avoid telling the user "flow was auto-disabled" when it was already
-    // disabled going in.
-    let should_disarm = is_manual_to_auto_transition && existing.enabled;
+    let forced_automatic_disarm = disarm_automatic && now_auto;
     tracing::debug!(
         target: "flows",
         flow_id = %id,
-        was_auto,
         now_auto,
         currently_enabled = existing.enabled,
-        is_manual_to_auto_transition,
-        should_disarm,
-        "[flows] flows_update: auto-trigger disarm decision inputs"
+        forced_automatic_disarm,
+        "[flows] flows_update: auto-trigger disarm decision inputs (transition itself decided \
+         store-side against a fresh read, see update_flow_graph)"
     );
 
     // Rule 2 analogue (compound-bypass closure): re-apply the same outbound
@@ -3877,26 +4027,37 @@ pub async fn flows_update(
         side_effect_forced,
         "[flows] flows_update: persisting changes"
     );
-    // `enabled_override` is threaded into the same guarded UPDATE as the
-    // graph/name/require_approval write (see `store::update_flow_graph`)
-    // rather than a follow-up `flows_set_enabled` call, so the disarm can
-    // never race a concurrent read/write of `enabled`.
+    // The auto-disarm decision (both the unconditional manual→automatic
+    // transition and `disarm_automatic`'s forced-remote-authoring variant)
+    // is made INSIDE `update_flow_graph`, against the row it re-reads right
+    // before its guarded UPDATE — see R-m2 above and that function's doc
+    // comment. `enabled_override: None` here means "no explicit force from
+    // this caller"; the disarm, if any, still applies on top of that.
     let updated = store::update_flow_graph(
         config,
         id,
         new_name,
         graph,
         effective_require_approval,
-        enabled_override,
+        None,
+        disarm_automatic,
         expected_version.as_deref(),
     )
     .map_err(map_flow_update_error)?;
 
+    // Best-effort, POST-write: did the flow actually transition from
+    // enabled to disabled as part of this update? Derived from the real
+    // before/after state (`existing.enabled` vs `updated.enabled`) rather
+    // than re-predicting the decision — the decision itself already
+    // happened store-side against a fresh read, so this is purely for the
+    // info log / result message wording below and can't desync from what
+    // was actually persisted.
+    let should_disarm = now_auto && existing.enabled && !updated.enabled;
     if should_disarm {
         tracing::info!(
             target: "flows",
             flow_id = %id,
-            "[flows] flows_update: auto-disabled — graph changed manual→automatic trigger on an enabled flow"
+            "[flows] flows_update: auto-disabled automatic-trigger graph pending explicit re-arm"
         );
     }
 
@@ -3914,12 +4075,16 @@ pub async fn flows_update(
     publish_flow_changed(id, "updated", "system");
     let mut logs = vec![format!("flow updated: {id}")];
     if should_disarm {
-        logs.push(
+        let reason = if forced_automatic_disarm {
+            "Flow was auto-disabled because this authoring surface revised an automatic trigger \
+             (schedule / app_event / webhook). Enable it explicitly (flows_set_enabled) once \
+             you've reviewed the revision."
+        } else {
             "Flow was auto-disabled because its trigger changed from manual to automatic \
              (schedule / app_event / webhook). Enable it explicitly (flows_set_enabled) once \
              you've reviewed the new trigger."
-                .to_string(),
-        );
+        };
+        logs.push(reason.to_string());
     }
     if side_effect_forced {
         logs.push(
@@ -4012,6 +4177,22 @@ async fn flows_delete_impl(
 
     store::remove_flow(config, id).map_err(|e| e.to_string())?;
     tracing::debug!(target: "flows", flow_id = %id, "[flows] flows_delete: removed");
+
+    // Best-effort: purge the flow's pre-authorized tool trust with its row —
+    // a deleted flow must not leave dangling `flow_tool_trust` grants that a
+    // future flow reusing the same id (or a stale run) could inherit. Never
+    // fails the delete: the flow row is already gone regardless.
+    if let Some(gate) = crate::openhuman::security::approval::ApprovalGate::try_global() {
+        match gate.delete_flow_trust(id, None) {
+            Ok(removed) if removed > 0 => {
+                tracing::info!(target: "flows", flow_id = %id, removed, "[flows] flows_delete: purged flow tool trust grants");
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::warn!(target: "flows", flow_id = %id, error = %e, "[flows] flows_delete: failed to purge flow tool trust");
+            }
+        }
+    }
 
     // Best-effort: clear this flow's private memory namespace along with its
     // row — a deleted flow must not leave stray `flow_memory_remember`
@@ -4214,7 +4395,13 @@ fn log_webhook_trigger_deferred(flow: &Flow, enabled: bool) {
 /// was lost some other way) gets its schedule re-registered on the next
 /// boot without the user having to toggle it off and on.
 pub async fn reconcile_schedule_triggers_on_boot(config: &Config) -> Result<(), String> {
-    let flows = store::list_enabled_flows(config).map_err(|e| e.to_string())?;
+    let (flows, skipped) = store::list_enabled_flows(config).map_err(|e| e.to_string())?;
+    if skipped > 0 {
+        // R-M4: a corrupt/unmigratable row must not abort boot reconciliation
+        // for every other enabled flow — skipped rows are logged loudly
+        // (never their content) so the gap is diagnosable.
+        tracing::warn!(target: "flows", skipped, "[flows] reconcile_schedule_triggers_on_boot: skipped corrupt/unmigratable flow rows");
+    }
     let mut reconciled = 0usize;
     for flow in &flows {
         if matches!(bus::extract_trigger_kind(flow), Some(TriggerKind::Schedule)) {
@@ -4222,7 +4409,7 @@ pub async fn reconcile_schedule_triggers_on_boot(config: &Config) -> Result<(), 
             reconciled += 1;
         }
     }
-    tracing::debug!(target: "flows", scanned = flows.len(), reconciled, "[flows] boot reconciliation of schedule-trigger cron jobs complete");
+    tracing::debug!(target: "flows", scanned = flows.len(), reconciled, skipped, "[flows] boot reconciliation of schedule-trigger cron jobs complete");
     Ok(())
 }
 
@@ -4273,7 +4460,7 @@ async fn export_run_to_langfuse(
         observation_count = observations.len(),
         "[flows] exporting flow run trace to Langfuse"
     );
-    crate::openhuman::tinyflows::langfuse_export::export_flow_run_trace(
+    crate::openhuman::flows::tinyflows::langfuse_export::export_flow_run_trace(
         config,
         flow_name,
         flow_id,
@@ -4302,20 +4489,27 @@ async fn export_run_to_langfuse(
 /// `tool_call`/`http_request` nodes are pre-declared), not about who started
 /// the run — see `TrustedAutomationSource::Workflow`'s doc and
 /// `my_docs/ohxtf/b2-triggers-trust/01-triggers-and-trust.md` §3.
+/// `input` is the free-form trigger payload (reachable as `=run.trigger.…`);
+/// `inputs` supplies values for the flow's *declared* workflow inputs by name
+/// (reachable as `=inputs.<name>`). The two are separate channels — see
+/// [`tinyflows::engine::RunInput`]. A declared-input problem (missing required
+/// value, wrong type, undeclared key) is rejected before any run row exists.
 pub async fn flows_run(
     config: &Config,
     flow_id: &str,
     input: Value,
+    inputs: serde_json::Map<String, Value>,
     trigger: FlowRunTrigger,
 ) -> Result<RpcOutcome<Value>, String> {
-    // Prep synchronously (validate + compile-check + mint the run id), insert
-    // the initial `running` row, and announce it, then hand off to the shared
-    // run body. Both the synchronous "Run" RPC path (this fn) and the detached
-    // agent path ([`flows_run_detached`]) reuse `run_flow_body` so a single
-    // [`RunRowFinalizer`] guards the row on every exit — bug B42.
-    let prepared = prepare_flow_run(config, flow_id)?;
+    // Prep synchronously (validate + compile-check + resolve inputs + mint the
+    // run id), insert the initial `running` row, and announce it, then hand off
+    // to the shared run body. Both the synchronous "Run" RPC path (this fn) and
+    // the detached agent path ([`flows_run_detached`]) reuse `run_flow_body` so
+    // a single [`RunRowFinalizer`] guards the row on every exit — bug B42.
+    let prepared = prepare_flow_run(config, flow_id, &inputs)?;
     let thread_id = prepared.thread_id.clone();
     let no_actionable_nodes = prepared.no_actionable_nodes;
+    let resolved_inputs = prepared.inputs;
 
     // Register BEFORE the row exists, so a `flows_cancel_run` can never observe
     // a `running` row that no live run owns (see [`run_flow_body`]'s doc).
@@ -4329,6 +4523,7 @@ pub async fn flows_run(
         flow_id.to_string(),
         thread_id,
         input,
+        resolved_inputs,
         trigger,
         no_actionable_nodes,
         cancel_token,
@@ -4350,19 +4545,27 @@ pub async fn flows_run(
 /// background task and returns `{ run_id, status: "running", detached: true }`
 /// in well under 120s. The copilot already polls `get_flow_run(run_id)` (seen
 /// in live traces), so it observes the run settle to a terminal state on its
-/// own cadence. Mirrors how the UI "Run" control and the trigger bus
-/// (`flows::bus::spawn_run`) already fire runs fire-and-forget. Combined with
-/// B42's finalizer + boot sweep, a detached run ALWAYS settles to a terminal
-/// row even if the process dies mid-run.
+/// own cadence. Also exposed over RPC as `flows.run_detached` (see
+/// `schemas::handle_run_detached`) — the UI "Run" control (canvas + Workflows
+/// list) calls that entry point directly, and the trigger bus
+/// (`flows::bus::spawn_run`) fires runs the same fire-and-forget way. Combined
+/// with B42's finalizer + boot sweep, a detached run ALWAYS settles to a
+/// terminal row even if the process dies mid-run.
+///
+/// `input` / `inputs` mean exactly what they do on [`flows_run`]: the trigger
+/// payload and the flow's declared inputs. Both are validated synchronously, so
+/// the agent still gets an immediate, actionable error for a bad call.
 pub async fn flows_run_detached(
     config: &Config,
     flow_id: &str,
     input: Value,
+    inputs: serde_json::Map<String, Value>,
     trigger: FlowRunTrigger,
 ) -> Result<RpcOutcome<Value>, String> {
-    let prepared = prepare_flow_run(config, flow_id)?;
+    let prepared = prepare_flow_run(config, flow_id, &inputs)?;
     let thread_id = prepared.thread_id.clone();
     let no_actionable_nodes = prepared.no_actionable_nodes;
+    let resolved_inputs = prepared.inputs;
 
     // Register BEFORE the `run_id` becomes observable to the agent. The spawned
     // task below may not be polled for some time, so registering inside it
@@ -4394,6 +4597,7 @@ pub async fn flows_run_detached(
             flow_id_owned,
             body_thread_id,
             input,
+            resolved_inputs,
             trigger,
             no_actionable_nodes,
             cancel_token,
@@ -4427,14 +4631,28 @@ struct PreparedFlowRun {
     flow: Flow,
     thread_id: String,
     no_actionable_nodes: bool,
+    /// The flow's declared inputs resolved against the caller's values —
+    /// defaults applied, one entry per declaration.
+    inputs: serde_json::Map<String, Value>,
 }
 
 /// Synchronous prep shared by [`flows_run`] and [`flows_run_detached`]: loads
 /// the flow, warns on an actionless graph, rejects an engine-incompatible
 /// topology, compile-checks the graph so a broken flow fails fast *before* any
-/// `running` row is inserted, and mints the run's `thread_id`. Returns an error
-/// (never a wedged row) if the flow can't run at all.
-fn prepare_flow_run(config: &Config, flow_id: &str) -> Result<PreparedFlowRun, String> {
+/// `running` row is inserted, resolves the caller's declared-input values, and
+/// mints the run's `thread_id`. Returns an error (never a wedged row) if the
+/// flow can't run at all.
+///
+/// Input resolution happens *here* rather than being left to the engine so a
+/// bad call never creates a `running` row, a thread id, or a registry entry.
+/// The engine re-resolves the same values (it is the authority on its own
+/// contract); doing it twice is cheap and keeps this host from having to trust
+/// its own copy of the rules.
+fn prepare_flow_run(
+    config: &Config,
+    flow_id: &str,
+    inputs: &serde_json::Map<String, Value>,
+) -> Result<PreparedFlowRun, String> {
     let flow = store::get_flow(config, flow_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("flow '{flow_id}' not found"))?;
@@ -4478,6 +4696,19 @@ fn prepare_flow_run(config: &Config, flow_id: &str) -> Result<PreparedFlowRun, S
     // (cheap) to actually execute.
     tinyflows::compiler::compile(&flow.graph).map_err(|e| e.to_string())?;
 
+    // Declared inputs, before anything observable exists for this run.
+    let resolved_inputs =
+        tinyflows::model::resolve_inputs(&flow.graph.inputs, inputs).map_err(|e| {
+            tracing::warn!(
+                target: "flows",
+                flow_id = %flow_id,
+                input = %e.input_name(),
+                code = %e.code(),
+                "[flows] flows_run: rejected — bad workflow input"
+            );
+            e.to_string()
+        })?;
+
     let thread_id = format!("flow:{flow_id}:{}", uuid::Uuid::new_v4());
     tracing::debug!(
         target: "flows",
@@ -4491,6 +4722,7 @@ fn prepare_flow_run(config: &Config, flow_id: &str) -> Result<PreparedFlowRun, S
         flow,
         thread_id,
         no_actionable_nodes,
+        inputs: resolved_inputs,
     })
 }
 
@@ -4574,6 +4806,7 @@ impl Drop for RunRowFinalizer {
             &observed,
             &[],
             Some(INTERRUPTED_DROP_REASON),
+            None,
         );
         // Keep the flow-definition summary in step with the row, exactly as the
         // success/failure/cancel arms and the boot sweep do — otherwise the
@@ -4619,6 +4852,7 @@ async fn run_flow_body(
     flow_id: String,
     thread_id: String,
     input: Value,
+    inputs: serde_json::Map<String, Value>,
     trigger: FlowRunTrigger,
     no_actionable_nodes: bool,
     cancel_token: tokio_util::sync::CancellationToken,
@@ -4626,6 +4860,20 @@ async fn run_flow_body(
 ) -> Result<RpcOutcome<Value>, String> {
     let config: &Config = config_arc.as_ref();
     let flow_id: &str = flow_id.as_str();
+
+    // B42 drop-guard, armed BEFORE the first `.await` in this body (R-M5).
+    //
+    // The caller has already inserted the `running` row, so every await from
+    // here on is a window in which dropping this future would strand that row.
+    // The guard used to be constructed ~150 lines below, immediately around the
+    // engine call — which left the inference-readiness preflight directly below
+    // (a real network probe on a cache miss) unguarded: a client disconnect or
+    // an aborted detached task during that probe dropped the future before any
+    // finalizer existed, and the row stayed a perpetual `running` spinner until
+    // the NEXT process boot sweep (the in-process one had already run). Arming
+    // it here covers the whole awaiting region; every settled path below still
+    // disarms it after its own terminal write.
+    let finalizer = RunRowFinalizer::new(config_arc.clone(), &thread_id, flow_id);
 
     // B45 run-time preflight (design correction — see the "Inference-readiness
     // check" module doc above): an `agent` node needs a working LLM provider
@@ -4671,7 +4919,9 @@ async fn run_flow_body(
             &observed,
             &[],
             Some(&msg),
+            None,
         );
+        finalizer.disarm();
         return Err(msg);
     }
 
@@ -4692,17 +4942,19 @@ async fn run_flow_body(
                 &observed,
                 &[],
                 Some(&msg),
+                None,
             );
+            finalizer.disarm();
             return Err(msg);
         }
     };
 
     // Scope the state store per-flow so two flows never collide on a state key.
-    let caps = crate::openhuman::tinyflows::build_capabilities(
+    let caps = crate::openhuman::flows::tinyflows::build_capabilities(
         config_arc.clone(),
         format!("flow:{flow_id}"),
     );
-    let checkpointer = match crate::openhuman::tinyflows::open_flow_checkpointer(config) {
+    let checkpointer = match crate::openhuman::flows::tinyflows::open_flow_checkpointer(config) {
         Ok(checkpointer) => checkpointer,
         Err(e) => {
             let msg = e.to_string();
@@ -4716,7 +4968,9 @@ async fn run_flow_body(
                 &observed,
                 &[],
                 Some(&msg),
+                None,
             );
+            finalizer.disarm();
             return Err(msg);
         }
     };
@@ -4743,6 +4997,7 @@ async fn run_flow_body(
             &observed,
             &[],
             Some(error),
+            None,
         );
     };
 
@@ -4756,7 +5011,7 @@ async fn run_flow_body(
     // `flow_runs` row as it happens and streams a `FlowRunProgress` event to
     // the frontend, so the durable + journaled path also reports live.
     let observer: Arc<dyn tinyflows::observability::RunObserver> = Arc::new(
-        crate::openhuman::tinyflows::observability::FlowRunObserver::new(
+        crate::openhuman::flows::tinyflows::observability::FlowRunObserver::new(
             Arc::new(config.clone()),
             flow_id,
             thread_id.clone(),
@@ -4776,7 +5031,7 @@ async fn run_flow_body(
             origin,
             tinyflows::engine::run_with_checkpointer_journaled_observed(
                 &compiled,
-                input,
+                tinyflows::engine::RunInput::new(input).with_inputs(inputs),
                 &caps,
                 checkpointer,
                 &thread_id,
@@ -4787,11 +5042,8 @@ async fn run_flow_body(
     );
     let timed = tokio::time::timeout(std::time::Duration::from_secs(FLOW_RUN_TIMEOUT_SECS), run);
     tokio::pin!(timed);
-    // B42 drop-guard: armed for the whole awaiting region below. If this future
-    // is dropped before any terminal write (harness abort, turn end, runtime
-    // shutdown, panic), its `Drop` reconciles the orphaned `running` row to
-    // `interrupted`. Every settled path disarms it after its own terminal write.
-    let finalizer = RunRowFinalizer::new(config_arc.clone(), &thread_id, flow_id);
+    // (The B42 drop-guard is armed near the top of this fn, before the first
+    // `.await` — see `finalizer` there.)
     // Race the run against a cancellation signal (issue G4). `biased` checks the
     // cancel arm first so a `flows_cancel_run` that lands right as the run
     // settles still wins deterministically.
@@ -4811,6 +5063,7 @@ async fn run_flow_body(
                 &observed,
                 &[],
                 Some("run cancelled"),
+                None,
             );
             finalizer.disarm();
             drop_checkpoint(config, &thread_id).await;
@@ -4845,6 +5098,13 @@ async fn run_flow_body(
 
     let settled = settle_steps(config, &thread_id, &outcome.output);
     let (status, error) = finalize_terminal_status(&settled, &outcome.pending_approvals);
+    // T-M1: pin the graph this run just executed only on the write that parks
+    // it — `flows_resume` recomputes and compares this hash against the
+    // *current* flow graph before it will honour the approval. See
+    // `compute_graph_hash`'s doc.
+    let graph_hash = (status == "pending_approval")
+        .then(|| compute_graph_hash(&flow.graph, flow.require_approval))
+        .flatten();
     // Finalize the run row (and disarm the drop-guard) BEFORE the flow-summary
     // write, so a `record_run` failure can never leave the row wedged at
     // `running` — the row's terminal state is the correctness-critical write;
@@ -4857,6 +5117,7 @@ async fn run_flow_body(
         &settled,
         &outcome.pending_approvals,
         error.as_deref(),
+        graph_hash.as_deref(),
     );
     finalizer.disarm();
     if let Err(e) = store::record_run(config, flow_id, status) {
@@ -4980,6 +5241,102 @@ pub async fn flows_resume(
         ));
     }
 
+    // T-M1 — stale-approval graph pin. The approval card the user acted on
+    // described the graph as it existed at park time. If `save_workflow` (or
+    // any other `flows_update`) rewrote the flow's graph while the run sat
+    // `pending_approval`, resuming would compile the CURRENT graph against
+    // the OLD checkpoint and fire whatever the *new* config of the approved
+    // node id now does — under an approval the user never actually saw.
+    // `flows_update` deliberately has no in-flight/pending-run guard (that
+    // would let a stale park hold a flow hostage for the whole TTL), so this
+    // is the fail-closed boundary instead: refuse and settle the run rather
+    // than execute. A `None` pin (a legacy row from before this guard
+    // existed, or a graph that failed to hash at park time) is treated as
+    // "unknown — allow, with a warning" so upgrading mid-park can never
+    // strand an otherwise-valid in-flight approval.
+    match run_record.graph_hash.as_deref() {
+        Some(expected_hash) => {
+            let current_hash = compute_graph_hash(&flow.graph, flow.require_approval);
+            if current_hash.as_deref() != Some(expected_hash) {
+                tracing::warn!(
+                    target: "flows",
+                    flow_id = %flow_id,
+                    %thread_id,
+                    expected_hash,
+                    current_hash = ?current_hash,
+                    "[flows] flows_resume: refusing — the flow's graph changed after this run \
+                     parked (T-M1 stale-approval guard)"
+                );
+                // Settle the row FIRST and treat the guarded write as the
+                // authority, exactly as `flows_cancel_run` does (see its
+                // ORDER MATTERS note) — this refusal runs BEFORE this call
+                // claims the run, so a concurrent resume can legitimately own
+                // it by now:
+                //
+                //   1. Resume B reads the flow and computes a matching hash.
+                //   2. `flows_update` rewrites the flow.
+                //   3. Resume A reads it, computes a MISMATCH, and lands here.
+                //   4. Resume B wins `mark_run_resuming`, flips the row to
+                //      `running`, and starts executing approved side effects.
+                //
+                // `finish_flow_run_row`'s guard admits `running` as well as
+                // `pending_approval`, so a blind write from A would relabel
+                // B's live row `cancelled`, overwrite `last_status`, and drop
+                // a checkpoint B is actively using. Acting only when the write
+                // actually matched keeps A's refusal from touching B's run.
+                //
+                // A is refused either way: its own view of the graph is stale,
+                // so it must never proceed regardless of who owns the row.
+                let observed = current_persisted_steps(config, thread_id);
+                let settled_by_us = finish_flow_run_row(
+                    config,
+                    thread_id,
+                    flow_id,
+                    "cancelled",
+                    &observed,
+                    &[],
+                    Some(GRAPH_CHANGED_SINCE_PARK_ERROR),
+                    None,
+                );
+                if settled_by_us {
+                    if let Err(e) = store::record_run(config, flow_id, "cancelled") {
+                        tracing::warn!(
+                            target: "flows",
+                            flow_id = %flow_id,
+                            %thread_id,
+                            error = %e,
+                            "[flows] flows_resume: failed to record run summary (stale-approval refusal)"
+                        );
+                    }
+                    // The checkpoint is for a graph that no longer exists as
+                    // approved; drop it rather than leave it resumable against
+                    // a future graph edit that happens to hash back to the
+                    // same value.
+                    drop_checkpoint(config, thread_id).await;
+                } else {
+                    tracing::info!(
+                        target: "flows",
+                        flow_id = %flow_id,
+                        %thread_id,
+                        "[flows] flows_resume: stale-approval refusal did not settle the row — another \
+                         resume or cancel owns it now; leaving its status and checkpoint untouched"
+                    );
+                }
+                return Err(GRAPH_CHANGED_SINCE_PARK_ERROR.to_string());
+            }
+        }
+        None => {
+            tracing::warn!(
+                target: "flows",
+                flow_id = %flow_id,
+                %thread_id,
+                "[flows] flows_resume: no graph_hash pinned for this parked run (legacy row \
+                 predating the T-M1 guard, or the graph failed to hash at park time) — allowing \
+                 the resume without a graph-pin check"
+            );
+        }
+    }
+
     // A pending checkpoint may have been created before this compatibility
     // gate shipped, so resume is an independent authoritative boundary.
     if let Err(error) = ensure_config_aware_engine_compatible(config, &flow.graph) {
@@ -5001,6 +5358,7 @@ pub async fn flows_resume(
             &observed,
             &[],
             Some(&error),
+            None,
         );
         tracing::warn!(
             target: "flows",
@@ -5013,10 +5371,63 @@ pub async fn flows_resume(
     }
     let compiled = tinyflows::compiler::compile(&flow.graph).map_err(|e| e.to_string())?;
     let config_arc = Arc::new(config.clone());
-    let caps =
-        crate::openhuman::tinyflows::build_capabilities(config_arc, format!("flow:{flow_id}"));
-    let checkpointer =
-        crate::openhuman::tinyflows::open_flow_checkpointer(config).map_err(|e| e.to_string())?;
+    let caps = crate::openhuman::flows::tinyflows::build_capabilities(
+        config_arc.clone(),
+        format!("flow:{flow_id}"),
+    );
+    let checkpointer = crate::openhuman::flows::tinyflows::open_flow_checkpointer(config)
+        .map_err(|e| e.to_string())?;
+
+    // Run-lifecycle parity with `flows_run` (R-M1). A resume executes the flow's
+    // real approved side effects for up to `FLOW_RUN_TIMEOUT_SECS`, so it needs
+    // the same three guards the run path has had since B41/B42 — it had none:
+    //
+    //  1. `run_registry::register` — without an entry, `flows_cancel_run` saw
+    //     `is_in_flight == false`, took its "parked/stale" branch, wrote a
+    //     terminal `cancelled` row and dropped the checkpoint out from under
+    //     this still-executing resume. Registering makes the cancel take the
+    //     signalled branch, which this fn now honours in the `select!` below.
+    //  2. `mark_run_resuming` — flips the row off `pending_approval` so the
+    //     parked-run TTL sweep stops matching a resume that is actively
+    //     running.
+    //  3. `RunRowFinalizer` — if this future is dropped mid-await (client
+    //     disconnect during the long await), the row is reconciled to
+    //     `interrupted` instead of being stranded at its old status.
+    //
+    // Register BEFORE the status flip for the same reason `flows_run` registers
+    // before inserting its row: never let a cancel observe a live-looking row
+    // that no registered run owns.
+    let (cancel_token, _run_guard) = run_registry::register(thread_id);
+    match store::mark_run_resuming(config, thread_id) {
+        Ok(true) => {}
+        Ok(false) => {
+            // The guarded flip matched nothing: the run was cancelled or
+            // TTL-expired between the status check above and here. Refuse
+            // rather than executing approved side effects for a run that is no
+            // longer live.
+            tracing::warn!(
+                target: "flows",
+                flow_id = %flow_id,
+                %thread_id,
+                "[flows] flows_resume: run left 'pending_approval' before the resume could claim it — refusing"
+            );
+            return Err(format!(
+                "no paused run to resume: run '{thread_id}' was cancelled or expired before the \
+                 resume could start"
+            ));
+        }
+        Err(e) => {
+            tracing::warn!(
+                target: "flows",
+                flow_id = %flow_id,
+                %thread_id,
+                error = %e,
+                "[flows] flows_resume: failed to mark run as resuming"
+            );
+            return Err(e.to_string());
+        }
+    }
+    let finalizer = RunRowFinalizer::new(config_arc, thread_id, flow_id);
 
     tracing::debug!(
         target: "flows",
@@ -5035,7 +5446,7 @@ pub async fn flows_resume(
     // node that runs after the interrupt boundary, so downstream steps are
     // persisted + streamed live too, keyed by the same `thread_id`/run row.
     let observer: Arc<dyn tinyflows::observability::RunObserver> = Arc::new(
-        crate::openhuman::tinyflows::observability::FlowRunObserver::new(
+        crate::openhuman::flows::tinyflows::observability::FlowRunObserver::new(
             Arc::new(config.clone()),
             flow_id,
             thread_id.to_string(),
@@ -5068,50 +5479,101 @@ pub async fn flows_resume(
         ),
     );
 
-    let journaled = match tokio::time::timeout(
-        std::time::Duration::from_secs(FLOW_RUN_TIMEOUT_SECS),
-        run,
-    )
-    .await
-    {
-        Ok(Ok(journaled)) => journaled,
-        Ok(Err(e)) => {
-            let _ = store::record_run(config, flow_id, "failed");
+    // Terminal-write helper for the two failure arms. Row FIRST, then the
+    // best-effort summary — see the settle path below for why the order matters.
+    let record_failed = |msg: &str| {
+        let observed = current_persisted_steps(config, thread_id);
+        finish_flow_run_row(
+            config,
+            thread_id,
+            flow_id,
+            "failed",
+            &observed,
+            &[],
+            Some(msg),
+            None,
+        );
+        if let Err(e) = store::record_run(config, flow_id, "failed") {
+            tracing::warn!(
+                target: "flows",
+                flow_id = %flow_id,
+                %thread_id,
+                error = %e,
+                "[flows] flows_resume: failed to record run summary (run row already finalized)"
+            );
+        }
+    };
+
+    let timed = tokio::time::timeout(std::time::Duration::from_secs(FLOW_RUN_TIMEOUT_SECS), run);
+    tokio::pin!(timed);
+    // Race the resume against a cancellation signal, exactly as `run_flow_body`
+    // does. `biased` checks the cancel arm first so a `flows_cancel_run` landing
+    // as the resume settles still wins deterministically.
+    let journaled = tokio::select! {
+        biased;
+        _ = cancel_token.cancelled() => {
+            tracing::info!(target: "flows", flow_id = %flow_id, %thread_id, "[flows] flows_resume: cancelled mid-resume");
             let observed = current_persisted_steps(config, thread_id);
             finish_flow_run_row(
                 config,
                 thread_id,
                 flow_id,
-                "failed",
+                "cancelled",
                 &observed,
                 &[],
-                Some(&e.to_string()),
+                Some("run cancelled"),
+                None,
             );
-            tracing::warn!(target: "flows", flow_id = %flow_id, %thread_id, error = %e, "[flows] flows_resume: run failed");
-            return Err(e.to_string());
+            finalizer.disarm();
+            if let Err(e) = store::record_run(config, flow_id, "cancelled") {
+                tracing::warn!(target: "flows", flow_id = %flow_id, error = %e, "[flows] flows_resume: failed to record cancelled run");
+            }
+            drop_checkpoint(config, thread_id).await;
+            return Ok(RpcOutcome::single_log(
+                json!({
+                    "output": Value::Null,
+                    "pending_approvals": Vec::<String>::new(),
+                    "thread_id": thread_id,
+                    "cancelled": true,
+                }),
+                format!("flow resume cancelled: {thread_id}"),
+            ));
         }
-        Err(_elapsed) => {
-            let msg = format!("flow resume timed out after {FLOW_RUN_TIMEOUT_SECS}s");
-            let _ = store::record_run(config, flow_id, "failed");
-            let observed = current_persisted_steps(config, thread_id);
-            finish_flow_run_row(
-                config,
-                thread_id,
-                flow_id,
-                "failed",
-                &observed,
-                &[],
-                Some(&msg),
-            );
-            tracing::warn!(target: "flows", flow_id = %flow_id, %thread_id, timeout_secs = FLOW_RUN_TIMEOUT_SECS, "[flows] flows_resume: run timed out");
-            return Err(msg);
-        }
+        result = &mut timed => match result {
+            Ok(Ok(journaled)) => journaled,
+            Ok(Err(e)) => {
+                record_failed(&e.to_string());
+                finalizer.disarm();
+                tracing::warn!(target: "flows", flow_id = %flow_id, %thread_id, error = %e, "[flows] flows_resume: run failed");
+                return Err(e.to_string());
+            }
+            Err(_elapsed) => {
+                let msg = format!("flow resume timed out after {FLOW_RUN_TIMEOUT_SECS}s");
+                record_failed(&msg);
+                finalizer.disarm();
+                tracing::warn!(target: "flows", flow_id = %flow_id, %thread_id, timeout_secs = FLOW_RUN_TIMEOUT_SECS, "[flows] flows_resume: run timed out");
+                return Err(msg);
+            }
+        },
     };
     let outcome = journaled.outcome;
 
     let settled = settle_steps(config, thread_id, &outcome.output);
     let (status, error) = finalize_terminal_status(&settled, &outcome.pending_approvals);
-    store::record_run(config, flow_id, status).map_err(|e| e.to_string())?;
+    // T-M1: a resumed run can itself re-park at a further gate — pin the
+    // (already-verified-current, see the graph-hash check above) graph again
+    // so a *second* stale-approval window is guarded exactly like the first.
+    let graph_hash = (status == "pending_approval")
+        .then(|| compute_graph_hash(&flow.graph, flow.require_approval))
+        .flatten();
+    // Finalize the run row (and disarm the drop-guard) BEFORE the flow-summary
+    // write, matching `flows_run` (R-M3). This used to be inverted here, with
+    // `record_run` propagating via `?`: a concurrent flow delete made the
+    // summary write fail and returned early, leaving the row stranded at
+    // `pending_approval` even though the engine had completed and its side
+    // effects had fired — which the TTL sweep would later relabel `cancelled`.
+    // The row's terminal state is the correctness-critical write; the summary is
+    // best-effort observability.
     finish_flow_run_row(
         config,
         thread_id,
@@ -5120,7 +5582,19 @@ pub async fn flows_resume(
         &settled,
         &outcome.pending_approvals,
         error.as_deref(),
+        graph_hash.as_deref(),
     );
+    finalizer.disarm();
+    if let Err(e) = store::record_run(config, flow_id, status) {
+        tracing::warn!(
+            target: "flows",
+            flow_id = %flow_id,
+            %thread_id,
+            status,
+            error = %e,
+            "[flows] flows_resume: failed to record run summary (run row already finalized)"
+        );
+    }
     export_run_to_langfuse(
         config,
         &flow.name,
@@ -5245,6 +5719,25 @@ pub async fn sweep_expired_parked_runs(config: &Config) -> usize {
         if let Err(e) = store::record_run(config, flow_id, "cancelled") {
             tracing::warn!(target: "flows", run_id, flow_id, error = %e, "[flows] TTL sweep: failed to update flow summary for expired run");
         }
+        // Announce the terminal transition (R-m4). `expire_parked_runs` writes
+        // the row directly rather than going through `finish_flow_run_row`, so
+        // without this the sweep was the one terminal path that emitted no
+        // `FlowRunFinished` — the boot sweep already publishes its own. Purely
+        // event-driven consumers (the runs rail) would otherwise not observe a
+        // TTL-expired run settle until their next poll.
+        tracing::debug!(
+            target: "flows",
+            run_id,
+            flow_id,
+            "[flows] TTL sweep: publishing FlowRunFinished for expired parked run"
+        );
+        crate::core::event_bus::publish_global(
+            crate::core::event_bus::DomainEvent::FlowRunFinished {
+                flow_id: flow_id.to_string(),
+                run_id: run_id.to_string(),
+                status: "cancelled".to_string(),
+            },
+        );
         drop_checkpoint(config, run_id).await;
     }
     if !swept.is_empty() {
@@ -5392,11 +5885,19 @@ pub async fn flows_cancel_run(config: &Config, run_id: &str) -> Result<RpcOutcom
     }
 
     // Not in flight: settle the row terminally and drop the checkpoint here.
-    if let Err(e) = store::record_run(config, &run.flow_id, "cancelled") {
-        tracing::warn!(target: "flows", run_id, flow_id = %run.flow_id, error = %e, "[flows] flows_cancel_run: failed to record cancelled status on flow summary");
-    }
+    //
+    // ORDER MATTERS (R-M2). The status read above and `run_registry::cancel`
+    // are two separate observations, and a live run can settle in the window
+    // between them: it writes its own terminal row and deregisters, so
+    // `cancel` returns `false` and we arrive here believing the run is merely
+    // parked/stale. Writing `cancelled` unconditionally would then relabel a
+    // fully-completed run — whose real side effects already fired — and drop a
+    // checkpoint that is no longer ours to drop. So attempt the guarded row
+    // write FIRST and treat it as the authority: it only matches a still-live
+    // row, so `false` means the run settled underneath us. Only once it has
+    // won do we record the flow summary and drop the checkpoint.
     let observed = current_persisted_steps(config, run_id);
-    finish_flow_run_row(
+    let settled_by_us = finish_flow_run_row(
         config,
         run_id,
         &run.flow_id,
@@ -5404,7 +5905,24 @@ pub async fn flows_cancel_run(config: &Config, run_id: &str) -> Result<RpcOutcom
         &observed,
         &[],
         Some("run cancelled"),
+        None,
     );
+    if !settled_by_us {
+        tracing::info!(
+            target: "flows",
+            run_id,
+            flow_id = %run.flow_id,
+            prior_status = %run.status,
+            "[flows] flows_cancel_run: run settled concurrently — leaving its terminal status intact"
+        );
+        return Err(format!(
+            "flow run '{run_id}' settled before it could be cancelled — its recorded outcome was \
+             left untouched"
+        ));
+    }
+    if let Err(e) = store::record_run(config, &run.flow_id, "cancelled") {
+        tracing::warn!(target: "flows", run_id, flow_id = %run.flow_id, error = %e, "[flows] flows_cancel_run: failed to record cancelled status on flow summary");
+    }
     drop_checkpoint(config, run_id).await;
 
     Ok(RpcOutcome::single_log(
@@ -5420,7 +5938,7 @@ pub async fn flows_cancel_run(config: &Config, run_id: &str) -> Result<RpcOutcom
 /// rejects any non-`pending_approval` status); dropping the checkpoint is
 /// belt-and-suspenders that also reclaims the storage.
 async fn drop_checkpoint(config: &Config, thread_id: &str) {
-    match crate::openhuman::tinyflows::open_flow_checkpointer(config) {
+    match crate::openhuman::flows::tinyflows::open_flow_checkpointer(config) {
         Ok(checkpointer) => match checkpointer.delete_thread(thread_id).await {
             Ok(()) => {
                 tracing::debug!(target: "flows", thread_id, "[flows] dropped durable checkpoint for cancelled/expired run")
@@ -5482,6 +6000,11 @@ fn start_flow_run_row(config: &Config, thread_id: &str, flow_id: &str) {
 
 /// Best-effort finalization of a `flow_runs` row. Logged, never fails the
 /// run (see [`start_flow_run_row`]).
+///
+/// `graph_hash` (T-M1) should be `Some(hash)` only on the write that parks the
+/// row (`status == "pending_approval"`) — every other caller passes `None`,
+/// which clears any stale pin now that the row is leaving (or never entered)
+/// `pending_approval`. See [`compute_graph_hash`] and `store::finish_flow_run`.
 fn finish_flow_run_row(
     config: &Config,
     thread_id: &str,
@@ -5490,9 +6013,10 @@ fn finish_flow_run_row(
     steps: &[FlowRunStep],
     pending_approvals: &[String],
     error: Option<&str>,
-) {
+    graph_hash: Option<&str>,
+) -> bool {
     let finished_at = Utc::now().to_rfc3339();
-    if let Err(e) = store::finish_flow_run(
+    match store::finish_flow_run(
         config,
         thread_id,
         status,
@@ -5500,8 +6024,28 @@ fn finish_flow_run_row(
         steps,
         pending_approvals,
         error,
+        graph_hash,
     ) {
-        tracing::warn!(target: "flows", thread_id, status, error = %e, "[flows] failed to persist flow run finish");
+        Err(e) => {
+            tracing::warn!(target: "flows", thread_id, status, error = %e, "[flows] failed to persist flow run finish");
+            return false;
+        }
+        // The guarded UPDATE (R-M2) matched nothing: the row had already
+        // settled to a terminal status before this write. Whoever settled it
+        // first also published `FlowRunFinished`, so publishing again here
+        // would emit a second terminal event for one run. Report the no-op
+        // instead of pretending the write landed.
+        Ok(false) => {
+            tracing::warn!(
+                target: "flows",
+                flow_id,
+                thread_id,
+                attempted_status = status,
+                "[flows] finish_flow_run_row: row already terminal — refusing to overwrite a settled run"
+            );
+            return false;
+        }
+        Ok(true) => {}
     }
 
     // `status` can be `"pending_approval"` here (see `finalize_terminal_status`)
@@ -5524,7 +6068,7 @@ fn finish_flow_run_row(
             status,
             "[flows] finish_flow_run_row: run paused for approval — not a finish, skipping FlowRunFinished"
         );
-        return;
+        return true;
     }
 
     tracing::debug!(
@@ -5539,6 +6083,93 @@ fn finish_flow_run_row(
         run_id: thread_id.to_string(),
         status: status.to_string(),
     });
+    true
+}
+
+/// Computes a stable content hash of the flow configuration a run was approved
+/// against — the T-M1 stale-approval guard (see `flows_resume`'s doc).
+/// Persisted on a run row the moment it parks at `pending_approval`, and
+/// recompared against the **current** flow before a resume is allowed to
+/// execute, so a rewrite between park and resume is detected instead of
+/// silently firing the new configuration under the old approval.
+///
+/// Covers the graph **and `require_approval`**. The flag is not cosmetic: it
+/// feeds `workflow_origin(...)`, which becomes the `AgentTurnOrigin` for the
+/// whole resumed execution, and `TrustedAutomationSource::Workflow {
+/// require_approval: false }` **auto-allows every `external_effect` tool call**
+/// where `true` parks each one for its own human decision. It is also settable
+/// independently of the graph — `flows_update(.., graph_json: None,
+/// require_approval: Some(false), ..)` leaves `.graph` byte-identical. Hashing
+/// the graph alone would therefore leave the exact hole this guard exists to
+/// close: park at a gate, user approves, the flag is flipped to `false` with the
+/// graph untouched (pin still matches), and on resume every downstream
+/// outbound node that would have parked now fires unattended.
+///
+/// Hashes a *canonicalized* JSON serialization — `serde_json::Value`'s object
+/// map preserves insertion order in this crate (the `preserve_order` feature
+/// is enabled transitively via other dependencies), so the same logical graph
+/// serialized through two different code paths is not guaranteed to emit its
+/// object keys in the same order. [`canonicalize_json`] recursively sorts
+/// every object's keys before hashing so the hash depends only on graph
+/// content, never on incidental key order. Returns `None` (never panics) if
+/// the graph somehow fails to serialize.
+///
+/// **`None` means different things on the two sides, and the resume side fails
+/// CLOSED.** At park time `None` simply stores no pin, so that run later takes
+/// the legacy "unknown — allow, with a warning" path. At resume time the
+/// comparison is `Some(expected) != None`, which is *true*, so a hash failure
+/// is treated as a mismatch: the run is refused, settled terminally, and its
+/// checkpoint dropped. That is the safer direction — a run whose current graph
+/// cannot be hashed is a run whose approval cannot be verified — but it is the
+/// opposite of fail-open, so do not read this as a guarantee that a serialize
+/// failure leaves a resumable run resumable.
+fn compute_graph_hash(graph: &WorkflowGraph, require_approval: bool) -> Option<String> {
+    let raw = match serde_json::to_value(graph) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(
+                target: "flows",
+                error = %e,
+                "[flows] compute_graph_hash: failed to serialize graph to JSON — proceeding without a graph pin"
+            );
+            return None;
+        }
+    };
+    let raw = serde_json::json!({ "graph": raw, "require_approval": require_approval });
+    let canonical = canonicalize_json(&raw);
+    let serialized = match serde_json::to_string(&canonical) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!(
+                target: "flows",
+                error = %e,
+                "[flows] compute_graph_hash: failed to serialize canonicalized graph — proceeding without a graph pin"
+            );
+            return None;
+        }
+    };
+    let digest = Sha256::digest(serialized.as_bytes());
+    Some(hex::encode(digest))
+}
+
+/// Recursively rewrites every JSON object's keys into sorted order, leaving
+/// arrays (whose element order is semantically meaningful) and scalars
+/// unchanged. See [`compute_graph_hash`] for why this is needed before
+/// hashing rather than trusting `serde_json`'s default map order.
+fn canonicalize_json(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort();
+            let mut sorted = serde_json::Map::new();
+            for key in keys {
+                sorted.insert(key.clone(), canonicalize_json(&map[key]));
+            }
+            Value::Object(sorted)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(canonicalize_json).collect()),
+        other => other.clone(),
+    }
 }
 
 /// Reconstructs a lean per-node step list from a settled run's
@@ -5573,7 +6204,7 @@ fn reconstruct_steps(output: &Value) -> Vec<FlowRunStep> {
 /// caller still writes a terminal row), never propagating an error into the
 /// run's settle path.
 ///
-/// [`FlowRunObserver`]: crate::openhuman::tinyflows::observability::FlowRunObserver
+/// [`FlowRunObserver`]: crate::openhuman::flows::tinyflows::observability::FlowRunObserver
 fn current_persisted_steps(config: &Config, run_id: &str) -> Vec<FlowRunStep> {
     store::get_flow_run(config, run_id)
         .ok()
@@ -5703,8 +6334,8 @@ fn notify_pending_approval(flow: &Flow, thread_id: &str, pending_approvals: &[St
         return;
     }
 
-    use crate::openhuman::notifications::bus::publish_core_notification;
-    use crate::openhuman::notifications::types::{
+    use crate::openhuman::desktop::notifications::bus::publish_core_notification;
+    use crate::openhuman::desktop::notifications::types::{
         CoreNotificationAction, CoreNotificationCategory, CoreNotificationEvent,
     };
 
@@ -5950,7 +6581,7 @@ pub async fn flows_discover(
     );
     let timed = match &stream {
         Some(target) => {
-            crate::openhuman::tinyagents::thread_context::with_thread_id(
+            crate::openhuman::agent::tinyagents::thread_context::with_thread_id(
                 target.thread_id.clone(),
                 run,
             )
@@ -6022,7 +6653,7 @@ const FLOW_BUILD_TIMEOUT_SECS: u64 = 600;
 ///
 /// `flows_build` runs the builder under [`AgentTurnOrigin::Cli`] so the approval
 /// gate does not fail-closed in a headless/streamed run — but that same origin
-/// makes [`crate::openhuman::approval::ApprovalGate`] **auto-allow** every
+/// makes [`crate::openhuman::security::approval::ApprovalGate`] **auto-allow** every
 /// `external_effect` tool. The flows live-runner (`run_flow`,
 /// [`crate::openhuman::flows::tools`]'s `RunFlowTool`) executes a *live* saved
 /// flow (real Slack/Gmail/HTTP/code effects via [`flows_run`]), so a stray call
@@ -6048,10 +6679,14 @@ const FLOW_BUILD_TIMEOUT_SECS: u64 = 600;
 /// confirmation — the exact HITL hole #4593 closed, reopened by #4881
 /// widening the belt.
 ///
-/// `cancel_flow_run` fires no new outbound effect
-/// (`external_effect() == false`), so it isn't a gate-bypass concern the same
-/// way — but an authoring turn still has no business tearing down a run the
-/// *user* started, so it is hidden alongside the two above out of caution.
+/// `cancel_flow_run` ([`builder_tools::CancelFlowRunTool`]) is now
+/// `external_effect() == true` and ownership-checks the run against a
+/// caller-named `flow_id` (T-M3 fix) — but that gate is exactly the one this
+/// `Cli`-origin path auto-allows, same as `resume_flow_run` above, so the
+/// ownership check alone is not a substitute for a human decision here. An
+/// authoring turn still has no business tearing down a run the *user*
+/// started with zero confirmation, so it stays hidden alongside the two
+/// above out of caution.
 ///
 /// `create_workflow` / `duplicate_flow` are deliberately **left visible**:
 /// both are hard-forced **born disabled** (see [`builder_tools::CreateWorkflowTool`]
@@ -6092,7 +6727,7 @@ fn restrict_builder_toolset(agent: &mut crate::openhuman::agent::Agent) {
 /// [`AgentTurnOrigin::WebChat`] with [`APPROVAL_CHAT_CONTEXT`] scoped
 /// alongside it — the exact same double-scope the main web-chat delegate uses
 /// (`web_chat::ops::run_turn_under_cancel_and_deadline`). Under that origin
-/// the [`crate::openhuman::approval::ApprovalGate`] no longer auto-allows
+/// the [`crate::openhuman::security::approval::ApprovalGate`] no longer auto-allows
 /// `external_effect` tools; it PARKS them for a real human decision, routed
 /// back to this thread via the existing `approval_request` socket event and
 /// rendered with the existing `ApprovalRequestCard` in the copilot panel. So
@@ -6100,20 +6735,31 @@ fn restrict_builder_toolset(agent: &mut crate::openhuman::agent::Agent) {
 /// longer need to be hidden on this path: they are reachable, but gated
 /// behind a real approval, exactly like a main-chat tool call.
 ///
-/// `cancel_flow_run` stays HIDDEN on this path, though. It reports
-/// `external_effect() == false`, so `ApprovalSecurityMiddleware` would not park
-/// it behind the approval surface — and the tool cancels an arbitrary run id
-/// (e.g. one read from `list_flow_runs`) with no ownership check. An unhidden
-/// `cancel_flow_run` would therefore let a streaming copilot turn cancel ANY
-/// in-flight or approval-parked run, unapproved — far broader than the "stop a
-/// run the copilot itself started" companion use it was meant for. Until it
-/// gains an ownership/approval guard it is kept hidden here (a user can still
-/// cancel from the Runs rail). (codex review, #5090.)
+/// `cancel_flow_run` stays HIDDEN on this path (codex review, #5090) — but for
+/// a narrower reason than before. The original justification was that it
+/// reported `external_effect() == false`, so `ApprovalSecurityMiddleware`
+/// would not park it behind the approval surface, and that it cancelled an
+/// arbitrary run id (e.g. one read from `list_flow_runs`) with no ownership
+/// check: an unhidden call would have let a streaming copilot turn cancel ANY
+/// in-flight or approval-parked run, unapproved. **The T-M3 fix closed both of
+/// those gaps** — [`builder_tools::CancelFlowRunTool`] is now
+/// `external_effect() == true` (so it would park behind the same real
+/// `WebChat` approval card as `run_flow`/`resume_flow_run` on this path) AND
+/// verifies the target run actually belongs to the caller-named `flow_id`
+/// before touching it.
+///
+/// It is nonetheless kept hidden **deliberately**. Unhiding it would be a
+/// capability expansion, not a security fix: it newly lets an authoring turn
+/// tear down a run the *user* started, which is a product decision nobody has
+/// taken — and hardening the tool is not a reason to take it implicitly. A
+/// user can still cancel from the Runs rail. Dropping this entry is now safe
+/// from a gating standpoint whenever that decision is made; that safety is
+/// what the T-M3 fix bought.
 ///
 /// `run_workflow` (the unrelated legacy skills-workflow runner sharing this
-/// belt) stays hidden on BOTH paths — belt-and-braces against a re-rename or
-/// the name ever leaking back onto the `workflow_builder` toolset; `hide_tools`
-/// no-ops on a name that isn't present.
+/// belt) stays hidden — belt-and-braces against a re-rename or the name ever
+/// leaking back onto the `workflow_builder` toolset; `hide_tools` no-ops on a
+/// name that isn't present.
 const FLOWS_BUILD_COPILOT_HIDDEN_TOOLS: &[&str] = &["run_workflow", "cancel_flow_run"];
 
 /// Strip only [`FLOWS_BUILD_COPILOT_HIDDEN_TOOLS`] from `agent`'s callable set
@@ -6123,9 +6769,10 @@ fn restrict_builder_toolset_for_copilot(agent: &mut crate::openhuman::agent::Age
     tracing::info!(
         target: "flows",
         hidden = ?FLOWS_BUILD_COPILOT_HIDDEN_TOOLS,
-        "[flows] flows_build: streaming copilot turn — run_flow/resume_flow_run stay visible \
-         (gated behind the WebChat approval surface); run_workflow + cancel_flow_run hidden \
-         (cancel_flow_run has no external_effect to park and no run-ownership guard)"
+        "[flows] flows_build: streaming copilot turn — run_flow/resume_flow_run/cancel_flow_run \
+         stay visible (all three gated behind the WebChat approval surface; cancel_flow_run also \
+         ownership-checks the target run's flow_id — T-M3 fix); only the unrelated legacy \
+         run_workflow is hidden"
     );
     agent.hide_tools(FLOWS_BUILD_COPILOT_HIDDEN_TOOLS);
 }
@@ -6149,6 +6796,21 @@ pub async fn flows_build(
     config: &Config,
     req: crate::openhuman::flows::agents::workflow_builder::builder_prompt::BuilderRequest,
     stream: Option<FlowStreamTarget>,
+) -> Result<RpcOutcome<Value>, String> {
+    flows_build_with_extra_hidden_tools(config, req, stream, &[]).await
+}
+
+/// [`flows_build`] with caller-specific tools removed in addition to the
+/// standard streaming/headless safety lists.
+///
+/// This is intentionally crate-private: product surfaces use [`flows_build`]'s
+/// normal builder belt. Host integrations that add their own persistence
+/// boundary can hide tools that would bypass that boundary.
+pub(crate) async fn flows_build_with_extra_hidden_tools(
+    config: &Config,
+    req: crate::openhuman::flows::agents::workflow_builder::builder_prompt::BuilderRequest,
+    stream: Option<FlowStreamTarget>,
+    extra_hidden_tools: &[&str],
 ) -> Result<RpcOutcome<Value>, String> {
     use crate::openhuman::agent::Agent;
     use crate::openhuman::flows::agents::workflow_builder::builder_prompt::render_prompt;
@@ -6195,7 +6857,8 @@ pub async fn flows_build(
     // absent, so the WebChat origin below would NOT park and the unhidden
     // live-run tools would execute unapproved. Fall back to the full hide-list
     // whenever the gate is not installed, regardless of `stream`. (codex #5090)
-    let approval_gate_active = crate::openhuman::approval::ApprovalGate::try_global().is_some();
+    let approval_gate_active =
+        crate::openhuman::security::approval::ApprovalGate::try_global().is_some();
     if stream.is_some() && approval_gate_active {
         restrict_builder_toolset_for_copilot(&mut agent);
     } else {
@@ -6208,6 +6871,14 @@ pub async fn flows_build(
             );
         }
         restrict_builder_toolset(&mut agent);
+    }
+    if !extra_hidden_tools.is_empty() {
+        tracing::debug!(
+            target: "flows",
+            hidden = ?extra_hidden_tools,
+            "[flows] flows_build: applying caller-specific hidden tools"
+        );
+        agent.hide_tools(extra_hidden_tools);
     }
 
     // When a chat thread is attached (the copilot pane), stream the builder turn
@@ -6288,7 +6959,7 @@ pub async fn flows_build(
             );
             let run =
                 tokio::time::timeout(std::time::Duration::from_secs(FLOW_BUILD_TIMEOUT_SECS), run);
-            let run = crate::openhuman::tinyagents::thread_context::with_thread_id(
+            let run = crate::openhuman::agent::tinyagents::thread_context::with_thread_id(
                 target.thread_id.clone(),
                 run,
             );
@@ -6924,7 +7595,7 @@ pub(crate) async fn connected_toolkits(config: &Config) -> std::collections::Has
 /// `oh:` tools and `http_request` nodes need no Composio connection and are
 /// skipped.
 pub async fn compute_required_connections(config: &Config, graph: &WorkflowGraph) -> Vec<Value> {
-    use crate::openhuman::memory_sync::composio::providers::toolkit_from_slug;
+    use crate::openhuman::memory::sync::composio::providers::toolkit_from_slug;
 
     // Collect required toolkits (deduped, order-preserving).
     let mut required: Vec<String> = Vec::new();
@@ -6989,6 +7660,266 @@ pub async fn flows_required_connections(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Save-time approval manifest (consolidated pre-authorization card)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Statically compute the "approval manifest" for a graph: every ApprovalGate
+/// permission a run of this flow will prompt for, so the save+enable card can
+/// ask for all of them in one shot instead of parking the run node-by-node.
+///
+/// Mirrors — never re-implements — the runtime gating in
+/// `crate::openhuman::flows::tinyflows::caps` (`OpenHumanTools::invoke` /
+/// `OpenHumanHttp` / `OpenHumanCode`) and `approval::gate`'s Workflow-origin
+/// branch. Because Rule 2 (`enforce_side_effect_approval`) forces
+/// `require_approval: true` onto every graph with outbound side-effect nodes,
+/// a run parks on EVERY gated node that lacks `(flow_id, tool_name)` trust —
+/// so the manifest is precisely "the trust keys a fully pre-authorized run
+/// needs".
+///
+/// Entry `kind`s:
+/// - `"approvable"` — will park; pre-approving `tool_name` clears it.
+/// - `"blocked"` — the autonomy tier `Block`s the node's class outright
+///   (`enforce_node_tier_gate` refuses before dispatch); NOT approvable from
+///   the card — shown informationally so the user learns at save time, not
+///   at run time.
+/// - `"dynamic"` — the node's slug is an inline `=` expression resolved from
+///   runtime data; its trust key is unknowable at save time and it stays
+///   gated (best-effort disclosure).
+/// - `"agent"` — an `agent` node with an `agent_ref` runs a full harness turn
+///   whose inner tool calls cannot be enumerated statically; disclosed so the
+///   card never over-promises "zero prompts".
+///
+/// Curated Composio Read actions are excluded entirely: `CommandClass::Read`
+/// is `Allow` under every tier and the runtime skips the gate for them, so
+/// listing them would request grants that are never checked.
+pub async fn compute_approval_manifest(config: &Config, graph: &WorkflowGraph) -> Vec<Value> {
+    use crate::openhuman::flows::tinyflows::caps::classify_composio_action_for_tier;
+    use crate::openhuman::security::{CommandClass, GateDecision, SecurityPolicy};
+
+    let security =
+        SecurityPolicy::from_config(&config.autonomy, &config.workspace_dir, &config.action_dir);
+
+    let mut entries: Vec<Value> = Vec::new();
+    // Approvable/blocked rows dedupe on the trust key (`tool_name`) — two
+    // nodes calling the same tool need one grant, so they get one row.
+    let mut seen_tools: HashSet<String> = HashSet::new();
+
+    let push_gated = |entries: &mut Vec<Value>,
+                      seen_tools: &mut HashSet<String>,
+                      node_id: &str,
+                      tool_name: String,
+                      label: String,
+                      class: CommandClass| {
+        if !seen_tools.insert(tool_name.clone()) {
+            return;
+        }
+        let kind = if security.gate_decision(class) == GateDecision::Block {
+            "blocked"
+        } else {
+            "approvable"
+        };
+        entries.push(json!({
+            "kind": kind,
+            "node_id": node_id,
+            "tool_name": tool_name,
+            "label": label,
+            "class": format!("{class:?}"),
+        }));
+    };
+
+    for node in &graph.nodes {
+        match node.kind {
+            NodeKind::HttpRequest => {
+                let url = node
+                    .config
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .unwrap_or("HTTP request");
+                push_gated(
+                    &mut entries,
+                    &mut seen_tools,
+                    &node.id,
+                    "flows_http_request".to_string(),
+                    format!("Call {url}"),
+                    CommandClass::Network,
+                );
+            }
+            NodeKind::Code => {
+                push_gated(
+                    &mut entries,
+                    &mut seen_tools,
+                    &node.id,
+                    "flows_code".to_string(),
+                    "Run sandboxed code".to_string(),
+                    CommandClass::Write,
+                );
+            }
+            NodeKind::ToolCall => {
+                let slug = node.config.get("slug").and_then(Value::as_str);
+                match slug {
+                    Some(s) if s.trim_start().starts_with('=') => {
+                        tracing::debug!(
+                            target: "flows",
+                            node_id = %node.id,
+                            "[flows] approval manifest: dynamic `=` slug — cannot pre-approve"
+                        );
+                        entries.push(json!({
+                            "kind": "dynamic",
+                            "node_id": node.id,
+                            "label": "Tool chosen at run time",
+                        }));
+                    }
+                    Some(s)
+                        if s.starts_with(
+                            crate::openhuman::flows::tinyflows::caps::NATIVE_TOOL_PREFIX,
+                        ) =>
+                    {
+                        let tool_name = s
+                            .trim_start_matches(
+                                crate::openhuman::flows::tinyflows::caps::NATIVE_TOOL_PREFIX,
+                            )
+                            .trim()
+                            .to_string();
+                        if tool_name.is_empty() {
+                            continue; // structurally invalid; validate rejects elsewhere
+                        }
+                        let args = node.config.get("args").cloned().unwrap_or(json!({}));
+                        // Same classifier the runtime dispatch uses. Args may
+                        // contain unresolved `=` bindings, so a classification
+                        // error (unknown tool, etc.) degrades conservatively
+                        // to Network — over-asking is safe, under-asking
+                        // re-introduces the mid-run park this feature removes.
+                        let class = crate::openhuman::runtime::node::ops::classify_tool_call(
+                            config, &tool_name, &args,
+                        )
+                        .unwrap_or(CommandClass::Network);
+                        push_gated(
+                            &mut entries,
+                            &mut seen_tools,
+                            &node.id,
+                            tool_name.clone(),
+                            format!("Use tool {tool_name}"),
+                            class,
+                        );
+                    }
+                    Some(s) if !s.trim().is_empty() => {
+                        let class = classify_composio_action_for_tier(s).await;
+                        if class == CommandClass::Read {
+                            // Curated read: runtime never gates it.
+                            continue;
+                        }
+                        push_gated(
+                            &mut entries,
+                            &mut seen_tools,
+                            &node.id,
+                            s.to_string(),
+                            format!("Use {s}"),
+                            class,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            NodeKind::Agent
+                if node
+                    .config
+                    .get("agent_ref")
+                    .and_then(Value::as_str)
+                    .is_some_and(|r| !r.trim().is_empty()) =>
+            {
+                entries.push(json!({
+                    "kind": "agent",
+                    "node_id": node.id,
+                    "label": "AI step — may ask for permission for its own actions",
+                }));
+            }
+            _ => {}
+        }
+    }
+
+    tracing::debug!(
+        target: "flows",
+        entries = entries.len(),
+        "[flows] approval manifest computed"
+    );
+    entries
+}
+
+/// RPC: the approval manifest for a saved flow (by `id`) or a candidate
+/// `graph`, joined against the flow's existing `flow_tool_trust` grants so
+/// the save+enable card can ask only for what's missing.
+///
+/// With the approval gate uninstalled (`OPENHUMAN_APPROVAL_GATE=0`) nothing
+/// ever parks, so `missing` is empty by definition and the card never shows.
+pub async fn flows_approval_manifest(
+    config: &Config,
+    id: Option<&str>,
+    graph_json: Option<Value>,
+) -> Result<RpcOutcome<Value>, String> {
+    tracing::debug!(target: "flows", id = ?id, has_graph = graph_json.is_some(), "[flows] flows_approval_manifest: entry");
+    let (graph, flow_id) = match (id, graph_json) {
+        (Some(id), _) => {
+            let flow = store::get_flow(config, id)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("flow not found: {id}"))?;
+            // `store::get_flow` already returns a migrated, deserialized graph.
+            (flow.graph, Some(id.to_string()))
+        }
+        (None, Some(graph_json)) => (migrate_and_deserialize_graph(graph_json)?, None),
+        (None, None) => return Err("provide 'id' or 'graph'".to_string()),
+    };
+
+    let entries = compute_approval_manifest(config, &graph).await;
+
+    let gate = crate::openhuman::security::approval::ApprovalGate::try_global();
+    let gate_installed = gate.is_some();
+    let trusted: HashSet<String> = match (&gate, &flow_id) {
+        (Some(gate), Some(flow_id)) => gate
+            .list_flow_trust(flow_id)
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .collect(),
+        _ => HashSet::new(),
+    };
+
+    let mut missing: Vec<String> = Vec::new();
+    let mut already_trusted: Vec<String> = Vec::new();
+    for entry in &entries {
+        if entry.get("kind").and_then(Value::as_str) != Some("approvable") {
+            continue;
+        }
+        let Some(tool_name) = entry.get("tool_name").and_then(Value::as_str) else {
+            continue;
+        };
+        if !gate_installed {
+            // Nothing parks without a gate; report nothing as missing.
+            already_trusted.push(tool_name.to_string());
+        } else if trusted.contains(tool_name) {
+            already_trusted.push(tool_name.to_string());
+        } else {
+            missing.push(tool_name.to_string());
+        }
+    }
+
+    let log = format!(
+        "[flows] approval manifest: {} entr{}, {} missing grant(s)",
+        entries.len(),
+        if entries.len() == 1 { "y" } else { "ies" },
+        missing.len()
+    );
+    tracing::debug!(target: "flows", entries = entries.len(), missing = missing.len(), gate_installed, "[flows] flows_approval_manifest: exit");
+    Ok(RpcOutcome::single_log(
+        json!({
+            "entries": entries,
+            "missing": missing,
+            "already_trusted": already_trusted,
+            "gate_installed": gate_installed,
+        }),
+        log,
+    ))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Catalog RPCs for the UI (Phase 5, item 16) — one implementation, two consumers
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -7019,7 +7950,8 @@ pub async fn flows_get_tool_contract(
     slug: &str,
 ) -> Result<RpcOutcome<Value>, String> {
     let slug = slug.trim();
-    let Some(toolkit) = crate::openhuman::memory_sync::composio::providers::toolkit_from_slug(slug)
+    let Some(toolkit) =
+        crate::openhuman::memory::sync::composio::providers::toolkit_from_slug(slug)
     else {
         return Err(format!(
             "Could not extract a toolkit from slug '{slug}' — it must look like \
@@ -7028,7 +7960,8 @@ pub async fn flows_get_tool_contract(
     };
     tracing::debug!(target: "flows", %slug, %toolkit, "[flows] flows_get_tool_contract: fetching contract");
     let Some(catalog) =
-        crate::openhuman::tinyflows::caps::fetch_live_toolkit_catalog(config, &toolkit).await
+        crate::openhuman::flows::tinyflows::caps::fetch_live_toolkit_catalog(config, &toolkit)
+            .await
     else {
         return Err(format!(
             "Could not fetch the live Composio catalog for toolkit '{toolkit}'."
@@ -7037,7 +7970,7 @@ pub async fn flows_get_tool_contract(
     match catalog.iter().find(|c| c.slug.eq_ignore_ascii_case(slug)) {
         Some(contract) => {
             let contract =
-                crate::openhuman::tinyflows::caps::apply_probe_override(contract.clone());
+                crate::openhuman::flows::tinyflows::caps::apply_probe_override(contract.clone());
             let value = serde_json::to_value(&contract).map_err(|e| e.to_string())?;
             Ok(RpcOutcome::single_log(
                 json!({ "contract": value }),

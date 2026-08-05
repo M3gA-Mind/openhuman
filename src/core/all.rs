@@ -64,6 +64,27 @@ impl RegisteredController {
 /// per-feature axes the child issues (#4797–#4804) additionally narrow at
 /// compile time. `Platform` is the catch-all for everything not in a named
 /// family — always on in `full()`, off in `harness()`/`none()`.
+///
+/// **Groups track `src/openhuman/` family directories 1:1.** Before the domain
+/// reorg (#5328) they could not: a capability lived across up to 13 sibling
+/// top-level dirs, so half the controller surface was tagged `Platform` for want
+/// of a family to name. That made two things wrong which are now fixed:
+///
+/// - `harness()` claimed "agent + memory + threads + config + security" but
+///   silently dropped `agent::{agentbox, harness_init, artifacts, learning}`,
+///   `security::{credentials, devices}`, `config::{workspace, migration_helpers}`,
+///   `memory::people` and `skills::webhooks`, all of which sat in `Platform`.
+///   An agent harness that does not register `harness_init` is a latent bug.
+/// - `embedded()` had to set `platform: true` purely to reach credentials and
+///   config, which dragged in the desktop and hosted-backend surfaces it has no
+///   use for. Those are now `Desktop` and `Hosted` and stay off.
+///
+/// `Platform` is now what its name says: the kernel surfaces with no family of
+/// their own (`platform/`, `tools/`, `http_host/`, `test_support/`).
+///
+/// When adding a family directory, add the matching variant here, a field on
+/// [`crate::core::runtime::DomainSet`], an arm in `allows()`, and an entry in
+/// each preset — the compiler enforces all four.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DomainGroup {
     // Harness families — on under `DomainSet::harness()`.
@@ -83,7 +104,7 @@ pub enum DomainGroup {
     Voice,
     Media,
     /// Medulla integration: the cloud client (`medulla`), the folded session
-    /// runtime (`medulla_session`), the chat store (`medulla_chat`), and
+    /// runtime (`medulla_session`), the chat store (`medulla::chat`), and
     /// authored harness workflows (`medulla_workflows`).
     ///
     /// One coarse family rather than four, because these are never
@@ -91,8 +112,104 @@ pub enum DomainGroup {
     /// `medulla` (it folds that domain's envelopes). Splitting them would add
     /// drift surface for no reachable configuration.
     Medulla,
+    // Families carved out of the `Platform` catch-all once the domain reorg
+    // (#5328) gave each one a directory to be named after. Before that, half the
+    // controller surface was tagged `Platform` purely because there was no
+    // family to point at — which made `DomainSet::embedded()` set
+    // `platform: true` just to reach credentials/config/cron, dragging the
+    // desktop and hosted-backend surfaces along with it.
+    /// Model inference: providers, routing, local engines, embeddings, and the
+    /// token-compression surface (`inference/`).
+    Inference,
+    /// External connectors reached on the user's behalf — Composio, calendar,
+    /// file storage, task sources (`integrations/`).
+    Integrations,
+    /// Background initiative: scheduled jobs and the subconscious tick loop
+    /// (`cron/`, `subconscious/`). Pairs with `ServiceSet::{cron, heartbeat}`.
+    Automation,
+    /// Code-execution substrate: the managed Node/Python runtimes, the worker
+    /// pool, and the sandbox/CWD-jail confinement (`runtime/`, `sandbox/`).
+    Runtimes,
+    /// Desktop-shell-facing surfaces a headless or embedded host has no use for
+    /// (`desktop/`).
+    Desktop,
+    /// Clients of the hosted TinyHumans backend — billing, team, referral,
+    /// announcements, the hosted orchestration brain (`hosted/`). A self-hosted
+    /// build drops these as a unit.
+    Hosted,
+    /// The multi-agent relay surface (`tinyplace/`).
+    Relay,
     // Everything not in a named family — always on in `full()`, off otherwise.
     Platform,
+}
+
+impl DomainGroup {
+    /// Number of variants. Kept in sync by `domain_group_all_lists_every_variant`.
+    pub const COUNT: usize = 22;
+
+    /// Every variant, for exhaustive iteration in drift guards.
+    ///
+    /// Hand-maintained, but not hand-*trusted*: [`DomainGroup::index`] below is
+    /// an exhaustive `match`, so adding a variant is a compile error until it is
+    /// given an index, and `domain_group_all_lists_every_variant` then fails
+    /// until it appears here and [`COUNT`](Self::COUNT) is bumped. That chain is
+    /// what makes the drift guards over `tool_group`, `StoreInitPlan` and
+    /// `DomainSubscriberPlan` trustworthy — those three consume `DomainGroup`
+    /// without the compiler checking coverage.
+    pub const ALL: &'static [DomainGroup] = &[
+        DomainGroup::Agent,
+        DomainGroup::Memory,
+        DomainGroup::Threads,
+        DomainGroup::Config,
+        DomainGroup::Security,
+        DomainGroup::Flows,
+        DomainGroup::Skills,
+        DomainGroup::Mcp,
+        DomainGroup::Meet,
+        DomainGroup::Channels,
+        DomainGroup::Web3,
+        DomainGroup::Voice,
+        DomainGroup::Media,
+        DomainGroup::Medulla,
+        DomainGroup::Inference,
+        DomainGroup::Integrations,
+        DomainGroup::Automation,
+        DomainGroup::Runtimes,
+        DomainGroup::Desktop,
+        DomainGroup::Hosted,
+        DomainGroup::Relay,
+        DomainGroup::Platform,
+    ];
+
+    /// Dense index of this variant. Exhaustive by construction: the compiler
+    /// rejects a newly added variant here, which is the first link in the chain
+    /// described on [`ALL`](Self::ALL).
+    pub const fn index(self) -> usize {
+        match self {
+            DomainGroup::Agent => 0,
+            DomainGroup::Memory => 1,
+            DomainGroup::Threads => 2,
+            DomainGroup::Config => 3,
+            DomainGroup::Security => 4,
+            DomainGroup::Flows => 5,
+            DomainGroup::Skills => 6,
+            DomainGroup::Mcp => 7,
+            DomainGroup::Meet => 8,
+            DomainGroup::Channels => 9,
+            DomainGroup::Web3 => 10,
+            DomainGroup::Voice => 11,
+            DomainGroup::Media => 12,
+            DomainGroup::Medulla => 13,
+            DomainGroup::Inference => 14,
+            DomainGroup::Integrations => 15,
+            DomainGroup::Automation => 16,
+            DomainGroup::Runtimes => 17,
+            DomainGroup::Desktop => 18,
+            DomainGroup::Hosted => 19,
+            DomainGroup::Relay => 20,
+            DomainGroup::Platform => 21,
+        }
+    }
 }
 
 /// A [`RegisteredController`] tagged with the [`DomainGroup`] it belongs to.
@@ -201,43 +318,44 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Platform,
-        crate::openhuman::about_app::all_about_app_registered_controllers(),
+        crate::openhuman::platform::about_app::all_about_app_registered_controllers(),
     );
     // AgentBox marketplace adapter status
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::agentbox::all_agentbox_registered_controllers(),
+        DomainGroup::Agent,
+        crate::openhuman::agent::agentbox::all_agentbox_registered_controllers(),
     );
     // Core application shell state
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::app_state::all_app_state_registered_controllers(),
+        DomainGroup::Desktop,
+        crate::openhuman::desktop::app_state::all_app_state_registered_controllers(),
     );
     // Audio generation + podcast-style email delivery (gated with voice).
     #[cfg(feature = "voice")]
     push(
         &mut controllers,
         DomainGroup::Voice,
-        crate::openhuman::audio_toolkit::all_audio_toolkit_registered_controllers(),
+        crate::openhuman::voice::audio_toolkit::all_audio_toolkit_registered_controllers(),
     );
     // Composio integration controllers
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::composio::all_composio_registered_controllers(),
+        DomainGroup::Integrations,
+        crate::openhuman::integrations::composio::all_composio_registered_controllers(),
     );
     // Recall.ai Calendar V1 (backend-proxied) controllers
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::recall_calendar::all_recall_calendar_registered_controllers(),
+        DomainGroup::Integrations,
+        crate::openhuman::integrations::recall_calendar::all_recall_calendar_registered_controllers(
+        ),
     );
     // Scheduled job management
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::Automation,
         crate::openhuman::cron::all_cron_registered_controllers(),
     );
     // Saved automation workflows (tinyflows graphs): create/get/list/update/delete/run
@@ -251,19 +369,19 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     // Proactive task ingestion from external tools (github/notion/linear/clickup)
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::task_sources::all_task_sources_registered_controllers(),
+        DomainGroup::Integrations,
+        crate::openhuman::integrations::task_sources::all_task_sources_registered_controllers(),
     );
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::dashboard::all_dashboard_registered_controllers(),
+        DomainGroup::Desktop,
+        crate::openhuman::desktop::dashboard::all_dashboard_registered_controllers(),
     );
     // MCP client subsystem: Smithery registry browser, local server install/connect, tool dispatch
     push(
         &mut controllers,
         DomainGroup::Mcp,
-        crate::openhuman::mcp_registry::all_mcp_registry_registered_controllers(),
+        crate::openhuman::mcp::registry::all_mcp_registry_registered_controllers(),
     );
     // Agent definition and prompt inspection
     push(
@@ -276,55 +394,55 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::tinyagents::replay::all_agent_replay_registered_controllers(),
+        crate::openhuman::agent::tinyagents::replay::all_agent_replay_registered_controllers(),
     );
     // Persistent agent profiles (flavours): name, soul, memory sources, skills, MCP, connectors.
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::profiles::all_profiles_registered_controllers(),
+        crate::openhuman::agent::profiles::all_profiles_registered_controllers(),
     );
     // User-facing agent registry: defaults, enablement, custom agents, tool policy.
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::agent_registry::all_agent_registry_registered_controllers(),
+        crate::openhuman::agent::registry::all_agent_registry_registered_controllers(),
     );
     // Local procedural operating experience for agent self-learning
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::agent_experience::all_agent_experience_registered_controllers(),
+        crate::openhuman::agent::experience::all_agent_experience_registered_controllers(),
     );
     // System and process health monitoring
     push(
         &mut controllers,
         DomainGroup::Platform,
-        crate::openhuman::health::all_health_registered_controllers(),
+        crate::openhuman::platform::health::all_health_registered_controllers(),
     );
     // One-time first-run initialization (Python/spaCy/Node provisioning)
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::harness_init::all_harness_init_registered_controllers(),
+        DomainGroup::Agent,
+        crate::openhuman::agent::harness_init::all_harness_init_registered_controllers(),
     );
     // Diagnostic tools
     push(
         &mut controllers,
         DomainGroup::Platform,
-        crate::openhuman::doctor::all_doctor_registered_controllers(),
+        crate::openhuman::platform::doctor::all_doctor_registered_controllers(),
     );
     // Secret storage and encryption
     push(
         &mut controllers,
         DomainGroup::Security,
-        crate::openhuman::encryption::all_encryption_registered_controllers(),
+        crate::openhuman::security::encryption::all_encryption_registered_controllers(),
     );
     // Keyring consent — user approval before local secret storage fallback
     push(
         &mut controllers,
         DomainGroup::Security,
-        crate::openhuman::keyring_consent::all_keyring_consent_registered_controllers(),
+        crate::openhuman::security::keyring_consent::all_keyring_consent_registered_controllers(),
     );
     // Security policy metadata
     push(
@@ -336,25 +454,25 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Security,
-        crate::openhuman::approval::all_approval_registered_controllers(),
+        crate::openhuman::security::approval::all_approval_registered_controllers(),
     );
     // Interactive plan-review gate — parks a live turn on a thread-scoped plan
     push(
         &mut controllers,
-        DomainGroup::Security,
-        crate::openhuman::plan_review::all_plan_review_registered_controllers(),
+        DomainGroup::Agent,
+        crate::openhuman::agent::plan_review::all_plan_review_registered_controllers(),
     );
     // Agent-generated artifact storage, retrieval, and lifecycle management
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::artifacts::all_artifacts_registered_controllers(),
+        DomainGroup::Agent,
+        crate::openhuman::agent::artifacts::all_artifacts_registered_controllers(),
     );
     // Background heartbeat loop controls
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::heartbeat::all_heartbeat_registered_controllers(),
+        DomainGroup::Automation,
+        crate::openhuman::subconscious::heartbeat::all_heartbeat_registered_controllers(),
     );
     // Ad-hoc static directory HTTP hosting for local file sharing / previews.
     // Gated with the `http-server` feature (#5048): the domain is an axum server,
@@ -369,13 +487,13 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Platform,
-        crate::openhuman::cost::all_cost_registered_controllers(),
+        crate::openhuman::platform::cost::all_cost_registered_controllers(),
     );
     // x402 machine-payable API payment protocol
     push(
         &mut controllers,
         DomainGroup::Web3,
-        crate::openhuman::x402::all_x402_registered_controllers(),
+        crate::openhuman::web3::x402::all_x402_registered_controllers(),
     );
     // External messaging channels (Web, Telegram, etc.)
     push(
@@ -403,73 +521,73 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Platform,
-        crate::openhuman::connectivity::all_connectivity_registered_controllers(),
+        crate::openhuman::platform::connectivity::all_connectivity_registered_controllers(),
     );
     // User credentials and session management
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::credentials::all_credentials_registered_controllers(),
+        DomainGroup::Security,
+        crate::openhuman::security::credentials::all_credentials_registered_controllers(),
     );
     // Desktop service management
     push(
         &mut controllers,
         DomainGroup::Platform,
-        crate::openhuman::service::all_service_registered_controllers(),
+        crate::openhuman::platform::service::all_service_registered_controllers(),
     );
     // Data migration utilities
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::migration::all_migration_registered_controllers(),
+        DomainGroup::Config,
+        crate::openhuman::config::migration_helpers::all_migration_registered_controllers(),
     );
     // Background command monitors for agent-scoped event sources
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::monitor::all_monitor_registered_controllers(),
+        DomainGroup::Automation,
+        crate::openhuman::subconscious::monitors::all_monitor_registered_controllers(),
     );
     // Unified inference domain: text / vision / local runtime / cloud providers.
     // (Formerly split across inference, local AI, and providers modules.)
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::Inference,
         crate::openhuman::inference::all_inference_registered_controllers(),
     );
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::Inference,
         crate::openhuman::inference::all_local_inference_registered_controllers(),
     );
     // Embedding provider configuration and embed RPC.
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::embeddings::all_embeddings_registered_controllers(),
+        DomainGroup::Inference,
+        crate::openhuman::inference::embeddings::all_embeddings_registered_controllers(),
     );
     // People resolution and interaction scoring
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::people::all_people_registered_controllers(),
+        DomainGroup::Memory,
+        crate::openhuman::memory::people::all_people_registered_controllers(),
     );
     // Sandbox execution backends (Docker, local jail, policy, cleanup)
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::Runtimes,
         crate::openhuman::sandbox::all_sandbox_registered_controllers(),
     );
     // Backend Socket.IO bridge + related runtime plumbing
     push(
         &mut controllers,
         DomainGroup::Platform,
-        crate::openhuman::socket::all_socket_registered_controllers(),
+        crate::openhuman::platform::socket::all_socket_registered_controllers(),
     );
     // Managed Node.js runtime bridge (tool listing + dispatch)
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::javascript::all_javascript_registered_controllers(),
+        DomainGroup::Runtimes,
+        crate::openhuman::runtime::javascript::all_javascript_registered_controllers(),
     );
     // Medulla integration: readiness, durable sessions, and the connected worker
     // roster against the Medulla orchestration backend. Registration-site gate
@@ -492,19 +610,19 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Skills,
-        crate::openhuman::skill_runtime::all_skill_runtime_registered_controllers(),
+        crate::openhuman::skills::runtime::all_skill_runtime_registered_controllers(),
     );
     // Skill registry: browse, search, install from remote registries
     push(
         &mut controllers,
         DomainGroup::Skills,
-        crate::openhuman::skill_registry::all_skill_registry_registered_controllers(),
+        crate::openhuman::skills::catalog::all_skill_registry_registered_controllers(),
     );
     // User workspace and file management
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::workspace::all_workspace_registered_controllers(),
+        DomainGroup::Config,
+        crate::openhuman::config::workspace::all_workspace_registered_controllers(),
     );
     // Workflow tool registry
     push(
@@ -516,7 +634,7 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Platform,
-        crate::openhuman::tool_registry::all_tool_registry_registered_controllers(),
+        crate::openhuman::tools::registry::all_tool_registry_registered_controllers(),
     );
     // Document and knowledge graph storage
     push(
@@ -528,73 +646,74 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Memory,
-        crate::openhuman::memory_goals::all_memory_goals_registered_controllers(),
+        crate::openhuman::memory::goals::all_memory_goals_registered_controllers(),
     );
     // Thread-level goal (Codex-style per-thread completion contract)
     push(
         &mut controllers,
         DomainGroup::Threads,
-        crate::openhuman::thread_goals::all_thread_goals_registered_controllers(),
+        crate::openhuman::threads::goals::all_thread_goals_registered_controllers(),
     );
     // Memory tree ingestion layer (#707 — canonicalised chunks with provenance)
     push(
         &mut controllers,
         DomainGroup::Memory,
-        crate::openhuman::memory_tree::all_memory_tree_registered_controllers(),
+        crate::openhuman::memory::tree::all_memory_tree_registered_controllers(),
     );
     // Memory tree retrieval layer (#710 — LLM-callable read tools over the tree)
     push(
         &mut controllers,
         DomainGroup::Memory,
-        crate::openhuman::memory_tree::all_retrieval_registered_controllers(),
+        crate::openhuman::memory::tree::all_retrieval_registered_controllers(),
     );
     // Slack → memory-tree ingestion engine (per-message ingest, no bucketing)
     push(
         &mut controllers,
         DomainGroup::Memory,
-        crate::openhuman::composio::providers::slack::all_slack_memory_registered_controllers(),
+        crate::openhuman::integrations::composio::providers::slack::all_slack_memory_registered_controllers(),
     );
     // Per-connection memory sync status, controls, and progress (#1136)
     push(
         &mut controllers,
         DomainGroup::Memory,
-        crate::openhuman::memory_sync::sync_status::all_memory_sync_status_registered_controllers(),
+        crate::openhuman::memory::sync::sync_status::all_memory_sync_status_registered_controllers(
+        ),
     );
     // Memory sources — user-configured data connectors registry
     push(
         &mut controllers,
         DomainGroup::Memory,
-        crate::openhuman::memory_sources::all_memory_sources_registered_controllers(),
+        crate::openhuman::memory::sources::all_memory_sources_registered_controllers(),
     );
     // Memory diff — snapshot-based change tracking for memory sources
     push(
         &mut controllers,
         DomainGroup::Memory,
-        crate::openhuman::memory_diff::all_memory_diff_registered_controllers(),
+        crate::openhuman::memory::diff::all_memory_diff_registered_controllers(),
     );
     // Referral and growth tracking
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::referral::all_referral_registered_controllers(),
+        DomainGroup::Hosted,
+        crate::openhuman::hosted::referral::all_referral_registered_controllers(),
     );
     // Billing and subscription management
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::billing::all_billing_registered_controllers(),
+        DomainGroup::Hosted,
+        crate::openhuman::hosted::billing::all_billing_registered_controllers(),
     );
     // Announcements surfaced on harness init
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::announcements::all_announcements_registered_controllers(),
+        DomainGroup::Hosted,
+        crate::openhuman::hosted::announcements::all_announcements_registered_controllers(),
     );
     // Team and role management
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::team::all_team_registered_controllers(),
+        DomainGroup::Hosted,
+        crate::openhuman::hosted::team::all_team_registered_controllers(),
     );
     // E2E test support — `openhuman.test_reset` wipes sidecar state in-place.
     // Gated behind the `e2e-test-support` cargo feature so shipped binaries
@@ -610,7 +729,7 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Web3,
-        crate::openhuman::wallet::all_wallet_registered_controllers(),
+        crate::openhuman::web3::wallet::all_wallet_registered_controllers(),
     );
     // High-level web3 surface (swaps / bridges / dapp calls) over the wallet
     push(
@@ -621,8 +740,9 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     // Local assistive surfaces over third-party provider apps
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::provider_surfaces::all_provider_surfaces_registered_controllers(),
+        DomainGroup::Desktop,
+        crate::openhuman::desktop::provider_surfaces::all_provider_surfaces_registered_controllers(
+        ),
     );
     // Voice transcription and synthesis (gated behind the `voice` feature).
     #[cfg(feature = "voice")]
@@ -634,37 +754,38 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     // Background awareness and autonomous tasks
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::Automation,
         crate::openhuman::subconscious::all_subconscious_registered_controllers(),
     );
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::subconscious_triggers::all_subconscious_triggers_registered_controllers(),
+        DomainGroup::Automation,
+        crate::openhuman::subconscious::triggers::all_subconscious_triggers_registered_controllers(
+        ),
     );
     // Webhook tunnel management
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::webhooks::all_webhooks_registered_controllers(),
+        DomainGroup::Skills,
+        crate::openhuman::skills::webhooks::all_webhooks_registered_controllers(),
     );
     // Core binary update management
     push(
         &mut controllers,
         DomainGroup::Platform,
-        crate::openhuman::update::all_update_registered_controllers(),
+        crate::openhuman::platform::update::all_update_registered_controllers(),
     );
     // Hierarchical knowledge summarization
     push(
         &mut controllers,
         DomainGroup::Memory,
-        crate::openhuman::memory_tree::all_tree_summarizer_registered_controllers(),
+        crate::openhuman::memory::tree::all_tree_summarizer_registered_controllers(),
     );
     // Self-learning and user context enrichment
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::learning::all_learning_registered_controllers(),
+        DomainGroup::Agent,
+        crate::openhuman::agent::learning::all_learning_registered_controllers(),
     );
     // Conversation thread and message management
     push(
@@ -673,25 +794,26 @@ fn build_registered_controllers() -> Vec<GroupedController> {
         crate::openhuman::threads::all_threads_registered_controllers(),
     );
     // TokenJuice content-router debug controllers (detect / compress / cache_stats / retrieve).
-    // Classified Platform (always-on): TokenJuice is the token-compression content
-    // router that runs on every agent tool output, not a crypto surface — despite
-    // #4802 listing it under the web3 gate. Flagged for #4802 re-scope.
+    // Classified Inference: TokenJuice is the token-compression content router,
+    // not a crypto surface — despite #4802 listing it under the web3 gate.
+    // Only these debug/inspection controllers are gated; the content-router
+    // subscriber used on agent tool output remains always-on core infra.
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::tokenjuice::all_tokenjuice_registered_controllers(),
+        DomainGroup::Inference,
+        crate::openhuman::inference::tokenjuice::all_tokenjuice_registered_controllers(),
     );
     // Per-thread todo list (agent task board CRUD over RPC)
     push(
         &mut controllers,
         DomainGroup::Threads,
-        crate::openhuman::todos::all_todos_registered_controllers(),
+        crate::openhuman::threads::todos::all_todos_registered_controllers(),
     );
     // Integration notification ingest, triage, and per-provider settings
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::notifications::all_notifications_registered_controllers(),
+        DomainGroup::Desktop,
+        crate::openhuman::desktop::notifications::all_notifications_registered_controllers(),
     );
     // Google Meet call-join request validation (shell handles the webview).
     // Gated behind the `meet` feature.
@@ -707,7 +829,7 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Meet,
-        crate::openhuman::agent_meetings::all_agent_meetings_registered_controllers(),
+        crate::openhuman::meet::backend_bot::all_agent_meetings_registered_controllers(),
     );
     // Live meet-agent loop: STT/LLM/TTS over the open call's audio
     // (gated with meet).
@@ -715,60 +837,60 @@ fn build_registered_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Meet,
-        crate::openhuman::meet_agent::all_meet_agent_registered_controllers(),
+        crate::openhuman::meet::agent::all_meet_agent_registered_controllers(),
     );
     // Structured WhatsApp Web data has NO core RPC controllers: the SQLite
     // store + ingest + list/search moved to the Tauri shell
     // (`app/src-tauri/src/whatsapp_data/`). The agent's read-only query tools
-    // live in `openhuman::whatsapp_data::tools` and reach the shell store via
+    // live in `openhuman::channels::whatsapp_data::tools` and reach the shell store via
     // the in-process native request bus, not the controller registry.
     // Mobile device pairing and management
     push(
         &mut controllers,
-        DomainGroup::Platform,
-        crate::openhuman::devices::all_devices_registered_controllers(),
+        DomainGroup::Security,
+        crate::openhuman::security::devices::all_devices_registered_controllers(),
     );
     // Durable agent session database — queryable index over transcripts, lineage, tool calls
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::session_db::all_session_db_registered_controllers(),
+        crate::openhuman::agent::session_db::all_session_db_registered_controllers(),
     );
     // One-time legacy session import into TinyAgents stores
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::session_import::all_session_import_registered_controllers(),
+        crate::openhuman::agent::session_import::all_session_import_registered_controllers(),
     );
     // Background agent command center — read-only grouped view over the run ledger
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::agent_orchestration::all_command_center_registered_controllers(),
+        crate::openhuman::agent::orchestration::all_command_center_registered_controllers(),
     );
     // Durable dynamic workflow runs — definitions + read surface over the run ledger
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::agent_orchestration::all_workflow_run_registered_controllers(),
+        crate::openhuman::agent::orchestration::all_workflow_run_registered_controllers(),
     );
     // Durable agent-team coordination — teams, members, dependency-aware task claiming, messaging
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::agent_orchestration::all_agent_team_registered_controllers(),
+        crate::openhuman::agent::orchestration::all_agent_team_registered_controllers(),
     );
     // Git-worktree isolation manager — list / status / diff / remove worker worktrees (#3376)
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::agent_orchestration::all_worktree_registered_controllers(),
+        crate::openhuman::agent::orchestration::all_worktree_registered_controllers(),
     );
     // User-driven cancel of detached background sub-agents (#3711)
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::agent_orchestration::all_subagent_control_registered_controllers(),
+        crate::openhuman::agent::orchestration::all_subagent_control_registered_controllers(),
     );
     controllers
 }
@@ -786,13 +908,13 @@ fn build_internal_only_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Mcp,
-        crate::openhuman::mcp_audit::all_mcp_audit_internal_controllers(),
+        crate::openhuman::mcp::audit::all_mcp_audit_internal_controllers(),
     );
     // tiny.place A2A social-network integration: renderer-callable via core_rpc_relay
     // but NOT advertised to agents in tool listings or schema discovery.
     push(
         &mut controllers,
-        DomainGroup::Platform,
+        DomainGroup::Relay,
         crate::openhuman::tinyplace::all_tinyplace_registered_controllers(),
     );
     // User-consented tiny.place pairing for wrapped agent sessions: UI-callable
@@ -800,15 +922,15 @@ fn build_internal_only_controllers() -> Vec<GroupedController> {
     push(
         &mut controllers,
         DomainGroup::Agent,
-        crate::openhuman::agent_orchestration::all_pairing_registered_controllers(),
+        crate::openhuman::agent::orchestration::all_pairing_registered_controllers(),
     );
     // Orchestration read surface (stage 7): the TinyPlaceOrchestrationTab reads
     // sessions/messages, sends Master steering DMs, marks read, and polls status.
     // Renderer-only — not advertised to agents.
     push(
         &mut controllers,
-        DomainGroup::Agent,
-        crate::openhuman::orchestration::all_registered_controllers(),
+        DomainGroup::Hosted,
+        crate::openhuman::hosted::orchestration::all_registered_controllers(),
     );
     controllers
 }

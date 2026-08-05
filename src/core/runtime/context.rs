@@ -83,12 +83,12 @@ impl CoreContext {
         // 2. Load the master encryption key before any config/credential op that
         //    needs to decrypt secrets. No-op if already called (e.g. from
         //    run_core_from_args for the CLI).
-        crate::openhuman::keyring::init_master_key();
+        crate::openhuman::security::keyring::init_master_key();
 
         // 3. AgentBox GMI MaaS provider bridge — no-op when env vars absent. Must
         //    run before the router mounts the AgentBox routes so the inference
         //    catalog knows about "gmi-maas" by the time `/run` accepts traffic.
-        crate::openhuman::agentbox::register_gmi_provider_if_present();
+        crate::openhuman::agent::agentbox::register_gmi_provider_if_present();
 
         // 4. Seed the per-process RPC bearer. `Fixed` seeds the in-memory value
         //    directly (never touches the env); `EnvOrFile` reads
@@ -191,9 +191,11 @@ impl CoreContext {
     /// stores; the same context always gets the same cached store. Handlers
     /// migrate off `people::store::get()` by reading through
     /// `CoreContext::current()?.people()` instead.
-    pub fn people(&self) -> Result<Arc<crate::openhuman::people::store::PeopleStore>, String> {
+    pub fn people(
+        &self,
+    ) -> Result<Arc<crate::openhuman::memory::people::store::PeopleStore>, String> {
         let workspace_dir = self.workspace_dir()?;
-        crate::openhuman::people::store::for_workspace(&workspace_dir)
+        crate::openhuman::memory::people::store::for_workspace(&workspace_dir)
     }
 
     /// The context for the current dispatch: the one scoped by
@@ -307,7 +309,12 @@ pub struct StoreInitPlan {
     pub memory: bool,
     /// `agent::multimodal` attachments sidecar dir — gated on [`DomainGroup::Agent`].
     pub agent_attachments: bool,
-    /// `people::store` — gated on [`DomainGroup::Platform`].
+    /// `memory::people::store` — gated on [`DomainGroup::Memory`].
+    ///
+    /// Was `Platform` while `people` was a top-level domain. The reorg moved it
+    /// to `memory/people` and its controllers are tagged `Memory`; leaving the
+    /// store on `Platform` would register those controllers under `harness()`
+    /// with no store behind them.
     pub people: bool,
     /// legacy-workflow prune under `skills::registry` — gated on [`DomainGroup::Skills`].
     pub skills_prune: bool,
@@ -320,7 +327,7 @@ impl StoreInitPlan {
         Self {
             memory: domains.allows(DomainGroup::Memory),
             agent_attachments: domains.allows(DomainGroup::Agent),
-            people: domains.allows(DomainGroup::Platform),
+            people: domains.allows(DomainGroup::Memory),
             skills_prune: domains.allows(DomainGroup::Skills),
         }
     }
@@ -332,7 +339,7 @@ pub async fn init_stores(
 ) {
     let plan = StoreInitPlan::for_domains(domains);
 
-    let keyring_dir = crate::openhuman::keyring::store::workspace_dir_for_file_backend();
+    let keyring_dir = crate::openhuman::security::keyring::store::workspace_dir_for_file_backend();
     // Keyring path log + credentials Sentry bind (below) are unguarded — they
     // are core infra every DomainSet needs. Each workspace-bound store init is
     // gated on its owning DomainGroup so an excluded domain's store stays
@@ -342,7 +349,7 @@ pub async fn init_stores(
         cfg.config_path.display(),
         cfg.workspace_dir.display(),
         keyring_dir.display(),
-        crate::openhuman::keyring::backend_name(),
+        crate::openhuman::security::keyring::backend_name(),
         domains,
     );
     if plan.memory {
@@ -381,7 +388,7 @@ pub async fn init_stores(
     // Ok(cfg) arm so it inherits the wrong-workspace guard above
     // (never seed against a Config::default fallback).
     if plan.people {
-        match crate::openhuman::people::store::init_from_workspace(&cfg.workspace_dir) {
+        match crate::openhuman::memory::people::store::init_from_workspace(&cfg.workspace_dir) {
             Ok(_) => log::info!(
                 "[boot] people::store initialized (workspace={})",
                 cfg.workspace_dir.display()
@@ -389,7 +396,7 @@ pub async fn init_stores(
             Err(e) => log::warn!("[boot] people::store init failed: {e}"),
         }
     } else {
-        log::debug!("[boot] people::store init SKIPPED — Platform domain disabled");
+        log::debug!("[boot] people::store init SKIPPED — Memory domain disabled");
     }
     // Prune legacy bundled skills (dev-workflow / github-issue-crusher
     // / pr-review-shepherd) that older builds seeded into
@@ -406,10 +413,10 @@ pub async fn init_stores(
     // (Composio sync tick, heartbeat, etc.) fires its first event.
     // Reading from the store here means subsequent events carry
     // `user.id` even when no `app_state_snapshot` RPC has run yet.
-    match crate::openhuman::credentials::session_support::build_session_state(cfg) {
+    match crate::openhuman::security::credentials::session_support::build_session_state(cfg) {
         Ok(state) => {
             if let Some(uid) = state.user_id.as_deref() {
-                crate::openhuman::credentials::sentry_scope::bind(uid);
+                crate::openhuman::security::credentials::sentry_scope::bind(uid);
             }
         }
         Err(e) => {
@@ -480,8 +487,16 @@ mod tests {
             plan.agent_attachments,
             "harness keeps agent attachments sidecar (Agent)"
         );
-        // Platform / Skills are NOT in harness → their stores stay off.
-        assert!(!plan.people, "harness must skip people::store (Platform)");
+        // `people` moved to `memory/people` in the domain reorg (#5328) and its
+        // controllers are tagged `Memory`, so harness — which enables Memory —
+        // must now initialize its store too. Before the realignment it keyed on
+        // `Platform`, which meant harness registered the people controllers with
+        // no store behind them.
+        assert!(
+            plan.people,
+            "harness keeps memory::people::store (Memory) — it moved under memory/"
+        );
+        // Skills is NOT in harness → its store work stays off.
         assert!(
             !plan.skills_prune,
             "harness must skip skills legacy-prune (Skills)"
@@ -580,7 +595,7 @@ mod tests {
 
     #[tokio::test]
     async fn people_rpc_uses_scoped_context_store() {
-        use crate::openhuman::people::types::Handle;
+        use crate::openhuman::memory::people::types::Handle;
 
         let dir_a = tempfile::tempdir().unwrap();
         let dir_b = tempfile::tempdir().unwrap();

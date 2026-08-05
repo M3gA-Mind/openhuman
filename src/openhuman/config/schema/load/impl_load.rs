@@ -402,6 +402,10 @@ impl Config {
             config.config_path = config_path.clone();
             config.workspace_dir = workspace_dir;
             config.action_dir = resolve_action_dir(&config.action_dir_override);
+            // Runtime-only signal consumed once at boot to raise a user-visible
+            // "settings were reset" notice (#5167). Set before env overrides so a
+            // later override can never mask that recovery happened.
+            config.recovered_from_corruption = config_was_corrupted;
             migrate_legacy_inference_url(&mut config);
             migrate_cloud_provider_slugs(&mut config);
             config.apply_env_overrides_from(env);
@@ -462,7 +466,7 @@ impl Config {
                 recovered = config_was_corrupted,
                 "Config loaded"
             );
-            crate::openhuman::migrations::run_pending(&mut config).await;
+            crate::openhuman::config::migrations::run_pending(&mut config).await;
             let migrated_legacy_secrets = decrypt_config_secrets(&mut config, &openhuman_dir)?;
             if migrated_legacy_secrets {
                 // One-time forced migration: a legacy `enc:` (XOR) secret was
@@ -483,7 +487,7 @@ impl Config {
                 config_path: config_path.clone(),
                 workspace_dir,
                 action_dir: default_action_dir(),
-                schema_version: crate::openhuman::migrations::CURRENT_SCHEMA_VERSION,
+                schema_version: crate::openhuman::config::migrations::CURRENT_SCHEMA_VERSION,
                 ..Default::default()
             };
             config.save().await?;
@@ -503,7 +507,7 @@ impl Config {
                 initialized = true,
                 "Config loaded"
             );
-            crate::openhuman::migrations::run_pending(&mut config).await;
+            crate::openhuman::config::migrations::run_pending(&mut config).await;
             Ok(config)
         }
     }
@@ -593,6 +597,7 @@ impl Config {
         config.config_path = config_path;
         config.workspace_dir = workspace_dir;
         config.action_dir = resolve_action_dir(&config.action_dir_override);
+        config.recovered_from_corruption = config_was_corrupted;
         migrate_legacy_inference_url(&mut config);
         migrate_cloud_provider_slugs(&mut config);
         config.apply_env_overrides_from(&ProcessEnvWithoutWorkspace);
@@ -604,7 +609,7 @@ impl Config {
             );
         }
 
-        crate::openhuman::migrations::run_pending(&mut config).await;
+        crate::openhuman::config::migrations::run_pending(&mut config).await;
         Ok(config)
     }
 

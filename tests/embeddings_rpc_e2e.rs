@@ -294,6 +294,28 @@ async fn embeddings_get_settings_returns_catalog() {
         "get_settings result missing 'dimensions': {inner}"
     );
 
+    // `effective_provider` must survive serialization to the wire, not just
+    // exist on the handler's return value (#5402). The frontend budget warning
+    // gates on this field: if it silently stopped being emitted, the hook would
+    // fall back to `provider` — which is exactly the stale value that produced
+    // the false "memory has stopped growing" alarm for local-embeddings users.
+    let effective = inner
+        .get("effective_provider")
+        .and_then(Value::as_str)
+        .unwrap_or_else(|| panic!("get_settings result missing 'effective_provider': {inner}"));
+    assert!(
+        [
+            "ollama",
+            "custom",
+            "cloud",
+            "none",
+            "unconfigured",
+            "unknown"
+        ]
+        .contains(&effective),
+        "effective_provider must be one of the documented slugs, got {effective:?}"
+    );
+
     // Provider catalog
     let providers = inner
         .get("providers")

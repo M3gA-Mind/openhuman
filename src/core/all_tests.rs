@@ -330,7 +330,7 @@ fn wallet_web3_x402_controllers_registered_when_feature_on() {
 /// controllers never enter the registry (wallet/web3/x402 RPC methods are
 /// unknown-method and absent from `/schema`) and the web3 agent tools are
 /// gone. This is the compile-time stub-facade correctness gate (see
-/// `openhuman::{wallet,web3,x402}::stub`).
+/// `openhuman::web3::{self,wallet,x402}::stub`).
 #[test]
 #[cfg(not(feature = "web3"))]
 fn wallet_web3_x402_controllers_absent_when_feature_off() {
@@ -986,6 +986,7 @@ fn group_mapping_smoke() {
     assert_eq!(group_for_namespace("config"), Some(DomainGroup::Config));
     assert_eq!(group_for_namespace("security"), Some(DomainGroup::Security));
     assert_eq!(group_for_namespace("agent"), Some(DomainGroup::Agent));
+    assert_eq!(group_for_namespace("plan_review"), Some(DomainGroup::Agent));
     // …and a representative gated one maps to its gate group. `group_for_namespace`
     // reads the real controller registry, so a compile-time-gated family has no
     // entry to map when its feature is off.
@@ -1257,4 +1258,315 @@ fn medulla_controllers_absent_when_feature_off() {
         None,
         "`medulla` must not register when the feature is off"
     );
+}
+
+// ---- DomainGroup ↔ family-directory realignment ----------------------------
+// The reorg (#5328) made `src/openhuman/` one directory per family, so the
+// runtime axis can finally name each one instead of sweeping half the surface
+// into `Platform`. These pin that alignment in both directions.
+
+/// Every namespace whose family got carved out of `Platform` must now report its
+/// own group. Before the realignment each of these answered `Platform`, so a
+/// `DomainSet` that disabled the family still served its RPC surface.
+#[test]
+fn carved_out_families_report_their_own_group() {
+    let cases: &[(&str, DomainGroup)] = &[
+        #[cfg(feature = "flows")]
+        ("flows", DomainGroup::Flows),
+        ("cron", DomainGroup::Automation),
+        ("heartbeat", DomainGroup::Automation),
+        ("composio", DomainGroup::Integrations),
+        ("task_sources", DomainGroup::Integrations),
+        ("billing", DomainGroup::Hosted),
+        ("team", DomainGroup::Hosted),
+        ("tinyplace", DomainGroup::Relay),
+        ("dashboard", DomainGroup::Desktop),
+        ("notification", DomainGroup::Desktop),
+        ("sandbox", DomainGroup::Runtimes),
+        // Mis-tagged before the realignment: these live inside a named family
+        // directory but answered `Platform`, so `harness()` registered nothing
+        // for them despite claiming to enable their family.
+        ("agentbox", DomainGroup::Agent),
+        ("harness_init", DomainGroup::Agent),
+        ("ai", DomainGroup::Agent),
+        ("auth", DomainGroup::Security),
+        ("devices", DomainGroup::Security),
+        ("workspace", DomainGroup::Config),
+        ("people", DomainGroup::Memory),
+    ];
+    for (ns, want) in cases {
+        match group_for_namespace(ns) {
+            Some(got) => assert_eq!(
+                got, *want,
+                "namespace `{ns}` must be tagged {want:?}, got {got:?} — the DomainGroup \
+                 tag has drifted from the family directory it lives in"
+            ),
+            None => panic!("namespace `{ns}` is not registered; update this test if it moved"),
+        }
+    }
+}
+
+/// `Platform` is now only the kernel surfaces with no family of their own. If a
+/// namespace from a named family lands here, its `push(...)` tag was missed.
+#[test]
+fn platform_holds_only_kernel_surfaces() {
+    let platform: Vec<&str> = registry()
+        .iter()
+        .chain(internal_registry().iter())
+        .filter(|g| g.group == DomainGroup::Platform)
+        .map(|g| g.controller.schema.namespace)
+        .collect();
+    // Namespaces legitimately without a family: platform/, tools/, http_host/,
+    // test_support/. Anything else here is a missed tag.
+    for ns in &platform {
+        assert!(
+            !matches!(
+                *ns,
+                "cron"
+                    | "heartbeat"
+                    | "composio"
+                    | "task_sources"
+                    | "billing"
+                    | "team"
+                    | "referral"
+                    | "announcements"
+                    | "tinyplace"
+                    | "dashboard"
+                    | "notification"
+                    | "sandbox"
+                    | "agentbox"
+                    | "harness_init"
+                    | "ai"
+                    | "auth"
+                    | "devices"
+                    | "workspace"
+                    | "people"
+            ),
+            "namespace `{ns}` belongs to a named family but is still tagged Platform"
+        );
+    }
+}
+
+/// `harness()` claims agent + memory + threads + config + security. Before the
+/// realignment it silently dropped several of their namespaces into `Platform`,
+/// most damagingly `harness_init` — an agent harness that never runs harness
+/// init. This asserts the claim is now true.
+#[test]
+fn harness_preset_registers_the_families_it_claims() {
+    let harness = crate::core::runtime::DomainSet::harness();
+    for ns in [
+        "agentbox",
+        "harness_init",
+        "ai",
+        "auth",
+        "devices",
+        "workspace",
+        "people",
+    ] {
+        let group =
+            group_for_namespace(ns).unwrap_or_else(|| panic!("namespace `{ns}` is not registered"));
+        assert!(
+            harness.allows(group),
+            "harness() must allow `{ns}` ({group:?}) — it is part of a harness family"
+        );
+    }
+}
+
+/// `kernel()` is the floor: threads/config/security only. It must NOT pull in
+/// the two big replaceable subsystems, nor any carved-out family.
+#[test]
+fn kernel_preset_is_the_floor() {
+    let k = crate::core::runtime::DomainSet::kernel();
+    assert!(
+        k.threads && k.config && k.security,
+        "kernel keeps the floor"
+    );
+    assert!(
+        !k.agent && !k.memory,
+        "kernel() must not enable agent/memory — a host opts those in explicitly"
+    );
+    for (name, on) in [
+        ("inference", k.inference),
+        ("integrations", k.integrations),
+        ("automation", k.automation),
+        ("runtimes", k.runtimes),
+        ("desktop", k.desktop),
+        ("hosted", k.hosted),
+        ("relay", k.relay),
+        ("platform", k.platform),
+    ] {
+        assert!(!on, "kernel() must leave `{name}` off");
+    }
+}
+
+/// An embedded host supplies its own UI and never dials the hosted backend.
+/// Before the realignment `embedded()` had to set `platform: true` to reach
+/// credentials/config, which dragged both surfaces in.
+#[test]
+fn embedded_preset_excludes_desktop_and_hosted() {
+    let e = crate::core::runtime::DomainSet::embedded();
+    assert!(!e.desktop, "embedded() must not enable desktop surfaces");
+    assert!(
+        !e.hosted,
+        "embedded() must not enable hosted-backend clients"
+    );
+    assert!(!e.relay, "embedded() must not enable the relay surface");
+    // Still needs these: skills run on the managed runtimes, and the session
+    // loop is driven by cron/heartbeat.
+    assert!(e.runtimes, "embedded() needs the code-execution runtimes");
+    assert!(e.automation, "embedded() needs cron + subconscious");
+    assert!(e.inference, "embedded() needs inference");
+    assert!(e.integrations, "embedded() needs external integrations");
+}
+
+// ---- DomainGroup drift guards ---------------------------------------------
+// `DomainGroup` has three consumers the compiler does NOT check for coverage:
+// `tool_group()` (tools/ops.rs), `StoreInitPlan` and `DomainSubscriberPlan`.
+// Adding a variant compiles cleanly while leaving a tool ungated or a store
+// unkeyed — both of which actually happened during the realignment (#5332):
+// `harness_init` stayed in Platform, and `people`'s store keyed on a different
+// group than its controllers, which would have served an RPC surface with no
+// store behind it. These tests close that gap.
+
+/// First link in the chain: `ALL` really does list every variant.
+///
+/// `DomainGroup::index` is an exhaustive match, so a new variant is a compile
+/// error there first; this then fails until it is added to `ALL` and `COUNT` is
+/// bumped. Every guard below iterates `ALL`, so they are only as trustworthy as
+/// this test.
+#[test]
+fn domain_group_all_lists_every_variant() {
+    assert_eq!(
+        DomainGroup::ALL.len(),
+        DomainGroup::COUNT,
+        "DomainGroup::ALL and DomainGroup::COUNT disagree — a variant was added \
+         to one but not the other"
+    );
+    let mut seen = vec![false; DomainGroup::COUNT];
+    for g in DomainGroup::ALL {
+        let i = g.index();
+        assert!(
+            i < DomainGroup::COUNT,
+            "{g:?} has index {i} but COUNT is {} — bump COUNT",
+            DomainGroup::COUNT
+        );
+        assert!(!seen[i], "two variants share index {i}");
+        seen[i] = true;
+    }
+    let missing: Vec<usize> = seen
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| !**s)
+        .map(|(i, _)| i)
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "DomainGroup::ALL is missing the variant(s) at index {missing:?} — \
+         `index()` knows about them but `ALL` does not"
+    );
+}
+
+/// Every group must be a decision in `StoreInitPlan`: either it owns a store
+/// field, or it is explicitly declared store-less here. A new family that owns
+/// a store but is not keyed will fail this until it is listed.
+#[test]
+fn every_domain_group_is_accounted_for_in_store_init_plan() {
+    use crate::core::runtime::context::StoreInitPlan;
+
+    // Groups that own a store field in StoreInitPlan.
+    const OWNS_STORE: &[DomainGroup] =
+        &[DomainGroup::Memory, DomainGroup::Agent, DomainGroup::Skills];
+    // Groups with no store of their own. Adding a variant forces a choice
+    // between these two lists — that is the point.
+    const STORELESS: &[DomainGroup] = &[
+        DomainGroup::Threads,
+        DomainGroup::Config,
+        DomainGroup::Security,
+        DomainGroup::Flows,
+        DomainGroup::Mcp,
+        DomainGroup::Meet,
+        DomainGroup::Channels,
+        DomainGroup::Web3,
+        DomainGroup::Voice,
+        DomainGroup::Media,
+        DomainGroup::Medulla,
+        DomainGroup::Inference,
+        DomainGroup::Integrations,
+        DomainGroup::Automation,
+        DomainGroup::Runtimes,
+        DomainGroup::Desktop,
+        DomainGroup::Hosted,
+        DomainGroup::Relay,
+        DomainGroup::Platform,
+    ];
+
+    for g in DomainGroup::ALL {
+        let owns = OWNS_STORE.contains(g);
+        let storeless = STORELESS.contains(g);
+        assert!(
+            owns ^ storeless,
+            "{g:?} is in neither (or both) of OWNS_STORE / STORELESS — decide \
+             whether it needs a StoreInitPlan field and list it in exactly one"
+        );
+    }
+
+    // And the owning groups actually gate their field: turning the group off
+    // must turn the store off.
+    let mut only_memory = crate::core::runtime::DomainSet::none();
+    only_memory.memory = true;
+    let plan = StoreInitPlan::for_domains(only_memory);
+    assert!(plan.memory, "Memory on ⇒ memory store initialized");
+    assert!(
+        plan.people,
+        "Memory on ⇒ people store initialized (people lives under memory/)"
+    );
+    assert!(!plan.agent_attachments, "Agent off ⇒ attachments store off");
+    assert!(!plan.skills_prune, "Skills off ⇒ skills prune off");
+}
+
+/// Same contract for `DomainSubscriberPlan`: every group either registers
+/// subscribers or is declared subscriber-less.
+#[test]
+fn every_domain_group_is_accounted_for_in_subscriber_plan() {
+    use crate::core::jsonrpc::DomainSubscriberPlan;
+
+    const REGISTERS: &[DomainGroup] = &[
+        DomainGroup::Platform,
+        DomainGroup::Channels,
+        DomainGroup::Flows,
+        DomainGroup::Memory,
+        DomainGroup::Meet,
+        DomainGroup::Agent,
+        DomainGroup::Mcp,
+        DomainGroup::Integrations,
+        DomainGroup::Security,
+        DomainGroup::Desktop,
+        DomainGroup::Skills,
+    ];
+    const NO_SUBSCRIBERS: &[DomainGroup] = &[
+        DomainGroup::Threads,
+        DomainGroup::Config,
+        DomainGroup::Web3,
+        DomainGroup::Voice,
+        DomainGroup::Media,
+        DomainGroup::Medulla,
+        DomainGroup::Inference,
+        DomainGroup::Automation,
+        DomainGroup::Runtimes,
+        DomainGroup::Hosted,
+        DomainGroup::Relay,
+    ];
+
+    for g in DomainGroup::ALL {
+        assert!(
+            REGISTERS.contains(g) ^ NO_SUBSCRIBERS.contains(g),
+            "{g:?} is in neither (or both) of REGISTERS / NO_SUBSCRIBERS — decide \
+             whether it registers event-bus subscribers and list it in exactly one"
+        );
+    }
+
+    // full() must enable every registering group; none() must enable none.
+    let full = DomainSubscriberPlan::for_domains(crate::core::runtime::DomainSet::full());
+    let none = DomainSubscriberPlan::for_domains(crate::core::runtime::DomainSet::none());
+    assert_ne!(full, none, "full() and none() must differ");
 }

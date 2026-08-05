@@ -1,6 +1,8 @@
 use super::*;
 use crate::openhuman::config::{BrowserConfig, Config, MemoryConfig};
-use crate::openhuman::credentials::{AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME};
+use crate::openhuman::security::credentials::{
+    AuthService, APP_SESSION_PROVIDER, DEFAULT_AUTH_PROFILE_NAME,
+};
 use crate::openhuman::security::AuditLogger;
 use crate::openhuman::skills::types::ToolContent;
 use tempfile::TempDir;
@@ -22,7 +24,7 @@ fn test_memory(tmp: &TempDir) -> Arc<dyn Memory> {
         backend: "markdown".into(),
         ..MemoryConfig::default()
     };
-    Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap())
+    Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap())
 }
 
 fn tool_names(tools: &[Box<dyn Tool>]) -> Vec<String> {
@@ -101,6 +103,19 @@ fn find_tool<'a>(tools: &'a [Box<dyn Tool>], name: &str) -> &'a dyn Tool {
 }
 
 #[test]
+fn polymarket_runtime_tool_registration_follows_feature_gate() {
+    let tmp = TempDir::new().unwrap();
+    let mut cfg = test_config(&tmp);
+    cfg.integrations.polymarket.enabled = true;
+    let names = tool_names(&integration_tools_for_config(&tmp, &cfg));
+    assert_eq!(
+        names.iter().any(|name| name == "polymarket"),
+        cfg!(feature = "prediction-markets"),
+        "the Polymarket runtime tool must be absent when prediction-markets is compiled out"
+    );
+}
+
+#[test]
 fn default_tools_has_three() {
     let security = Arc::new(SecurityPolicy::default());
     let tools = default_tools(security);
@@ -120,7 +135,7 @@ fn all_tools_includes_spawn_subagent() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig {
         enabled: false,
@@ -240,7 +255,7 @@ fn all_tools_includes_spawn_async_subagent() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -277,7 +292,7 @@ fn all_tools_includes_spawn_parallel_agents() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig {
         enabled: false,
         allowed_domains: vec![],
@@ -318,7 +333,7 @@ fn all_tools_always_registers_curl() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -455,7 +470,7 @@ fn all_tools_registers_gitbooks_when_enabled() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -571,7 +586,7 @@ fn all_tools_skips_gitbooks_when_disabled() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
     let mut cfg = test_config(&tmp);
@@ -608,7 +623,7 @@ fn all_tools_includes_current_time() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -657,64 +672,68 @@ fn all_tools_default_registry_contains_expected_baseline_surface() {
     );
     let names = tool_names(&tools);
 
-    assert_contains_all(
-        &names,
-        &[
-            "shell",
-            "file_read",
-            "file_write",
-            "grep",
-            "glob",
-            "list",
-            "edit",
-            "apply_patch",
-            "csv_export",
-            "spawn_subagent",
-            "spawn_async_subagent",
-            "spawn_parallel_agents",
-            "ask_user_clarification",
-            "read_workspace_state",
-            "wait",
-            "wait_loop",
-            "todo",
-            "plan_exit",
-            "current_time",
-            "resolve_time",
-            "cron_add",
-            "cron_list",
-            "cron_remove",
-            "cron_update",
-            "cron_run",
-            "cron_runs",
-            "memory_store",
-            "memory_recall",
-            "memory_forget",
-            "memory_tree",
-            "monitor",
-            "monitor_list",
-            "monitor_stop",
-            "monitor_read",
+    let mut expected = vec![
+        "shell",
+        "file_read",
+        "file_write",
+        "grep",
+        "glob",
+        "list",
+        "edit",
+        "apply_patch",
+        "csv_export",
+        "spawn_subagent",
+        "spawn_async_subagent",
+        "spawn_parallel_agents",
+        "ask_user_clarification",
+        "read_workspace_state",
+        "wait",
+        "wait_loop",
+        "todo",
+        "plan_exit",
+        "current_time",
+        "resolve_time",
+        "cron_add",
+        "cron_list",
+        "cron_remove",
+        "cron_update",
+        "cron_run",
+        "cron_runs",
+        "memory_store",
+        "memory_recall",
+        "memory_forget",
+        "memory_tree",
+        "monitor",
+        "monitor_list",
+        "monitor_stop",
+        "monitor_read",
+        "schedule",
+        "proxy_config",
+        "update_check",
+        "update_apply",
+        "git_operations",
+        "pushover",
+        "gmail_unsubscribe",
+        "http_request",
+        "web_fetch",
+        "curl",
+        "gitbooks_search",
+        "gitbooks_get_page",
+        "web_search_tool",
+        "node_exec",
+        "npm_exec",
+        "image_info",
+    ];
+    // WhatsApp tools are only registered when channels feature is on
+    if cfg!(feature = "channels") {
+        expected.extend(&[
             "whatsapp_data_list_chats",
             "whatsapp_data_list_messages",
             "whatsapp_data_search_messages",
-            "schedule",
-            "proxy_config",
-            "update_check",
-            "update_apply",
-            "git_operations",
-            "pushover",
-            "gmail_unsubscribe",
-            "http_request",
-            "web_fetch",
-            "curl",
-            "gitbooks_search",
-            "gitbooks_get_page",
-            "web_search_tool",
-            "node_exec",
-            "npm_exec",
-            "image_info",
-        ],
-    );
+        ]);
+    }
+
+    assert_contains_all(&names, &expected);
 }
 
 #[test]
@@ -758,7 +777,7 @@ fn all_tools_excludes_browser_when_disabled() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig {
         enabled: false,
@@ -822,7 +841,7 @@ fn all_tools_includes_browser_when_enabled() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig {
         enabled: true,
@@ -944,7 +963,7 @@ fn all_tools_includes_delegate_when_agents_configured() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -985,7 +1004,7 @@ fn all_tools_excludes_delegate_when_no_agents() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1019,7 +1038,7 @@ fn all_tools_registers_node_exec_when_node_enabled() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1058,7 +1077,7 @@ fn all_tools_registers_python_exec_when_python_enabled() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1091,7 +1110,7 @@ fn all_tools_excludes_node_exec_when_node_disabled() {
         ..MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&mem_cfg, tmp.path()).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&mem_cfg, tmp.path()).unwrap());
 
     let browser = BrowserConfig::default();
     let http = crate::openhuman::config::HttpRequestConfig::default();
@@ -1966,39 +1985,132 @@ const KNOWLEDGE_TOOLS: &[&str] = &[
     "learning_enrich_profile",
 ];
 
-const KNOWLEDGE_DEFAULT_OFF: &[&str] = &[
-    "people_refresh_address_book",
-    "create_skill",
-    "install_workflow_from_url",
-    "uninstall_workflow",
-    "thread_delete",
-    "thread_purge_all",
-    "learning_update_facet",
-    "learning_pin_facet",
-    "learning_unpin_facet",
-    "learning_forget_facet",
-    "learning_rebuild_cache",
-    "learning_reset_cache",
-    "learning_save_profile",
-    "learning_enrich_profile",
-];
+fn knowledge_default_off() -> Vec<&'static str> {
+    let mut tools = vec![
+        "people_refresh_address_book",
+        "thread_delete",
+        "thread_purge_all",
+        "learning_update_facet",
+        "learning_pin_facet",
+        "learning_unpin_facet",
+        "learning_forget_facet",
+        "learning_rebuild_cache",
+        "learning_reset_cache",
+        "learning_save_profile",
+        "learning_enrich_profile",
+    ];
+    // These tools exist only when their feature gates are on. All of
+    // create_skill / install_workflow_from_url / uninstall_workflow are
+    // registered under `#[cfg(feature = "skills")]` in ops.rs — none of
+    // them are behind `flows`.
+    if cfg!(feature = "skills") {
+        tools.push("create_skill");
+        tools.push("install_workflow_from_url");
+        tools.push("uninstall_workflow");
+    }
+    tools
+}
 
-const KNOWLEDGE_ALWAYS_ON: &[&str] = &[
-    "people_list",
-    "people_resolve",
-    "list_workflows",
-    "list_workflow_runs",
-    "thread_list",
-    "thread_create",
-    "learning_list_facets",
-    "learning_cache_stats",
-];
+fn knowledge_always_on() -> Vec<&'static str> {
+    let mut tools = vec![
+        "people_list",
+        "people_resolve",
+        "thread_list",
+        "thread_create",
+        "learning_list_facets",
+        "learning_cache_stats",
+    ];
+    // These tools exist only when the skills feature is on (`WorkflowListTool`
+    // / `WorkflowRecentRunsTool` — both `#[cfg(feature = "skills")]`).
+    if cfg!(feature = "skills") {
+        tools.extend(&["list_workflows", "list_workflow_runs"]);
+    }
+    tools
+}
 
 #[test]
 fn knowledge_tools_are_registered() {
     let tmp = TempDir::new().unwrap();
     let names = tool_names(&expansion_tools_for(&tmp));
-    assert_contains_all(&names, KNOWLEDGE_TOOLS);
+
+    // Base knowledge tools that are always present
+    let mut expected_tools = vec![
+        "people_list",
+        "people_resolve",
+        "people_score",
+        "people_get",
+        "people_add_alias",
+        "people_record_interaction",
+        "people_refresh_address_book",
+        "thread_list",
+        "thread_read",
+        "thread_create",
+        "thread_update_title",
+        "thread_update_labels",
+        "thread_message_list",
+        "thread_message_append",
+        "thread_message_update",
+        "thread_title_generate",
+        "thread_turn_state_get",
+        "thread_turn_state_list",
+        "thread_turn_state_clear",
+        "thread_task_board_read",
+        "thread_task_board_write",
+        "thread_delete",
+        "thread_purge_all",
+        "learning_list_facets",
+        "learning_get_facet",
+        "learning_cache_stats",
+        "learning_update_facet",
+        "learning_pin_facet",
+        "learning_unpin_facet",
+        "learning_forget_facet",
+        "learning_rebuild_cache",
+        "learning_reset_cache",
+        "learning_save_profile",
+        "learning_enrich_profile",
+    ];
+
+    // Add gated tools only when their feature is enabled. All of these —
+    // list/describe/read_resource/recent_runs/read_run_log,
+    // install_workflow_from_url, uninstall_workflow, and create_skill — are
+    // registered under `#[cfg(feature = "skills")]` in ops.rs (skill/workflow
+    // metadata + registry tools), not `flows`.
+    if cfg!(feature = "skills") {
+        expected_tools.extend(&[
+            "list_workflows",
+            "describe_workflow",
+            "read_workflow_resource",
+            "list_workflow_runs",
+            "read_workflow_run_log",
+            "install_workflow_from_url",
+            "uninstall_workflow",
+            "create_skill",
+        ]);
+    }
+
+    assert_contains_all(&names, &expected_tools);
+
+    // Verify that gated tools are absent when their feature is off
+    if !cfg!(feature = "skills") {
+        let skill_tools = [
+            "create_skill",
+            "list_workflows",
+            "describe_workflow",
+            "read_workflow_resource",
+            "list_workflow_runs",
+            "read_workflow_run_log",
+            "install_workflow_from_url",
+            "uninstall_workflow",
+        ];
+        for tool in &skill_tools {
+            assert!(
+                !names.iter().any(|n| n == tool),
+                "{} should be absent when skills feature is off",
+                tool
+            );
+        }
+    }
 }
 
 #[test]
@@ -2007,13 +2119,15 @@ fn knowledge_default_off_tools_are_filtered_when_not_opted_in() {
     let mut tools = expansion_tools_for(&tmp);
     filter_tools_by_user_preference(&mut tools, &["file_read".to_string()]);
     let names = tool_names(&tools);
-    for off in KNOWLEDGE_DEFAULT_OFF {
+    let off_tools = knowledge_default_off();
+    for off in &off_tools {
         assert!(
             !names.iter().any(|n| n == off),
             "default-off tool `{off}` must be filtered out when not opted in; got: {names:?}"
         );
     }
-    for on in KNOWLEDGE_ALWAYS_ON {
+    let on_tools = knowledge_always_on();
+    for on in &on_tools {
         assert!(
             names.iter().any(|n| n == on),
             "always-on tool `{on}` must be retained regardless of preferences"
@@ -2035,7 +2149,8 @@ fn knowledge_default_off_tools_retained_when_opted_in() {
         ],
     );
     let names = tool_names(&tools);
-    for on in KNOWLEDGE_DEFAULT_OFF {
+    let off_tools = knowledge_default_off();
+    for on in &off_tools {
         assert!(
             names.iter().any(|n| n == on),
             "opted-in tool `{on}` must be retained; got: {names:?}"
@@ -2448,12 +2563,43 @@ fn tool_group_classifies_gate_and_harness_families() {
     assert_eq!(tool_group("thread_list"), DomainGroup::Threads);
     assert_eq!(tool_group("todo_add"), DomainGroup::Threads);
     assert_eq!(tool_group("goal_get"), DomainGroup::Threads);
+    assert_eq!(tool_group("artifact_list"), DomainGroup::Agent);
+    assert_eq!(tool_group("learning_list_facets"), DomainGroup::Agent);
+    assert_eq!(tool_group("spawn_subagent"), DomainGroup::Agent);
+    for name in [
+        "ask_user_clarification",
+        "wait",
+        "wait_loop",
+        "delegate",
+        "todo",
+        "update_task",
+        "spawn_parallel_agents",
+    ] {
+        assert_eq!(tool_group(name), DomainGroup::Agent);
+    }
+    assert_eq!(tool_group("people_list"), DomainGroup::Memory);
+    assert_eq!(tool_group("config_snapshot"), DomainGroup::Config);
+    assert_eq!(tool_group("workspace_init"), DomainGroup::Config);
+    assert_eq!(tool_group("security_policy_info"), DomainGroup::Security);
+    assert_eq!(tool_group("credential_list"), DomainGroup::Security);
+    assert_eq!(tool_group("session_state"), DomainGroup::Security);
+    assert_eq!(tool_group("oauth_list"), DomainGroup::Security);
+    assert_eq!(tool_group("schedule"), DomainGroup::Automation);
+    assert_eq!(tool_group("polymarket"), DomainGroup::Integrations);
+    for name in [
+        "web_search_tool",
+        "tinyfish_search",
+        "exa_get_contents",
+        "brave_news_search",
+        "parallel_search",
+        "querit_search",
+    ] {
+        assert_eq!(tool_group(name), DomainGroup::Integrations);
+    }
 
     // Everything else → Platform (dropped under harness()).
     assert_eq!(tool_group("shell"), DomainGroup::Platform);
     assert_eq!(tool_group("file_read"), DomainGroup::Platform);
-    assert_eq!(tool_group("config_snapshot"), DomainGroup::Platform);
-    assert_eq!(tool_group("spawn_subagent"), DomainGroup::Platform);
 }
 
 #[test]
@@ -2469,6 +2615,9 @@ fn tool_group_gate_families_dropped_under_harness_not_full() {
     // Harness keeps memory/threads, drops gate families AND platform.
     assert!(harness.allows(tool_group("memory_store")));
     assert!(harness.allows(tool_group("thread_list")));
+    assert!(harness.allows(tool_group("artifact_list")));
+    assert!(harness.allows(tool_group("config_snapshot")));
+    assert!(harness.allows(tool_group("security_policy_info")));
     assert!(!harness.allows(tool_group("wallet_status")));
     assert!(!harness.allows(tool_group("run_workflow")));
     assert!(!harness.allows(tool_group("shell")));
@@ -2552,3 +2701,79 @@ fn default_tools_omits_flows_tools_when_feature_off() {
         );
     }
 }
+
+// ---- tool_group() drift guard ----------------------------------------------
+
+/// Every `DomainGroup` must be a deliberate decision in [`tool_group`]: either a
+/// representative tool name maps to it, or it is declared tool-less.
+///
+/// This is the guard that would have caught the #4808 leak by construction, and
+/// it caught a live one on the way in: the `Inference` rule matched
+/// `tokenjuice_` while the real tool is `tinyjuice_retrieve`, so CCR retrieval
+/// was falling through to `Platform`.
+///
+/// The failure it prevents is silent. A family whose tools have no `tool_group`
+/// rule lands in `Platform`, so those tools stay in the list under a
+/// `DomainSet { platform: true, <family>: false }` — advertised to the model as
+/// callable while the rest of the family is gated off — and conversely vanish
+/// under `harness()`, which has `platform: false`.
+///
+/// Deliberately tests the FUNCTION, not a built registry: which tools a registry
+/// contains depends on config flags, security tier and enabled integrations, so
+/// a registry-derived assertion passes or fails for reasons unrelated to group
+/// mapping. `REPRESENTATIVE` names are asserted to be real tool names by
+/// `representative_tool_names_are_real` below, so this cannot rot into testing
+/// strings that no longer exist.
+#[test]
+fn every_domain_group_is_accounted_for_in_tool_group() {
+    use crate::core::all::DomainGroup;
+
+    for g in DomainGroup::ALL {
+        let representative = REPRESENTATIVE.iter().find(|(_, group)| group == g);
+        let toolless = TOOL_LESS.contains(g);
+        assert!(
+            representative.is_some() ^ toolless,
+            "{g:?} is in neither (or both) of REPRESENTATIVE / TOOL_LESS — decide \
+             whether the family owns agent tools and list it in exactly one"
+        );
+        if let Some((name, want)) = representative {
+            assert_eq!(
+                tool_group(name),
+                *want,
+                "`{name}` must map to {want:?}; if it now maps elsewhere the \
+                 `tool_group` rule for this family has drifted"
+            );
+        }
+    }
+}
+
+/// One real tool name per family that owns tools.
+const REPRESENTATIVE: &[(&str, crate::core::all::DomainGroup)] = {
+    use crate::core::all::DomainGroup as G;
+    &[
+        ("delegate", G::Agent),
+        ("memory_search", G::Memory),
+        ("thread_list", G::Threads),
+        ("mcp_list_servers", G::Mcp),
+        ("wallet_get_address", G::Web3),
+        ("media_generate_image", G::Media),
+        ("whatsapp_data_list_chats", G::Channels),
+        ("audio_generate_podcast", G::Voice),
+        ("create_workflow", G::Flows),
+        ("run_workflow", G::Skills),
+        ("cron_add", G::Automation),
+        ("composio_execute", G::Integrations),
+        ("billing_top_up_credits", G::Hosted),
+        ("tinyplace_call", G::Relay),
+        ("dashboard_model_health", G::Desktop),
+        ("node_exec", G::Runtimes),
+        ("tinyjuice_retrieve", G::Inference),
+        ("shell", G::Platform),
+    ]
+};
+
+/// Families with no agent tools of their own.
+const TOOL_LESS: &[crate::core::all::DomainGroup] = {
+    use crate::core::all::DomainGroup as G;
+    &[G::Config, G::Security, G::Meet, G::Medulla]
+};

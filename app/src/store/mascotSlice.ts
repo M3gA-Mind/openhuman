@@ -152,7 +152,21 @@ interface MascotState {
   customMascotGifUrl: string | null;
   customPrimaryColor: string;
   customSecondaryColor: string;
+  /**
+   * Which voice-chat implementation the Human tab uses (#5399). `classic` is
+   * today's turn-based record → transcribe → reply → TTS pipeline; `realtime`
+   * is the streaming ElevenLabs Agents session. Defaults to `classic` and is
+   * only togglable when `VOICE_MODE_FLAG_ENABLED` is on, so the realtime path
+   * ships dark until it is ready.
+   */
+  voiceMode: VoiceMode;
 }
+
+/** Human-tab voice-chat implementation. */
+export type VoiceMode = 'classic' | 'realtime';
+
+const isVoiceMode = (value: unknown): value is VoiceMode =>
+  value === 'classic' || value === 'realtime';
 
 const initialState: MascotState = {
   color: DEFAULT_MASCOT_COLOR,
@@ -165,6 +179,7 @@ const initialState: MascotState = {
   customMascotGifUrl: null,
   customPrimaryColor: '#F7D145',
   customSecondaryColor: '#B23C05',
+  voiceMode: 'classic',
 };
 
 /**
@@ -306,6 +321,11 @@ const mascotSlice = createSlice({
     setCustomSecondaryColor(state, action: PayloadAction<string>) {
       state.customSecondaryColor = action.payload;
     },
+    setVoiceMode(state, action: PayloadAction<VoiceMode>) {
+      if (isVoiceMode(action.payload)) {
+        state.voiceMode = action.payload;
+      }
+    },
   },
   extraReducers: builder => {
     builder.addCase(resetUserScopedState, () => initialState);
@@ -326,6 +346,7 @@ const mascotSlice = createSlice({
           customMascotGifUrl?: unknown;
           customPrimaryColor?: unknown;
           customSecondaryColor?: unknown;
+          voiceMode?: unknown;
         };
       };
       if (rehydrateAction.key !== 'mascot') return;
@@ -387,6 +408,8 @@ const mascotSlice = createSlice({
       const rsc = rehydrateAction.payload?.customSecondaryColor;
       state.customSecondaryColor =
         typeof rsc === 'string' && rsc.length > 0 ? rsc : initialState.customSecondaryColor;
+      const restoredVoiceMode = rehydrateAction.payload?.voiceMode;
+      state.voiceMode = isVoiceMode(restoredVoiceMode) ? restoredVoiceMode : 'classic';
     });
   },
 });
@@ -402,6 +425,7 @@ export const {
   setCustomMascotGifUrl,
   setCustomPrimaryColor,
   setCustomSecondaryColor,
+  setVoiceMode,
 } = mascotSlice.actions;
 
 export const selectMascotColor = (state: { mascot: MascotState }): MascotColor =>
@@ -424,6 +448,9 @@ export const selectSecondaryMascotId = (state: { mascot: MascotState }): string 
 
 export const selectMascotVoices = (state: { mascot: MascotState }): Record<string, string> =>
   state.mascot.mascotVoices ?? {};
+
+export const selectVoiceMode = (state: { mascot: MascotState }): VoiceMode =>
+  state.mascot.voiceMode ?? 'classic';
 
 /**
  * Explicit per-mascot voice override for `mascotId`, or `null` when none

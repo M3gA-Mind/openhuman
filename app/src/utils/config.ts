@@ -280,6 +280,18 @@ export const MASCOT_VOICE_MODEL_ID =
   'eleven_multilingual_v2';
 
 /**
+ * Gates the realtime ElevenLabs Agents voice mode (#5399). Off by default so
+ * the classic turn-based voice pipeline stays the only path until the realtime
+ * session is ready; set `VITE_VOICE_MODE` to any non-empty value to expose the
+ * Settings toggle. This gates only the UI switch — the realtime code paths
+ * additionally check the persisted `mascot.voiceMode`, so the feature ships
+ * dark even where the flag is on.
+ */
+export const VOICE_MODE_FLAG_ENABLED = Boolean(
+  (import.meta.env.VITE_VOICE_MODE as string | undefined)?.trim()
+);
+
+/**
  * URL of the published mascot manifest (`dist/mascots.json` from the
  * `tinyhumansai/mascots` repo). This is the authoritative source for the
  * in-app mascot library — each entry names a Rive `.riv` runtime file plus its

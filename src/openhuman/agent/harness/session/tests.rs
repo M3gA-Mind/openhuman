@@ -50,7 +50,7 @@ impl ChatModel<()> for MockProvider {
             guard.remove(0)
         };
         Ok(
-            crate::openhuman::tinyagents::model::native_model_response_for_request(
+            crate::openhuman::agent::tinyagents::model::native_model_response_for_request(
                 &response, &request,
             ),
         )
@@ -115,7 +115,7 @@ impl ChatModel<()> for RecordingProvider {
             guard.remove(0)
         };
         Ok(
-            crate::openhuman::tinyagents::model::native_model_response_for_request(
+            crate::openhuman::agent::tinyagents::model::native_model_response_for_request(
                 &response, &request,
             ),
         )
@@ -180,7 +180,7 @@ fn build_minimal_agent_with_definition_name(definition_name: Option<&str>) -> Ag
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut builder = Agent::builder()
@@ -276,7 +276,7 @@ fn set_connected_integrations_marks_session_initialized_and_updates_hash() {
     );
 
     agent.set_connected_integrations(vec![
-        crate::openhuman::context::prompt::ConnectedIntegration {
+        crate::openhuman::agent::context::prompt::ConnectedIntegration {
             toolkit: "gmail".into(),
             description: "Email".into(),
             tools: vec![],
@@ -292,7 +292,9 @@ fn set_connected_integrations_marks_session_initialized_and_updates_hash() {
     assert_eq!(agent.connected_integrations()[0].toolkit, "gmail");
     assert_eq!(
         agent.last_seen_integrations_hash,
-        crate::openhuman::composio::connected_set_hash(agent.connected_integrations())
+        crate::openhuman::integrations::composio::connected_set_hash(
+            agent.connected_integrations()
+        )
     );
 }
 
@@ -303,7 +305,7 @@ fn refresh_delegation_tools_updates_schema_even_when_tool_arc_is_shared() {
     AgentDefinitionRegistry::init_global_builtins().unwrap();
     let mut agent = build_minimal_agent_with_definition_name(Some("orchestrator"));
     agent.set_connected_integrations(vec![
-        crate::openhuman::context::prompt::ConnectedIntegration {
+        crate::openhuman::agent::context::prompt::ConnectedIntegration {
             toolkit: "gmail".into(),
             description: "Email".into(),
             tools: vec![],
@@ -323,7 +325,7 @@ fn refresh_delegation_tools_updates_schema_even_when_tool_arc_is_shared() {
     // Simulate an in-flight turn holding a shared Arc clone.
     let _shared_tools = agent.tools_arc();
     agent.set_connected_integrations(vec![
-        crate::openhuman::context::prompt::ConnectedIntegration {
+        crate::openhuman::agent::context::prompt::ConnectedIntegration {
             toolkit: "gmail".into(),
             description: "Email".into(),
             tools: vec![],
@@ -332,7 +334,7 @@ fn refresh_delegation_tools_updates_schema_even_when_tool_arc_is_shared() {
             connections: Vec::new(),
             non_active_status: None,
         },
-        crate::openhuman::context::prompt::ConnectedIntegration {
+        crate::openhuman::agent::context::prompt::ConnectedIntegration {
             toolkit: "notion".into(),
             description: "Docs".into(),
             tools: vec![],
@@ -366,15 +368,16 @@ fn refresh_delegation_tools_no_duplicate_specs_across_shared_arc_connects() {
     AgentDefinitionRegistry::init_global_builtins().unwrap();
     let mut agent = build_minimal_agent_with_definition_name(Some("orchestrator"));
 
-    let conn = |slug: &str, desc: &str| crate::openhuman::context::prompt::ConnectedIntegration {
-        toolkit: slug.into(),
-        description: desc.into(),
-        tools: vec![],
-        gated_tools: vec![],
-        connected: true,
-        connections: Vec::new(),
-        non_active_status: None,
-    };
+    let conn =
+        |slug: &str, desc: &str| crate::openhuman::agent::context::prompt::ConnectedIntegration {
+            toolkit: slug.into(),
+            description: desc.into(),
+            tools: vec![],
+            gated_tools: vec![],
+            connected: true,
+            connections: Vec::new(),
+            non_active_status: None,
+        };
 
     let delegate_spec_count = |agent: &Agent| -> usize {
         agent
@@ -536,7 +539,7 @@ fn refresh_workflows_picks_up_skill_installed_on_disk() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&memory_cfg, &wsp).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&memory_cfg, &wsp).unwrap());
     let provider = Arc::new(MockProvider {
         responses: Mutex::new(vec![]),
     });
@@ -606,7 +609,7 @@ fn refresh_workflows_retracts_skill_removed_from_disk() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&memory_cfg, &wsp).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&memory_cfg, &wsp).unwrap());
     let provider = Arc::new(MockProvider {
         responses: Mutex::new(vec![]),
     });
@@ -705,7 +708,7 @@ async fn turn_without_tools_returns_text() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut agent = Agent::builder()
@@ -751,7 +754,7 @@ async fn last_turn_usage_is_public_and_non_draining() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut agent = Agent::builder()
@@ -831,7 +834,7 @@ async fn turn_with_native_dispatcher_handles_tool_results_variant() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut agent = Agent::builder()
@@ -881,7 +884,7 @@ async fn turn_with_native_dispatcher_persists_fallback_tool_calls() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut agent = Agent::builder()
@@ -1012,7 +1015,7 @@ async fn turn_dispatches_spawn_subagent_through_full_path_inner() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     // Tools include SpawnSubagentTool so the parent can call it.
@@ -1104,7 +1107,7 @@ async fn system_prompt_and_model_are_byte_stable_across_turns() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> = Arc::from(
-        crate::openhuman::memory_store::create_memory(&memory_cfg, &workspace_path).unwrap(),
+        crate::openhuman::memory::store::create_memory(&memory_cfg, &workspace_path).unwrap(),
     );
 
     let mut agent = Agent::builder()
@@ -1475,7 +1478,7 @@ fn seed_resume_from_thread_transcript_preserves_tool_calls_and_reasoning() {
         ..crate::openhuman::config::MemoryConfig::default()
     };
     let mem: Arc<dyn Memory> =
-        Arc::from(crate::openhuman::memory_store::create_memory(&memory_cfg, &wsp).unwrap());
+        Arc::from(crate::openhuman::memory::store::create_memory(&memory_cfg, &wsp).unwrap());
     let mut agent = Agent::builder()
         .chat_model(Arc::new(MockProvider {
             responses: Mutex::new(vec![]),
@@ -1606,6 +1609,153 @@ fn seed_resume_replays_compaction_to_reduced_context() {
             .collect::<Vec<_>>(),
         vec!["system prompt", "[summary] q1/q2", "q3", "a3"],
         "resumed context must be the reduced set the compaction installed"
+    );
+}
+
+/// #5351: a profile-scoped session (running in its own `session_raw-<id>/`
+/// subtree) must still resume a thread whose earlier turns were written under a
+/// DIFFERENT profile's subtree — here the shared `session_raw/`. Without the
+/// cross-dir fallback the Reasoning profile could not see the plan the Quick
+/// profile wrote, dropping all prior context on a mid-thread Quick↔Reasoning
+/// switch.
+#[test]
+fn seed_resume_from_thread_transcript_crosses_profile_scoped_dirs() {
+    use super::transcript::{self, TranscriptMeta};
+    use crate::openhuman::agent::messages::ChatMessage;
+
+    let ws = tempfile::TempDir::new().expect("temp workspace");
+    let wsp = ws.path().to_path_buf();
+    let thread_id = "thr_cross_profile";
+
+    // Prior turns written by the QUICK (default) profile into the SHARED
+    // `session_raw/` subtree.
+    let messages = vec![
+        ChatMessage::system("system prompt"),
+        ChatMessage::user("set up Minimax for image generation"),
+        ChatMessage::assistant("Minimax is configured as the image generator."),
+    ];
+    let meta = TranscriptMeta {
+        agent_name: "orchestrator_thr_cross_pr".to_string(),
+        agent_id: Some("orchestrator".to_string()),
+        agent_type: Some("root".to_string()),
+        dispatcher: "native".to_string(),
+        provider: None,
+        model: None,
+        created: "2026-01-01T00:00:00Z".to_string(),
+        updated: "2026-01-01T00:00:00Z".to_string(),
+        turn_count: 1,
+        input_tokens: 0,
+        output_tokens: 0,
+        cached_input_tokens: 0,
+        charged_amount_usd: 0.0,
+        thread_id: Some(thread_id.to_string()),
+        task_id: None,
+    };
+    // The shared `session_raw/` (default resolve path) — the Quick profile's dir.
+    let path = transcript::resolve_keyed_transcript_path(&wsp, "1700000000_orchestrator")
+        .expect("resolve transcript path");
+    transcript::write_transcript(&path, &messages, &meta, None).expect("write transcript");
+
+    // The REASONING profile runs in a scoped `session_raw-1/` subtree — its own
+    // dir holds no transcript for this thread, so the in-dir lookup misses and
+    // only the cross-dir fallback can recover the conversation.
+    let mut agent = build_minimal_agent_with_definition_name(Some("orchestrator"));
+    agent.workspace_dir = wsp.clone();
+    agent.session_raw_subdir = "session_raw-1".to_string();
+
+    let loaded = agent.seed_resume_from_thread_transcript(thread_id);
+    assert!(
+        loaded,
+        "a profile-scoped session must resume the thread's transcript from the shared \
+         session_raw dir via the cross-dir fallback (#5351)"
+    );
+    let cached = agent
+        .cached_transcript_messages
+        .as_ref()
+        .expect("cached transcript populated");
+    assert!(
+        cached.iter().any(|m| m.content.contains("image generator")),
+        "the prior plan context must be recovered across the profile-scoped dir boundary"
+    );
+}
+
+/// #5351 regression guard: resume must pick the NEWEST transcript across profile
+/// dirs, never the one in the agent's own dir. After the Reasoning profile is
+/// healed back to the shared `session_raw/`, an OLDER transcript there must not
+/// shadow the NEWER turns the profile wrote into its (pre-heal) scoped
+/// `session_raw-1/` — otherwise the switch drops the most recent context and the
+/// seeded history diverges from what the transcript view shows.
+#[test]
+fn seed_resume_from_thread_transcript_picks_newest_across_profile_dirs() {
+    use super::transcript::{self, TranscriptMeta};
+    use crate::openhuman::agent::messages::ChatMessage;
+
+    let ws = tempfile::TempDir::new().expect("temp workspace");
+    let wsp = ws.path().to_path_buf();
+    let thread_id = "thr_newest_wins";
+
+    let meta = |stamp: &str| TranscriptMeta {
+        agent_name: "orchestrator_thr_newest".to_string(),
+        agent_id: Some("orchestrator".to_string()),
+        agent_type: Some("root".to_string()),
+        dispatcher: "native".to_string(),
+        provider: None,
+        model: None,
+        created: stamp.to_string(),
+        updated: stamp.to_string(),
+        turn_count: 1,
+        input_tokens: 0,
+        output_tokens: 0,
+        cached_input_tokens: 0,
+        charged_amount_usd: 0.0,
+        thread_id: Some(thread_id.to_string()),
+        task_id: None,
+    };
+
+    // OLDER transcript in the agent's OWN (shared) dir.
+    let older = vec![
+        ChatMessage::system("system prompt"),
+        ChatMessage::user("draft plan"),
+        ChatMessage::assistant("early draft, details TBD"),
+    ];
+    let old_path = wsp
+        .join("session_raw")
+        .join("1700000000_orchestrator.jsonl");
+    std::fs::create_dir_all(old_path.parent().unwrap()).unwrap();
+    transcript::write_transcript(&old_path, &older, &meta("2026-01-01T00:00:00Z"), None)
+        .expect("write older");
+
+    // NEWER transcript in a sibling scoped dir (written pre-heal, higher stem).
+    let newer = vec![
+        ChatMessage::system("system prompt"),
+        ChatMessage::user("finalize plan"),
+        ChatMessage::assistant("FINAL: Minimax is the image generator"),
+    ];
+    let new_path = wsp
+        .join("session_raw-1")
+        .join("1700009999_orchestrator.jsonl");
+    std::fs::create_dir_all(new_path.parent().unwrap()).unwrap();
+    transcript::write_transcript(&new_path, &newer, &meta("2026-02-02T00:00:00Z"), None)
+        .expect("write newer");
+
+    // Agent runs in the shared dir (healed). Own-dir-first would wrongly pick the
+    // older draft; newest-across-dirs must pick the finalized plan.
+    let mut agent = build_minimal_agent_with_definition_name(Some("orchestrator"));
+    agent.workspace_dir = wsp.clone();
+    agent.session_raw_subdir = "session_raw".to_string();
+
+    assert!(agent.seed_resume_from_thread_transcript(thread_id));
+    let cached = agent
+        .cached_transcript_messages
+        .as_ref()
+        .expect("cached transcript populated");
+    assert!(
+        cached.iter().any(|m| m.content.contains("FINAL")),
+        "resume must load the NEWEST transcript across profile dirs, not the older own-dir copy"
+    );
+    assert!(
+        !cached.iter().any(|m| m.content.contains("early draft")),
+        "the older own-dir transcript must not shadow the newer sibling"
     );
 }
 

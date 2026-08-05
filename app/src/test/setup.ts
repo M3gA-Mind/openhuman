@@ -225,6 +225,7 @@ vi.mock('../utils/config', () => ({
   MASCOT_VOICE_MODEL_ID: 'eleven_multilingual_v2',
   MASCOT_MANIFEST_URL:
     'https://raw.githubusercontent.com/tinyhumansai/mascots/main/dist/mascots.json',
+  VOICE_MODE_FLAG_ENABLED: false,
 }));
 
 vi.mock('../services/backendUrl', () => ({

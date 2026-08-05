@@ -18,6 +18,7 @@ import { upsertChannelConnection } from '../store/channelConnectionsSlice';
 import { setBackend } from '../store/connectivitySlice';
 import { resetForUser, setSocketIdForUser, setStatusForUser } from '../store/socketSlice';
 import type { ChannelAuthMode, ChannelConnectionStatus, ChannelType } from '../types/channels';
+import type { UserErrorScope } from '../types/userError';
 import { IS_DEV } from '../utils/config';
 import { createSafeLogData, sanitizeError } from '../utils/sanitize';
 import { getCoreRpcToken, getCoreRpcUrl } from './coreRpcClient';
@@ -408,17 +409,18 @@ class SocketService {
       const provider = typeof obj.error_provider === 'string' ? obj.error_provider : undefined;
       const sourceDomain = typeof obj.error_source === 'string' ? obj.error_source : 'cron';
       socketLog('user_error kind=%s source=%s', errorType ?? 'none', sourceDomain);
+      // Scope groups the entry in the panel and is part of its dedupe identity,
+      // so it must follow the producing domain. It was pinned to `cron` while
+      // the scheduler was the only producer; the memory embedder health gate
+      // (#5354) is the second. Unknown domains keep the historical `cron`
+      // default rather than widening the scope union from wire data.
+      const scope: UserErrorScope = sourceDomain === 'memory' ? 'memory' : 'cron';
       // Metadata-only ingest: forward the stable kind token + scope ONLY, never
       // a raw `message` body. The cron producer already omits it, but we drop
       // any `obj.message` here too so a future/buggy broadcast can't leak raw
       // provider text into the UI — classify() keys on `errorType` for this
       // path. Locks the no-leak contract FE-side (CodeRabbit #4169).
-      ingestRuntimeErrorSignal(store.dispatch, {
-        errorType,
-        scope: 'cron',
-        sourceDomain,
-        provider,
-      });
+      ingestRuntimeErrorSignal(store.dispatch, { errorType, scope, sourceDomain, provider });
     });
 
     // Backend Meet bot events — forwarded from core's DomainEvent bus

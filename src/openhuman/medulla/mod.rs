@@ -16,7 +16,7 @@
 //! | Module | Role | Transport |
 //! |---|---|---|
 //! | `openhuman::medulla` (here) | OpenHuman as a Medulla **client** | outbound HTTP/SSE to the backend |
-//! | `openhuman::socket::medulla` | OpenHuman as a Medulla **worker** | inbound Socket.IO from a remote operator |
+//! | `openhuman::platform::socket::medulla` | OpenHuman as a Medulla **worker** | inbound Socket.IO from a remote operator |
 //!
 //! A single binary can be both at once.
 //!
@@ -27,6 +27,10 @@
 //! [`contract`] and [`events`] type modules are **ungated carve-outs** — see
 //! [`events`] for why.
 
+/// Medulla chat-session store (`medulla_chat`). Gated on the same `medulla`
+/// feature as the rest of the family.
+#[cfg(feature = "medulla")]
+pub mod chat;
 #[cfg(feature = "medulla")]
 pub mod client;
 pub mod contract;

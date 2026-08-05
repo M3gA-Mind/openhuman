@@ -22,6 +22,14 @@ import {
 const mockPipelineStatus = vi.fn();
 const mockSetEnabled = vi.fn();
 const mockSyncStatusList = vi.fn();
+// #5324: the panel now navigates (budget CTA) and dispatches (escalating the
+// blocking cause to the shell-mounted UserErrorCenter). Stub both so the
+// suite keeps rendering the panel bare, without a Router or a Redux store.
+const mockNavigate = vi.fn();
+const mockDispatch = vi.fn();
+
+vi.mock('react-router-dom', () => ({ useNavigate: () => mockNavigate }));
+vi.mock('../../store/hooks', () => ({ useAppDispatch: () => mockDispatch }));
 
 vi.mock('../../utils/tauriCommands', async importOriginal => {
   // Inherit everything else (types, sibling wrappers) verbatim so the panel
@@ -407,6 +415,140 @@ describe('<MemoryTreeStatusPanel />', () => {
       expect(screen.getByTestId('memory-tree-status-label')).toHaveTextContent(/running/i);
     });
     expect(screen.queryByTestId('memory-tree-blocking-cause')).not.toBeInTheDocument();
+  });
+
+  // ── #5324: budget-exhausted state ───────────────────────────────────────
+
+  /** A pipeline parked on a spent managed embedding budget. */
+  function budgetExhaustedPayload() {
+    return payload({
+      status: 'error',
+      reason: '936 unrecoverable failure(s) need action',
+      pipeline_jobs: { ready: 12, running: 0, failed: 936 },
+      first_blocking_cause: {
+        code: 'budget_exhausted',
+        class: 'unrecoverable',
+        remediation_key: 'memory.health.remediation.budget_exhausted',
+      },
+    });
+  }
+
+  it('names the budget-exhausted state instead of a generic error', async () => {
+    mockPipelineStatus.mockResolvedValueOnce(budgetExhaustedPayload());
+    render(<MemoryTreeStatusPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('memory-tree-status-label')).toHaveTextContent(
+        /embedding budget reached/i
+      );
+    });
+    // "Error" alone told the user nothing they could act on.
+    expect(screen.getByTestId('memory-tree-status-label')).not.toHaveTextContent(/^Error$/);
+  });
+
+  it('offers a one-click CTA to the embeddings configuration screen', async () => {
+    mockPipelineStatus.mockResolvedValueOnce(budgetExhaustedPayload());
+    render(<MemoryTreeStatusPanel />);
+
+    const cta = await screen.findByTestId('memory-tree-budget-cta');
+    fireEvent.click(cta);
+    expect(mockNavigate).toHaveBeenCalledWith('/connections?tab=embeddings');
+  });
+
+  it('escalates the budget cause out of this panel into the global error center', async () => {
+    // The whole point of the issue: a warning only visible inside this panel
+    // is a warning nobody sees.
+    mockPipelineStatus.mockResolvedValueOnce(budgetExhaustedPayload());
+    render(<MemoryTreeStatusPanel />);
+
+    await waitFor(() => {
+      expect(mockDispatch).toHaveBeenCalled();
+    });
+  });
+
+  it('keeps the paused label when the user paused a tree carrying an old budget failure', async () => {
+    // `first_blocking_cause` reports the most recent failed job regardless of
+    // why the pipeline is currently stopped. Relabelling a manually-paused
+    // tree would hide the real reason it is not running.
+    mockPipelineStatus.mockResolvedValueOnce(
+      payload({
+        status: 'paused',
+        is_paused: true,
+        reason: 'scheduler gate mode = off',
+        first_blocking_cause: {
+          code: 'budget_exhausted',
+          class: 'unrecoverable',
+          remediation_key: 'memory.health.remediation.budget_exhausted',
+        },
+      })
+    );
+    render(<MemoryTreeStatusPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('memory-tree-status-label')).toHaveTextContent(/paused/i);
+    });
+    expect(screen.getByTestId('memory-tree-status-label')).not.toHaveTextContent(
+      /embedding budget reached/i
+    );
+  });
+
+  it('does not show the budget CTA for other blocking causes', async () => {
+    mockPipelineStatus.mockResolvedValueOnce(
+      payload({
+        status: 'error',
+        first_blocking_cause: {
+          code: 'embedding_dim_mismatch',
+          class: 'unrecoverable',
+          remediation_key: 'memory.health.remediation.embedding_dim_mismatch',
+        },
+      })
+    );
+    render(<MemoryTreeStatusPanel />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('memory-tree-blocking-cause')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('memory-tree-budget-cta')).not.toBeInTheDocument();
+    expect(screen.getByTestId('memory-tree-status-label')).toHaveTextContent(/error/i);
+  });
+
+  it('handles the legacy degraded.cause payload shape (no first_blocking_cause)', async () => {
+    // Older/degraded-only payloads carry the cause on `degraded.cause` and omit
+    // `first_blocking_cause`. The label, CTA, and escalation must all key off
+    // the same resolved cause, so this shape must behave exactly like the
+    // `first_blocking_cause` one — not render the banner while silently
+    // dropping the budget label, CTA, and the global escalation.
+    mockPipelineStatus.mockResolvedValueOnce(
+      payload({
+        status: 'degraded',
+        reason: 'queue has not completed any job in 8h — memory is not growing',
+        degraded: {
+          semantic_recall: false,
+          structure: false,
+          cause: {
+            code: 'budget_exhausted',
+            class: 'unrecoverable',
+            remediation_key: 'memory.health.remediation.budget_exhausted',
+          },
+        },
+      })
+    );
+    render(<MemoryTreeStatusPanel />);
+
+    // Named budget state, not a bare "degraded".
+    await waitFor(() => {
+      expect(screen.getByTestId('memory-tree-status-label')).toHaveTextContent(
+        /embedding budget reached/i
+      );
+    });
+    // CTA present…
+    expect(screen.getByTestId('memory-tree-budget-cta')).toBeInTheDocument();
+    // …and the cause still escalates out of this panel. Escalation runs from an
+    // effect after the status resolves, so wait for it rather than asserting
+    // synchronously (matches the `first_blocking_cause` escalation test above).
+    await waitFor(() => {
+      expect(mockDispatch).toHaveBeenCalled();
+    });
   });
 });
 

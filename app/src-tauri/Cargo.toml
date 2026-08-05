@@ -186,6 +186,18 @@ openhuman_core = { path = "../..", package = "openhuman", default-features = fal
     # http://127.0.0.1:<port>/rpc, so it REQUIRES the HTTP + Socket.IO transport
     # (#5048). Enforced by the HTTP_SERVER_COMPILED_IN compile assert in lib.rs.
     "http-server",
+    # Without this the desktop app has no battery/AC probe, so a user who sets
+    # `require_ac_power` gets no enforcement and `battery_floor` throttling never
+    # fires — silently, since the off-state is a valid "on AC" reading.
+    "scheduler-gate",
+    # The packaged app's only durable log. Without this, a support request
+    # comes back with nothing to attach — and the absence is silent.
+    "file-logging",
+    # Polymarket read + trading tools. Implies `web3`, which is already
+    # forwarded — but the checker does literal set membership with no
+    # transitive resolution, so this needs its own line.
+    "prediction-markets",
+    "contacts",
 ] }
 tinyjuice = { version = "0.2.1", default-features = false }
 

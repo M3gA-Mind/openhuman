@@ -2599,7 +2599,7 @@ pub fn run() {
             // (the original userCount=0 root cause).
             if event.user.is_none() {
                 event.user =
-                    openhuman_core::openhuman::app_state::peek_cached_current_user_identity()
+                    openhuman_core::openhuman::desktop::app_state::peek_cached_current_user_identity()
                         .and_then(|identity| identity.id)
                         .map(|id| sentry::User {
                             id: Some(id),
@@ -3292,7 +3292,7 @@ pub fn run() {
                             // after the <key>ProgramArguments</key> marker. The
                             // service installer always writes it as an absolute
                             // path to the openhuman-core binary (see
-                            // src/openhuman/service/macos.rs).
+                            // src/openhuman/platform/service/macos.rs).
                             let after_key = contents.split("<key>ProgramArguments</key>").nth(1)?;
                             let start = after_key.find("<string>")? + "<string>".len();
                             let rest = &after_key[start..];

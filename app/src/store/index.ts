@@ -161,14 +161,15 @@ const persistedThreadReducer = persistReducer(threadPersistConfig, threadReducer
 const layoutPersistConfig = { key: 'layout', storage, whitelist: ['panels'] };
 const persistedLayoutReducer = persistReducer(layoutPersistConfig, layoutReducer);
 
-// Persist the mascot appearance fields, the custom GIF override, and the
-// selected mascot id (so the chosen GitHub-manifest mascot survives a reload —
-// the slice's REHYDRATE guard re-validates it). Other mascot fields stay as
+// Persist the mascot appearance fields, the custom GIF override, the selected
+// mascot id (so the chosen GitHub-manifest mascot survives a reload — the
+// slice's REHYDRATE guard re-validates it), and the chosen voice mode (so
+// realtime doesn't reset to classic on restart). Other mascot fields stay as
 // runtime state.
 const mascotPersistConfig = {
   key: 'mascot',
   storage,
-  whitelist: ['color', 'voiceId', 'customMascotGifUrl', 'selectedMascotId'],
+  whitelist: ['color', 'voiceId', 'customMascotGifUrl', 'selectedMascotId', 'voiceMode'],
 };
 const persistedMascotReducer = persistReducer(mascotPersistConfig, mascotReducer);
 
