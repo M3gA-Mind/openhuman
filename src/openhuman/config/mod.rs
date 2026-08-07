@@ -29,6 +29,8 @@ pub use schema::{
     default_projects_dir, default_root_openhuman_dir, pre_login_user_dir, read_active_user_id,
     resolve_action_dir, user_openhuman_dir, write_active_user_id, PRE_LOGIN_USER_ID,
 };
+// Crate-internal: workspace→config-dir resolver reused by the cloud embedder.
+pub(crate) use schema::resolve_config_dir_for_workspace;
 #[allow(unused_imports)]
 pub use schema::{
     apply_runtime_proxy_to_builder, build_runtime_proxy_client,

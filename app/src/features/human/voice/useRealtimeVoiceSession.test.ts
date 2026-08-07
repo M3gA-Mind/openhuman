@@ -45,11 +45,26 @@ describe('useRealtimeVoiceSession', () => {
       signedUrl: 'wss://x',
       connectionType: 'websocket',
       userId: 'tok-1',
+      customLlmExtraBody: { user: 'tok-1' },
       overrides: { tts: { voiceId: 'v9' } },
     });
 
     act(() => captured?.onConnect());
     expect(result.current.state).toBe('active');
+  });
+
+  // `userId` alone never reaches the Custom-LLM request the backend relay
+  // serves, so the relay cannot identify the caller and rejects the turn.
+  // `customLlmExtraBody` is the field that carries it there.
+  it('carries the relay token in customLlmExtraBody, not only in userId', async () => {
+    mockFetch.mockResolvedValueOnce({ signedUrl: 'wss://x', agentId: 'a1', userToken: 'tok-9' });
+    const { result } = renderHook(() => useRealtimeVoiceSession());
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(startSession).toHaveBeenCalledWith(
+      expect.objectContaining({ customLlmExtraBody: { user: 'tok-9' } })
+    );
   });
 
   it('falls back to the default mascot voice id', async () => {

@@ -1331,6 +1331,12 @@ const messages: TranslationMap = {
   'memoryTree.status.never': 'Nunca',
   'memoryTree.status.fetchError': 'No se pudo obtener el estado del Árbol de Memoria',
   'memoryTree.status.retry': 'Rever',
+  'memoryTree.status.retryFailed': 'Reintentar los trabajos fallidos',
+  'memoryTree.status.retryFailedBusy': 'Reintentando...',
+  'memoryTree.status.retryFailedDone': 'Trabajos fallidos añadidos de nuevo a la cola',
+  'memoryTree.status.retryFailedCount': 'Trabajos en cola para ejecutarse de nuevo: {count}.',
+  'memoryTree.status.retryFailedError':
+    'No se pudieron volver a poner en cola los trabajos fallidos',
   'memoryTree.status.toggleFailed': 'No se pudo activar la sincronización automática',
   'memoryTree.status.justNow': 'justo ahora',
   'memoryTree.status.secondsAgo': '{count}s hace',
@@ -5959,10 +5965,16 @@ const messages: TranslationMap = {
   'settings.mascot.characterDraft': 'Borrador',
   'settings.mascot.characterHeading': 'Encabezado del personaje',
   'settings.mascot.customGifError':
-    'Introduzca una ruta HTTPS .gif URL, loopback HTTP .gif URL, file:// .gif URL o ruta .gif local.',
-  'settings.mascot.customGifHeading': 'Avatar GIF personalizado',
-  'settings.mascot.customGifLabel': 'Avatar GIF personalizado URL',
-  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.gif',
+    'Introduce una URL de imagen HTTPS, file:// o local (PNG, GIF, JPEG, WebP o BMP), o sube un archivo.',
+  'settings.mascot.customGifHeading': 'Avatar de imagen personalizado',
+  'settings.mascot.customGifLabel': 'URL del avatar de imagen personalizado',
+  'settings.mascot.customGifPlaceholder': 'https://example.com/avatar.png',
+  'settings.mascot.customGifUpload': 'Subir imagen',
+  'settings.mascot.customGifInvalidType':
+    'Tipo de archivo no compatible. Sube una imagen PNG, GIF, JPEG, WebP o BMP.',
+  'settings.mascot.customGifTooLarge':
+    'La imagen es demasiado grande. Sube un archivo de hasta 1,5 MB.',
+  'settings.mascot.customGifReadError': 'No se pudo leer la imagen. Prueba con otro archivo.',
   'settings.mascot.characterPreview': 'Vista previa',
   'settings.mascot.characterStates': 'estados',
   'settings.mascot.characterVisemes': 'visemas',
@@ -6071,7 +6083,7 @@ const messages: TranslationMap = {
   'settings.persona.templates.family.desc': 'Cálido, amable, seguro para todas las edades',
   'settings.persona.appearanceHeading': 'Avatar y Voz',
   'settings.persona.appearanceDesc':
-    'El color de la mascota, el avatar personalizado GIF y la voz de respuesta se configuran en los ajustes de la mascota.',
+    'El color de la mascota, el avatar de imagen personalizado y la voz de respuesta se configuran en los ajustes de la mascota.',
   'settings.persona.openMascotSettings': 'Abrir la configuración de Mascota',
   'settings.memoryWindow.balanced.badge': 'Recomendado',
   'settings.memoryWindow.balanced.hint':

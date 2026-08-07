@@ -76,12 +76,23 @@ export function useRealtimeVoiceSession(opts?: { voiceId?: string }): RealtimeVo
     try {
       const { signedUrl, userToken } = await fetchVoiceAgentSignedUrl();
       log('start: signed url acquired, opening session');
-      // `userId` is the identity binding the backend relay verifies (#5399);
-      // ElevenLabs forwards it as the Custom-LLM `user` field.
+      // `userId` is the identity binding the backend relay verifies (#5399).
+      //
+      // It rides the conversation-init event as `user_id`, but the provider does
+      // not put it on the Custom-LLM request body: a live capture of
+      // `POST /voice-agent/chat/completions` carried only
+      // [messages, model, max_tokens, stream, stream_options, temperature, tools],
+      // so every relayed turn was rejected for having no identity.
+      //
+      // `customLlmExtraBody` does reach that request — forwarded under an
+      // `elevenlabs_extra_body` key rather than merged into the top level, which
+      // is where the relay looks for it. `userId` stays for provider-side
+      // attribution.
       conversation.startSession({
         signedUrl,
         connectionType: 'websocket',
         userId: userToken,
+        customLlmExtraBody: { user: userToken },
         overrides: { tts: { voiceId: opts?.voiceId ?? MASCOT_VOICE_ID } },
       });
     } catch (err) {

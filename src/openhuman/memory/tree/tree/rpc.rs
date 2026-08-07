@@ -643,33 +643,111 @@ pub async fn retry_failed_rpc(config: &Config) -> Result<RpcOutcome<RetryFailedR
 }
 
 /// #002 (FR-004): the typed [`PipelineFailure`] of the most-recently-failed
-/// `mem_tree_jobs` row, when it carries a classified `failure_reason`. Returns
-/// `Ok(None)` when there is no failed job with a typed reason (older failures
-/// predating the typed-failure columns, or none at all). Best-effort: the
-/// status panel is a UI convenience, so a DB error degrades to `Ok(None)`
-/// rather than failing the whole status RPC.
+/// `mem_tree_jobs` row, when it carries a classified `failure_reason` **and that
+/// failure is still the pipeline's current blocking cause**. Returns `Ok(None)`
+/// when there is no failed job with a typed reason (older failures predating the
+/// typed-failure columns, or none at all), or when the failure has been
+/// superseded (below). Best-effort: the status panel is a UI convenience, so a
+/// DB error degrades to `Ok(None)` rather than failing the whole status RPC.
+///
+/// # Supersession — why the newest failed row is not automatically the cause
+///
+/// An unrecoverable failure is terminal by design: it is never retried, so its
+/// row sits in `failed` forever with whatever `failure_reason` it died with.
+/// Reading that row unconditionally means the panel keeps rendering the *first*
+/// diagnosis it ever saw, indefinitely, no matter what the pipeline has done
+/// since.
+///
+/// In production that surfaced as a signed-in user being told "No embeddings
+/// credentials found. Log in to OpenHuman" — the remediation for an
+/// `auth_missing` batch that had failed **27 days earlier**, while the queue had
+/// been completing jobs normally the whole time. The banner was a tombstone, and
+/// following it was impossible: the user was already logged in.
+///
+/// So a failure only counts as the *current* blocking cause when the queue has
+/// not settled a job successfully since it. `completed_at_ms` on the newest
+/// `done` row is that watermark: if the pipeline has produced output more
+/// recently than the failure, the failure describes the past, not the present.
+/// The failure is still counted (`failed_unrecoverable` keeps the status at
+/// `error` and the "N unrecoverable failure(s) need action" reason), and "Retry
+/// failed" is how the user clears it — but the *remediation text*, which tells
+/// the user what to go and do right now, is withheld once it stops being true.
 fn latest_failed_job_failure(
     config: &Config,
 ) -> Result<Option<crate::openhuman::memory::tree::health::PipelineFailure>, String> {
     use crate::openhuman::memory::tree::health::{FailureClass, FailureCode, PipelineFailure};
 
-    let row: Option<(Option<String>, Option<String>)> =
-        chunk_store::with_connection(config, |conn| {
-            conn.query_row(
-                "SELECT failure_reason, failure_class FROM mem_tree_jobs
+    // Read the newest failed row AND the success watermark on the SAME
+    // connection. `with_connection` holds the process-global connection mutex
+    // for the whole closure, so no job can settle between the two reads and
+    // flip the supersession decision (a race the #5427 review flagged). The
+    // watermark is only queried when the failed row carries a timestamp to
+    // compare against.
+    type FailureWatermark = (Option<String>, Option<String>, Option<i64>, Option<i64>);
+    let row: Option<FailureWatermark> = chunk_store::with_connection(config, |conn| {
+        let failed: Option<(Option<String>, Option<String>, Option<i64>)> = conn
+            .query_row(
+                "SELECT failure_reason, failure_class, completed_at_ms FROM mem_tree_jobs
               WHERE status = 'failed' AND failure_reason IS NOT NULL
               ORDER BY completed_at_ms DESC LIMIT 1",
                 [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+
+        let Some((reason, class, failed_at_ms)) = failed else {
+            return Ok(None);
+        };
+
+        let last_success_ms: Option<i64> = if failed_at_ms.is_some() {
+            conn.query_row(
+                "SELECT MAX(completed_at_ms) FROM mem_tree_jobs WHERE status = 'done'",
+                [],
+                |r| r.get(0),
             )
             .optional()
-            .map_err(Into::into)
-        })
-        .map_err(|e| format!("latest_failed_job_failure: {e:#}"))?;
+            .map(Option::flatten)?
+        } else {
+            None
+        };
 
-    let Some((Some(reason), class)) = row else {
+        Ok(Some((reason, class, failed_at_ms, last_success_ms)))
+    })
+    .map_err(|e| format!("latest_failed_job_failure: {e:#}"))?;
+
+    let Some((Some(reason), class, failed_at_ms, last_success_ms)) = row else {
+        log::debug!(
+            "[memory-tree][rpc] pipeline_status: no typed failed row present — no blocking cause"
+        );
         return Ok(None);
     };
+
+    // Log every supersession branch, not only the withheld one, so the decision
+    // is greppable from the logs alone.
+    match failed_at_ms {
+        Some(failed_at_ms)
+            if last_success_ms.is_some_and(|success_ms| success_ms > failed_at_ms) =>
+        {
+            log::debug!(
+                "[memory-tree][rpc] pipeline_status: withholding blocking cause reason={reason} \
+                 — the queue has completed a job since it failed (superseded)"
+            );
+            return Ok(None);
+        }
+        Some(_) => {
+            log::debug!(
+                "[memory-tree][rpc] pipeline_status: blocking cause is live reason={reason} \
+                 — no successful settle since it failed"
+            );
+        }
+        None => {
+            log::debug!(
+                "[memory-tree][rpc] pipeline_status: blocking cause reason={reason} has no \
+                 completion timestamp — surfacing unconditionally (legacy row)"
+            );
+        }
+    }
+
     let Some(code) = FailureCode::from_str(&reason) else {
         return Ok(None);
     };
@@ -1802,6 +1880,124 @@ mod tests {
             idle,
             now - just_now,
             "the idle clock starts at the new job's arrival, not the stale settle"
+        );
+    }
+
+    /// Plant one terminally-`failed` row carrying a typed reason, and
+    /// optionally one `done` row, at explicit timestamps. Returns nothing — the
+    /// tests read the derived cause back through `latest_failed_job_failure`.
+    fn plant_failed_and_done(
+        cfg: &Config,
+        reason: &str,
+        failed_at_ms: i64,
+        done_at_ms: Option<i64>,
+    ) {
+        use crate::openhuman::memory::queue::store as queue_store;
+        use crate::openhuman::memory::queue::types::{FlushStalePayload, NewJob};
+
+        let failed_job =
+            NewJob::flush_stale(&FlushStalePayload::default(), "2026-07-10", 3).unwrap();
+        let failed_id = queue_store::enqueue(cfg, &failed_job)
+            .unwrap()
+            .expect("enqueue failed-row");
+
+        let done_id = done_at_ms.map(|_| {
+            let done_job =
+                NewJob::flush_stale(&FlushStalePayload::default(), "2026-08-06", 3).unwrap();
+            queue_store::enqueue(cfg, &done_job)
+                .unwrap()
+                .expect("enqueue done-row")
+        });
+
+        chunk_store::with_connection(cfg, |conn| {
+            conn.execute(
+                "UPDATE mem_tree_jobs
+                    SET status = 'failed',
+                        failure_reason = ?2,
+                        failure_class = 'unrecoverable',
+                        completed_at_ms = ?3
+                  WHERE id = ?1",
+                rusqlite::params![failed_id, reason, failed_at_ms],
+            )?;
+            if let (Some(done_id), Some(done_at_ms)) = (done_id.as_ref(), done_at_ms) {
+                conn.execute(
+                    "UPDATE mem_tree_jobs
+                        SET status = 'done', completed_at_ms = ?2
+                      WHERE id = ?1",
+                    rusqlite::params![done_id, done_at_ms],
+                )?;
+            }
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    /// The active production defect: a signed-in user was told "No embeddings
+    /// credentials found. Log in to OpenHuman" because a batch of `auth_missing`
+    /// jobs had failed 27 days earlier and, being unrecoverable, was never
+    /// retried. The queue had been completing jobs the whole time since.
+    ///
+    /// A failure the pipeline has already worked past is not the current
+    /// blocking cause, so no remediation is surfaced for it.
+    #[test]
+    fn blocking_cause_is_withheld_once_the_queue_has_succeeded_since() {
+        let (_tmp, cfg) = test_config();
+        let failed_at = 1_800_000_000_000_i64;
+        let succeeded_after = failed_at + 27 * 24 * 60 * 60 * 1000;
+
+        plant_failed_and_done(&cfg, "auth_missing", failed_at, Some(succeeded_after));
+
+        assert!(
+            latest_failed_job_failure(&cfg).unwrap().is_none(),
+            "a month-old auth failure the queue has since worked past must not be \
+             presented as the user's current problem"
+        );
+    }
+
+    /// The other half of the same rule: a failure with no successful settle
+    /// after it IS the current blocking cause and must still surface, otherwise
+    /// the fix would silence the diagnosis it exists to deliver.
+    #[test]
+    fn blocking_cause_surfaces_when_nothing_has_succeeded_since() {
+        use crate::openhuman::memory::tree::health::{FailureClass, FailureCode};
+
+        let (_tmp, cfg) = test_config();
+        let succeeded_before = 1_800_000_000_000_i64;
+        let failed_after = succeeded_before + 60_000;
+
+        plant_failed_and_done(
+            &cfg,
+            "budget_exhausted",
+            failed_after,
+            Some(succeeded_before),
+        );
+
+        let failure = latest_failed_job_failure(&cfg)
+            .unwrap()
+            .expect("a failure with no success after it is the live cause");
+        assert_eq!(failure.code, FailureCode::BudgetExhausted);
+        assert_eq!(failure.class, FailureClass::Unrecoverable);
+        assert_eq!(
+            failure.remediation_key,
+            "memory.health.remediation.budget_exhausted"
+        );
+    }
+
+    /// A queue that has never completed anything has no watermark to compare
+    /// against, so the failure stands — this is the "broken from the first
+    /// sync" shape, where the diagnosis matters most.
+    #[test]
+    fn blocking_cause_surfaces_when_the_queue_has_never_succeeded() {
+        let (_tmp, cfg) = test_config();
+
+        plant_failed_and_done(&cfg, "auth_invalid", 1_800_000_000_000_i64, None);
+
+        let failure = latest_failed_job_failure(&cfg)
+            .unwrap()
+            .expect("no successful settle exists to supersede this failure");
+        assert_eq!(
+            failure.remediation_key,
+            "memory.health.remediation.auth_invalid"
         );
     }
 

@@ -28,6 +28,9 @@ pub use load::{
     default_projects_dir, default_root_openhuman_dir, pre_login_user_dir, read_active_user_id,
     resolve_action_dir, user_openhuman_dir, write_active_user_id, PRE_LOGIN_USER_ID,
 };
+// Crate-internal: the workspace→config-dir resolver, reused by the cloud
+// embedder's keyless credential-scope resolution (mirrors `config::load`).
+pub(crate) use load::resolve_config_dir_for_workspace;
 // Contract shared with `core::observability::expected_error_kind`: the loader
 // appends this marker to a config-read failure when the file's owner differs
 // from the reading process, and the classifier keys on it to keep that case

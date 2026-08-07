@@ -32,10 +32,14 @@ pub(crate) use dirs::default_root_dir_name_pub as default_root_dir_name;
 // re-export; only the load_tests module needs it visible at this level.
 #[cfg(test)]
 pub(crate) use dirs::read_active_user_id_checked;
+// Non-test: the keyless cloud embedder (`inference::embeddings::cloud_adapter`)
+// resolves its `OPENHUMAN_WORKSPACE` credential scope through the same
+// workspace→config-dir mapping `config::load` uses, so a legacy `.../workspace`
+// override lands on the sibling `.openhuman` root that holds `auth-profiles.json`.
+pub(crate) use dirs::resolve_config_dir_for_workspace;
 #[cfg(test)]
 pub(crate) use dirs::{
-    resolve_config_dir_for_workspace, resolve_runtime_config_dirs,
-    resolve_runtime_config_dirs_with, ConfigResolutionSource,
+    resolve_runtime_config_dirs, resolve_runtime_config_dirs_with, ConfigResolutionSource,
 };
 // PathBuf and Config were in scope via `use super::*` in the original load.rs.
 #[cfg(test)]

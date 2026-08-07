@@ -31,8 +31,10 @@ import {
   type MemorySyncStatusRow,
   memoryTreePipelineStatus,
   type MemoryTreePipelineStatus,
+  memoryTreeRetryFailed,
   memoryTreeSetEnabled,
 } from '../../utils/tauriCommands';
+import { trackAnalyticsEvent } from '../analytics';
 import Button from '../ui/Button';
 
 /** Translator function shape exposed by `useT()`. */
@@ -338,6 +340,7 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
   const dispatch = useAppDispatch();
   const { status, integrations, loading, error, refresh } = useMemoryTreeStatus();
   const [toggleBusy, setToggleBusy] = useState(false);
+  const [retryBusy, setRetryBusy] = useState(false);
 
   // #002 (FR-004): the single first blocking cause. Prefer the explicit
   // `first_blocking_cause`; fall back to the active degradation cause so older
@@ -376,6 +379,46 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
     }
   }, [status, toggleBusy, refresh, onToast, t]);
 
+  /**
+   * Requeue every terminally-failed job.
+   *
+   * An unrecoverable failure (auth, budget, dimension mismatch) is terminal by
+   * design — the worker never retries it — so a batch that failed under a
+   * since-fixed config stays parked forever and pins this panel on `error`.
+   * The `memory_tree_retry_failed` RPC existed for exactly this, but had no
+   * caller anywhere in the app, leaving the user with a permanent error state
+   * and no way to clear it.
+   */
+  const handleRetryFailed = useCallback(async () => {
+    if (retryBusy) {
+      console.debug('[ui-flow][memory-tree-status] retryFailed: skipped busy=true');
+      return;
+    }
+    console.debug('[ui-flow][memory-tree-status] retryFailed: entry');
+    setRetryBusy(true);
+    console.debug('[ui-flow][memory-tree-status] retryFailed: busy=true rpc:start');
+    try {
+      const { requeued } = await memoryTreeRetryFailed();
+      console.debug('[ui-flow][memory-tree-status] retryFailed: rpc:ok requeued=%d', requeued);
+      // Record the successful domain outcome (not just the click). Privacy-safe:
+      // a non-identifying count only, no ids or user text.
+      trackAnalyticsEvent('memory_tree_retry_succeeded', { count: requeued });
+      onToast?.({
+        type: 'success',
+        title: t('memoryTree.status.retryFailedDone'),
+        message: t('memoryTree.status.retryFailedCount').replace('{count}', String(requeued)),
+      });
+      await refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn('[ui-flow][memory-tree-status] retryFailed: error %s', message);
+      onToast?.({ type: 'error', title: t('memoryTree.status.retryFailedError'), message });
+    } finally {
+      console.debug('[ui-flow][memory-tree-status] retryFailed: busy=false exit');
+      setRetryBusy(false);
+    }
+  }, [retryBusy, refresh, onToast, t]);
+
   const statusKind = status?.status ?? 'idle';
   // #5324: "Error — 936 unrecoverable failures need action" told the user
   // nothing they could act on. When the blocking cause is a spent embedding
@@ -412,6 +455,12 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
   // `blockingCause` (derived above) is rendered verbatim in the banner below
   // with a localized remediation.
   const degraded = status?.degraded;
+
+  // Parked failures are the one panel state the user can act on directly, and
+  // the affordance is keyed off the counter rather than off the blocking-cause
+  // banner: a failure the pipeline has already worked past no longer surfaces a
+  // remediation, but its rows still sit in `failed` and still need clearing.
+  const failedJobs = status?.pipeline_jobs.failed ?? 0;
 
   const checked = !(status?.is_paused ?? false);
 
@@ -512,6 +561,23 @@ export function MemoryTreeStatusPanel({ onToast }: MemoryTreeStatusPanelProps) {
               </div>
               {status.reason ? (
                 <div className="mt-0.5 text-[11px] text-content-muted">{status.reason}</div>
+              ) : null}
+              {failedJobs > 0 ? (
+                <div className="mt-2">
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    disabled={retryBusy}
+                    data-testid="memory-tree-retry-failed"
+                    analyticsId="memory-tree-retry-failed-jobs"
+                    onClick={() => {
+                      void handleRetryFailed();
+                    }}>
+                    {retryBusy
+                      ? t('memoryTree.status.retryFailedBusy')
+                      : t('memoryTree.status.retryFailed')}
+                  </Button>
+                </div>
               ) : null}
             </>
           )}
