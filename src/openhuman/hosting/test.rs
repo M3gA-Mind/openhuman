@@ -94,6 +94,7 @@ fn an_account_exposes_every_hosting_tool() {
             "hosting_set_env",
             "hosting_add_domain",
             "hosting_analytics",
+            "hosting_rollback",
         ]
     );
 }
@@ -107,9 +108,11 @@ fn only_the_tools_that_change_the_world_carry_an_external_effect() {
         .expect("an account");
 
     for tool in account.tools() {
+        // `hosting_rollback` belongs here: promoting an earlier build changes
+        // which one the public is looking at, which is as outward as a launch.
         let expected = matches!(
             tool.name(),
-            "hosting_launch_site" | "hosting_set_env" | "hosting_add_domain"
+            "hosting_launch_site" | "hosting_set_env" | "hosting_add_domain" | "hosting_rollback"
         );
         assert_eq!(
             tool.external_effect(),
@@ -245,4 +248,246 @@ async fn a_read_tool_reports_a_missing_argument_rather_than_calling_out() {
         .expect("the tool reports rather than panics");
 
     assert!(result.is_error);
+}
+
+// ── hosting_rollback ────────────────────────────────────────────────────────
+
+/// A [`Host`] that answers `list_deployments` from a script and records what
+/// `promote` was asked to do.
+///
+/// Every other method is unreachable on purpose: a rollback that called out to
+/// anything else would be doing hosting work this seam has no business doing,
+/// and a stub that panics says so louder than one returning a default.
+#[derive(Debug)]
+struct ScriptedHost {
+    deployments: Vec<tinyhosts::Deployment>,
+    promoted: std::sync::Mutex<Option<(String, String)>>,
+}
+
+impl ScriptedHost {
+    fn new(deployments: Vec<tinyhosts::Deployment>) -> std::sync::Arc<Self> {
+        std::sync::Arc::new(Self {
+            deployments,
+            promoted: std::sync::Mutex::new(None),
+        })
+    }
+
+    fn promoted_id(&self) -> Option<String> {
+        self.promoted
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|(_, id)| id.clone())
+    }
+}
+
+/// One deployment, with only the fields the target choice reads.
+fn deployment(
+    id: &str,
+    status: tinyhosts::DeploymentStatus,
+    target: tinyhosts::DeploymentTarget,
+) -> tinyhosts::Deployment {
+    tinyhosts::Deployment {
+        id: id.to_string(),
+        site: "shop".to_string(),
+        url: None,
+        status,
+        target,
+        created_at_ms: None,
+        error_message: None,
+    }
+}
+
+#[async_trait::async_trait]
+impl tinyhosts::Host for ScriptedHost {
+    fn kind(&self) -> tinyhosts::ProviderKind {
+        tinyhosts::ProviderKind::Vercel
+    }
+    async fn list_deployments(
+        &self,
+        _site: &str,
+        _limit: u32,
+    ) -> tinyhosts::Result<Vec<tinyhosts::Deployment>> {
+        Ok(self.deployments.clone())
+    }
+    async fn promote(&self, site: &str, deployment: &str) -> tinyhosts::Result<()> {
+        *self.promoted.lock().unwrap() = Some((site.to_string(), deployment.to_string()));
+        Ok(())
+    }
+    async fn create_site(&self, _spec: &tinyhosts::SiteSpec) -> tinyhosts::Result<tinyhosts::Site> {
+        unreachable!("rollback does not create sites")
+    }
+    async fn find_site(&self, _name: &str) -> tinyhosts::Result<Option<tinyhosts::Site>> {
+        unreachable!("rollback does not look up sites")
+    }
+    async fn list_sites(&self, _limit: u32) -> tinyhosts::Result<Vec<tinyhosts::Site>> {
+        unreachable!("rollback does not list sites")
+    }
+    async fn set_env(&self, _site: &str, _vars: &[tinyhosts::EnvVar]) -> tinyhosts::Result<()> {
+        unreachable!("rollback does not set environment variables")
+    }
+    async fn list_env(&self, _site: &str) -> tinyhosts::Result<Vec<tinyhosts::EnvVarRecord>> {
+        unreachable!("rollback does not read environment variables")
+    }
+    async fn provision_database(
+        &self,
+        _spec: &tinyhosts::DatabaseSpec,
+    ) -> tinyhosts::Result<tinyhosts::Database> {
+        unreachable!("rollback does not provision databases")
+    }
+    async fn attach_database(
+        &self,
+        _database: &tinyhosts::Database,
+        _site: &str,
+    ) -> tinyhosts::Result<Vec<String>> {
+        unreachable!("rollback does not attach databases")
+    }
+    async fn deploy(
+        &self,
+        _request: &tinyhosts::DeployRequest,
+    ) -> tinyhosts::Result<tinyhosts::Deployment> {
+        unreachable!("rollback promotes an existing build, it does not create one")
+    }
+    async fn deployment(&self, _id: &str) -> tinyhosts::Result<tinyhosts::Deployment> {
+        unreachable!("rollback does not poll a single deployment")
+    }
+    async fn add_domain(&self, _site: &str, _domain: &str) -> tinyhosts::Result<tinyhosts::Domain> {
+        unreachable!("rollback does not add domains")
+    }
+    async fn list_domains(&self, _site: &str) -> tinyhosts::Result<Vec<tinyhosts::Domain>> {
+        unreachable!("rollback does not list domains")
+    }
+    async fn analytics(
+        &self,
+        _query: &tinyhosts::AnalyticsQuery,
+    ) -> tinyhosts::Result<tinyhosts::AnalyticsSummary> {
+        unreachable!("rollback does not read analytics")
+    }
+}
+
+/// The default target: the ready production deployment **before** the one
+/// currently serving. The provider returns newest-first, so `new` is live and
+/// `previous` is what "roll back" means.
+#[tokio::test]
+async fn rolling_back_promotes_the_deployment_before_the_live_one() {
+    use tinyhosts::{DeploymentStatus::Ready, DeploymentTarget::Production};
+    let host = ScriptedHost::new(vec![
+        deployment("new", Ready, Production),
+        deployment("previous", Ready, Production),
+        deployment("older", Ready, Production),
+    ]);
+
+    let result = tools::RollbackTool::new(host.clone())
+        .execute(json!({ "site": "shop" }))
+        .await
+        .expect("the tool reports rather than panics");
+
+    assert!(!result.is_error, "{result:?}");
+    assert_eq!(
+        host.promoted.lock().unwrap().clone(),
+        Some(("shop".to_string(), "previous".to_string())),
+        "the one before the live deployment, not the live one and not the oldest"
+    );
+}
+
+/// A failed or still-building deployment is never promoted. Rolling on to one
+/// would take the site down in the name of recovering it, which is the single
+/// outcome this tool exists to prevent.
+#[tokio::test]
+async fn rolling_back_skips_deployments_that_are_not_ready() {
+    use tinyhosts::DeploymentStatus::{Building, Failed, Ready};
+    use tinyhosts::DeploymentTarget::Production;
+    let host = ScriptedHost::new(vec![
+        deployment("live", Ready, Production),
+        deployment("broken", Failed, Production),
+        deployment("half-built", Building, Production),
+        deployment("last-good", Ready, Production),
+    ]);
+
+    tools::RollbackTool::new(host.clone())
+        .execute(json!({ "site": "shop" }))
+        .await
+        .expect("the tool reports rather than panics");
+
+    assert_eq!(
+        host.promoted_id().as_deref(),
+        Some("last-good"),
+        "a failed or building deployment is not a rollback target"
+    );
+}
+
+/// A preview deployment is not a rollback target either: it is not attached to
+/// the site's domains, so promoting one is a deploy rather than a rollback.
+#[tokio::test]
+async fn rolling_back_ignores_preview_deployments() {
+    use tinyhosts::DeploymentStatus::Ready;
+    use tinyhosts::DeploymentTarget::{Preview, Production};
+    let host = ScriptedHost::new(vec![
+        deployment("live", Ready, Production),
+        deployment("a-preview", Ready, Preview),
+        deployment("last-good", Ready, Production),
+    ]);
+
+    tools::RollbackTool::new(host.clone())
+        .execute(json!({ "site": "shop" }))
+        .await
+        .expect("the tool reports rather than panics");
+
+    assert_eq!(
+        host.promoted_id().as_deref(),
+        Some("last-good"),
+        "a preview build serves no domain, so it is not what `back` means"
+    );
+}
+
+/// Nothing to roll back to is an error, not a silent no-op. A site with one
+/// good deployment has no earlier one, and reporting success would tell an
+/// operator mid-incident that they had recovered when they had not.
+#[tokio::test]
+async fn a_site_with_nothing_earlier_reports_it_rather_than_promoting_the_live_one() {
+    use tinyhosts::{DeploymentStatus::Ready, DeploymentTarget::Production};
+    let host = ScriptedHost::new(vec![deployment("only", Ready, Production)]);
+
+    let result = tools::RollbackTool::new(host.clone())
+        .execute(json!({ "site": "shop" }))
+        .await
+        .expect("the tool reports rather than panics");
+
+    assert!(result.is_error, "{result:?}");
+    assert!(
+        host.promoted_id().is_none(),
+        "nothing was promoted, least of all the deployment already serving"
+    );
+}
+
+/// An explicit id is taken as given — the caller may be rolling on to something
+/// the default choice would not have picked, which is why the argument exists.
+#[tokio::test]
+async fn an_explicit_deployment_id_overrides_the_default_choice() {
+    use tinyhosts::{DeploymentStatus::Ready, DeploymentTarget::Production};
+    let host = ScriptedHost::new(vec![
+        deployment("live", Ready, Production),
+        deployment("previous", Ready, Production),
+    ]);
+
+    tools::RollbackTool::new(host.clone())
+        .execute(json!({ "site": "shop", "deployment_id": "much-older" }))
+        .await
+        .expect("the tool reports rather than panics");
+
+    assert_eq!(host.promoted_id().as_deref(), Some("much-older"));
+}
+
+/// The site name is required, and its absence is reported before any call out.
+#[tokio::test]
+async fn rolling_back_without_a_site_is_refused_before_calling_out() {
+    let host = ScriptedHost::new(Vec::new());
+
+    let result = tools::RollbackTool::new(host.clone())
+        .execute(json!({}))
+        .await
+        .expect("the tool reports rather than panics");
+
+    assert!(result.is_error);
+    assert!(host.promoted_id().is_none());
 }

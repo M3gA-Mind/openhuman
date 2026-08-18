@@ -1,22 +1,23 @@
 //! The `hosting_*` agent tools.
 //!
-//! Six tools over one hosting account. They are thin on purpose: argument
+//! Seven tools over one hosting account. They are thin on purpose: argument
 //! parsing, one call into [`tinyhosts`], and a result described for a model.
 //! Anything that looks like hosting logic belongs in the crate, where it is
 //! provider-independent and tested against a mock of the provider's API.
 //!
-//! `hosting_launch_site` is the only one with `external_effect`: it uploads a
-//! directory to a third party and can spend money on a database, so it routes
-//! through the approval gate. The rest read, or adjust something that already
-//! exists.
+//! Four carry `external_effect` and route through the approval gate:
+//! `hosting_launch_site` uploads a directory to a third party and can spend
+//! money on a database, `hosting_set_env` and `hosting_add_domain` change what
+//! an existing site serves, and `hosting_rollback` changes which build the
+//! public is looking at. The other three read.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use tinyhosts::{
-    AnalyticsDimension, AnalyticsQuery, Bundle, DatabaseKind, DatabaseSpec, DeploymentTarget,
-    Domain, EnvVar, Host, Launch, LaunchPlan, SiteSpec,
+    AnalyticsDimension, AnalyticsQuery, Bundle, DatabaseKind, DatabaseSpec, DeploymentStatus,
+    DeploymentTarget, Domain, EnvVar, Host, Launch, LaunchPlan, SiteSpec,
 };
 
 use super::{resolve_in_workspace, Account};
@@ -31,6 +32,7 @@ pub fn hosting_tools(account: &Account) -> Vec<Box<dyn Tool>> {
         Box::new(SetEnvTool::new(account.host())),
         Box::new(AddDomainTool::new(account.host())),
         Box::new(AnalyticsTool::new(account.host())),
+        Box::new(RollbackTool::new(account.host())),
     ]
 }
 
@@ -674,6 +676,137 @@ impl Tool for AnalyticsTool {
 
         match self.host.analytics(&query).await {
             Ok(summary) => Ok(ToolResult::success(serde_json::to_string_pretty(&summary)?)),
+            Err(error) => Ok(ToolResult::error(error.to_string())),
+        }
+    }
+}
+
+// ── hosting_rollback ────────────────────────────────────────────────────────
+
+/// How far back to look for a deployment worth rolling on to.
+///
+/// The provider returns newest-first, so this is "the last N deployments of
+/// this site". Large enough that a run of failed builds does not hide the last
+/// good one, small enough to stay one cheap call.
+const ROLLBACK_SCAN: u32 = 20;
+
+/// Promotes an earlier deployment back to production.
+///
+/// The recovery half of `hosting_launch_site`. A launch can provision a
+/// database, rewrite environment variables and attach domains in one call, so
+/// an agent could compose a broken site in a single step and — before this —
+/// had no single step to undo it: only `hosting_set_env` and
+/// `hosting_add_domain`, one variable and one domain at a time.
+///
+/// The crate already had the primitive. [`Host::promote`] is provider-
+/// independent and tested against a mock of the provider's API, so nothing
+/// Vercel-specific appears here; this is argument parsing and a target choice.
+pub struct RollbackTool {
+    host: Arc<dyn Host>,
+}
+
+impl RollbackTool {
+    pub fn new(host: Arc<dyn Host>) -> Self {
+        Self { host }
+    }
+
+    /// The deployment to roll on to when the caller named none.
+    ///
+    /// "Roll back" with no target is ambiguous, and the ambiguity is resolved
+    /// here rather than left to the model: **the most recent production
+    /// deployment that is `Ready` and is not the one currently serving**. The
+    /// provider returns newest-first, so the first `Ready` production entry is
+    /// what is live now and the second is what "back" means.
+    ///
+    /// Only `Ready` counts. Promoting a `Failed` or still-`Building` deployment
+    /// would take the site down in the name of recovering it, which is the one
+    /// outcome this tool exists to prevent.
+    async fn previous_ready(&self, site: &str) -> anyhow::Result<String> {
+        let deployments = self.host.list_deployments(site, ROLLBACK_SCAN).await?;
+        let mut ready = deployments.iter().filter(|deployment| {
+            deployment.target == DeploymentTarget::Production
+                && deployment.status == DeploymentStatus::Ready
+        });
+        // The one serving now, skipped: rolling back onto it is a no-op an
+        // operator would read as a successful recovery.
+        let current = ready.next();
+        match (current, ready.next()) {
+            (_, Some(previous)) => Ok(previous.id.clone()),
+            (Some(_), None) => anyhow::bail!(
+                "`{site}` has only one ready production deployment, so there is nothing to roll \
+                 back to. Name a deployment_id explicitly if you meant a different one."
+            ),
+            (None, _) => anyhow::bail!(
+                "`{site}` has no ready production deployment in its last {ROLLBACK_SCAN}, so \
+                 there is nothing to roll back to."
+            ),
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for RollbackTool {
+    fn name(&self) -> &str {
+        "hosting_rollback"
+    }
+
+    fn description(&self) -> &str {
+        "Roll a site back to an earlier deployment by promoting it to \
+         production. Use this to recover from a bad deploy. With no \
+         deployment_id, rolls back to the most recent ready production \
+         deployment before the one currently serving; pass deployment_id (from \
+         hosting_deployment_status or a previous launch) to choose a specific \
+         one. Changes what the public sees."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "required": ["site"],
+            "properties": {
+                "site": {
+                    "type": "string",
+                    "description": "The site name, as hosting_list_sites reports it."
+                },
+                "deployment_id": {
+                    "type": "string",
+                    "description": "The deployment to promote. Omit to roll back to the \
+                                    one before the deployment currently serving."
+                }
+            }
+        })
+    }
+
+    fn permission_level(&self) -> PermissionLevel {
+        PermissionLevel::Write
+    }
+
+    /// Changes which build the public is looking at, so it gates like a launch.
+    fn external_effect(&self) -> bool {
+        true
+    }
+
+    async fn execute(&self, args: Value) -> anyhow::Result<ToolResult> {
+        let site = match required_str(&args, "site") {
+            Ok(site) => site,
+            Err(error) => return Ok(ToolResult::error(error.to_string())),
+        };
+
+        // An explicit id is taken as given — the caller may be rolling on to
+        // something this tool's own heuristic would not have picked, which is
+        // exactly why the argument exists.
+        let deployment = match args.get("deployment_id").and_then(Value::as_str) {
+            Some(id) if !id.trim().is_empty() => id.trim().to_string(),
+            _ => match self.previous_ready(&site).await {
+                Ok(id) => id,
+                Err(error) => return Ok(ToolResult::error(error.to_string())),
+            },
+        };
+
+        match self.host.promote(&site, &deployment).await {
+            Ok(()) => Ok(ToolResult::success(format!(
+                "`{site}` is now serving deployment `{deployment}`."
+            ))),
             Err(error) => Ok(ToolResult::error(error.to_string())),
         }
     }
