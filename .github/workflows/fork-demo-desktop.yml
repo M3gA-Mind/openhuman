@@ -16,7 +16,14 @@
 # Delete this file and its branch once the verification run is done.
 name: Fork Demo Desktop Build
 
+# `push` as well as `workflow_dispatch`: GitHub only registers a dispatchable
+# workflow from the DEFAULT branch, and this file deliberately never goes near
+# the fork's main. A push trigger scoped to this one branch runs from the ref
+# directly. Nothing else in the repo fires here - ci-full is push:[release] and
+# ci-lite is push:[main].
 on:
+  push:
+    branches: [demo/release-lane-verification]
   workflow_dispatch:
     inputs:
       build_profile:
@@ -58,7 +65,7 @@ jobs:
       short_sha: ${{ needs.prep.outputs.short_sha }}
       base_url: https://staging-api.tinyhumans.ai/
       app_env: staging
-      build_profile: ${{ inputs.build_profile }}
+      build_profile: ${{ github.event_name == 'workflow_dispatch' && inputs.build_profile || 'release' }}
       telegram_bot_username: alphahumantest_bot
       with_macos_signing: false
       with_updater: false
