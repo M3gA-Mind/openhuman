@@ -539,7 +539,17 @@ restore_smoke_userns_restriction() {
 install_smoke_userns_profile() {
   local appdir="$1"
   local profile_file="$2"
-  local executable="$appdir/shared/bin/OpenHuman"
+
+  # Resolve the target per layout. This was hardcoded to the sharun path
+  # (shared/bin/OpenHuman), which does not exist in a linuxdeploy AppDir - so the
+  # x86_64 smoke failed here with "AppArmor target is not executable" even after
+  # static validation passed. Same defect class as #5606, one layer down.
+  local layout executable
+  layout="$(appdir_layout "$appdir" || true)"
+  if ! executable="$(appdir_main_binary "$appdir" "$layout")"; then
+    runtime_validation_error "could not resolve the AppArmor target for the $layout layout"
+    return 1
+  fi
 
   [ -x "$executable" ] \
     || { runtime_validation_error "AppArmor target is not executable: $executable"; return 1; }
