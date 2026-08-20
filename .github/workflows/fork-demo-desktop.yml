@@ -1,0 +1,66 @@
+# FORK DEMO ONLY — DO NOT MERGE UPSTREAM.
+#
+# `build-desktop.yml` is `workflow_call`-only, so it cannot be dispatched
+# directly. This caller exists purely to exercise the real reusable workflow on
+# the M3gA-Mind fork, to prove the release-lane fixes for #5595 / #5606 / #5607
+# before anything is cut upstream.
+#
+# It deliberately passes NO `secrets:` block. The fork holds zero secrets and
+# zero variables, so every signing, notarization, updater and Sentry path stays
+# dormant:
+#   with_macos_signing: false  -> disarms the Apple-cert prerequisite check
+#   with_updater:       false  -> disarms the Tauri signing-key check
+#   with_release_upload: false -> no GitHub Release writes; bundles come back
+#                                 as Actions artifacts instead
+#
+# Delete this file and its branch once the verification run is done.
+name: Fork Demo Desktop Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_profile:
+        description: Cargo profile to build the desktop app with
+        type: choice
+        options: [release, debug]
+        default: release
+
+permissions:
+  contents: read
+  # ci-cancel-aware.sh polls the run state; without this it degrades to a no-op
+  # watchdog rather than failing, but polling gives cleaner cancellation.
+  actions: read
+
+concurrency:
+  group: fork-demo-desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      short_sha: ${{ steps.ids.outputs.short_sha }}
+    steps:
+      - id: ids
+        # build-desktop.yml expects exactly 12 chars; the runtime truncation in
+        # config.ts / vite.config.ts / main.rs / lib.rs matches that width.
+        run: echo "short_sha=${GITHUB_SHA:0:12}" >> "$GITHUB_OUTPUT"
+
+  demo:
+    needs: prep
+    uses: ./.github/workflows/build-desktop.yml
+    with:
+      build_ref: ${{ github.sha }}
+      tag: v0.0.0-forkdemo
+      version: 0.0.0
+      sha: ${{ github.sha }}
+      short_sha: ${{ needs.prep.outputs.short_sha }}
+      base_url: https://staging-api.tinyhumans.ai/
+      app_env: staging
+      build_profile: ${{ inputs.build_profile }}
+      telegram_bot_username: alphahumantest_bot
+      with_macos_signing: false
+      with_updater: false
+      with_release_upload: false
+      build_sidecar: false
