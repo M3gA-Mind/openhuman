@@ -58,5 +58,7 @@ custom-protocol = ["tauri/custom-protocol"]
 debug = "line-tables-only"
 split-debuginfo = "packed"
 lto = "thin"
-codegen-units = 1
+# 16, not 1 — see the root `Cargo.toml` for why (#5595: one codegen unit cost
+# the desktop release matrix +82% build time and blocked every release).
+codegen-units = 16
 strip = "symbols"

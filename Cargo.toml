@@ -1214,11 +1214,22 @@ split-debuginfo = "packed"
 # `dsymutil` first and keeps the DWARF. Do not "simplify" by dropping the
 # `debug` line: that would empty the dSYM and un-symbolicate production.
 #
-# Cost: release builds are slower (one codegen unit + an LTO pass). The `ci`
-# profile below deliberately overrides all three, so the fast CI lanes are
-# unaffected.
+# Cost: release builds are slower (an LTO pass). The `ci` profile below
+# deliberately overrides all three, so the fast CI lanes are unaffected.
+#
+# `codegen-units` was 1 from #5541 until #5595. That serialised codegen for the
+# entire crate and took the desktop release matrix from ~46 min to ~84 min
+# (+82%) — past the 90-minute job timeout in `build-desktop.yml`, which blocked
+# every production release from 2026-08-14. The `ci` override meant the PR
+# lanes never saw it, so it surfaced only at release time.
+#
+# 16 restores codegen parallelism. `lto = "thin"` still does cross-crate
+# inlining and `strip = "symbols"` is unchanged, so the expectation is that
+# most of #5541's 43% size win survives — but that is an expectation, not a
+# measurement. If the binary grows materially, the tradeoff to revisit is
+# `lto = "fat"` with `codegen-units = 16`, not a return to one codegen unit.
 lto = "thin"
-codegen-units = 1
+codegen-units = 16
 strip = "symbols"
 
 # Fast CI builds: trade runtime perf for compile speed

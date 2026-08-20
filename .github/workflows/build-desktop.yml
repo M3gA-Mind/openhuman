@@ -98,7 +98,11 @@ jobs:
   build:
     name: "Desktop: ${{ matrix.settings.artifact_suffix }}"
     runs-on: ${{ matrix.settings.platform }}
-    timeout-minutes: 90
+    # 120, not 90: the macOS legs were clipped at exactly 90m in every failing
+    # run (#5595), so their true duration was never observed. The codegen-units
+    # fix should bring these back to ~45-50 min; the extra headroom means a slow
+    # runner reports a real result instead of another censored timeout.
+    timeout-minutes: 120
     environment: Production
     strategy:
       fail-fast: false

@@ -312,7 +312,9 @@ split-debuginfo = "packed"
 # change here needs the same change in the root `Cargo.toml` and in
 # `app/src-tauri-mobile/Cargo.toml` (the iOS/Android host).
 lto = "thin"
-codegen-units = 1
+# 16, not 1 — see the root `Cargo.toml` for why (#5595: one codegen unit cost
+# the desktop release matrix +82% build time and blocked every release).
+codegen-units = 16
 strip = "symbols"
 
 # Fast CI builds: trade runtime perf for compile speed
