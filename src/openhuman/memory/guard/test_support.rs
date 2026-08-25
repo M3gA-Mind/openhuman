@@ -745,6 +745,22 @@ impl MemoryEpisodic for RecordingProvider {
         Ok(1)
     }
 
+    async fn insert_event(
+        &self,
+        event: &crate::openhuman::memory::api::provider::episodic::EpisodicEvent,
+    ) -> Result<(), MemoryError> {
+        // Records the event content, so a guard that failed to redact one would
+        // be visible here rather than only in a live store — same reason
+        // `insert_turn` above records its turn text.
+        self.record(Call {
+            method: "episodic.insert_event".into(),
+            content: Some(event.content.clone()),
+            taint: None,
+            scoped: None,
+        });
+        Ok(())
+    }
+
     async fn session_turns(
         &self,
         _session_id: &str,
@@ -771,6 +787,7 @@ impl MemoryEpisodic for RecordingProvider {
         _session_id: &str,
         _namespace: &str,
         _start_episodic_id: i64,
+        _start_seq: Option<u32>,
         _start_timestamp: f64,
         _now: f64,
     ) -> Result<(), MemoryError> {
@@ -782,6 +799,7 @@ impl MemoryEpisodic for RecordingProvider {
         &self,
         _segment_id: &str,
         _episodic_id: i64,
+        _seq: Option<u32>,
         _timestamp: f64,
         _now: f64,
     ) -> Result<(), MemoryError> {
@@ -1009,6 +1027,15 @@ impl MemoryRetrieval for RecordingProvider {
         _exclude_session_id: Option<&str>,
     ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
         self.record(Call::plain("retrieval.recall_namespace_scored"));
+        Ok(vec![])
+    }
+
+    async fn recall_namespace_recent(
+        &self,
+        _namespace: &str,
+        _limit: usize,
+    ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
+        self.record(Call::plain("retrieval.recall_namespace_recent"));
         Ok(vec![])
     }
 

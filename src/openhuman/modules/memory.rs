@@ -1144,6 +1144,38 @@ impl MemoryRetrieval for ModuleMemoryProvider {
             (namespace, query, limit, exclude_session_id)
         )
     }
+    async fn recall_namespace_recent(
+        &self,
+        namespace: &str,
+        limit: usize,
+    ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
+        // The one method in this file that does not forward, because the pinned
+        // artifact has no `RecallNamespaceRecent` member to forward to — the
+        // contract crate gained this method after the release this host loads.
+        //
+        // `Ok(vec![])` would be the tempting answer and is the wrong one. An
+        // empty vector from this method *means something*: the contract says an
+        // unknown namespace yields one, "which is a true statement about it
+        // rather than a fault". Returning empty because the binary cannot serve
+        // the call makes this driver assert something false that no caller can
+        // tell apart from a genuinely empty namespace — the over-claim shape of
+        // #5641/#5623 moved from the capability list into a return value.
+        //
+        // Forwarding anyway would be honest but opaque: the wire name matches no
+        // arm in `from_wire`, so a caller gets an untyped `Other` after paying a
+        // round trip — the outcome this module's own docs name as the bad one
+        // (#5598). `Unsupported` is the contract's own vocabulary for exactly
+        // this, and callers already branch on it.
+        //
+        // This goes away on the next artifact re-pin, when the member exists and
+        // this collapses to a `module_call!` like every sibling.
+        let _ = (namespace, limit);
+        Err(MemoryError::unsupported_raw(format!(
+            "retrieval.recall_namespace_recent: not served by the pinned tinymemory \
+             module artifact {ARTIFACT_CAPABILITIES_PIN}"
+        )))
+    }
+
     async fn search_entities(
         &self,
         query: &str,

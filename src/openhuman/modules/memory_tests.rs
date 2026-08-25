@@ -293,3 +293,37 @@ fn the_advertised_set_does_not_over_claim_the_artifact() {
         "advertising the whole contract is the bug this test exists to prevent",
     );
 }
+
+/// `recall_namespace_recent` reports itself unsupported instead of claiming an
+/// empty namespace.
+///
+/// The pinned artifact has no `RecallNamespaceRecent` member — the contract
+/// gained the method after that release. `Ok(vec![])` would be indistinguishable
+/// from a genuinely empty namespace, which is the over-claim shape #5641/#5623
+/// were about; a bare forward would come back as an untyped `Other` after a
+/// round trip (#5598). Both failure modes are silent, so this pins the typed
+/// answer and that the message names the pin a reader has to change.
+#[tokio::test]
+async fn recall_namespace_recent_reports_unsupported_against_the_pinned_artifact() {
+    use crate::openhuman::memory::api::provider::retrieval::MemoryRetrieval;
+
+    let provider = provider();
+    let err = provider
+        .recall_namespace_recent("ns", 10)
+        .await
+        .expect_err("the pinned artifact cannot serve this member");
+
+    match &err {
+        MemoryError::Unsupported { capability } => {
+            assert!(
+                capability.contains("retrieval.recall_namespace_recent"),
+                "the error must name the method a caller asked for, got {capability:?}"
+            );
+            assert!(
+                capability.contains(super::ARTIFACT_CAPABILITIES_PIN),
+                "the error must name the artifact pin to change, got {capability:?}"
+            );
+        }
+        other => panic!("expected a typed Unsupported so callers can branch on it, got {other:?}"),
+    }
+}

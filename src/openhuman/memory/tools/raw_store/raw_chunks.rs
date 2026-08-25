@@ -100,6 +100,9 @@ impl Tool for MemoryStoreRawChunksTool {
             limit: parsed.limit,
             offset: None,
             exclude_dropped: false,
+            // New filter fields default to "no filter", preserving the
+            // behaviour this call site had before they existed.
+            ..Default::default()
         };
         let guard = active_memory_guard()
             .await

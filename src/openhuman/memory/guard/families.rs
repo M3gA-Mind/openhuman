@@ -39,7 +39,7 @@ use crate::openhuman::memory::api::provider::chunks::{
     ChunkDetail, ChunkEmbedding, ChunkQuery, MemoryChunks,
 };
 use crate::openhuman::memory::api::provider::episodic::{
-    ConversationSegment, EpisodicTurn, MemoryEpisodic,
+    ConversationSegment, EpisodicEvent, EpisodicTurn, MemoryEpisodic,
 };
 use crate::openhuman::memory::api::provider::people::{
     AddressBookSeedOutcome, MemoryPeople, PersonHandle, PersonInteraction, PersonRecord,
@@ -1080,6 +1080,27 @@ impl MemoryRetrieval for GuardedRetrieval {
             .await
     }
 
+    async fn recall_namespace_recent(
+        &self,
+        namespace: &str,
+        limit: usize,
+    ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
+        // `carries_content: false` like the scored sibling above, and for a
+        // stronger reason: the flag describes the payload the host *sends*, not
+        // the result it gets back (it only picks `check_egress`'s disclosure
+        // label). This call sends a namespace name and a count — no
+        // user-authored text at all — so there is also nothing to redact.
+        self.policy.admit_read(
+            Capability::Retrieval,
+            "retrieval.recall_namespace_recent",
+            namespace,
+            false,
+        )?;
+        self.family()?
+            .recall_namespace_recent(namespace, limit)
+            .await
+    }
+
     async fn search_entities(
         &self,
         query: &str,
@@ -1113,6 +1134,39 @@ impl MemoryEpisodic for GuardedEpisodic {
         self.family()?.insert_turn(turn).await
     }
 
+    async fn insert_event(&self, event: &EpisodicEvent) -> Result<(), MemoryError> {
+        // Modelled on `tree.append`, not on `insert_turn` above. `insert_turn`
+        // passes `NO_NAMESPACE` because an `EpisodicTurn` has no namespace to
+        // admit against; an `EpisodicEvent` does, and admitting a write that
+        // names a namespace against none would scope it wider than the payload.
+        //
+        // `carries_content: true` and redaction for the same reason `tree.append`
+        // has both: the event's extracted prose is the outbound payload. Both
+        // are no-ops on the Embedded/Module/Null drivers shipping today and only
+        // bite on an External one — which is the case they exist for.
+        self.policy.admit_write(
+            Capability::Episodic,
+            "episodic.insert_event",
+            &event.namespace,
+            true,
+        )?;
+        // The trait takes `&EpisodicEvent`, so redaction needs an owned copy;
+        // `tree.append` takes its payload by value and avoids this.
+        let mut event = event.clone();
+        event.content = self.policy.redact_outbound(&event.content).into_owned();
+        event.subject = event
+            .subject
+            .take()
+            .map(|subject| self.policy.redact_outbound(&subject).into_owned());
+        trace_allowed(
+            &self.policy,
+            "episodic.insert_event",
+            &event.namespace,
+            event.content.chars().count(),
+        );
+        self.family()?.insert_event(&event).await
+    }
+
     async fn session_turns(&self, session_id: &str) -> Result<Vec<EpisodicTurn>, MemoryError> {
         self.policy.admit_read(
             Capability::Episodic,
@@ -1142,11 +1196,14 @@ impl MemoryEpisodic for GuardedEpisodic {
         session_id: &str,
         namespace: &str,
         start_episodic_id: i64,
+        start_seq: Option<u32>,
         start_timestamp: f64,
         now: f64,
     ) -> Result<(), MemoryError> {
-        // The only episodic call that names a namespace, so it is the only one
-        // that can be admitted against it.
+        // One of the two episodic calls that name a namespace, so it can be
+        // admitted against it. `insert_event` is the other; every remaining
+        // episodic method passes `NO_NAMESPACE` because its payload carries
+        // none.
         self.policy.admit_write(
             Capability::Episodic,
             "episodic.create_segment",
@@ -1159,6 +1216,7 @@ impl MemoryEpisodic for GuardedEpisodic {
                 session_id,
                 namespace,
                 start_episodic_id,
+                start_seq,
                 start_timestamp,
                 now,
             )
@@ -1169,6 +1227,7 @@ impl MemoryEpisodic for GuardedEpisodic {
         &self,
         segment_id: &str,
         episodic_id: i64,
+        seq: Option<u32>,
         timestamp: f64,
         now: f64,
     ) -> Result<(), MemoryError> {
@@ -1179,7 +1238,7 @@ impl MemoryEpisodic for GuardedEpisodic {
             false,
         )?;
         self.family()?
-            .append_turn(segment_id, episodic_id, timestamp, now)
+            .append_turn(segment_id, episodic_id, seq, timestamp, now)
             .await
     }
 

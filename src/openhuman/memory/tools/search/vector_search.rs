@@ -171,6 +171,9 @@ impl Tool for MemoryVectorSearchTool {
             limit: Some(1000),
             offset: None,
             exclude_dropped: false,
+            // New filter fields default to "no filter", preserving the
+            // behaviour this call site had before they existed.
+            ..Default::default()
         };
 
         let chunks = chunk_reader

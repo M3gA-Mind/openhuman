@@ -139,6 +139,14 @@ impl MemoryRetrieval for ScriptedRetrieval {
     // `recall_namespace_scored` a scripted breakdown. They are unreachable, so
     // they say so rather than returning a plausible empty value that could make
     // a future test pass for the wrong reason.
+    async fn recall_namespace_recent(
+        &self,
+        _namespace: &str,
+        _limit: usize,
+    ) -> Result<Vec<NamespaceMemoryHit>, MemoryError> {
+        unimplemented!("ScriptedRetrieval only serves recall_namespace_scored")
+    }
+
     async fn fast_retrieve(
         &self,
         _query: &str,

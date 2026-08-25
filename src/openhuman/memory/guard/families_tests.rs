@@ -416,3 +416,98 @@ async fn retrieve_leaves_intersects_an_explicit_scope_with_the_ambient_one() {
         "an explicit scope outside the ambient one must fail closed"
     );
 }
+
+// ── The two family members the v1.6.0 contract added ────────────────────────
+
+#[tokio::test]
+async fn recall_namespace_recent_is_admitted_as_a_read() {
+    let (driver, guard) = guarded(embedded_policy());
+    guard
+        .as_retrieval()
+        .unwrap()
+        .recall_namespace_recent("ns", 10)
+        .await
+        .expect("recall_namespace_recent");
+    assert_eq!(
+        driver.only_call().method,
+        "retrieval.recall_namespace_recent"
+    );
+}
+
+#[tokio::test]
+async fn recall_namespace_recent_is_refused_for_an_untrusted_external_driver() {
+    // The guard has to decide before the driver is touched: a refusal that
+    // still reached the driver would have already disclosed the namespace.
+    let (driver, guard) = guarded(external_policy("untrusted"));
+    guard
+        .as_retrieval()
+        .unwrap()
+        .recall_namespace_recent("ns", 10)
+        .await
+        .expect_err("fail-closed");
+    assert_eq!(driver.call_count(), 0);
+}
+
+/// `insert_event` redacts, and `insert_turn` beside it does not.
+///
+/// This is the assertion the §2 design turns on: an `EpisodicEvent` carries
+/// extracted prose *and* a namespace, so it follows `tree.append` rather than
+/// `insert_turn`. `RecordingProvider` records the event content specifically so
+/// a guard that skipped redaction shows up here rather than only in a live
+/// store.
+#[tokio::test]
+async fn insert_event_redacts_its_content_on_an_external_driver() {
+    let secrety = "Authorization: Bearer abcdefghijklmnop";
+    let (driver, guard) = guarded(external_policy(
+        crate::openhuman::memory::guard::policy::TRUSTED,
+    ));
+    guard
+        .as_episodic()
+        .unwrap()
+        .insert_event(&episodic_event("ns", secrety))
+        .await
+        .expect("insert_event");
+    let call = driver.only_call();
+    assert_eq!(call.method, "episodic.insert_event");
+    let content = call
+        .content
+        .as_deref()
+        .expect("the event content is recorded");
+    assert_ne!(
+        content, secrety,
+        "the credential reached the driver verbatim — `redact_outbound` was not applied"
+    );
+}
+
+#[tokio::test]
+async fn insert_event_is_refused_for_an_untrusted_external_driver() {
+    let (driver, guard) = guarded(external_policy("untrusted"));
+    guard
+        .as_episodic()
+        .unwrap()
+        .insert_event(&episodic_event("ns", "anything"))
+        .await
+        .expect_err("fail-closed");
+    assert_eq!(driver.call_count(), 0);
+}
+
+fn episodic_event(
+    namespace: &str,
+    content: &str,
+) -> crate::openhuman::memory::api::provider::episodic::EpisodicEvent {
+    use crate::openhuman::memory::api::provider::episodic::{EpisodicEvent, EventKind};
+    EpisodicEvent {
+        event_id: "e1".into(),
+        segment_id: "seg-1".into(),
+        session_id: "s1".into(),
+        namespace: namespace.into(),
+        kind: EventKind::Fact,
+        content: content.into(),
+        subject: Some(content.into()),
+        timestamp_ref: None,
+        confidence: 1.0,
+        embedding: None,
+        source_turn_ids: None,
+        created_at: 0.0,
+    }
+}

@@ -203,6 +203,9 @@ pub async fn list_chunks_rpc(
         offset: None,
         source_scope: None,
         exclude_dropped: false,
+        // New filter fields default to "no filter", preserving the behaviour
+        // this call site had before they existed.
+        ..Default::default()
     };
     let rows = tokio::task::spawn_blocking({
         let config = config.clone();
