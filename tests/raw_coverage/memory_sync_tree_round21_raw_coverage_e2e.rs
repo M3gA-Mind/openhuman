@@ -416,6 +416,37 @@ async fn slack_sync_status_rpc_reads_mock_connections_and_persisted_state() {
     let _home = EnvGuard::set_path("HOME", tmp.path());
     let _backend = EnvGuard::unset("BACKEND_URL");
     let mut config = config_in(&tmp);
+    // The sync state is written below through `HostSyncAdapter`, in this
+    // process, but `sync_status_rpc` reads it back through the memory contract
+    // — `as_source_sync().source_sync_state(..)`, answered by the tinymemory
+    // module. Without a published host policy the module cannot load, and the
+    // read fails.
+    //
+    // That failure is invisible from the assertion: `sync_status_rpc` logs the
+    // error and `continue`s (`providers/slack/rpc.rs:210`), so every row is
+    // skipped and the report comes back empty rather than failing. The symptom
+    // is `connections.len()` 0 vs 1, which reads like a write that did not
+    // persist; the cause is a read that could not run at all.
+    //
+    // Pinned to `config.workspace_dir` — NOT `tmp` — so the engine-routed write
+    // and the contract-routed read open the same store. `config_in` puts the
+    // workspace at `<tmp>/workspace`, so pinning the tempdir root instead makes
+    // the module open `<tmp>/memory` while the engine writes
+    // `<tmp>/workspace/memory/memory.db`, and every read then answers `None`
+    // from an empty database. Published here because the module captures one
+    // workspace per process at load and `set_modules_policy` is a `OnceLock`
+    // that silently ignores later calls (`modules/memory.rs:224`).
+    //
+    // The lane supplies the artifact via `TINYMEMORY_TEST_MODULE`
+    // (`ci-lite.yml:774`, picked up by `modules/ops.rs:320-325`), so this is
+    // deliberately not gated on the module being present — a gate would make
+    // the test skip in the only lane that runs it.
+    #[cfg(feature = "modules")]
+    {
+        let mut policy = Config::default();
+        policy.workspace_dir = config.workspace_dir.clone();
+        openhuman_core::openhuman::modules::memory::set_modules_policy(Arc::new(policy));
+    }
     let router = Router::new().route(
         "/agent-integrations/composio/connections",
         get(|| async {
