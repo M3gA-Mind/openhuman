@@ -19,6 +19,7 @@ import type { ComposioConnection } from '../../lib/composio/types';
 import { useT } from '../../lib/i18n/I18nContext';
 import type { SourceKind } from '../../services/memorySourcesService';
 import TextField from '../ui/TextField';
+import { directoryPathFromPickedFiles, pickDirectoryNatively } from './folderPicker';
 
 const log = debug('intelligence:add-memory-source-dialog');
 
@@ -60,6 +61,39 @@ interface FolderFieldProps {
 
 function FolderField({ label, value, onChange }: FolderFieldProps) {
   const { t } = useT();
+  const fallbackInputRef = useRef<HTMLInputElement | null>(null);
+  const [pickError, setPickError] = useState<string | null>(null);
+
+  // Never store a value that cannot work as a path. `no-absolute-path` is the
+  // #5831 case: a directory was chosen but the renderer would not say where it
+  // is, so the only honest outcomes are an error or nothing — not the bare
+  // directory name the old handler saved, which produced a source that looked
+  // configured and could never sync.
+  const applyResult = (result: { ok: true; path: string } | { ok: false; reason: string }) => {
+    if (result.ok) {
+      setPickError(null);
+      onChange(result.path);
+      return;
+    }
+    if (result.reason === 'no-absolute-path') {
+      log('folder picker produced no absolute path; refusing to store a bare name');
+      setPickError(t('memorySources.folderPathUnavailable'));
+    }
+    // `cancelled` leaves the field exactly as it was, silently.
+  };
+
+  const handleBrowse = async () => {
+    const native = await pickDirectoryNatively();
+    if (native.ok || native.reason !== 'unavailable') {
+      applyResult(native);
+      return;
+    }
+    // No native chooser here (a browser context, or no portal). Fall back to
+    // the directory input, which may still carry a real path.
+    setPickError(null);
+    fallbackInputRef.current?.click();
+  };
+
   return (
     <label className="block">
       <span className="text-xs font-medium text-content-secondary">{label}</span>
@@ -67,43 +101,41 @@ function FolderField({ label, value, onChange }: FolderFieldProps) {
         <TextField
           type="text"
           value={value}
-          onChange={e => onChange(e.target.value)}
+          onChange={e => {
+            setPickError(null);
+            onChange(e.target.value);
+          }}
           placeholder={t('memorySources.folderPathPlaceholder')}
         />
-        <label
+        <button
+          type="button"
+          onClick={handleBrowse}
           className="shrink-0 cursor-pointer rounded-md border border-line-strong bg-surface px-3 py-2
                      text-xs font-medium text-content-secondary transition-colors
                      hover:border-primary-400 hover:text-primary-600
                      dark:bg-surface-muted dark:text-content-secondary
                      dark:hover:border-primary-500 dark:hover:text-primary-400">
           {t('memorySources.browse')}
-          <input
-            type="file"
-            // @ts-expect-error — non-standard but supported in CEF/Chromium
-            webkitdirectory=""
-            multiple
-            className="hidden"
-            onChange={e => {
-              const files = e.target.files;
-              if (!files || files.length === 0) return;
-              // Chromium exposes the chosen directory path on the first file's `path`
-              // attribute when the renderer has filesystem-aware integration (CEF).
-              // Fall back to webkitRelativePath split if `path` isn't available.
-              const first = files[0] as File & { path?: string };
-              if (first.path) {
-                // first.path is the absolute path to the file. Derive the directory
-                // by trimming the relative portion (everything after the chosen root).
-                const rel = first.webkitRelativePath || first.name;
-                const abs = first.path;
-                const idx = abs.lastIndexOf(rel);
-                onChange(idx > 0 ? abs.slice(0, idx).replace(/\/$/, '') : abs);
-              } else if (first.webkitRelativePath) {
-                onChange(first.webkitRelativePath.split('/')[0]);
-              }
-            }}
-          />
-        </label>
+        </button>
+        <input
+          ref={fallbackInputRef}
+          type="file"
+          // @ts-expect-error — non-standard but supported in CEF/Chromium
+          webkitdirectory=""
+          multiple
+          className="hidden"
+          onChange={e => {
+            applyResult(directoryPathFromPickedFiles(e.target.files));
+            // Clear so re-picking the same directory fires `change` again.
+            e.target.value = '';
+          }}
+        />
       </div>
+      {pickError ? (
+        <span role="alert" className="mt-1 block text-xs text-coral-600 dark:text-coral-400">
+          {pickError}
+        </span>
+      ) : null}
     </label>
   );
 }

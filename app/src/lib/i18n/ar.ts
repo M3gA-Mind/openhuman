@@ -2747,6 +2747,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'قريباً',
   'memorySources.composioListFailed': 'فشل في تحميل الأتصالات Xqx0x.',
   'memorySources.browse': '(بروز)...',
+  'memorySources.folderPathUnavailable':
+    'تعذّر تحديد موقع هذا المجلد. اكتب مساره الكامل بدلاً من ذلك.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',

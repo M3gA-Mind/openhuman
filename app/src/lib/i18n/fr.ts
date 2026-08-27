@@ -2889,6 +2889,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'Bientôt disponible',
   'memorySources.composioListFailed': 'Échec du chargement des connexions Composio.',
   'memorySources.browse': 'Parcourir…',
+  'memorySources.folderPathUnavailable':
+    'Impossible de déterminer où se trouve ce dossier. Saisissez plutôt son chemin complet.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**/*.md',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',

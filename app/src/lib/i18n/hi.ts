@@ -2811,6 +2811,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'जल्द आ रहा है',
   'memorySources.composioListFailed': 'Composio कनेक्शन लोड करने में विफल रहा।',
   'memorySources.browse': 'ब्राउज़ करें',
+  'memorySources.folderPathUnavailable':
+    'यह पता नहीं चल सका कि वह फ़ोल्डर कहाँ है। इसके बजाय उसका पूरा पथ लिखें।',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',

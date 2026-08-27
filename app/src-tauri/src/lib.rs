@@ -43,6 +43,7 @@ mod core_rpc;
 mod deep_link_ipc;
 #[cfg(target_os = "windows")]
 mod deep_link_ipc_windows;
+mod directory_picker;
 // Cross-platform module: the registry-reading function is windows-only, but
 // the parsing helpers compile (and test) everywhere so `cargo test` on the
 // developer host covers them.
@@ -3371,6 +3372,7 @@ pub fn run() {
             // and the Save-As fallback needs it there (CodeRabbit on #4127).
             artifact_commands::save_artifact_via_dialog,
             artifact_commands::download_artifact_to_downloads,
+            directory_picker::pick_directory_via_dialog,
             // Structured WhatsApp data (store lives shell-side).
             whatsapp_data::whatsapp_data_list_chats,
             whatsapp_data::whatsapp_data_list_messages,

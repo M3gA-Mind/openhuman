@@ -2823,6 +2823,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': 'Segera hadir',
   'memorySources.composioListFailed': 'Gagal memuat koneksi Composio.',
   'memorySources.browse': 'Jelajahi...',
+  'memorySources.folderPathUnavailable':
+    'Tidak dapat menentukan lokasi folder tersebut. Ketik jalur lengkapnya.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '* * /*.md',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',

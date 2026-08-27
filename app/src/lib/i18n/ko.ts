@@ -2777,6 +2777,8 @@ const messages: TranslationMap = {
   'memorySources.comingSoon': '출시 예정',
   'memorySources.composioListFailed': 'Composio 연결을 불러오지 못했습니다.',
   'memorySources.browse': '찾아보기…',
+  'memorySources.folderPathUnavailable':
+    '해당 폴더의 위치를 확인할 수 없습니다. 대신 전체 경로를 입력하세요.',
   'memorySources.folderPathPlaceholder': '/Users/you/notes',
   'memorySources.globPatternPlaceholder': '**/*.md',
   'memorySources.repoUrlPlaceholder': 'https://github.com/org/repo',
