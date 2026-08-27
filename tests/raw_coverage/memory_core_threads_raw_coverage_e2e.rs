@@ -202,6 +202,32 @@ async fn memory_read_rpc_filters_graphs_scores_reset_and_wipe_seeded_rows() {
     let _env_lock = __shared_env_lock();
     let tmp = TempDir::new().unwrap();
     let cfg = config_in(&tmp);
+    // #5725 routed the chunk, entity and graph reads below off raw SQL and onto
+    // the memory contract (`5828ad9d2`), so they are answered by the tinymemory
+    // module rather than by this process. The seeding either side of them still
+    // writes through `tinymemory_core`'s store in-process, and the module opens
+    // whichever workspace it was given when it loaded — so unless the two name
+    // the SAME directory the writes and the reads land in different stores and
+    // the assertions below are checking an empty database.
+    //
+    // Two properties make this the only place it can be done. The module
+    // captures one workspace per process at load, and `set_modules_policy` is a
+    // `OnceLock` whose later calls are silently ignored
+    // (`modules/memory.rs:224`) — so the policy has to be published here,
+    // before the first read reaches the module, and it has to name `tmp`.
+    //
+    // The lane supplies the artifact itself: `rust-core-coverage` exports
+    // `TINYMEMORY_TEST_MODULE` (`ci-lite.yml:774`) and `local_override` picks it
+    // up for this module id (`modules/ops.rs:320-325`). Deliberately NOT gated
+    // on the module being present: a gate here would make this test silently
+    // skip in the one lane that runs it, which is the failure mode that let it
+    // sit broken in the first place.
+    #[cfg(feature = "modules")]
+    {
+        let mut policy = Config::default();
+        policy.workspace_dir = tmp.path().to_path_buf();
+        openhuman_core::openhuman::modules::memory::set_modules_policy(std::sync::Arc::new(policy));
+    }
     let ts0 = Utc.with_ymd_and_hms(2026, 5, 20, 9, 0, 0).unwrap();
     let chunks = vec![
         test_chunk(
