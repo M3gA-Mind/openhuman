@@ -117,6 +117,13 @@ test.describe('App shell — narrow viewports', () => {
     const box = await content(page).boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeGreaterThan(1280 * 0.4);
+    // Same right-edge containment the per-viewport cases assert. Added after a
+    // mutation exposed the gap: forcing the content surface to a fixed 1600px
+    // failed tests 1-4 on exactly this line and left THIS test green, because
+    // it only checked the width and the document-overflow probe. The width
+    // check passes at 1600 (it is a `>` bound) and the overflow probe never
+    // fires, so without this line the test had nothing left that could fail.
+    expect(box!.x + box!.width).toBeLessThanOrEqual(1280 + 1);
     expect(await documentOverflowsHorizontally(page)).toBe(false);
   });
 });
