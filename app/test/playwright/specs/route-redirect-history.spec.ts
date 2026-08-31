@@ -44,7 +44,18 @@ const REDIRECTS: ReadonlyArray<readonly [string, string]> = [
   ['/home', '/chat'],
   ['/activity', '/settings/notifications'],
   ['/intelligence', '/settings/notifications'],
+  // The retired unified-chat aliases. `/accounts` predates the /chat merge;
+  // `/feedback` moved into Settings.
+  ['/accounts', '/chat'],
+  ['/feedback', '/settings/feedback'],
 ];
+
+// Guard against this list silently falling behind the route table: every
+// top-level `<Navigate>` in AppRoutes.tsx should appear above. There are nine
+// (AppRoutes.tsx lines 75, 141, 142, 170, 184, 188, 202, 215, 238) and the
+// first version of this spec covered seven — the two chat/settings aliases
+// were simply missed. A count assertion is a cheap tripwire for the next one.
+const EXPECTED_TOP_LEVEL_REDIRECTS = 9;
 
 test.describe('Retired routes redirect without trapping the Back button', () => {
   test.beforeEach(async ({ page }) => {
@@ -75,6 +86,10 @@ test.describe('Retired routes redirect without trapping the Back button', () => 
       await expect.poll(() => hash(page), { timeout: 10_000 }).toMatch(/^#\/brain/);
     });
   }
+
+  test('this spec covers every top-level redirect the route table declares', () => {
+    expect(REDIRECTS).toHaveLength(EXPECTED_TOP_LEVEL_REDIRECTS);
+  });
 });
 
 test.describe('The /channels redirect carries its tab selector through a real navigation', () => {
