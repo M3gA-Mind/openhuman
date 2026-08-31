@@ -2,6 +2,14 @@ import { expect, type Page, test } from '@playwright/test';
 
 import { bootAuthenticatedPage, waitForAppReady } from '../helpers/core-rpc';
 
+// `bootAuthenticatedPage` runs in every `beforeEach` and costs 30-60s against a
+// locally-built debug core — the sidebar suite's first test measured 59.1s
+// against the config's 60s non-CI budget, and this suite's first two tests blew
+// it outright ("Test timeout of 60000ms exceeded while running beforeEach").
+// The work is the harness's, not the assertions': raise the ceiling here rather
+// than in the shared playwright.config.ts, which is not this worker's to edit.
+test.describe.configure({ timeout: 180_000 });
+
 /**
  * Retired routes redirect with `replace`, and the browser Back button must not
  * hand the user back to the retired path.
@@ -26,7 +34,13 @@ const REDIRECTS: ReadonlyArray<readonly [string, string]> = [
   ['/skills', '/connections'],
   ['/channels', '/connections'],
   ['/routines', '/flows'],
-  ['/webhooks', '/settings/integrations'],
+  // Two hops, not one: `/webhooks` redirects to `/settings/integrations`
+  // (`AppRoutes.tsx:238`), which is ITSELF a redirect to `/connections`
+  // (`settingsRouteElements.tsx:129`). The final landing is what the user sees,
+  // so that is what this asserts. Measured in a real browser — the declared
+  // target alone would have been wrong, and the jsdom suite could not tell,
+  // because it never mounts the nested settings routes.
+  ['/webhooks', '/connections'],
   ['/home', '/chat'],
   ['/activity', '/settings/notifications'],
   ['/intelligence', '/settings/notifications'],

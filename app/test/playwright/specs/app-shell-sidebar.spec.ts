@@ -2,6 +2,14 @@ import { expect, type Page, test } from '@playwright/test';
 
 import { bootAuthenticatedPage, dismissWalkthroughIfPresent } from '../helpers/core-rpc';
 
+// `bootAuthenticatedPage` runs in every `beforeEach` and costs 30-60s against a
+// locally-built debug core — the sidebar suite's first test measured 59.1s
+// against the config's 60s non-CI budget, and this suite's first two tests blew
+// it outright ("Test timeout of 60000ms exceeded while running beforeEach").
+// The work is the harness's, not the assertions': raise the ceiling here rather
+// than in the shared playwright.config.ts, which is not this worker's to edit.
+test.describe.configure({ timeout: 180_000 });
+
 /**
  * Root-shell sidebar: routing by click, the active-row marker, and the
  * collapse / icon-only rail (openhuman#5676).
