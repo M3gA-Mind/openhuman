@@ -123,84 +123,82 @@ describe('rpcMethods catalog', () => {
   });
 
   test('catalog canonical methods exist in core schema registry (drift guard)', () => {
-    const schemaSources = [
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/config/schemas/schema_defs.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/inference/provider/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/inference/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/inference/local/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/inference/embeddings/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/mcp/registry/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/tools/registry/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/platform/health/schemas.rs'),
-        'utf8'
-      ),
-      fs.readFileSync(
-        path.resolve(__dirname, '../../../../src/openhuman/channels/controllers/schemas.rs'),
-        'utf8'
-      ),
-      // The channels_* namespace/function literals now live in the vendored
-      // tinychannels workspace (`ChannelControllerSchema`), not in the thin
-      // `src/openhuman/channels/controllers/schemas.rs` adapter above, which
-      // only converts from it (#4557 "Use tinychannels provider
-      // implementations") — read both so this drift guard still sees them.
-      //
-      // Controller metadata is contract, so it lives in the `tinychannels-bus`
-      // crate rather than the implementation crate. `readFileSync` throws on a
-      // missing path, which is what we want: if this file moves again the guard
-      // fails loudly instead of silently checking a shorter corpus and passing.
-      fs.readFileSync(
-        path.resolve(
-          __dirname,
-          '../../../../vendor/tinychannels/crates/tinychannels-bus/src/controllers/schemas.rs'
-        ),
-        'utf8'
-      ),
-    ].join('\n');
+    // Discovery, not a hand-written path list.
+    //
+    // This used to read ten hardcoded `schemas.rs` paths. That broke on
+    // 2026-08-30: the include! split (#5856/#5857) turned several of them into
+    // shells that `#[path = "..._part_NN.rs"] mod ...;` their contents, so the
+    // guard was reading 29 lines of module declarations where the controllers
+    // used to be. It failed on `openhuman.config_get_agent_paths` — correctly,
+    // but for the wrong reason: the method exists, the corpus had shrunk. Any
+    // method whose function name still happened to appear somewhere in the
+    // surviving nine files kept passing, so the shrink was mostly silent.
+    //
+    // Walking for `ControllerSchema` literals cannot go stale the same way: a
+    // declaration that moves to another file is still found, and a declaration
+    // that is genuinely deleted still fails.
+    const repoRoot = path.resolve(__dirname, '../../../..');
+    const schemaRoots = [
+      path.join(repoRoot, 'src', 'openhuman'),
+      // The channels_* namespace/function literals live in the vendored
+      // tinychannels workspace as `ChannelControllerSchema`, not in the thin
+      // `src/openhuman/channels/controllers/schemas.rs` adapter, which only
+      // converts from it with a dynamic `namespace: schema.namespace` no static
+      // scan can read (#4557). Controller metadata is contract, so it lives in
+      // the `tinychannels-bus` crate rather than the implementation crate.
+      path.join(repoRoot, 'vendor/tinychannels/crates/tinychannels-bus/src/controllers'),
+    ];
+
+    const rustFilesIn = (dir: string, out: string[] = []): string[] => {
+      if (!fs.existsSync(dir)) return out;
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) rustFilesIn(full, out);
+        else if (full.endsWith('.rs')) out.push(full);
+      }
+      return out;
+    };
+
+    const declared = new Set<string>();
+    for (const root of schemaRoots) {
+      // A missing root is a broken guard, not a passing one — the same reason
+      // the previous readFileSync list was deliberately allowed to throw.
+      expect(fs.existsSync(root), `schema root missing: ${root}`).toBe(true);
+
+      for (const file of rustFilesIn(root)) {
+        const text = fs.readFileSync(file, 'utf8');
+        const constNamespace = text.match(/const\s+NAMESPACE:\s*&str\s*=\s*"([a-z_]+)"/)?.[1];
+        for (const match of text.matchAll(/(?:Channel)?ControllerSchema\s*\{([\s\S]*?)\n\s*\}/g)) {
+          const block = match[1];
+          const namespaceToken = block.match(/namespace:\s*(?:NAMESPACE|"([a-z_]+)")/);
+          const fnName = block.match(/function:\s*"([A-Za-z0-9_]+)"/)?.[1];
+          const namespace = namespaceToken?.[1] ?? (namespaceToken ? constNamespace : undefined);
+          if (!namespace || !fnName || fnName === 'unknown') continue;
+          declared.add(`openhuman.${namespace}_${fnName}`);
+        }
+      }
+    }
+
+    // Sanity floor: if discovery silently returned almost nothing, every
+    // `toContain` below would still pass on a lucky substring. Assert the
+    // corpus is the size we expect before trusting a single result from it.
+    expect(declared.size).toBeGreaterThan(400);
 
     for (const method of Object.values(CORE_RPC_METHODS)) {
-      // core.* methods (e.g. core.ping) are special dispatch methods, not in the schema catalog.
+      // core.* methods (e.g. core.ping) are special dispatch methods, not in
+      // the schema catalog.
       if (!method.startsWith('openhuman.')) continue;
-      const methodRoot = method.slice('openhuman.'.length);
-      const namespace = methodRoot.startsWith('inference_')
-        ? 'inference'
-        : methodRoot.startsWith('embeddings_')
-          ? 'embeddings'
-          : methodRoot.startsWith('providers_')
-            ? 'providers'
-            : methodRoot.startsWith('mcp_clients_')
-              ? 'mcp_clients'
-              : methodRoot.startsWith('health_')
-                ? 'health'
-                : methodRoot.startsWith('channels_')
-                  ? 'channels'
-                  : methodRoot.startsWith('tool_registry_')
-                    ? 'tool_registry'
-                    : 'config';
-      const fnName = methodRoot.slice(`${namespace}_`.length);
-      expect(schemaSources).toContain(`namespace: "${namespace}"`);
-      expect(schemaSources).toContain(`function: "${fnName}"`);
+
+      // Exact pairing. The previous version asserted `namespace: "x"` and
+      // `function: "y"` as two INDEPENDENT substrings of one concatenated blob,
+      // so `openhuman.config_get` passed if any file declared namespace
+      // "config" and any other file anywhere declared function "get" — under a
+      // different namespace, in a different domain. Function names like `get`,
+      // `list`, `status` and `update` are shared across dozens of namespaces,
+      // so a deleted controller was very likely to keep passing.
+      expect(declared, `catalog method not declared by any ControllerSchema: ${method}`).toContain(
+        method
+      );
     }
   });
 });
