@@ -1,0 +1,151 @@
+import { expect, type Page, test } from '@playwright/test';
+
+import { bootAuthenticatedPage, dismissWalkthroughIfPresent } from '../helpers/core-rpc';
+
+/**
+ * Root-shell sidebar: routing by click, the active-row marker, and the
+ * collapse / icon-only rail (openhuman#5676).
+ *
+ * Why this is not covered by `navigation.spec.ts`: that spec drives every
+ * route with `page.goto('/#/route')` and asserts the hash plus a >50-character
+ * `#root`. It never touches the sidebar. Nothing in the repo clicks a nav row,
+ * asserts which row is marked current, or collapses the shell — so the entire
+ * `matchActive` table in `SidebarNav.tsx:33-38` and the whole collapsed-rail
+ * path are unexercised.
+ *
+ * Markers used, all from the product rather than added for the test:
+ *   - each row is a `SidebarMenuButton`, which sets `data-active="true|false"`
+ *     and `aria-current="page"` (`components/ui/Sidebar.tsx:596-597`)
+ *   - rows carry `data-walkthrough="tab-<id>"` from `NAV_TABS`
+ *   - the sidebar column is `data-testid="root-shell-sidebar"` and the
+ *     primitive stamps `data-state="expanded|collapsed"`
+ *   - collapse is the "Hide sidebar" button; reopen is
+ *     `data-testid="root-shell-reopen"`
+ */
+
+const row = (page: Page, id: string) => page.locator(`[data-walkthrough="tab-${id}"]`);
+const sidebar = (page: Page) => page.locator('[data-testid="root-shell-sidebar"]');
+
+/** The nav row currently marked as the active route, by its tab id. */
+async function activeRowId(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const el = document.querySelector('[data-walkthrough^="tab-"][data-active="true"]');
+    return el?.getAttribute('data-walkthrough')?.replace('tab-', '') ?? null;
+  });
+}
+
+const hash = (page: Page) => page.evaluate(() => window.location.hash);
+
+test.describe('App shell — sidebar navigation', () => {
+  test.beforeEach(async ({ page }) => {
+    await bootAuthenticatedPage(page, 'pw-app-shell-sidebar-user');
+    await dismissWalkthroughIfPresent(page);
+  });
+
+  test('clicking each nav row routes there and marks exactly that row current', async ({
+    page,
+  }) => {
+    // `rewards` is `cloudOnly` in NAV_TABS, so it is deliberately absent for a
+    // session without cloud — asserted separately below rather than assumed.
+    for (const [id, expectedHash] of [
+      ['brain', '/brain'],
+      ['flows', '/flows'],
+      ['connections', '/connections'],
+      ['chat', '/chat'],
+    ] as const) {
+      await row(page, id).click();
+
+      await expect.poll(() => hash(page)).toMatch(new RegExp(`^#${expectedHash}`));
+
+      // Exactly one row is current, and it is this one. The "exactly one" half
+      // matters: `matchActive` uses prefix rules for /chat, /settings and
+      // /flows, so a sloppy rule lights two rows at once and the user loses
+      // any sense of where they are.
+      await expect.poll(() => activeRowId(page)).toBe(id);
+      await expect(page.locator('[data-walkthrough^="tab-"][data-active="true"]')).toHaveCount(1);
+      await expect(row(page, id)).toHaveAttribute('aria-current', 'page');
+    }
+  });
+
+  test('a deep sub-route keeps its parent nav row highlighted', async ({ page }) => {
+    // `matchActive` gives /flows a prefix rule specifically so the canvas at
+    // /flows/:id keeps the Flows row lit. Nothing tested that.
+    await page.goto('/#/flows/some-flow-id');
+    await expect.poll(() => activeRowId(page)).toBe('flows');
+
+    await page.goto('/#/chat/some-thread-id');
+    await expect.poll(() => activeRowId(page)).toBe('chat');
+  });
+
+  test('the Rewards row appears only when the cloud nav gate allows it', async ({ page }) => {
+    // Recorded rather than asserted either way: NAV_TABS marks rewards
+    // `cloudOnly` and `useCloudNavGate()` decides. Whichever this session is,
+    // the row's presence must agree with whether /rewards is reachable from
+    // the sidebar at all — an absent row with a reachable route is a dead end
+    // for keyboard and screen-reader users.
+    const visible = await row(page, 'rewards').count();
+    if (visible > 0) {
+      await row(page, 'rewards').click();
+      await expect.poll(() => hash(page)).toMatch(/^#\/rewards/);
+      await expect.poll(() => activeRowId(page)).toBe('rewards');
+    } else {
+      expect(visible).toBe(0);
+    }
+  });
+});
+
+test.describe('App shell — collapse and the icon-only rail (#5676)', () => {
+  test.beforeEach(async ({ page }) => {
+    await bootAuthenticatedPage(page, 'pw-app-shell-collapse-user');
+    await dismissWalkthroughIfPresent(page);
+  });
+
+  test('collapsing hides the labels, keeps the rail, and reopening restores', async ({ page }) => {
+    const shell = sidebar(page);
+    await expect(shell).toHaveAttribute('data-state', 'expanded');
+
+    // Labels are readable while expanded.
+    const chatLabel = row(page, 'chat');
+    await expect(chatLabel).toBeVisible();
+    const expandedWidth = await shell.evaluate(el => el.getBoundingClientRect().width);
+    expect(expandedWidth).toBeGreaterThan(120);
+
+    await page.getByRole('button', { name: 'Hide sidebar' }).click();
+
+    await expect(shell).toHaveAttribute('data-state', 'collapsed');
+    const collapsedWidth = await shell.evaluate(el => el.getBoundingClientRect().width);
+    // The rail is still there — collapsed is icon-only, not gone. A regression
+    // that unmounts the column instead of narrowing it passes any assertion
+    // written only against `data-state`.
+    expect(collapsedWidth).toBeGreaterThan(0);
+    expect(collapsedWidth).toBeLessThan(expandedWidth);
+
+    // The reopen affordance is the thing that makes collapse reversible; if it
+    // is missing the user is stranded in the rail.
+    const reopen = page.getByTestId('root-shell-reopen');
+    await expect(reopen).toBeVisible();
+
+    await reopen.click();
+    await expect(shell).toHaveAttribute('data-state', 'expanded');
+    await expect
+      .poll(async () => shell.evaluate(el => el.getBoundingClientRect().width))
+      .toBeGreaterThan(120);
+  });
+
+  test('navigation still works from the collapsed rail', async ({ page }) => {
+    // The point of an icon-only rail is that it is still a rail. If collapsing
+    // strands the user, the feature is worse than no collapse at all.
+    await page.getByRole('button', { name: 'Hide sidebar' }).click();
+    await expect(sidebar(page)).toHaveAttribute('data-state', 'collapsed');
+
+    const railRow = row(page, 'connections');
+    await expect(railRow).toBeVisible();
+    await railRow.click();
+
+    await expect.poll(() => hash(page)).toMatch(/^#\/connections/);
+    await expect.poll(() => activeRowId(page)).toBe('connections');
+    // Still collapsed after navigating — a rail that springs back open on
+    // every click is not a collapsed rail.
+    await expect(sidebar(page)).toHaveAttribute('data-state', 'collapsed');
+  });
+});

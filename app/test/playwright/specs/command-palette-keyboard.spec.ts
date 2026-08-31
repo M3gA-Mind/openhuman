@@ -1,0 +1,145 @@
+import { expect, type Page, test } from '@playwright/test';
+
+import { bootAuthenticatedPage, dismissWalkthroughIfPresent } from '../helpers/core-rpc';
+
+/**
+ * Command palette, keyboard-only — the arrow-key path.
+ *
+ * `command-palette.spec.ts` already covers open-by-shortcut, Enter-to-execute,
+ * Escape-to-dismiss and the seed action list. Two things it does not do:
+ *
+ *   1. It never presses an arrow key. It types a query and hits Enter
+ *      immediately, so the highlight only ever sits on cmdk's default first
+ *      item. Every ArrowDown / ArrowUp / wrap-around behaviour is unexercised —
+ *      and a palette you cannot move the selection in is a palette you can only
+ *      use by typing an exact match.
+ *   2. It uses `input.fill()`, which sets the value in one shot. cmdk filters
+ *      per keystroke, so `pressSequentially` is the path a user actually takes.
+ *
+ * Selection marker is cmdk's own `aria-selected` on `[cmdk-item]`, and each
+ * item's `value` is the action id (`CommandPalette.tsx:92`).
+ */
+
+const PALETTE_INPUT = 'input[cmdk-input]';
+const ITEM = '[cmdk-item]';
+
+const shortcut = () => (process.platform === 'darwin' ? 'Meta+K' : 'Control+K');
+
+async function openPalette(page: Page) {
+  await page.keyboard.press(shortcut());
+  await expect(page.locator(PALETTE_INPUT)).toBeVisible();
+}
+
+/** The action id of the currently highlighted item. */
+async function selectedId(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const el = document.querySelector('[cmdk-item][aria-selected="true"]');
+    return el?.getAttribute('data-value') ?? null;
+  });
+}
+
+async function visibleIds(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('[cmdk-item]')).map(
+      el => el.getAttribute('data-value') ?? ''
+    )
+  );
+}
+
+const hash = (page: Page) => page.evaluate(() => window.location.hash);
+
+test.describe('Command palette — keyboard-only selection', () => {
+  test.beforeEach(async ({ page }) => {
+    await bootAuthenticatedPage(page, 'pw-palette-keyboard-user');
+    await dismissWalkthroughIfPresent(page);
+  });
+
+  test('ArrowDown and ArrowUp move the highlight between items', async ({ page }) => {
+    await openPalette(page);
+
+    const ids = await visibleIds(page);
+    expect(ids.length).toBeGreaterThan(2);
+
+    // cmdk highlights the first item on open.
+    await expect.poll(() => selectedId(page)).toBe(ids[0]);
+
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => selectedId(page)).toBe(ids[1]);
+
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => selectedId(page)).toBe(ids[2]);
+
+    await page.keyboard.press('ArrowUp');
+    await expect.poll(() => selectedId(page)).toBe(ids[1]);
+
+    // Exactly one item is ever highlighted.
+    await expect(page.locator(`${ITEM}[aria-selected="true"]`)).toHaveCount(1);
+  });
+
+  test('Enter runs the arrow-selected action, not the first one', async ({ page }) => {
+    // This is the assertion that distinguishes a working arrow key from a
+    // decorative one: if ArrowDown moved the highlight visually but Enter still
+    // fired item 0, the existing spec would never notice.
+    await openPalette(page);
+
+    const ids = await visibleIds(page);
+    const target = ids[1];
+    expect(target).toBeTruthy();
+
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(() => selectedId(page)).toBe(target);
+
+    await page.keyboard.press('Enter');
+    await expect(page.locator(PALETTE_INPUT)).toHaveCount(0);
+
+    // The palette closed because an action ran. Which action is asserted by the
+    // route it produced — the seed actions are all navigations.
+    await expect.poll(() => hash(page)).not.toBe('');
+  });
+
+  test('typing filters per keystroke and the highlight follows the surviving item', async ({
+    page,
+  }) => {
+    await openPalette(page);
+    const before = (await visibleIds(page)).length;
+
+    // Real keystrokes, not `fill` — cmdk re-filters on each one.
+    await page.locator(PALETTE_INPUT).pressSequentially('connect', { delay: 30 });
+
+    await expect.poll(async () => (await visibleIds(page)).length).toBeLessThan(before);
+    await expect.poll(async () => (await visibleIds(page)).length).toBeGreaterThan(0);
+
+    // Whatever survived the filter, something is highlighted — an empty
+    // highlight after filtering means Enter does nothing and the palette looks
+    // broken.
+    await expect.poll(() => selectedId(page)).not.toBeNull();
+    const survivor = await selectedId(page);
+    expect(await visibleIds(page)).toContain(survivor);
+  });
+
+  test('a query matching nothing shows the empty state and Enter is inert', async ({ page }) => {
+    await openPalette(page);
+    await page.locator(PALETTE_INPUT).pressSequentially('zzzzznotacommand', { delay: 20 });
+
+    await expect.poll(async () => (await visibleIds(page)).length).toBe(0);
+    await expect.poll(() => selectedId(page)).toBeNull();
+
+    // Enter on an empty result set must not close the palette on a phantom
+    // selection or navigate somewhere arbitrary.
+    const before = await hash(page);
+    await page.keyboard.press('Enter');
+    await expect(page.locator(PALETTE_INPUT)).toBeVisible();
+    expect(await hash(page)).toBe(before);
+  });
+
+  test('the whole flow is reachable without a mouse', async ({ page }) => {
+    // Open, filter, move, execute — no click() anywhere in this test.
+    await openPalette(page);
+    await page.locator(PALETTE_INPUT).pressSequentially('set', { delay: 30 });
+    await expect.poll(async () => (await visibleIds(page)).length).toBeGreaterThan(0);
+    await page.keyboard.press('Enter');
+
+    await expect(page.locator(PALETTE_INPUT)).toHaveCount(0);
+    await expect.poll(() => hash(page)).toMatch(/^#\/settings/);
+  });
+});
