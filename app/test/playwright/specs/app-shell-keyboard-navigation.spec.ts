@@ -105,15 +105,27 @@ test.describe('App shell — keyboard traversal', () => {
     await navRow(page, 'connections').focus();
 
     const seen = new Set<string>();
+    let everLeftSidebar = false;
     for (let i = 0; i < 12; i += 1) {
       await page.keyboard.press('Tab');
       seen.add(await focused(page));
+      // "Left the nav rows" is not "left the sidebar": focus landing on the
+      // collapse toggle satisfies the first and not the second, so a trap
+      // inside the sidebar column would still pass (#5887, CodeRabbit).
+      // Ask the DOM directly whether the active element is still contained by
+      // the sidebar.
+      const inside = await page.evaluate(() => {
+        const bar = document.querySelector('[data-testid="root-shell-sidebar"]');
+        const active = document.activeElement;
+        return Boolean(bar && active && bar.contains(active));
+      });
+      if (!inside) everLeftSidebar = true;
     }
 
-    const stillInNav = [...seen].every(s => s.startsWith('nav:tab-'));
-    expect(stillInNav, `focus never left the nav rail; visited: ${[...seen].join(', ')}`).toBe(
-      false
-    );
+    expect(
+      everLeftSidebar,
+      `focus never left the sidebar column in 12 tabs; visited: ${[...seen].join(', ')}`
+    ).toBe(true);
   });
 
   test('a focused nav row shows a visible focus ring', async ({ page }) => {

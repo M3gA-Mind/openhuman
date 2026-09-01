@@ -32,23 +32,31 @@ const PALETTE_INPUT = 'input[cmdk-input]';
 const ITEM = '[cmdk-item]';
 
 /**
- * Where each seed navigation action lands, from `lib/commands/globalActions.ts`
- * (`nav('/…')` handlers) followed through `AppRoutes.tsx`'s redirects.
+ * Where each seed navigation action ACTUALLY lands — the handler's target in
+ * `lib/commands/globalActions.ts:119-170` followed through every redirect.
  *
- * Needed because asserting "the hash is non-empty" cannot tell one action from
- * another — raised in review (#5887) by both CodeRabbit and Codex, and Codex
- * pinned down why it was worse than merely weak: the fixture boots on `#/chat`,
- * and the first two actions are `nav.home` (-> `/home` -> `/chat`) and
- * `nav.chat` (-> `/chat`), so the old assertion was already true BEFORE Enter
- * and stayed true whichever action ran, or if none did.
+ * Traced from source rather than assumed, which caught two errors in my first
+ * version of this map (#5887, CodeRabbit):
+ *
+ *   nav.intelligence -> `/settings/intelligence`, which is itself
+ *     `<Navigate to="/brain">` (settingsRouteElements.tsx:184), so it lands on
+ *     `#/brain` — NOT `#/settings/intelligence` as I first wrote.
+ *   nav.settings -> `/settings`, whose index is `SettingsIndexRedirect`; at the
+ *     >=768px viewport Playwright runs, that is `<Navigate to="/settings/account">`
+ *     (SettingsIndexRedirect.tsx:15-18). So `#/settings/account`.
+ *
+ * Every pattern is end-anchored. A loose `/^#\/settings/` also matches
+ * `#/settings/notifications`, which is another mapped action's destination — so
+ * the test could pass while Enter ran the wrong item, which is the exact
+ * regression it exists to catch (#5887, CodeRabbit).
  */
 const DESTINATIONS: Record<string, RegExp> = {
-  'nav.home': /^#\/chat/, // /home redirects to /chat
-  'nav.chat': /^#\/chat/,
-  'nav.intelligence': /^#\/settings\/intelligence/,
-  'nav.skills': /^#\/connections/,
-  'nav.activity': /^#\/settings\/notifications/, // /activity redirects
-  'nav.settings': /^#\/settings/,
+  'nav.home': /^#\/chat(?:[/?]|$)/, // /home -> /chat
+  'nav.chat': /^#\/chat(?:[/?]|$)/,
+  'nav.intelligence': /^#\/brain(?:[?]|$)/, // /settings/intelligence -> /brain
+  'nav.skills': /^#\/connections(?:[?]|$)/,
+  'nav.activity': /^#\/settings\/notifications(?:[?]|$)/, // /activity -> here
+  'nav.settings': /^#\/settings\/account(?:[?]|$)/, // /settings index -> account
 };
 
 const shortcut = () => (process.platform === 'darwin' ? 'Meta+K' : 'Control+K');
@@ -109,9 +117,9 @@ test.describe('Command palette — keyboard-only selection', () => {
     // decorative one: if ArrowDown moved the highlight visually but Enter still
     // fired item 0, the test must fail.
     //
-    // Start somewhere neither candidate lands, so "the route changed" carries
-    // information at all.
-    await page.goto('/#/brain');
+    // Start somewhere NO mapped action lands, so "the route changed" carries
+    // information. `/brain` would not do — it is nav.intelligence's landing.
+    await page.goto('/#/notifications');
     await openPalette(page);
 
     const ids = await visibleIds(page);
