@@ -26,10 +26,15 @@ test.describe.configure({ timeout: 180_000 });
  * that is idempotent — so nothing fails today. What accumulates is window
  * listeners, on a desktop window that is not reloaded for days.
  *
+ * FIXED in this PR, at review's request: both removal sites now use `'blur'`.
  * This spec instruments `add`/`removeEventListener` before the app boots and
- * counts. It is written to FAIL on `main` today: it describes the contract the
- * code intends, not the behaviour it has. See the note on the failing
- * assertion.
+ * counts, so it guards the fix rather than documenting the defect.
+ *
+ * The leak was not inert, which is what settled the disposition. Every stale
+ * handler still runs on the next window blur, and `RootShellLayout`'s `stop()`
+ * mutates `document.body.style` and calls `setDragWidth(null)` — a React state
+ * update per past drag, per blur. (`commitWidth` itself is guarded after the
+ * first call, since `dragWidthRef.current` is nulled, but the rest is not.)
  */
 
 /** Wrap window listener registration so the test can count what is live. */
@@ -100,23 +105,16 @@ test.describe('App shell — the resize drag cleans up after itself (BUG-12)', (
     await expect.poll(() => countOf(page, 'pointercancel')).toBe(before.pointercancel);
   });
 
-  test('blur listeners are balanced across a drag — KNOWN FAILING, W5 BUG-12', async ({ page }) => {
-    // `test.fail()`: this asserts the contract the code intends, and that
-    // contract is currently broken, so the expected outcome on `main` is a
-    // failure. Playwright inverts the result — the spec is GREEN today and goes
-    // RED the moment someone fixes the bug, which is the prompt to delete this
-    // annotation and the note below.
+  test('blur listeners are balanced across a drag', async ({ page }) => {
+    // This was `test.fail()` until review (#5887, YellowSnnowmann): annotating
+    // it kept CI green on a shipping defect, and the only record of the leak
+    // was a prose comment in this file. Fixed at the source instead — the two
+    // `'blur-sm'` literals in `Sidebar.tsx:283` and `RootShellLayout.tsx:185`
+    // now match the `'blur'` they were registered under — so this is a live
+    // regression guard rather than a documented failure.
     //
-    // A plain red test would just be broken CI. A skipped one would say
-    // nothing. This is the only form that both reports the defect and cleans
-    // itself up.
-    //
-    // Measured on main: baseline 3, +2 per drag (one per leaking site), so
-    // three drags end at 9. Verified fix — replace the two `'blur-sm'` string
-    // literals with `'blur'` in Sidebar.tsx:283 and RootShellLayout.tsx:185 —
-    // makes this pass and leaves the rest of the suite green.
-    test.fail();
-
+    // Measured before the fix: baseline 3, +2 per drag (one per leaking site),
+    // so the three drags below ended at 9.
     const before = await countOf(page, 'blur');
 
     await dragRail(page, 40);
