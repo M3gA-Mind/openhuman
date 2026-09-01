@@ -31,6 +31,26 @@ test.describe.configure({ timeout: 180_000 });
 const PALETTE_INPUT = 'input[cmdk-input]';
 const ITEM = '[cmdk-item]';
 
+/**
+ * Where each seed navigation action lands, from `lib/commands/globalActions.ts`
+ * (`nav('/…')` handlers) followed through `AppRoutes.tsx`'s redirects.
+ *
+ * Needed because asserting "the hash is non-empty" cannot tell one action from
+ * another — raised in review (#5887) by both CodeRabbit and Codex, and Codex
+ * pinned down why it was worse than merely weak: the fixture boots on `#/chat`,
+ * and the first two actions are `nav.home` (-> `/home` -> `/chat`) and
+ * `nav.chat` (-> `/chat`), so the old assertion was already true BEFORE Enter
+ * and stayed true whichever action ran, or if none did.
+ */
+const DESTINATIONS: Record<string, RegExp> = {
+  'nav.home': /^#\/chat/, // /home redirects to /chat
+  'nav.chat': /^#\/chat/,
+  'nav.intelligence': /^#\/settings\/intelligence/,
+  'nav.skills': /^#\/connections/,
+  'nav.activity': /^#\/settings\/notifications/, // /activity redirects
+  'nav.settings': /^#\/settings/,
+};
+
 const shortcut = () => (process.platform === 'darwin' ? 'Meta+K' : 'Control+K');
 
 async function openPalette(page: Page) {
@@ -87,12 +107,30 @@ test.describe('Command palette — keyboard-only selection', () => {
   test('Enter runs the arrow-selected action, not the first one', async ({ page }) => {
     // This is the assertion that distinguishes a working arrow key from a
     // decorative one: if ArrowDown moved the highlight visually but Enter still
-    // fired item 0, the existing spec would never notice.
+    // fired item 0, the test must fail.
+    //
+    // Start somewhere neither candidate lands, so "the route changed" carries
+    // information at all.
+    await page.goto('/#/brain');
     await openPalette(page);
 
     const ids = await visibleIds(page);
+    const first = ids[0];
     const target = ids[1];
     expect(target).toBeTruthy();
+
+    const firstDest = DESTINATIONS[first];
+    const targetDest = DESTINATIONS[target];
+    expect(targetDest, `no known destination for '${target}' — extend DESTINATIONS`).toBeTruthy();
+
+    // If the top two actions happen to land in the same place, this fixture
+    // cannot tell them apart and a pass would mean nothing. Fail loudly and
+    // say so, rather than reporting a green that discriminates nothing.
+    expect(
+      firstDest?.source,
+      `items 0 ('${first}') and 1 ('${target}') share a destination; ` +
+        'this test cannot detect the regression it names — pick a different fixture'
+    ).not.toBe(targetDest.source);
 
     await page.keyboard.press('ArrowDown');
     await expect.poll(() => selectedId(page)).toBe(target);
@@ -100,9 +138,8 @@ test.describe('Command palette — keyboard-only selection', () => {
     await page.keyboard.press('Enter');
     await expect(page.locator(PALETTE_INPUT)).toHaveCount(0);
 
-    // The palette closed because an action ran. Which action is asserted by the
-    // route it produced — the seed actions are all navigations.
-    await expect.poll(() => hash(page)).not.toBe('');
+    // The exact destination of the SELECTED action — not merely "some route".
+    await expect.poll(() => hash(page)).toMatch(targetDest);
   });
 
   test('typing filters per keystroke and the highlight follows the surviving item', async ({

@@ -152,6 +152,13 @@ test.describe('App shell — keyboard traversal', () => {
 
     await navRow(page, 'connections').focus();
     await expect.poll(() => focused(page)).toBe('nav:tab-connections');
+    // Same trap as the expanded case: `focus()` succeeds on a `tabindex="-1"`
+    // element, so a collapsed row that Tab can never reach would pass a
+    // focus-only check. Raised in review (#5887, CodeRabbit).
+    expect(
+      await navRow(page, 'connections').evaluate(el => (el as HTMLElement).tabIndex),
+      'collapsed rail row is focusable by script but not in the tab order'
+    ).toBeGreaterThanOrEqual(0);
 
     await page.keyboard.press('Enter');
     await expect.poll(() => hash(page)).toMatch(/^#\/connections/);

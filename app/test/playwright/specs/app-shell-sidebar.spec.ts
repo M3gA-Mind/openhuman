@@ -85,20 +85,24 @@ test.describe('App shell — sidebar navigation', () => {
     await expect.poll(() => activeRowId(page)).toBe('chat');
   });
 
-  test('the Rewards row appears only when the cloud nav gate allows it', async ({ page }) => {
-    // Recorded rather than asserted either way: NAV_TABS marks rewards
-    // `cloudOnly` and `useCloudNavGate()` decides. Whichever this session is,
-    // the row's presence must agree with whether /rewards is reachable from
-    // the sidebar at all — an absent row with a reachable route is a dead end
-    // for keyboard and screen-reader users.
-    const visible = await row(page, 'rewards').count();
-    if (visible > 0) {
-      await row(page, 'rewards').click();
-      await expect.poll(() => hash(page)).toMatch(/^#\/rewards/);
-      await expect.poll(() => activeRowId(page)).toBe('rewards');
-    } else {
-      expect(visible).toBe(0);
-    }
+  test('the Rewards row is present for a cloud session and routes', async ({ page }) => {
+    // Asserted, not recorded. The first version accepted `count === 0` as a
+    // pass, which meant a regressed gate, a gate that never becomes ready, or a
+    // deleted row all counted as success — precisely the failures the test
+    // names (#5887, Codex).
+    //
+    // This fixture IS a cloud session, so the gate must open. `useCloudNavGate`
+    // requires `isReady && sessionToken && !isLocalSessionToken(token)`
+    // (`useCloudNavGate.ts:26-28`), and `isLocalSessionToken` is true only for a
+    // token whose third dot-part is literally `local`
+    // (`utils/localSession.ts:32-36`). `bootAuthenticatedPage` installs
+    // `buildBypassJwt`, which ends `.sig` (`helpers/core-rpc.ts:17-22`) — so the
+    // token is non-local and Rewards must be offered.
+    await expect(row(page, 'rewards')).toHaveCount(1);
+
+    await row(page, 'rewards').click();
+    await expect.poll(() => hash(page)).toMatch(/^#\/rewards/);
+    await expect.poll(() => activeRowId(page)).toBe('rewards');
   });
 });
 
@@ -118,9 +122,19 @@ test.describe('App shell — collapse and the icon-only rail (#5676)', () => {
     const expandedWidth = await shell.evaluate(el => el.getBoundingClientRect().width);
     expect(expandedWidth).toBeGreaterThan(120);
 
+    // The row labels are readable while expanded — `SidebarMenuLabel` renders
+    // them as `[data-slot="sidebar-menu-label"]` spans.
+    const labels = page.locator('[data-slot="sidebar-menu-label"]');
+    expect(await labels.count()).toBeGreaterThan(0);
+
     await page.getByRole('button', { name: 'Hide sidebar' }).click();
 
     await expect(shell).toHaveAttribute('data-state', 'collapsed');
+    // The test is called "collapsing hides the labels" and did not check any
+    // label — a regression leaving them visible passed (#5887, CodeRabbit).
+    // Collapsed swaps `SidebarNav` for `CollapsedNavRail`, which renders icons
+    // with `aria-label` and no label spans, so the count goes to zero.
+    await expect(labels).toHaveCount(0);
     const collapsedWidth = await shell.evaluate(el => el.getBoundingClientRect().width);
     // The rail is still there — collapsed is icon-only, not gone. A regression
     // that unmounts the column instead of narrowing it passes any assertion
