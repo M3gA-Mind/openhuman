@@ -95,14 +95,7 @@ impl GitOperationsTool {
                 "[git_operations] refusing to run git: dir={}, disallowed_config_key={key}",
                 cwd.display()
             );
-            anyhow::bail!(
-                "refusing to run git in {}: its repository config sets `{key}`, which is \
-                 not on the allowlist of configuration this tool will run under. \
-                 Several git config keys name a command git then executes, and this \
-                 directory is agent-writable, so unrecognised configuration is treated \
-                 as untrusted rather than honoured.",
-                cwd.display()
-            )
+            anyhow::bail!("{}", untrusted_repo_config_refusal(cwd, &key))
         }
 
         let output = hardened_git(cwd).args(args).output().await?;
@@ -648,6 +641,24 @@ fn normalise_config_key(key: &str) -> String {
     }
 }
 
+/// The refusal reported when a repository's own config sets a key this tool
+/// will not run under.
+///
+/// Shared by the two sites that refuse — [`GitOperationsTool::run_git_command_in`],
+/// at the moment it would spawn `git`, and `execute_in_context`, which refuses
+/// before its worktree probe — so the two can never drift into describing the
+/// same condition differently.
+fn untrusted_repo_config_refusal(dir: &Path, key: &str) -> String {
+    format!(
+        "refusing to run git in {}: its repository config sets `{key}`, which is \
+         not on the allowlist of configuration this tool will run under. \
+         Several git config keys name a command git then executes, and this \
+         directory is agent-writable, so unrecognised configuration is treated \
+         as untrusted rather than honoured.",
+        dir.display()
+    )
+}
+
 /// Returns the first repository config key at `dir` that is not on
 /// [`ALLOWED_REPO_CONFIG`], or `None` if every key it sets is recognised.
 ///
@@ -673,11 +684,13 @@ fn normalise_config_key(key: &str) -> String {
 /// inspection step does not have the property it is checking for.
 ///
 /// A non-zero exit here is treated as a refusal, not as "nothing to
-/// distrust": by the time this runs, the caller (`execute_in_context`) has
-/// already confirmed `dir` — or one of its parents — contains a `.git`, so
-/// `git config --list` failing means the config could not be read, not that
-/// there is none. Proceeding to run the real command against config this step
-/// never actually inspected would defeat the point of inspecting it first.
+/// distrust": `git config --list` failing means the config could not be read,
+/// not that there is none. Proceeding to run the real command against config
+/// this step never actually inspected would defeat the point of inspecting it
+/// first. `execute_in_context` calls this before it establishes whether `dir`
+/// is a work tree at all, so "not a repository" also surfaces here as a
+/// refusal rather than as an empty config — which is the correct direction to
+/// fail in.
 async fn first_disallowed_repo_config_key(dir: &Path) -> anyhow::Result<Option<String>> {
     let mut cmd = tokio::process::Command::new("git");
     suppress_ambient_git_config(&mut cmd).current_dir(dir);
@@ -814,6 +827,27 @@ impl GitOperationsTool {
         };
 
         let effective_dir = self.effective_action_dir_for_context(context);
+
+        // Repository-config refusal comes first, and the ordering is the point.
+        // The worktree probe below is itself a `run_git_command_in` call, which
+        // refuses when the config names a command git would execute — and its
+        // `is_ok_and` flattened that refusal into `false`, so the operation
+        // answered "Not in a git repository": untrue of a directory that plainly
+        // is one, and it discarded the key that caused the refusal. Both
+        // orderings return before anything runs under the untrusted config, so
+        // what this restores is the diagnostic, not the guard.
+        if let Some(key) = first_disallowed_repo_config_key(&effective_dir).await? {
+            tracing::debug!(
+                "[git_operations] refusing operation: dir={}, operation={operation}, \
+                 disallowed_config_key={key}",
+                effective_dir.display()
+            );
+            return Ok(ToolResult::error(untrusted_repo_config_refusal(
+                &effective_dir,
+                &key,
+            )));
+        }
+
         // Validate the repository instead of trusting the presence of a `.git`
         // path. This handles linked-worktree gitfiles and rejects malformed
         // ancestor markers that Git itself cannot open.
