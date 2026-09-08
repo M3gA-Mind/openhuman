@@ -135,9 +135,25 @@ pub fn schemas(function: &str) -> ControllerSchema {
                 },
                 FieldSchema {
                     name: "explicit",
-                    ty: TypeSchema::String,
+                    // Declared as an enum, not a bare string: `/schema` is what
+                    // generators and model-facing tool definitions read, and an
+                    // unrestricted string there invites callers to propose values
+                    // that only fail once the handler runs. `check_type`
+                    // (`core/all.rs`) enforces the variant list at the dispatch
+                    // boundary, so the published contract and the rejection agree.
+                    ty: TypeSchema::Option(Box::new(TypeSchema::Enum {
+                        variants: vec![
+                            "json",
+                            "code",
+                            "log",
+                            "search",
+                            "diff",
+                            "html",
+                            "plain_text",
+                        ],
+                    })),
                     comment: "Optional hard override of the detected kind, skipping detection \
-                              entirely. One of: json, code, log, search, diff, html, plain_text.",
+                              entirely.",
                     required: false,
                 },
             ],

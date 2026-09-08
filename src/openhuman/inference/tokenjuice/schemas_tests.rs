@@ -147,3 +147,44 @@ fn compress_schema_declares_all_five_hint_inputs() {
         );
     }
 }
+
+/// `/schema` is what generators and model-facing tool definitions read. Declaring
+/// `explicit` as a bare string there invites a caller to propose a value that only
+/// fails once the handler runs; as an enum, `check_type` rejects it at the dispatch
+/// boundary and the published contract matches the rejection.
+#[test]
+fn compress_declares_explicit_as_an_enum_of_the_accepted_kinds() {
+    let s = schemas("compress");
+    let explicit = s
+        .inputs
+        .iter()
+        .find(|f| f.name == "explicit")
+        .expect("`compress` must declare `explicit`");
+
+    let TypeSchema::Option(inner) = &explicit.ty else {
+        panic!(
+            "`explicit` is optional and must be declared as such: {:?}",
+            explicit.ty
+        );
+    };
+    let TypeSchema::Enum { variants } = inner.as_ref() else {
+        panic!(
+            "`explicit` must be an enum so the accepted kinds are discoverable \
+             from /schema rather than only from the handler: {inner:?}"
+        );
+    };
+    assert_eq!(
+        variants,
+        &[
+            "json",
+            "code",
+            "log",
+            "search",
+            "diff",
+            "html",
+            "plain_text"
+        ],
+        "the declared variants must be exactly what `ContentKind::from_str` parses \
+         — note `plain_text`, not serde's `plainText`"
+    );
+}
