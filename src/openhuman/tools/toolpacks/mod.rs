@@ -29,8 +29,14 @@ pub mod types;
 
 pub use groups::{GroupMode, ToolGroups, GROUP_COUNT};
 pub use ops::{append_pack_tools, bind_pack_registry, strip_packed_from_visible};
-pub use registry::{all_packed_tool_names, pack, pack_for_tool, PACKS};
-pub use tools::{render_pack_filtered, route_sentence, PackRegistryHandle, LOAD_SKILL, USE_SKILL};
+pub use registry::{
+    all_packed_tool_names, callable_pack_ids, pack, pack_for_tool, pack_index_markdown_filtered,
+    PACKS,
+};
+pub use tools::{
+    render_pack_filtered, route_sentence, scope_load_skill_spec, PackRegistryHandle, LOAD_SKILL,
+    USE_SKILL,
+};
 pub use types::ToolPack;
 
 #[cfg(test)]

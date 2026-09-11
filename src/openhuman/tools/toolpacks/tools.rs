@@ -6,7 +6,9 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::registry;
-use crate::openhuman::tools::traits::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
+use crate::openhuman::tools::traits::{
+    PermissionLevel, Tool, ToolCallOptions, ToolResult, ToolSpec,
+};
 use tinytools::ToolRunContext;
 
 pub const LOAD_SKILL: &str = "load_skill";
@@ -97,9 +99,11 @@ pub fn render_pack_filtered(
     route: &str,
 ) -> Result<String, String> {
     let Some(pack) = registry::pack(skill) else {
+        // Scoped too: offering a hallucinating model a pack it cannot use is the
+        // same wrong turn the advertised index used to take, one error later.
         return Err(format!(
             "Unknown skill `{skill}`. Available:\n{}",
-            registry::pack_index_markdown()
+            registry::pack_index_markdown_filtered(is_callable)
         ));
     };
     let Some(tools) = handle.tools() else {
@@ -197,6 +201,45 @@ pub fn route_sentence(callable_delegates: &[String], owners: &[&str]) -> String 
 
 fn render_pack(skill: &str, handle: &PackRegistryHandle) -> Result<String, String> {
     render_pack_filtered(skill, handle, &|_| true, "")
+}
+
+/// Rewrite `load_skill`'s advertised spec to match what this session can do.
+///
+/// The description is built once in [`LoadSkillTool::new`], before any session
+/// exists, so every agent was told all ten packs were loadable — including ones
+/// it can call nothing in. Post-#(routing fix) that costs one wasted round trip
+/// instead of a dead turn; it should cost zero.
+///
+/// Both halves are rewritten, and the schema is the stronger one: narrowing the
+/// `skill` enum makes an unusable pack *unrepresentable* rather than merely
+/// discouraged in prose, and a shorter enum is fewer tokens, not more.
+///
+/// Returns `false` when this session can call nothing in any pack — the caller
+/// should then drop `load_skill` / `use_skill` from the wire entirely, because
+/// an empty index and an empty enum are not a tool.
+pub fn scope_load_skill_spec(spec: &mut ToolSpec, is_callable: &dyn Fn(&str) -> bool) -> bool {
+    let ids = registry::callable_pack_ids(is_callable);
+    if ids.is_empty() {
+        return false;
+    }
+    if let Some(index) = spec.description.find("\n\nSkills:\n") {
+        spec.description.truncate(index);
+        spec.description.push_str("\n\nSkills:\n");
+        spec.description
+            .push_str(&registry::pack_index_markdown_filtered(is_callable));
+    }
+    if let Some(enum_slot) = spec
+        .parameters
+        .pointer_mut("/properties/skill/enum")
+        .filter(|v| v.is_array())
+    {
+        *enum_slot = Value::Array(
+            ids.iter()
+                .map(|id| Value::String((*id).to_string()))
+                .collect(),
+        );
+    }
+    true
 }
 
 fn skill_enum() -> Vec<&'static str> {

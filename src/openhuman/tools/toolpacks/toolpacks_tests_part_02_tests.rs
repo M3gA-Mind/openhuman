@@ -3,6 +3,102 @@
 
 use super::*;
 
+// ── the index must agree with the gate too ──────────────────────────────────
+
+/// A spec shaped like the one `LoadSkillTool` publishes.
+fn load_skill_spec() -> crate::openhuman::tools::traits::ToolSpec {
+    let tools = registry_with_all(&["build_workflow"]);
+    let tool = find(&tools, LOAD_SKILL);
+    crate::openhuman::tools::traits::ToolSpec {
+        name: tool.name().to_string(),
+        description: tool.description().to_string(),
+        parameters: tool.parameters_schema(),
+    }
+}
+
+/// The landing was fixed first; this is the invitation. A pack the session can
+/// call nothing in must not be advertised as loadable — the model would go,
+/// find out, and come back, which is a wasted round trip on every turn it is
+/// tempted.
+#[test]
+fn the_index_drops_a_pack_this_session_can_call_nothing_in() {
+    let mut spec = load_skill_spec();
+    assert!(
+        spec.description.contains("`system`"),
+        "precondition: the unscoped index advertises every pack"
+    );
+
+    // Only the workflows pack is reachable.
+    let workflows = pack("workflows").expect("workflows pack");
+    let kept = scope_load_skill_spec(&mut spec, &|name| workflows.tools.contains(&name));
+    assert!(
+        kept,
+        "workflows is callable, so load_skill stays on the wire"
+    );
+
+    assert!(
+        spec.description.contains("`workflows`"),
+        "a reachable pack must still be offered: {}",
+        spec.description
+    );
+    for dead in ["`system`", "`crypto`", "`audio`", "`documents`"] {
+        assert!(
+            !spec.description.contains(dead),
+            "{dead} has no callable tool here and must not be advertised: {}",
+            spec.description
+        );
+    }
+}
+
+/// The schema is the stronger half: an unusable pack becomes unrepresentable,
+/// not merely discouraged in prose.
+#[test]
+fn the_skill_enum_offers_only_reachable_packs() {
+    let mut spec = load_skill_spec();
+    let workflows = pack("workflows").expect("workflows pack");
+    scope_load_skill_spec(&mut spec, &|name| workflows.tools.contains(&name));
+
+    let values = spec
+        .parameters
+        .pointer("/properties/skill/enum")
+        .and_then(Value::as_array)
+        .expect("the skill enum survives scoping")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        values,
+        vec!["workflows"],
+        "the enum must name exactly the reachable packs"
+    );
+}
+
+/// An empty index and an empty enum are not a tool. The caller is told to drop
+/// `load_skill` rather than ship one that can do nothing.
+#[test]
+fn a_session_that_can_reach_no_pack_loses_load_skill() {
+    let mut spec = load_skill_spec();
+    assert!(
+        !scope_load_skill_spec(&mut spec, &|_| false),
+        "with nothing reachable, load_skill must be dropped, not emptied"
+    );
+}
+
+/// Scoping must not quietly cost more context than it saves — the index is
+/// charged to every turn.
+#[test]
+fn scoping_the_index_only_ever_shrinks_it() {
+    let mut spec = load_skill_spec();
+    let before = spec.description.len();
+    let workflows = pack("workflows").expect("workflows pack");
+    scope_load_skill_spec(&mut spec, &|name| workflows.tools.contains(&name));
+    assert!(
+        spec.description.len() < before,
+        "scoped index ({}) must be smaller than the full one ({before})",
+        spec.description.len()
+    );
+}
+
 /// **The contract this fix must not break** (AGENTS.md: `Withheld` = "Registered
 /// and callable: yes"). A withheld packed tool is hidden from the prompt and
 /// still callable through `use_skill` — that is the entire point of a pack.

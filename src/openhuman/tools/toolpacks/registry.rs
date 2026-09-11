@@ -259,9 +259,35 @@ pub fn packed_tool_names_for_agent(agent_id: &str) -> Vec<&'static str> {
 /// The always-on index: one line per pack, rendered into `load_skill`'s own
 /// description so the model can pick a pack without a round trip.
 pub fn pack_index_markdown() -> String {
+    pack_index_markdown_filtered(&|_| true)
+}
+
+/// The pack index, limited to packs this session can call at least one tool in.
+///
+/// A pack with nothing callable is not an answer to "which skills can I load",
+/// and advertising it costs a round trip: the model loads it, learns it cannot
+/// use it, and comes back. The capability does not disappear — a pack's owners
+/// reach the model through their own `delegate_*` tools, whose `when_to_use`
+/// descriptions are already on the wire and are what the model should call
+/// anyway. Keeping the pack listed here would duplicate that routing on every
+/// single turn.
+pub fn pack_index_markdown_filtered(is_callable: &dyn Fn(&str) -> bool) -> String {
     let mut out = String::new();
     for p in PACKS {
+        if !p.tools.iter().any(|t| is_callable(t)) {
+            continue;
+        }
         out.push_str(&format!("- `{}` — {}\n", p.id, p.summary));
     }
     out
+}
+
+/// Pack ids with at least one tool this session can call — the `skill` enum
+/// `load_skill` should actually offer.
+pub fn callable_pack_ids(is_callable: &dyn Fn(&str) -> bool) -> Vec<&'static str> {
+    PACKS
+        .iter()
+        .filter(|p| p.tools.iter().any(|t| is_callable(t)))
+        .map(|p| p.id)
+        .collect()
 }
