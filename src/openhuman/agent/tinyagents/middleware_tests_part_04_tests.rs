@@ -349,3 +349,91 @@ async fn a_prompt_hidden_delegate_is_not_offered_as_a_direct_route() {
         "the hint must fall back to naming the owning agent: {route}"
     );
 }
+
+/// **The third variant of the same defect, pinned.**
+///
+/// A delegate can be `Allow` on the action and still be refused: the gate's
+/// second check is `call_required > decision.allowed_permission`, and a
+/// synthesised `delegate_*` tool declares `PermissionLevel::Execute`. On any
+/// session whose ceiling is lower, *every* delegate is over it.
+///
+/// Testing the action alone let such a delegate into the route sentence, and
+/// the gate then refused the call it had just been told to make. The hint now
+/// calls `direct_call_refusal` — the gate itself — so the ceiling is included
+/// by construction rather than by a third special case.
+#[tokio::test]
+async fn a_delegate_over_the_permission_ceiling_is_not_a_route() {
+    use crate::openhuman::tools::agent_policy::{
+        TaskProfile, TaskRiskLevel, ToolPolicyAction, ToolPolicyDecision, ToolPolicySession,
+    };
+
+    let mut tools: Vec<Box<dyn crate::openhuman::tools::traits::Tool>> = vec![
+        Box::new(RoutingFakeTool("propose_workflow")),
+        // Declares `PermissionLevel::Execute`, like every synthesised delegate.
+        Box::new(ArchetypeDelegationTool {
+            tool_name: "build_workflow".to_string(),
+            agent_id: DelegationTarget("workflow_builder".to_string()),
+            tool_description: "Build a workflow".to_string(),
+        }),
+    ];
+    append_pack_tools(&mut tools);
+    let tools = Arc::new(tools);
+    bind_pack_registry(&tools);
+
+    // ALLOW on the action — the delegate is visible and permitted — but the
+    // session's ceiling is below what the delegate requires.
+    let allowed_ceiling = PermissionLevel::ReadOnly;
+    let session = ToolPolicySession {
+        profile: TaskProfile {
+            agent_id: "orchestrator".to_string(),
+            channel: "web_chat".to_string(),
+            entrypoint: "chat".to_string(),
+            risk_level: TaskRiskLevel::Low,
+            allowed_permission: allowed_ceiling,
+        },
+        capabilities: vec![],
+        allowed_tool_names: ["build_workflow"].into_iter().map(str::to_string).collect(),
+        blocked_tool_names: Default::default(),
+        hidden_tool_names: Default::default(),
+        decisions: [(
+            "build_workflow".to_string(),
+            ToolPolicyDecision {
+                tool_name: "build_workflow".to_string(),
+                action: ToolPolicyAction::Allow,
+                required_permission: Some(PermissionLevel::Execute),
+                allowed_permission: allowed_ceiling,
+            },
+        )]
+        .into_iter()
+        .collect(),
+    };
+
+    let mw = ToolPolicyMiddleware::new(
+        Arc::new(crate::openhuman::agent::tool_policy::AllowAllToolPolicy::default()),
+        session,
+        vec![tools],
+        "sess".to_string(),
+        "web_chat".to_string(),
+        "orchestrator".to_string(),
+    );
+
+    // Precondition: the gate really would refuse this call, so the hint has
+    // something to be wrong about.
+    assert!(
+        mw.direct_call_refusal("build_workflow", &serde_json::Value::Null)
+            .is_some(),
+        "precondition: the ceiling refuses this delegate"
+    );
+
+    let pack = crate::openhuman::tools::toolpacks::pack("workflows").expect("workflows pack");
+    let route = mw.route_for_pack(pack);
+    assert!(
+        !route.contains("Call `build_workflow`"),
+        "a delegate the gate will refuse on the ceiling must not be advertised \
+         as a direct call: {route}"
+    );
+    assert!(
+        route.contains("workflow_builder"),
+        "the hint must fall back to naming the owning agent: {route}"
+    );
+}

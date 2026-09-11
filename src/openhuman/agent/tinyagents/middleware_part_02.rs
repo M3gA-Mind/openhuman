@@ -561,115 +561,24 @@ impl ToolPolicyMiddleware {
             .find(|t| t.name() == name)
     }
 
-    /// The delegation tools this session can actually call that reach one of
-    /// `owners`, as tool names.
+    /// **The one place "would a direct call to this be refused?" is answered.**
+    /// Returns the refusal message, or `None` if the call would pass.
     ///
-    /// Derived from the session's own tool set — every synthesised `delegate_*`
-    /// tool publishes its target agent on the erased host-extension slot
-    /// (`traits::delegation_target`). That is deliberately the only source: a
-    /// static owner-to-tool table would duplicate each agent's `delegate_name`
-    /// and could name a tool this session was never built with, sending the
-    /// model from one dead end into another. Asking the tool set cannot.
-    fn callable_delegates_for(&self, owners: &[&str]) -> Vec<String> {
-        let mut found: Vec<String> = Vec::new();
-        for tool in self.tool_sets.iter().flat_map(|set| set.iter()) {
-            let Some(target) =
-                crate::openhuman::tools::traits::delegation_target(tool.as_ref())
-            else {
-                continue;
-            };
-            if !owners.contains(&target) {
-                continue;
-            }
-            let name = tool.name().to_string();
-            // Uses `is_denied()`, and that is deliberate — it is the same
-            // predicate as the gate this hint points at.
-            //
-            // Spelled out, because two predicates live in this file and a
-            // sentence that does not name one has been misread three times:
-            //
-            //   * This hint names a tool for the model to call DIRECTLY.
-            //   * The direct-call gate is `channel_permission_block`'s first
-            //     check, `if decision.is_denied()` (this file, top of the fn).
-            //   * `is_denied()` is `!matches!(action, Allow)`, so it is TRUE for
-            //     `HideFromPrompt` — that check is what refuses a prompt-hidden
-            //     tool called by name.
-            //   * Therefore a prompt-hidden delegate is not a route, and
-            //     `is_denied()` here is exactly what keeps it out.
-            //
-            // `blocks_execution()` would be wrong here: it deliberately admits
-            // `HideFromPrompt` for the `use_skill` path below, where hiding is
-            // the disclosure mechanism rather than a refusal. Same tool, two
-            // call paths, two answers. A hint must use the predicate of the gate
-            // it points at — the hint and the gate disagreeing is how this whole
-            // class of bug started.
-            //
-            // Pinned by `a_prompt_hidden_delegate_is_not_offered_as_a_direct_route`.
-            if self.session.decision_for(&name).is_denied() || found.contains(&name) {
-                continue;
-            }
-            found.push(name);
-        }
-        found
-    }
-
-    /// The route sentence for a pack, resolved against THIS session.
-    fn route_for_pack(&self, pack: &crate::openhuman::tools::toolpacks::ToolPack) -> String {
-        crate::openhuman::tools::toolpacks::route_sentence(
-            &self.callable_delegates_for(pack.owners),
-            pack.owners,
-        )
-    }
-
-    /// Render a `load_skill` listing scoped to what this session may call.
+    /// Three bugs in this change were one mistake: a route hint that
+    /// *approximated* the gate instead of *being* it — `HideFromPrompt` read as
+    /// a denial, then `blocks_execution` where the gate uses `is_denied`, then
+    /// the action checked without the permission ceiling. Each fix re-derived
+    /// the gate and got a slightly different answer. The hint and the gate both
+    /// call this now, so there is nothing left to drift from.
     ///
-    /// This lives in the middleware because the middleware is the only layer
-    /// that holds the session — `LoadSkillTool` is built once per registry and
-    /// has no idea who is calling it. Returns `None` when there is nothing to
-    /// scope (no `skill` argument, no pack handle), so the call falls through to
-    /// the tool's own `execute` unchanged.
-    fn render_skill_for_session(&self, call: &TaToolCall) -> Option<TaToolResult> {
-        let skill = call
-            .arguments
-            .get("skill")
-            .and_then(serde_json::Value::as_str)?;
-        let tool = self.resolve_tool(&call.name)?;
-        let handle = crate::openhuman::tools::traits::pack_registry_handle(tool.as_ref())?;
-        let is_callable = |name: &str| !self.session.decision_for(name).blocks_execution();
-        let route = crate::openhuman::tools::toolpacks::pack(skill)
-            .map(|pack| self.route_for_pack(pack))
-            .unwrap_or_default();
-        let rendered = crate::openhuman::tools::toolpacks::render_pack_filtered(
-            skill,
-            handle,
-            // The same predicate the gate applies to `use_skill`'s inner tool.
-            // Two sources of truth for "can this session call it" is the bug.
-            &is_callable,
-            &route,
-        );
-        let (content, error) = match rendered {
-            Ok(text) => (text, None),
-            Err(message) => (message.clone(), Some(message)),
-        };
-        Some(TaToolResult {
-            call_id: call.id.clone(),
-            name: call.name.clone(),
-            content,
-            raw: None,
-            error,
-            elapsed_ms: 0,
-        })
-    }
-
-    /// The channel-permission gate the engine ran before the builder policy: a
-    /// session-level deny, then a per-call permission-level ceiling check. Returns
-    /// the blocking message when the call must not execute.
-    fn channel_permission_block(&self, call: &TaToolCall) -> Option<String> {
-        let decision = self.session.decision_for(&call.name);
+    /// An unresolvable tool returns `None` — not refused — preserving the `?`
+    /// this replaces: the gate has no opinion about a tool it cannot find.
+    fn direct_call_refusal(&self, name: &str, args: &serde_json::Value) -> Option<String> {
+        let decision = self.session.decision_for(name);
         if decision.is_denied() {
             return Some(
                 PolicyDenial::SessionForbidden {
-                    tool: &call.name,
+                    tool: name,
                     required: decision.required_permission,
                     allowed: decision.allowed_permission,
                     channel: &self.channel,
@@ -677,18 +586,25 @@ impl ToolPolicyMiddleware {
                 .render(),
             );
         }
-        let tool = self.resolve_tool(&call.name)?;
-        let call_required = tool.permission_level_with_args(&call.arguments);
+        let tool = self.resolve_tool(name)?;
+        let call_required = tool.permission_level_with_args(args);
         if call_required > decision.allowed_permission {
             return Some(
                 PolicyDenial::PermissionTooLow {
-                    tool: &call.name,
+                    tool: name,
                     required: call_required,
                     allowed: decision.allowed_permission,
                     channel: &self.channel,
                 }
                 .render(),
             );
+        }
+        None
+    }
+
+    fn channel_permission_block(&self, call: &TaToolCall) -> Option<String> {
+        if let Some(message) = self.direct_call_refusal(&call.name, &call.arguments) {
+            return Some(message);
         }
         // For `use_skill`, also validate the resolved inner tool against the
         // session allowlist. Role-hidden packed tools are not checked by the
