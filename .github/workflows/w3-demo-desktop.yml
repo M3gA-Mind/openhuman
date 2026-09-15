@@ -1,0 +1,34 @@
+# Fork-only demo harness (never part of an upstream PR): exercises the real
+# build-desktop.yml against fix/release-build-after-crate-move with no secrets.
+name: W3 demo build-desktop (fork only)
+on:
+  push:
+    branches: [demo/w3-windows-tauri]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  prep:
+    runs-on: ubuntu-latest
+    outputs:
+      short_sha: ${{ steps.s.outputs.short }}
+    steps:
+      - id: s
+        run: echo "short=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+  desktop:
+    needs: [prep]
+    uses: ./.github/workflows/build-desktop.yml
+    with:
+      build_ref: ${{ github.sha }}
+      tag: v0.63.26-w3demo
+      version: 0.63.26
+      sha: ${{ github.sha }}
+      short_sha: ${{ needs.prep.outputs.short_sha }}
+      base_url: https://staging-api.tinyhumans.ai
+      app_env: staging
+      build_profile: debug
+      telegram_bot_username: alphahumantest_bot
+      with_macos_signing: false
+      with_release_upload: false
+      with_updater: false
+      build_sidecar: false
