@@ -129,7 +129,24 @@ pub(crate) async fn flows_build_with_extra_hidden_tools(
         //
         // Best-effort and self-limiting: a no-op on an already-warm agent, and
         // `false` (logged, not propagated) when the thread has no root
-        // transcript yet — which is exactly the first turn of a new flow.
+        // transcript yet.
+        //
+        // `false` is NOT a clean start, and an earlier version of this comment
+        // wrongly said it was. With no history, no cached messages and no turn
+        // override, `run_single` falls through to `try_load_session_transcript`,
+        // which resolves the newest transcript for the AGENT NAME — not for this
+        // thread. `session_raw` is per memory profile, so every flow's builder
+        // transcripts share one directory and the newest wins whichever flow it
+        // belongs to: a brand-new flow inherits the previous flow's session.
+        // Observed live — a run started today resumed a session from the day
+        // before. The headless path below never calls the scoped resume at all,
+        // so it has always had this.
+        //
+        // The fix is `set_next_turn_overrides(suppress_transcript_autoload)`
+        // on the fall-through, exactly as `inference/local/ops/agent_chat.rs`
+        // already does after its own scoped resume returns `false`. It is not
+        // applied here yet; until it is, treat a new-flow turn as potentially
+        // carrying another flow's prefix.
         let resumed = agent
             .seed_resume_from_thread_transcript_scoped(&target.thread_id, Some("workflow_builder"));
         tracing::debug!(
