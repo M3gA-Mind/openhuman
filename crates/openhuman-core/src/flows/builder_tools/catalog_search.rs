@@ -40,6 +40,60 @@ impl SearchToolCatalogTool {
 /// Cap on returned matches so a broad query can't flood the agent's context.
 const MAX_CATALOG_RESULTS: usize = 40;
 
+/// Split `haystack` into lowercase word tokens, breaking on non-alphanumerics
+/// **and on camelCase boundaries**.
+///
+/// The camelCase half is load-bearing, and the reason this function exists.
+/// Callers used to lowercase the description first and then ask
+/// `desc_lc.contains(term)` — but lowercasing destroys the only boundary inside
+/// an identifier like `newSheet`, leaving `newsheet`, which *contains* `news`.
+/// A user asking for "news" was therefore matched to `GOOGLESHEETS_ADD_SHEET`,
+/// whose description documents `position.newSheet=true`. Splitting the
+/// ORIGINAL-case string first yields `[position, new, sheet, true]`, and `news`
+/// correctly matches none of them.
+fn word_tokens(haystack: &str) -> Vec<String> {
+    let mut tokens: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut prev_lower = false;
+    for ch in haystack.chars() {
+        if !ch.is_alphanumeric() {
+            if !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+            prev_lower = false;
+            continue;
+        }
+        // camelCase boundary: a lower/digit run followed by an uppercase char
+        // starts a new word (`newSheet` -> `new` + `Sheet`).
+        if ch.is_uppercase() && prev_lower && !current.is_empty() {
+            tokens.push(std::mem::take(&mut current));
+        }
+        prev_lower = ch.is_lowercase() || ch.is_numeric();
+        current.push(ch.to_ascii_lowercase());
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
+}
+
+/// Does `term` match `haystack` at a word boundary?
+///
+/// A term matches when it equals a whole token, or sits at one end of a token
+/// (`sheets` still reaches the `googlesheets` token of `GOOGLESHEETS_ADD_SHEET`,
+/// `gmail` still reaches `GMAIL_SEND_EMAIL`). What it deliberately no longer
+/// does is match in the MIDDLE of a token, which is how a substring search for
+/// "news" landed inside `newSheet` and sent the workflow builder hunting for a
+/// news tool that the catalog never had.
+fn term_matches(haystack: &str, term: &str) -> bool {
+    if term.is_empty() {
+        return false;
+    }
+    word_tokens(haystack)
+        .iter()
+        .any(|token| token == term || token.starts_with(term) || token.ends_with(term))
+}
+
 /// Search the FULL LIVE Composio catalog (via
 /// [`crate::flows::tinyflows::caps::fetch_live_toolkit_catalog`]) for
 /// actions whose slug or description matches every whitespace-separated term
@@ -182,14 +236,14 @@ pub(crate) async fn search_catalog(
         // rows so the blocker is visible at search time (transcript failure #2).
         let toolkit_curated = ops::toolkit_has_curated_catalog(toolkit);
         for tool in catalog {
-            let slug_lc = tool.slug.to_ascii_lowercase();
-            let desc_lc = tool
-                .description
-                .as_deref()
-                .unwrap_or_default()
-                .to_ascii_lowercase();
+            // Match against the ORIGINAL-case strings: `term_matches` tokenises
+            // on camelCase boundaries, which a pre-lowercased copy has already
+            // destroyed (`newSheet` -> `newsheet`, which contains `news`).
+            let desc = tool.description.as_deref().unwrap_or_default();
             let is_match = terms.iter().all(|term| {
-                slug_lc.contains(term) || toolkit.contains(term) || desc_lc.contains(term)
+                term_matches(&tool.slug, term)
+                    || term_matches(toolkit, term)
+                    || term_matches(desc, term)
             });
             if !is_match {
                 continue;
@@ -244,16 +298,18 @@ pub(crate) async fn search_catalog(
     for (toolkit, catalog) in &fetched {
         let toolkit_curated = ops::toolkit_has_curated_catalog(toolkit);
         for tool in catalog {
-            let slug_lc = tool.slug.to_ascii_lowercase();
-            let desc_lc = tool
-                .description
-                .as_deref()
-                .unwrap_or_default()
-                .to_ascii_lowercase();
+            // Same word-boundary rule as the primary pass, on the same
+            // ORIGINAL-case strings — the fallback carried its own copy of the
+            // substring test, so fixing only the primary would have left every
+            // multi-word near-miss query ("rss feed", "sports news fetch")
+            // matching mid-token.
+            let desc = tool.description.as_deref().unwrap_or_default();
             let hits = terms
                 .iter()
                 .filter(|term| {
-                    slug_lc.contains(*term) || toolkit.contains(*term) || desc_lc.contains(*term)
+                    term_matches(&tool.slug, term)
+                        || term_matches(toolkit, term)
+                        || term_matches(desc, term)
                 })
                 .count();
             if hits == 0 {

@@ -200,6 +200,47 @@ async fn search_live_catalog_all_terms_must_match() {
     assert!(results.is_empty());
 }
 
+/// A query must not match in the MIDDLE of a word.
+///
+/// Regression: searching "news" returned `GOOGLESHEETS_ADD_SHEET`, because the
+/// matcher lowercased the description first (`newSheet` -> `newsheet`) and then
+/// asked `contains("news")`. Live, that one false positive convinced the
+/// workflow builder the catalog held a news action and sent it through 27
+/// re-phrased searches across four turns without ever proposing a graph — an
+/// honest empty result ends the turn in seconds instead.
+///
+/// The toolkit key is deliberately neutral: a name like `newsboundarytest`
+/// would itself match "news" through the toolkit field and pass for the wrong
+/// reason.
+#[tokio::test]
+async fn search_live_catalog_does_not_match_inside_a_word() {
+    let mut sheets = seeded_gmail_send_contract();
+    sheets.slug = "GOOGLESHEETS_ADD_SHEET".to_string();
+    sheets.description = Some(
+        "Adds a new sheet to a spreadsheet. OBJECT sheets are created via \
+         addChart with position.newSheet=true."
+            .to_string(),
+    );
+    seed_live_catalog_cache("boundarytk", vec![sheets]);
+    let config = Config::default();
+
+    let news = search_live_catalog(&config, "news", Some("boundarytk"), 40).await;
+    assert!(
+        news.is_empty(),
+        "\"news\" must not match the `newSheet` inside the description: {news:?}"
+    );
+
+    // Over-correction guard: whole-word and token-edge matches still resolve,
+    // so the fix does not simply make the catalog harder to search.
+    let sheet = search_live_catalog(&config, "sheet", Some("boundarytk"), 40).await;
+    assert!(!sheet.is_empty(), "\"sheet\" is a whole token of the slug");
+    let sheets_plural = search_live_catalog(&config, "sheets", Some("boundarytk"), 40).await;
+    assert!(
+        !sheets_plural.is_empty(),
+        "\"sheets\" still reaches the `googlesheets` token"
+    );
+}
+
 #[tokio::test]
 async fn search_live_catalog_ranks_curated_before_uncurated_without_hiding_either() {
     // Uses its own cache key (never `"gmail"`) — the process-global
