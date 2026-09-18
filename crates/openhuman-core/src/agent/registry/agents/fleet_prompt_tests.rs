@@ -16,6 +16,11 @@ use std::sync::Arc;
 ///
 /// Each render gets its own workspace: building a prompt seeds identity files
 /// into it, and the tests here render in parallel.
+///
+/// With no tools, every section gated on them (the `shell` sentence, the
+/// `resolve_time` rule) is absent here, and these invariants check static
+/// prose only: a prompt must name a tool it can call in its own text, not
+/// through a shared section, and a gated section is out of their reach.
 fn render(def: &AgentDefinition) -> String {
     let PromptSource::Dynamic(build) = &def.system_prompt else {
         panic!("built-in `{}` must carry a dynamic prompt", def.id);
@@ -173,26 +178,35 @@ pub(super) fn names_presented_as_callable<'a>(
 /// * **Collision** — the backticked word is also a tool name but is used as
 ///   something else (a node kind, an argument, an example). No fix is owed.
 const KNOWN_UNCALLABLE: &[(&str, &str, &str)] = &[
-    // Real.
-    ("*", "shell", "shared `## Workspace` section says \"that is where `shell` runs\" to every agent (`prompts/sections.rs` WorkspaceSection)"),
-    ("planner", "memory_recall", "told to search memory; not on its belt"),
-    ("profile_memory_agent", "memory_recall", "told to read state first; belt has memory_store but no recall"),
-    ("trigger_reactor", "memory_recall", "told to recall prior context; not on its belt"),
-    ("trigger_reactor", "memory_forget", "not on its belt"),
-    ("code_executor", "composio_execute", "a \"hard rule\" routes GitHub ops through a tool not on its belt"),
-    ("morning_briefing", "composio_list_connections", "withheld by the `composio` pack"),
-    ("morning_briefing", "composio_list_tools", "withheld by the `composio` pack"),
-    ("morning_briefing", "composio_execute", "withheld by the `composio` pack"),
-    ("context_scout", "list_workflows", "on its belt but withheld by the `workflows` pack"),
-    ("skill_executor", "describe_workflow", "step 1 of its procedure; on its belt but withheld by the `workflows` pack"),
     // Collision.
-    ("context_scout", "run_workflow", "names the orchestrator's call, not its own"),
-    ("scheduler_agent", "schedule", "the `schedule` argument of `cron_add`"),
-    ("summarizer", "file_read", "an example of a payload's source tool"),
+    (
+        "context_scout",
+        "run_workflow",
+        "names the orchestrator's call, not its own",
+    ),
+    (
+        "scheduler_agent",
+        "schedule",
+        "the `schedule` argument of `cron_add`",
+    ),
+    (
+        "summarizer",
+        "file_read",
+        "an example of a payload's source tool",
+    ),
     ("workflow_builder", "http_request", "a flow node kind"),
+    ("workflow_builder", "shell", "a flow node kind"),
     ("workflow_builder", "schedule", "a flow trigger field"),
-    ("workflow_builder", "flow_memory_recall", "node-contract note on what a memory node shares"),
-    ("workflow_builder", "flow_memory_remember", "node-contract note on what a memory node shares"),
+    (
+        "workflow_builder",
+        "flow_memory_recall",
+        "node-contract note on what a memory node shares",
+    ),
+    (
+        "workflow_builder",
+        "flow_memory_remember",
+        "node-contract note on what a memory node shares",
+    ),
     ("flow_discovery", "http_request", "a flow node kind"),
     ("flow_discovery", "schedule", "a flow trigger field"),
 ];
