@@ -82,6 +82,10 @@ fn publish_seq_stamped(next_seq: &mut u64, mut event: WebChannelEvent) {
 /// empty or shorter than [`MIN_INTERIM_NARRATION_CHARS`]. Pure so the threshold
 /// is unit-testable without the global event bus.
 fn interim_narration_text(buffer: &str) -> Option<String> {
+    // A tool call the model narrated as text streamed into this buffer before
+    // `NarratedToolCallMiddleware` recovered it as a structured call (#6344).
+    // Drop that markup so it is not persisted as a chat bubble.
+    let buffer = crate::agent::tinyagents::middleware::recover_narrated_tool_calls(buffer).prose;
     let trimmed = buffer.trim();
     if trimmed.chars().count() < MIN_INTERIM_NARRATION_CHARS {
         return None;

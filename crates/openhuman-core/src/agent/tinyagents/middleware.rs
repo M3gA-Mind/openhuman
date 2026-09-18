@@ -35,6 +35,7 @@ mod final_call_wrap_up;
 mod loop_guards;
 mod memory_protocol;
 mod message_trim;
+mod narrated_tool_call;
 mod packed_tool_route;
 mod prompt_cache;
 mod repeat_progress;
@@ -55,6 +56,9 @@ pub(crate) use embedder_hooks::EmbedderToolHooksMiddleware;
 pub(crate) use final_call_wrap_up::FinalCallWrapUpMiddleware;
 pub use memory_protocol::MemoryProtocolMiddleware;
 pub(crate) use message_trim::{legacy_max_input_tokens, ImageAwareMessageTrimMiddleware};
+pub(crate) use narrated_tool_call::{
+    recover as recover_narrated_tool_calls, NarratedToolCallMiddleware,
+};
 pub(crate) use packed_tool_route::PackedToolRouteMiddleware;
 pub(crate) use prompt_cache::PromptCacheSegmentMiddleware;
 pub(crate) use repeat_progress::RepeatProgressMiddleware;

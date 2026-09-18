@@ -589,6 +589,12 @@ pub(super) fn assemble_turn_harness(
         harness.push_middleware(Arc::new(mw.eviction_observer()));
     }
 
+    // A tool call the model wrote as text (#6344) becomes the structured call
+    // the loop runs. Registered last because `after_model` runs in reverse
+    // order: every other `after_model` (repeat guard, cost, capture) then sees
+    // the recovered call rather than a text-only "final answer".
+    harness.push_middleware(Arc::new(middleware::NarratedToolCallMiddleware));
+
     AssembledTurnHarness {
         harness,
         cursor,

@@ -1962,6 +1962,72 @@ async fn empty_provider_response_inner() {
     stack.shutdown();
 }
 
+/// The model writes its tool call as DeepSeek DSML text instead of a structured
+/// call (#6344). The call must run — its result reaches the next model request —
+/// and the markup must never become the reply.
+#[test]
+fn narrated_tool_call_is_executed() {
+    run_on_agent_stack(
+        "narrated_tool_call_is_executed",
+        narrated_tool_call_is_executed_inner,
+    );
+}
+
+async fn narrated_tool_call_is_executed_inner() {
+    let _lock = env_lock();
+    reset_script(vec![
+        text_completion(
+            "<｜DSML｜tool_calls>\n<｜DSML｜invoke name=\"resolve_time\">\n<｜DSML｜parameter name=\"expr\" string=\"true\">2026-06-09T19:12:00Z</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜tool_calls>",
+        ),
+        text_completion("NARRATED_DONE"),
+    ]);
+    let stack = boot_stack().await;
+
+    let mut events = spawn_sse_collector(format!(
+        "{}/events?client_id=harness-narrated",
+        stack.rpc_base
+    ));
+    send_web_chat(
+        &stack.rpc_base,
+        615,
+        "harness-narrated",
+        "thread-narrated",
+        "what is that timestamp in unix seconds?",
+    )
+    .await;
+
+    let terminal = wait_for_terminal(&mut events, Duration::from_secs(60)).await;
+    let reply = terminal
+        .get("full_response")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        !reply.contains("DSML"),
+        "narrated tool-call markup must not become the reply: {terminal}"
+    );
+    assert!(
+        reply.contains("NARRATED_DONE"),
+        "the turn must continue past the narrated call to the final answer: {terminal}"
+    );
+
+    let requests = with_captured(|c| c.clone());
+    let followup = serde_json::to_string(
+        &requests
+            .last()
+            .and_then(|r| r.pointer("/body/messages").cloned())
+            .unwrap_or_default(),
+    )
+    .unwrap();
+    assert!(
+        requests.len() >= 2 && followup.contains("unix_s"),
+        "the narrated resolve_time call must have run and its result reached the model; \
+         {} requests, last messages: {followup}",
+        requests.len()
+    );
+
+    stack.shutdown();
+}
+
 // ─── Task 8: Provider error retry ────────────────────────────────────────────
 //
 // ReliableProvider retries on 5xx (reliable.rs:426-507).

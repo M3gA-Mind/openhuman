@@ -19,6 +19,19 @@ fn interim_narration_surfaces_and_trims_substantial_text() {
     );
 }
 
+/// A narrated tool call streams in as text before the middleware recovers it
+/// as a structured call; the markup must not be persisted as a bubble (#6344).
+#[test]
+fn interim_narration_drops_a_narrated_tool_call() {
+    let text = "Let me look that up in Notion for you.\n<|tool_call>call:NOTION_FETCH_DATA{fetch_type:<|\"|>pages<|\"|>}<tool_call|>";
+    assert_eq!(
+        interim_narration_text(text),
+        Some("Let me look that up in Notion for you.".to_string())
+    );
+    let markup_only = "<｜DSML｜tool_calls><｜DSML｜invoke name=\"shell\"><｜DSML｜parameter name=\"command\" string=\"true\">ls</｜DSML｜parameter></｜DSML｜invoke></｜DSML｜tool_calls>";
+    assert_eq!(interim_narration_text(markup_only), None);
+}
+
 #[test]
 fn session_profile_attribution_none_when_signed_out() {
     let tmp = tempfile::TempDir::new().unwrap();
