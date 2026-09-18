@@ -109,6 +109,35 @@ pub(crate) async fn flows_build_with_extra_hidden_tools(
     // Best-effort — with no target the run stays headless (CLI / tests).
     if let Some(target) = &stream {
         attach_flow_progress_bridge(&mut agent, target, "flows_build", config);
+
+        // Resume this thread's prior builder turns.
+        //
+        // `BuilderRequest` carries no conversation — only `mode`, `instruction`,
+        // `graph` and the repair fields — so `render_prompt` opens every turn
+        // with a freshly rendered brief and the agent started each one with
+        // `history_len=0`. Behind the copilot pane that reads as amnesia: the
+        // agent re-derives the same ground from scratch, and a user who answers
+        // a follow-up question gets an agent that never asked it. (Observed
+        // live: a four-turn authoring session where the fourth turn asked
+        // "What's the actual task?" about a request restated in the second.)
+        //
+        // SCOPED to this agent id on purpose. Several transcripts share one
+        // thread id — every sub-agent spawned within it, and the orchestrator
+        // itself — so an unscoped resume would splice the chat agent's turns
+        // into the builder's context. See
+        // `seed_resume_from_thread_transcript_scoped`.
+        //
+        // Best-effort and self-limiting: a no-op on an already-warm agent, and
+        // `false` (logged, not propagated) when the thread has no root
+        // transcript yet — which is exactly the first turn of a new flow.
+        let resumed = agent
+            .seed_resume_from_thread_transcript_scoped(&target.thread_id, Some("workflow_builder"));
+        tracing::debug!(
+            target: "flows",
+            thread_id = %target.thread_id,
+            resumed,
+            "[flows] flows_build: thread transcript resume"
+        );
     }
 
     // Run to completion, bounded by a wall-clock timeout. PR3
