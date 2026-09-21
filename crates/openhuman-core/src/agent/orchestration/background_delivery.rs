@@ -210,6 +210,43 @@ where
         .remove(&session);
 }
 
+/// How many of the thread's latest messages a delivery turn is given: enough
+/// to include an answer that superseded the result, without the whole thread.
+const DELIVERY_THREAD_CONTEXT_MESSAGES: usize = 8;
+
+/// The thread's most recent messages as `(sender, content)` prose pairs.
+///
+/// Best-effort: a thread that cannot be read yields none, and delivery still
+/// happens — without context is worse than with it, but better than not at all.
+async fn recent_thread_context(
+    workspace_dir: std::path::PathBuf,
+    thread_id: &str,
+) -> Vec<(String, String)> {
+    // Blocking pool: the store takes a process-global mutex and reads the
+    // thread's whole JSONL under it (the same reason web chat defers it).
+    match crate::memory::conversations::blocking::get_messages(workspace_dir, thread_id.to_string())
+        .await
+    {
+        Ok(messages) => {
+            let skip = messages
+                .len()
+                .saturating_sub(DELIVERY_THREAD_CONTEXT_MESSAGES);
+            messages
+                .into_iter()
+                .skip(skip)
+                .map(|m| (m.sender, m.content))
+                .collect()
+        }
+        Err(error) => {
+            log::warn!(
+                "[background_delivery] could not read thread {thread_id} for delivery \
+                 context — delivering without it: {error}"
+            );
+            Vec::new()
+        }
+    }
+}
+
 /// Run one system-authored delivery turn on an existing conversation thread.
 /// This is intentionally separate from task-board execution: it only delivers
 /// a detached sub-agent result already produced by `background_completions`.
@@ -217,11 +254,37 @@ async fn run_system_turn_on_thread(thread_id: String, prompt: String) -> Result<
     let config = crate::config::Config::load_or_init()
         .await
         .map_err(|error| format!("load config: {error:#}"))?;
+    run_delivery_turn(config, thread_id, prompt).await
+}
+
+/// [`run_system_turn_on_thread`] with the config supplied, so a test can drive
+/// a whole delivery turn against a temporary workspace.
+async fn run_delivery_turn(
+    config: crate::config::Config,
+    thread_id: String,
+    prompt: String,
+) -> Result<String, String> {
     let run_id = format!("bgdeliver-{}", uuid::Uuid::new_v4());
     let mut host = OpenHumanSessionHost::from_config_for_agent(&config, "orchestrator")
         .map_err(|error| format!("build delivery host: {error:#}"))?;
     host.set_event_context(run_id.clone(), "background_delivery");
     host.set_thread_id(Some(&thread_id));
+    // The delivery host is built cold, so on its own it sees only the notice.
+    // It then cannot tell that the user was already answered by another route,
+    // and posts a stale result — a failure, typically — as the thread's last
+    // word (#6345). Seed the recent messages so it can supersede instead.
+    let context = recent_thread_context(config.workspace_dir.clone(), &thread_id).await;
+    log::debug!(
+        "[background_delivery] delivery turn run_id={run_id} thread_id={thread_id} \
+         context_messages={}",
+        context.len()
+    );
+    if let Err(error) = host.seed_resume_from_messages(context, &prompt) {
+        log::warn!(
+            "[background_delivery] could not seed thread context run_id={run_id} \
+             thread_id={thread_id} error={error}"
+        );
+    }
     // The hosted harness only retains streamed terminal text for an observed
     // turn. Background delivery has no UI progress consumer, so drain a local
     // sink solely to preserve the generated reply; otherwise a successful

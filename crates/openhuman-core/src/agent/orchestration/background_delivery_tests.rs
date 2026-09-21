@@ -207,3 +207,88 @@ async fn every_subagent_terminal_event_schedules_a_drain() {
         "SubagentAwaitingUser must schedule a drain (regression #4896)"
     );
 }
+
+/// The context a delivery turn is seeded with (#6345). A background result
+/// delivered after the user was already answered must be composed against that
+/// answer; the delivery host is built cold, so the thread's recent messages are
+/// what let it supersede rather than post the stale result as the last word.
+///
+/// Covers the window, its ordering, and the unreadable-thread path. It does not
+/// cover the `seed_resume_from_messages` call that hands this to the host —
+/// that needs a full delivery turn, which cannot resolve a model under test.
+#[tokio::test]
+async fn delivery_context_is_the_threads_last_messages_in_order() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let workspace = tmp.path().join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let thread_id = "thread-delivery-context";
+
+    crate::memory::conversations::ensure_thread(
+        workspace.clone(),
+        serde_json::from_value(json!({
+            "id": thread_id,
+            "title": "notion",
+            "createdAt": "2026-09-19T00:00:00Z",
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    // One more than the window, so the oldest must fall out of it.
+    let total = DELIVERY_THREAD_CONTEXT_MESSAGES + 1;
+    for n in 0..total {
+        crate::memory::conversations::append_message(
+            workspace.clone(),
+            thread_id,
+            crate::memory::conversations::ConversationMessage {
+                id: format!("m{n}"),
+                content: format!("message-{n}"),
+                message_type: "text".to_string(),
+                extra_metadata: serde_json::Value::Null,
+                sender: if n % 2 == 0 { "user" } else { "agent" }.to_string(),
+                created_at: format!("2026-09-19T00:00:{n:02}Z"),
+            },
+        )
+        .unwrap();
+    }
+
+    let context = recent_thread_context(workspace.clone(), thread_id).await;
+
+    assert_eq!(
+        context.len(),
+        DELIVERY_THREAD_CONTEXT_MESSAGES,
+        "the window must cap what a delivery turn is given"
+    );
+    assert_eq!(
+        context.first().map(|(_, text)| text.as_str()),
+        Some("message-1"),
+        "the OLDEST message must be the one dropped, not a newer one"
+    );
+    assert_eq!(
+        context.last().map(|(_, text)| text.as_str()),
+        Some(format!("message-{}", total - 1)).as_deref(),
+        "the answer that superseded the result is the newest message — it must survive"
+    );
+    // Senders must ride along, so the seed can rebuild roles rather than
+    // flatten the window into undifferentiated user text.
+    assert_eq!(
+        context.last().map(|(sender, _)| sender.as_str()),
+        Some(if (total - 1).is_multiple_of(2) {
+            "user"
+        } else {
+            "agent"
+        }),
+        "senders must ride along so the seed can rebuild roles"
+    );
+    assert!(
+        context.iter().any(|(sender, _)| sender == "agent"),
+        "an assistant turn must survive the window — that is what supersedes the result"
+    );
+
+    // An unreadable thread degrades to no context, never to a failed delivery.
+    let missing = recent_thread_context(workspace, "thread-that-does-not-exist").await;
+    assert!(
+        missing.is_empty(),
+        "a thread that cannot be read must yield no context rather than panic"
+    );
+}
