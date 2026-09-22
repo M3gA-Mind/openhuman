@@ -1,7 +1,7 @@
 //! [`CostBudgetMiddleware`]: token-accounting parity observer. It used to
-//! enforce daily/monthly cost budgets before a model
-//! call spends, and shadow-compare token accounting against the crate
-//! `BudgetMiddleware`.
+//! enforce daily/monthly cost budgets before a model call spent; that cap is
+//! gone, and shadow-comparing token accounting against the crate
+//! `BudgetMiddleware` is all it does now.
 
 use async_trait::async_trait;
 
@@ -12,14 +12,9 @@ use tinyagents_harness::middleware::{AgentRun, BudgetTracker, Middleware};
 /// Token-accounting parity observer. It once enforced OpenHuman's
 /// daily/monthly cost budgets before a model call spent (issue #4249, Phase 5),
 /// failing the run before the provider call when a budget was already
-/// exceeded. That cap is gone and nothing here refuses any more; a warning
-/// threshold logs but proceeds. This enforcement path stays **authoritative**.
-///
-/// Self-gating: a no-op unless a global tracker exists and `config.enabled` with
-/// a limit is set (`check_budget` returns `Allowed` otherwise). Complements the
-/// post-call `StopHookMiddleware` per-turn USD cap. Projecting the *next* call's
-/// cost pre-spend (vs the already-exceeded check here) needs an input-token
-/// estimate — a follow-up.
+/// exceeded. **That cap has been removed and nothing here refuses any more.**
+/// The per-turn USD cap in `StopHookMiddleware` is a separate mechanism and is
+/// unaffected.
 ///
 /// # Shadow role (W2-budget-dedupe)
 ///
@@ -32,29 +27,31 @@ use tinyagents_harness::middleware::{AgentRun, BudgetTracker, Middleware};
 /// or divergence (compact numeric summary; no PII). Both accumulate the same
 /// per-call `response.usage`, so token totals must match once the crate
 /// middleware is on the path — this is the parity signal that must be clean
-/// before enforcement can flip to the crate owner (see the flip-criteria comment
-/// at the registration site in `tinyagents/mod.rs`). Cost is intentionally NOT
+/// before accounting ownership can flip to the crate owner (see the
+/// flip-criteria comment at the registration site in `tinyagents/mod.rs`).
+/// Cost is intentionally NOT
 /// compared: the observe-only crate middleware has no pricing table, so its cost
 /// stays zero while the local path prices via `cost::catalog` — cost parity is a
 /// flip-criteria follow-up.
 pub(crate) struct CostBudgetMiddleware {
     /// Observe-only crate `BudgetMiddleware`'s shared tracker handle, for the
     /// end-of-run `[budget_shadow]` comparison. `None` when the shadow is not
-    /// installed (isolated unit tests of the enforcement gate).
+    /// installed (isolated unit tests of this observer).
     shadow_tracker: Option<BudgetTracker>,
 }
 
 impl CostBudgetMiddleware {
-    /// Enforcement-only gate with no shadow comparison (isolated unit tests).
+    /// Observer with no shadow comparison (isolated unit tests). Enforces
+    /// nothing: the spend cap this middleware once applied is gone.
     pub(crate) fn new() -> Self {
         Self {
             shadow_tracker: None,
         }
     }
 
-    /// Enforcement gate that ALSO compares its per-run token accounting against
-    /// the observe-only crate `BudgetMiddleware`'s shared `tracker` at end of run
-    /// and logs `[budget_shadow]` parity/divergence.
+    /// Observer that compares its per-run token accounting against the
+    /// observe-only crate `BudgetMiddleware`'s shared `tracker` at end of run
+    /// and logs `[budget_shadow]` parity/divergence. Enforces nothing.
     pub(crate) fn with_shadow(tracker: BudgetTracker) -> Self {
         Self {
             shadow_tracker: Some(tracker),

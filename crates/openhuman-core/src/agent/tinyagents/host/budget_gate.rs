@@ -10,9 +10,9 @@
 //! * **admission / back-pressure** — [`scheduler_gate::wait_for_capacity`],
 //!   which owns the single-slot global LLM semaphore and the
 //!   AC-power / CPU / signed-out policy backoff;
-//! * **budget refusal + accounting** — [`cost::CostTracker::check_budget`] and
-//!   [`cost::record_provider_usage`], priced through
-//!   [`cost::catalog::estimate_cost_usd`];
+//! * **cost accounting** — [`cost::record_provider_usage`], priced through
+//!   [`cost::catalog::estimate_cost_usd`]. Recording only: the spend cap this
+//!   gate used to enforce has been removed, so no cost figure refuses a call;
 //! * **compression advice** — the agent's
 //!   [`AgentTokenjuiceCompression`] profile, which decides how much lossy
 //!   compaction that agent tolerates.
@@ -37,23 +37,21 @@
 //!   OpenHuman will label that record `CostSource::ProviderCharged` even though
 //!   it is an estimate.
 //!
-//! **2. `compression_hint` must be cheap and synchronous**, but every budget
-//! read in OpenHuman goes through a mutex and may touch the JSONL store. The
-//! gate therefore caches a three-state budget pressure in an atomic, refreshed
-//! on the async [`acquire`](Self::acquire) / [`record`](Self::record) paths —
-//! exactly the "anything that needs I/O belongs in `record`, whose result this
-//! can then consult" shape the trait documents.
+//! **2. `compression_hint` must be cheap and synchronous.** It once read a
+//! cached budget pressure, because a live budget read goes through a mutex and
+//! may touch the JSONL store. With the spend cap removed there is no budget
+//! pressure to cache, so the hint is now a constant.
 //!
 //! **3. The hint is a union with `SummarizationPolicy`, never an override.**
 //! Returning [`CompressionHint::None`] here means *OpenHuman is not asking for
 //! compression for a budget reason*; it is not a veto, and the crate's own
-//! window-pressure policy still runs. That is why an agent whose TokenJuice
-//! profile is `Off` yields `None` rather than anything stronger — `Off` opts
-//! that agent out of *TokenJuice*, not out of summarization.
+//! window-pressure policy still runs. Since the budget reason no longer exists,
+//! that is now the only answer this gate gives.
 //!
-//! Nothing here bypasses an OpenHuman guard: budget refusal still goes through
-//! `check_budget` (which honours `cost.enabled`), and the scheduler-gate permit
-//! is held for exactly the lifetime of the crate permit.
+//! The scheduler-gate permit is held for exactly the lifetime of the crate
+//! permit. No spend guard is bypassed here because there is no longer one to
+//! bypass: managed-credit exhaustion is enforced server-side by the backend,
+//! which returns its own billing error.
 
 use std::sync::Arc;
 
@@ -80,8 +78,9 @@ use crate::platform::cost;
 /// answering it a second time from the host is how the two silently disagree.
 const ESCALATE_AT_UTILIZATION: f64 = 0.9;
 
-/// OpenHuman's [`BudgetGate`]: scheduler-gate back-pressure, cost-tracker
-/// budget enforcement, and TokenJuice-profile-aware compression advice.
+/// OpenHuman's [`BudgetGate`]: scheduler-gate back-pressure and cost
+/// recording. It enforces no spend limit — the cap is gone — and asks for no
+/// compression, since the only hint it ever raised came from budget pressure.
 ///
 /// One instance per agent session. It holds the session's config (for the
 /// fallback model id) and the agent's TokenJuice profile, plus the small amount
@@ -181,7 +180,8 @@ impl BudgetGate for OpenHumanBudgetGate {
     /// Refuses over-budget calls, then parks on OpenHuman's scheduler gate
     /// until the host has capacity.
     ///
-    /// Ordered budget-check-first on purpose: a refusal must not first occupy
+    /// Ordered cheap-work-first on purpose: what used to be a budget refusal
+    /// must not first occupy
     /// the single global LLM slot that another, affordable, call could use.
     ///
     /// The returned [`Permit`] owns the [`scheduler_gate::LlmPermit`] inside its
@@ -199,9 +199,9 @@ impl BudgetGate for OpenHumanBudgetGate {
         }
 
         // Best-effort pricing. `estimate_cost_usd` returns 0.0 for an
-        // uncatalogued model, which means "unknown", not "free" — and a zero
-        // estimate can only ever make `check_budget` more permissive, never
-        // less, so it can't manufacture a refusal.
+        // uncatalogued model, which means "unknown", not "free". Nothing gates
+        // on the figure now; it is carried for the log line below and for the
+        // dashboard's accounting.
         let estimated_usd = cost::catalog::estimate_cost_usd(
             &est.model,
             est.estimated_input_tokens,
@@ -222,8 +222,8 @@ impl BudgetGate for OpenHumanBudgetGate {
         // Interactive turns never enter the background scheduler. Its `Paused`
         // arm polls until background AI is re-enabled, so a signed-out user on a
         // local/BYOK model — or anyone who simply paused background AI — would
-        // watch their chat hang until the turn timeout. The budget checks above
-        // only the concurrency queue is skipped.
+        // watch their chat hang until the turn timeout. Only the concurrency
+        // queue is skipped; nothing else about the call changes.
         if !self.background {
             let grant_id = uuid::Uuid::new_v4().to_string();
             log::trace!(
@@ -278,8 +278,8 @@ impl BudgetGate for OpenHumanBudgetGate {
     /// charged amount nor a cost field to distinguish them. The fix is an
     /// explicit estimated-usage entry point in `cost::global` (or a
     /// `cost_source` argument on `record_provider_usage`); pricing here is
-    /// deliberately not skipped, because a zero-cost ledger would silently
-    /// disable `check_budget` enforcement altogether.
+    /// deliberately not skipped: nothing gates on this figure any more, but a
+    /// zero-cost ledger would silently empty the dashboard the user reads.
     async fn record(&self, usage: &Usage) -> Result<()> {
         let model = self.attributed_model();
         let charged_amount_usd = cost::catalog::estimate_cost_usd(
