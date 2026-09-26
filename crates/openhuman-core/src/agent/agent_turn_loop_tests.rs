@@ -425,6 +425,7 @@ async fn turn_errors_on_empty_text_response() {
         reasoning_content: None,
     };
     let provider = Arc::new(ScriptedProvider::new(vec![empty(), empty()]));
+    let script = Arc::clone(&provider);
 
     let (mut agent, _tmp) = build_agent_with(provider, vec![], Box::new(NativeDialect));
 
@@ -432,6 +433,11 @@ async fn turn_errors_on_empty_text_response() {
         .turn("hi")
         .await
         .expect_err("an empty provider response must error");
+    // Both attempts were made: the original and the one retry.
+    assert!(
+        script.responses.lock().unwrap().is_empty(),
+        "the empty completion must be retried exactly once before erroring"
+    );
     assert!(
         reply.to_string().contains("empty response"),
         "expected a deterministic empty-response close, got: {reply}"
@@ -448,6 +454,7 @@ async fn turn_errors_on_none_text_response() {
         reasoning_content: None,
     };
     let provider = Arc::new(ScriptedProvider::new(vec![none(), none()]));
+    let script = Arc::clone(&provider);
 
     let (mut agent, _tmp) = build_agent_with(provider, vec![], Box::new(NativeDialect));
 
@@ -455,6 +462,10 @@ async fn turn_errors_on_none_text_response() {
         .turn("hi")
         .await
         .expect_err("a null-text provider response must error");
+    assert!(
+        script.responses.lock().unwrap().is_empty(),
+        "the empty completion must be retried exactly once before erroring"
+    );
     assert!(
         reply.to_string().contains("empty response"),
         "expected a deterministic empty-response close, got: {reply}"
