@@ -434,8 +434,9 @@ async fn turn_errors_on_empty_text_response() {
         .await
         .expect_err("an empty provider response must error");
     // Both attempts were made: the original and the one retry.
-    assert!(
-        script.responses.lock().unwrap().is_empty(),
+    assert_eq!(
+        script.calls.load(std::sync::atomic::Ordering::SeqCst),
+        2,
         "the empty completion must be retried exactly once before erroring"
     );
     assert!(
@@ -462,8 +463,9 @@ async fn turn_errors_on_none_text_response() {
         .turn("hi")
         .await
         .expect_err("a null-text provider response must error");
-    assert!(
-        script.responses.lock().unwrap().is_empty(),
+    assert_eq!(
+        script.calls.load(std::sync::atomic::Ordering::SeqCst),
+        2,
         "the empty completion must be retried exactly once before erroring"
     );
     assert!(
