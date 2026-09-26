@@ -414,13 +414,17 @@ async fn turn_errors_on_empty_text_response() {
     // A completion with no text *and* no tool calls is never a valid final
     // answer. The old behaviour returned `Ok("")`, which rendered as a blank
     // reply and silently wedged the thread; now it surfaces as a visible
-    // error the user can retry on (bug-report-2026-05-26 A1).
-    let provider = Arc::new(ScriptedProvider::new(vec![ChatResponse {
+    // error the user can retry on (bug-report-2026-05-26 A1). The harness
+    // retries an empty completion once (43660e6ef), so both attempts are
+    // scripted empty — a single one leaves the retry to the provider's
+    // default "done" reply and tests the retry instead of the error.
+    let empty = || ChatResponse {
         text: Some(String::new()),
         tool_calls: vec![],
         usage: None,
         reasoning_content: None,
-    }]));
+    };
+    let provider = Arc::new(ScriptedProvider::new(vec![empty(), empty()]));
 
     let (mut agent, _tmp) = build_agent_with(provider, vec![], Box::new(NativeDialect));
 
@@ -436,12 +440,14 @@ async fn turn_errors_on_empty_text_response() {
 
 #[tokio::test]
 async fn turn_errors_on_none_text_response() {
-    let provider = Arc::new(ScriptedProvider::new(vec![ChatResponse {
+    // Both attempts: the harness retries an empty completion once.
+    let none = || ChatResponse {
         text: None,
         tool_calls: vec![],
         usage: None,
         reasoning_content: None,
-    }]));
+    };
+    let provider = Arc::new(ScriptedProvider::new(vec![none(), none()]));
 
     let (mut agent, _tmp) = build_agent_with(provider, vec![], Box::new(NativeDialect));
 

@@ -213,6 +213,9 @@ pub(super) fn names_presented_as_callable<'a>(
 ///   defect waiting on a prompt or belt fix; none may be added.
 /// * **Collision** — the backticked word is also a tool name but is used as
 ///   something else (a node kind, an argument, an example). No fix is owed.
+/// * **Deferred** — a `ToolExposure::Deferred` tool the prompt names together
+///   with its route, `tool_search`, which makes it callable by name afterwards.
+///   It is off the belt by design, so no fix is owed.
 const KNOWN_UNCALLABLE: &[(&str, &str, &str)] = &[
     // Real.
     (
@@ -272,6 +275,12 @@ const KNOWN_UNCALLABLE: &[(&str, &str, &str)] = &[
     ),
     ("flow_discovery", "http_request", "a flow node kind"),
     ("flow_discovery", "schedule", "a flow trigger field"),
+    // Deferred.
+    (
+        "orchestrator",
+        "desktop_goal",
+        "`ToolExposure::Deferred`; the prompt routes it through `tool_search`",
+    ),
 ];
 
 /// A prompt must never teach a call the agent cannot make.
