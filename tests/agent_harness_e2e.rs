@@ -5202,4 +5202,71 @@ async fn cancelling_a_running_background_subagent_settles_it_inner() {
     );
 
     disarm_canary_barrier();
+    stack.shutdown();
+}
+
+/// A wrong tool guess is corrected, never mistaken for a credential blocker.
+///
+/// The unknown-tool answer echoes the guessed name, and the failure classifier
+/// used to keyword-sniff it: a guess named `forbidden_tool` read as an HTTP 403,
+/// was classed `authentication` (zero retries), and ended the turn with
+/// "failure class `authentication` still blocks operation …" before the model
+/// could pick a real tool. Through the real orchestrator turn, the guess must
+/// get its retry and the turn must finish with the model's own answer.
+#[test]
+fn a_wrong_tool_guess_is_retried_not_treated_as_an_auth_blocker() {
+    run_on_agent_stack(
+        "a_wrong_tool_guess_is_retried_not_treated_as_an_auth_blocker",
+        a_wrong_tool_guess_is_retried_not_treated_as_an_auth_blocker_inner,
+    );
+}
+
+async fn a_wrong_tool_guess_is_retried_not_treated_as_an_auth_blocker_inner() {
+    let _lock = env_lock();
+    reset_script(vec![
+        tool_calls_completion(&[("forbidden_tool", json!({}))]),
+        text_completion("CANARY_RECOVERED_AFTER_WRONG_TOOL"),
+    ]);
+    let stack = boot_stack().await;
+    let mut events = spawn_sse_collector(format!(
+        "{}/events?client_id=harness-wrong-tool",
+        stack.rpc_base
+    ))
+    .await;
+    send_web_chat(
+        &stack.rpc_base,
+        910,
+        "harness-wrong-tool",
+        "thread-wrong-tool",
+        "do the thing",
+    )
+    .await;
+
+    let done = wait_for_terminal(&mut events, Duration::from_secs(120)).await;
+    assert_eq!(
+        done.get("event").and_then(Value::as_str),
+        Some("chat_done"),
+        "a wrong tool guess must not end the turn: {done}"
+    );
+    let full_response = done
+        .get("full_response")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        full_response.contains("CANARY_RECOVERED_AFTER_WRONG_TOOL"),
+        "the model's recovery must be the reply, not a blocker halt: {done}"
+    );
+    assert!(
+        !full_response.contains("still blocks operation"),
+        "the wrong guess was classified as a blocker: {done}"
+    );
+    // The recovery ran as a second model call that saw the unknown-tool answer.
+    let requests = with_captured(|c| c.clone());
+    assert!(
+        captured_requests_reject_tool_as_unknown(&requests, "forbidden_tool"),
+        "the model should have been told `forbidden_tool` is unknown; requests: {}",
+        serde_json::to_string_pretty(&requests).unwrap_or_default()
+    );
+
+    stack.shutdown();
 }
