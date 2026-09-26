@@ -24,8 +24,8 @@ mod journal_export;
 mod span_export;
 
 pub(crate) use environment::{environment_for_base, ingestion_url};
-pub(crate) use journal_export::push_observations;
 pub(crate) use journal_export::root_subagent_observations;
+pub(crate) use journal_export::{journal_push_ready, push_observations};
 pub(crate) use span_export::push_spans;
 
 use super::{SpanStatus, TraceContext, TraceSpan};

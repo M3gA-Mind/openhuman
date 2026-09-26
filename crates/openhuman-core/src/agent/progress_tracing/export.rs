@@ -139,6 +139,15 @@ pub(crate) async fn export_subagent_journal_trace(
     if !config.observability.share_usage_data {
         return;
     }
+    // Check the push gates before reading the child's journal: without a live
+    // session the push refuses anyway, and the read and observation build were
+    // pure cost — on every delegated turn, since usage sharing defaults on.
+    if !langfuse::journal_push_ready(config) {
+        log::debug!(
+            "[agent-tracing] child trace export skipped: push not possible run_id={journal_run_id}"
+        );
+        return;
+    }
     let observations = match crate::agent::tinyagents::journal::read_run_events(journal_run_id, 0)
         .await
     {
