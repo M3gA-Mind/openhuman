@@ -13,12 +13,6 @@
   ],
   "exemptions": [
     {
-      "id": "tinyjuice",
-      "submodule": "vendor/tinyjuice",
-      "expect": "v0.3.2-3-g69622d76",
-      "reason": "The source is three commits past published v0.3.2 for a Rust 1.96.1 toolchain pin; git diff v0.3.2..HEAD changes only rust-toolchain.toml. No bus or module code changed, so the registry retains the published v0.3.2 artifact and its release digest."
-    },
-    {
       "id": "tinyruntime",
       "submodule": "vendor/tinyruntime",
       "expect": "v0.2.5-5-g1f41a4d1",
