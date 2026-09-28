@@ -19,22 +19,16 @@
       "reason": "The source is three commits past published v0.3.2 for a Rust 1.96.1 toolchain pin; git diff v0.3.2..HEAD changes only rust-toolchain.toml. No bus or module code changed, so the registry retains the published v0.3.2 artifact and its release digest."
     },
     {
-      "id": "tinyruntime",
-      "submodule": "vendor/tinyruntime",
-      "expect": "v0.2.5-5-g1f41a4d1",
-      "reason": "The source is five commits past published v0.2.5 for Rust toolchain and CI/MSRV setup; git diff v0.2.5..HEAD changes only rust-toolchain.toml and .github/workflows/ci.yml. No bus or module code changed, so the registry retains the published v0.2.5 artifact and its release digest."
-    },
-    {
       "id": "tinyruntime-nodejs",
       "submodule": "vendor/tinyruntime",
-      "expect": "v0.2.5-5-g1f41a4d1",
-      "reason": "The provider is published independently at v0.2.2 while the shared source is v0.2.5 plus five CI/toolchain-only commits. Registry retains its matching published v0.2.2 provider artifact; git diff v0.2.5..HEAD changes no bus or module code."
+      "expect": "v0.2.6",
+      "reason": "The provider is published independently at v0.2.3 while the shared source pin is tinyruntime v0.2.6. v0.2.3 was built against tinyruntime 09f9646 (v0.2.4-5); git diff 09f9646..v0.2.6 changes no crate source (only CI, toolchain, versions, Cargo.lock and the tinybus pin), and the tinybus module ABI is revision 1 on both. Registry retains its matching published v0.2.3 provider artifact."
     },
     {
       "id": "tinyruntime-python",
       "submodule": "vendor/tinyruntime",
-      "expect": "v0.2.5-5-g1f41a4d1",
-      "reason": "The provider is published independently at v0.2.2 while the shared source is v0.2.5 plus five CI/toolchain-only commits. Registry retains its matching published v0.2.2 provider artifact; git diff v0.2.5..HEAD changes no bus or module code."
+      "expect": "v0.2.6",
+      "reason": "The provider is published independently at v0.2.3 while the shared source pin is tinyruntime v0.2.6. v0.2.3 was built against tinyruntime 09f9646 (v0.2.4-5); git diff 09f9646..v0.2.6 changes no crate source (only CI, toolchain, versions, Cargo.lock and the tinybus pin), and the tinybus module ABI is revision 1 on both. Registry retains its matching published v0.2.3 provider artifact."
     },
     {
       "id": "tinyconnectors",
