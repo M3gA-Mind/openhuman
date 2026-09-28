@@ -6403,7 +6403,7 @@ dependencies = [
 
 [[package]]
 name = "tinyconnectors-bus"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "serde",
  "serde_json",
