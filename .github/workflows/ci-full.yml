@@ -140,18 +140,18 @@ jobs:
           connectors_dir="$module_root/tinyconnectors"
           search_dir="$module_root/tinysearch"
           memory_archive="$memory_dir/tinymemory-module-${memory_version}-ubuntu-22.04-x86_64.tar.gz"
-          juice_archive="$juice_dir/tinyjuice-module-0.3.2-ubuntu-22.04-x86_64.tar.gz"
+          juice_archive="$juice_dir/tinyjuice-module-0.3.3-ubuntu-22.04-x86_64.tar.gz"
           rm -rf "$memory_dir" "$juice_dir" "$connectors_dir"
           mkdir -p "$memory_dir" "$juice_dir" "$connectors_dir" "$search_dir"
           curl --fail --location --silent --show-error --retry 4 --retry-delay 2 \
             "https://github.com/tinyhumansai/tinymemory/releases/download/v${memory_version}/$(basename "$memory_archive")" \
             --output "$memory_archive"
           curl --fail --location --silent --show-error --retry 4 --retry-delay 2 \
-            "https://github.com/tinyhumansai/tinyjuice/releases/download/v0.3.2/$(basename "$juice_archive")" \
+            "https://github.com/tinyhumansai/tinyjuice/releases/download/v0.3.3/$(basename "$juice_archive")" \
             --output "$juice_archive"
           echo "${memory_sha256}  $memory_archive" \
             | sha256sum --check
-          echo "48d32696eb9acacd6399a0e212291b48d1b31ecd3492109b479d67051446bf61  $juice_archive" \
+          echo "aa3cabf8248a7aa84bdf257f5a4f16c2f4f69e680a135ba96d06f89fd78d2725  $juice_archive" \
             | sha256sum --check
           tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
           tar --no-same-owner -xzf "$juice_archive" -C "$juice_dir"
@@ -341,17 +341,17 @@ jobs:
           connectors_dir="$module_root/tinyconnectors"
           search_dir="$module_root/tinysearch"
           memory_archive="$memory_dir/tinymemory-module-${memory_version}-ubuntu-22.04-x86_64.tar.gz"
-          juice_archive="$juice_dir/tinyjuice-module-0.3.2-ubuntu-22.04-x86_64.tar.gz"
+          juice_archive="$juice_dir/tinyjuice-module-0.3.3-ubuntu-22.04-x86_64.tar.gz"
           rm -rf "$memory_dir" "$juice_dir" "$connectors_dir"
           mkdir -p "$memory_dir" "$juice_dir" "$connectors_dir" "$search_dir"
           curl --fail --location --silent --show-error --retry 4 --retry-delay 2 \
             "https://github.com/tinyhumansai/tinymemory/releases/download/v${memory_version}/$(basename "$memory_archive")" \
             --output "$memory_archive"
           curl --fail --location --silent --show-error --retry 4 --retry-delay 2 \
-            "https://github.com/tinyhumansai/tinyjuice/releases/download/v0.3.2/$(basename "$juice_archive")" \
+            "https://github.com/tinyhumansai/tinyjuice/releases/download/v0.3.3/$(basename "$juice_archive")" \
             --output "$juice_archive"
           echo "${memory_sha256}  $memory_archive" | sha256sum --check
-          echo "48d32696eb9acacd6399a0e212291b48d1b31ecd3492109b479d67051446bf61  $juice_archive" \
+          echo "aa3cabf8248a7aa84bdf257f5a4f16c2f4f69e680a135ba96d06f89fd78d2725  $juice_archive" \
             | sha256sum --check
           tar --no-same-owner -xzf "$memory_archive" -C "$memory_dir"
           tar --no-same-owner -xzf "$juice_archive" -C "$juice_dir"
