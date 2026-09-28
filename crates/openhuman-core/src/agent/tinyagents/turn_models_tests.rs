@@ -219,15 +219,17 @@ async fn a_sub_agents_route_failure_leaves_the_leads_slot_untouched() {
     let primary: Arc<dyn ChatModel<()>> =
         Arc::new(ScriptedTerminalModel(std::sync::Mutex::new(vec![
             provider_failure("LEAD_FAILURE"),
+            // Spare item: a child that wrongly got the primary would consume it
+            // silently, so only the route assertion can catch that.
+            completed(),
         ])));
-    let route: Arc<dyn ChatModel<()>> =
-        Arc::new(ScriptedTerminalModel(std::sync::Mutex::new(vec![
-            provider_failure("CHILD_ROUTE_FAILURE"),
-        ])));
+    let route = Arc::new(ScriptedTerminalModel(std::sync::Mutex::new(vec![
+        provider_failure("CHILD_ROUTE_FAILURE"),
+    ])));
     let models = TurnModelSource::from_model(primary)
         .build("m", 0.0, None, None)
         .expect("turn models")
-        .with_test_route("hint:burst", route);
+        .with_test_route("hint:burst", route.clone());
     let resolver = TurnModelResolver::from_turn_models(&models);
 
     let lead = resolver
@@ -241,6 +243,12 @@ async fn a_sub_agents_route_failure_leaves_the_leads_slot_untouched() {
         .await
         .unwrap();
     drain(&child).await;
+    // Self-proving fixture: the child's call was served by the route, not by a
+    // fallback to the primary.
+    assert!(
+        route.0.lock().unwrap().is_empty(),
+        "the child did not resolve the route"
+    );
 
     let recorded = slot_text(&models).expect("the lead's failure is still recorded");
     assert!(recorded.contains("LEAD_FAILURE"), "{recorded}");
@@ -257,15 +265,17 @@ async fn a_sub_agents_route_success_does_not_clear_the_leads_slot() {
     let primary: Arc<dyn ChatModel<()>> =
         Arc::new(ScriptedTerminalModel(std::sync::Mutex::new(vec![
             provider_failure("LEAD_FAILURE"),
-        ])));
-    let route: Arc<dyn ChatModel<()>> =
-        Arc::new(ScriptedTerminalModel(std::sync::Mutex::new(vec![
+            // Spare item: a child that wrongly got the primary would consume it
+            // silently, so only the route assertion can catch that.
             completed(),
         ])));
+    let route = Arc::new(ScriptedTerminalModel(std::sync::Mutex::new(vec![
+        completed(),
+    ])));
     let models = TurnModelSource::from_model(primary)
         .build("m", 0.0, None, None)
         .expect("turn models")
-        .with_test_route("hint:burst", route);
+        .with_test_route("hint:burst", route.clone());
     let resolver = TurnModelResolver::from_turn_models(&models);
 
     let lead = resolver
@@ -278,6 +288,12 @@ async fn a_sub_agents_route_success_does_not_clear_the_leads_slot() {
         .await
         .unwrap();
     drain(&child).await;
+    // Self-proving fixture: the child's call was served by the route, not by a
+    // fallback to the primary.
+    assert!(
+        route.0.lock().unwrap().is_empty(),
+        "the child did not resolve the route"
+    );
 
     assert!(
         slot_text(&models).is_some_and(|text| text.contains("LEAD_FAILURE")),
