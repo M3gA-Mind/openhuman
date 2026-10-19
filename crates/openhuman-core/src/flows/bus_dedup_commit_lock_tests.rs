@@ -297,17 +297,39 @@ async fn dedup_commit_releases_the_run_snapshot_nodes_on_failure() {
     );
 }
 
-#[test]
-fn a_graph_without_dedup_nodes_records_no_run_snapshot() {
+#[tokio::test]
+async fn a_run_without_dedup_nodes_does_not_settle_one_added_mid_run() {
     let tmp = tempfile::TempDir::new().unwrap();
     let config = test_config(&tmp);
-    let flow = flow_with_trigger_config("f-plain", true, json!({}));
-    snapshot_run_dedup_nodes(&config, "f-plain", "run-plain", &flow.graph);
-    assert!(store::kv_get(
-        &config,
-        &dedup_state_namespace("f-plain"),
-        &run_nodes_key("run-plain")
-    )
-    .unwrap()
-    .is_none());
+    let started = flow_with_trigger_config("f-gain", true, json!({}));
+    store::upsert_flow(&config, &started).unwrap();
+    snapshot_run_dedup_nodes(&config, "f-gain", "run-plain", &started.graph);
+
+    let namespace = dedup_state_namespace("f-gain");
+    assert_eq!(
+        store::kv_get(&config, &namespace, &run_nodes_key("run-plain")).unwrap(),
+        Some(json!([]))
+    );
+    // Added mid-run; another run of the new graph has staged a key.
+    store::upsert_flow(&config, &flow_with_dedup_node("f-gain", "dd-new")).unwrap();
+    store::kv_set(&config, &namespace, "dedup:dd-new:tentative", &json!(["z"])).unwrap();
+
+    DedupCommitSubscriber::new(config.clone())
+        .handle(&DomainEvent::FlowRunFinished {
+            flow_id: "f-gain".into(),
+            run_id: "run-plain".into(),
+            status: "failed".into(),
+        })
+        .await;
+
+    assert_eq!(
+        store::kv_get(&config, &namespace, "dedup:dd-new:tentative").unwrap(),
+        Some(json!(["z"])),
+        "the other run's tentative key is not released"
+    );
+    assert!(
+        store::kv_get(&config, &namespace, &run_nodes_key("run-plain"))
+            .unwrap()
+            .is_none()
+    );
 }

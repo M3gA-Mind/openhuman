@@ -121,8 +121,9 @@ pub(super) fn run_nodes_key(run_id: &str) -> String {
 /// while the run was in flight may have changed (issue #5268). Called by both
 /// run entry points before `FlowRunStarted` is published and before the engine
 /// starts, so the record always exists before the run can finish. A graph with
-/// no `dedup` node writes nothing. Best-effort: a failed write is logged and
-/// settlement falls back to the saved graph.
+/// no `dedup` node records an empty list, so a `dedup` node added mid-run is
+/// not settled (released) for a run that never executed it. Best-effort: a
+/// failed write is logged and settlement falls back to the saved graph.
 pub(crate) fn snapshot_run_dedup_nodes(
     config: &Config,
     flow_id: &str,
@@ -135,9 +136,6 @@ pub(crate) fn snapshot_run_dedup_nodes(
         .filter(|n| n.kind == NodeKind::Dedup)
         .map(|n| n.id.as_str())
         .collect();
-    if ids.is_empty() {
-        return;
-    }
     let state = FlowState::open(config, format!("flow:{flow_id}"));
     match state.kv_set(&run_nodes_key(run_id), &serde_json::json!(ids)) {
         Ok(()) => {
@@ -149,16 +147,15 @@ pub(crate) fn snapshot_run_dedup_nodes(
     }
 }
 
-/// The node ids in a [`snapshot_run_dedup_nodes`] record, or `None` when it is
-/// not a non-empty string array: settling nothing would strand the run's
-/// tentative keys, so a malformed record falls back to the saved graph.
+/// The node ids in a [`snapshot_run_dedup_nodes`] record (empty when the run
+/// executed no `dedup` node), or `None` when it is not a string array: a
+/// malformed record falls back to the saved graph.
 fn parse_run_nodes(value: &serde_json::Value) -> Option<Vec<String>> {
-    let ids: Vec<String> = value
+    value
         .as_array()?
         .iter()
         .map(|v| v.as_str().map(str::to_string))
-        .collect::<Option<_>>()?;
-    (!ids.is_empty()).then_some(ids)
+        .collect()
 }
 
 /// Deletes a settled run's [`snapshot_run_dedup_nodes`] record.
