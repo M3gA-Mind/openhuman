@@ -188,9 +188,10 @@ impl<'a> PreflightProbes for LivePreflightProbes<'a> {
     }
 
     async fn git_version(&self) -> Result<(), String> {
-        let fut = tokio::process::Command::new("git")
-            .arg("--version")
-            .output();
+        let mut cmd = tokio::process::Command::new("git");
+        cmd.arg("--version");
+        crate::platform::service::no_window(cmd.as_std_mut());
+        let fut = cmd.output();
         match tokio::time::timeout(GIT_PROBE_TIMEOUT, fut).await {
             Ok(Ok(output)) if output.status.success() => Ok(()),
             Ok(Ok(output)) => Err(format!(
@@ -215,9 +216,10 @@ impl<'a> PreflightProbes for LivePreflightProbes<'a> {
 }
 
 async fn git_config_value(key: &str) -> String {
-    let fut = tokio::process::Command::new("git")
-        .args(["config", "--global", key])
-        .output();
+    let mut cmd = tokio::process::Command::new("git");
+    cmd.args(["config", "--global", key]);
+    crate::platform::service::no_window(cmd.as_std_mut());
+    let fut = cmd.output();
     match tokio::time::timeout(GIT_PROBE_TIMEOUT, fut).await {
         Ok(Ok(output)) if output.status.success() => {
             String::from_utf8_lossy(&output.stdout).trim().to_string()

@@ -180,6 +180,7 @@ async fn execute_owned(
     let mut run =
         super::shell_exec::NativeShellRun::new(command, working_dir, &policy.state_dir, timeout);
     run.workspace = policy.workspace_root.clone();
+    run.hide_window = config.shell.hide_window;
     run.env = approved_environment(extra_env)?;
     // The jail's `allow_net` is what confines the command; keep the resource's
     // declared policy in step with it.

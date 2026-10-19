@@ -409,7 +409,7 @@ impl SecretStore {
                     return Ok(key);
                 };
 
-                let icacls_ok = match std::process::Command::new("icacls")
+                let icacls_ok = match icacls()
                     .arg(&self.key_path)
                     .args(["/inheritance:r", "/grant:r"])
                     .arg(&grant_arg)
@@ -441,10 +441,7 @@ impl SecretStore {
                 // file. Explicitly reset to restore inheritance so the file is always
                 // readable — a slightly weaker ACL is preferable to a locked-out user.
                 if !icacls_ok {
-                    let _ = std::process::Command::new("icacls")
-                        .arg(&self.key_path)
-                        .args(["/reset"])
-                        .output();
+                    let _ = icacls().arg(&self.key_path).args(["/reset"]).output();
                 }
             }
 
@@ -555,6 +552,14 @@ fn is_permission_error(e: &std::io::Error) -> bool {
     // ERROR_ACCESS_DENIED
 }
 
+/// `icacls` without a console window (#7895).
+#[cfg(windows)]
+fn icacls() -> std::process::Command {
+    let mut cmd = std::process::Command::new("icacls");
+    crate::platform::service::no_window(&mut cmd);
+    cmd
+}
+
 /// Attempt to repair a locked key file by running `icacls /reset` on it.
 ///
 /// Attempt to repair a locked key file.
@@ -572,11 +577,7 @@ fn is_permission_error(e: &std::io::Error) -> bool {
 #[cfg(windows)]
 pub(super) fn repair_windows_acl(path: &Path) -> bool {
     // Step 1: restore inheritance.
-    match std::process::Command::new("icacls")
-        .arg(path)
-        .args(["/reset"])
-        .output()
-    {
+    match icacls().arg(path).args(["/reset"]).output() {
         Ok(o) if o.status.success() => {
             log::info!(
                 "[security] icacls /reset succeeded for '{}'; ACL inheritance restored",
@@ -605,7 +606,7 @@ pub(super) fn repair_windows_acl(path: &Path) -> bool {
     let computername = std::env::var("COMPUTERNAME").unwrap_or_default();
     let qualified = qualify_windows_username(&username, &userdomain, &computername);
     if let Some(grant_arg) = build_windows_icacls_grant_arg(&qualified) {
-        match std::process::Command::new("icacls")
+        match icacls()
             .arg(path)
             .args(["/grant:r"])
             .arg(&grant_arg)

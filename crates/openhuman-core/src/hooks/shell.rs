@@ -112,6 +112,7 @@ fn from_selection(selection: &ShellInvocation, command: &str) -> std::process::C
         use std::os::windows::process::CommandExt;
         process.raw_arg(raw.replace(PLACEHOLDER, command));
     }
+    crate::platform::service::no_window(&mut process);
     process
 }
 

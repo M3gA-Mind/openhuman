@@ -11,6 +11,7 @@ mod shutdown;
 pub mod tools;
 
 mod common;
+pub(crate) use common::no_window;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "macos")]

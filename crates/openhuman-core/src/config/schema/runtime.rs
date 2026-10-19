@@ -52,15 +52,21 @@ pub struct DockerRuntimeConfig {
 }
 
 /// `[shell]` — behaviour of the shell-family tools (`shell`, monitor) when they spawn child processes.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct ShellConfig {
     /// On Windows, suppress the console window that briefly flashes for every
     /// child process the shell tool spawns by passing `CREATE_NO_WINDOW`
     /// (`0x08000000`) in the process creation flags. No-op on macOS/Linux.
-    /// Defaults to `false` for backward compatibility.
-    #[serde(default)]
+    /// Defaults to `true` (#7895); set `false` to get the console back.
+    #[serde(default = "default_true")]
     pub hide_window: bool,
+}
+
+impl Default for ShellConfig {
+    fn default() -> Self {
+        Self { hide_window: true }
+    }
 }
 
 fn default_true() -> bool {

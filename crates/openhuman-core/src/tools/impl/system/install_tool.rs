@@ -217,6 +217,7 @@ impl InstallToolTool {
         let mut cmd = TokioCommand::new(program);
         cmd.args(&prefix).arg(package);
         cmd.current_dir(&self.security.workspace_dir);
+        crate::platform::service::no_window(cmd.as_std_mut());
 
         let output = match tinytools_std::timeout::output_or_kill(
             &mut cmd,

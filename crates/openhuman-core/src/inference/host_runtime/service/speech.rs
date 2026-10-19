@@ -122,11 +122,13 @@ pub async fn tts(
         .await
         .map_err(|e| format!("failed to create TTS output directory: {e}"))?;
 
-    let mut child = tokio::process::Command::new(piper_bin)
-        .args(["--model", &model_path, "--output_file", &out_path])
+    let mut cmd = tokio::process::Command::new(piper_bin);
+    cmd.args(["--model", &model_path, "--output_file", &out_path])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    crate::platform::service::no_window(cmd.as_std_mut());
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("failed to launch piper: {e}"))?;
 

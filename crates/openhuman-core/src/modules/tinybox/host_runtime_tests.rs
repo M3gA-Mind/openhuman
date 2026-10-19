@@ -10,7 +10,10 @@ fn native_runtime_reports_capabilities_and_shell_flavor() {
     assert!(runtime.supports_long_running());
     assert_eq!(runtime.memory_budget(), 0);
     assert!(runtime.storage_path().ends_with("openhuman/runtime"));
-    assert!(!runtime.hide_window());
+    assert!(
+        runtime.hide_window(),
+        "native default hides the console (#7895)"
+    );
     assert_eq!(runtime.shell_flavor(), host_shell_flavor());
 }
 
@@ -112,7 +115,9 @@ fn hide_window_reaches_the_native_runtime_only() {
         .unwrap()
         .hide_window());
     assert!(NativeRuntime::with_hide_window(true).hide_window());
-    assert!(!NativeRuntime::new().hide_window());
+    assert!(!NativeRuntime::with_hide_window(false).hide_window());
+    assert!(NativeRuntime::new().hide_window());
+    assert!(NativeRuntime::default().hide_window());
     let docker = create_runtime(
         &RuntimeConfig {
             kind: "docker".into(),

@@ -68,9 +68,10 @@ pub async fn resolve_runtimes(
 }
 
 fn resolve_host_runtime(runtime: &str, command: &str) -> ResolvedRuntimeSummary {
-    let output = std::process::Command::new(command)
-        .arg("--version")
-        .output();
+    let mut cmd = std::process::Command::new(command);
+    cmd.arg("--version");
+    crate::platform::service::no_window(&mut cmd);
+    let output = cmd.output();
     let binary = find_host_binary(command);
     let (version, error) = match output {
         Ok(output) if output.status.success() => (

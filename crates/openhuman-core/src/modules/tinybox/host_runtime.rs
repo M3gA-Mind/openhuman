@@ -55,7 +55,6 @@ pub trait RuntimeAdapter: Send + Sync {
     }
 }
 
-#[derive(Default)]
 pub struct NativeRuntime {
     /// When true, shell-family child processes are spawned with the Windows
     /// `CREATE_NO_WINDOW` flag so no console window flashes. Sourced from
@@ -64,15 +63,22 @@ pub struct NativeRuntime {
 }
 
 impl NativeRuntime {
-    /// A native runtime with default behaviour (no window suppression).
+    /// A native runtime with default behaviour: window suppression on, the
+    /// same as the `[shell] hide_window` default (#7895).
     pub const fn new() -> Self {
-        Self { hide_window: false }
+        Self { hide_window: true }
     }
 
     /// A native runtime that suppresses the Windows console window for spawned
     /// shell child processes when `hide_window` is true.
     pub const fn with_hide_window(hide_window: bool) -> Self {
         Self { hide_window }
+    }
+}
+
+impl Default for NativeRuntime {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

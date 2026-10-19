@@ -88,7 +88,8 @@ pub fn build_runtime_tools(config: &Config) -> Result<Vec<Box<dyn Tool>>, String
         config.workspace_dir.clone(),
     )
     .map_err(|e| e.to_string())?;
-    let runtime: Arc<dyn RuntimeAdapter> = Arc::new(NativeRuntime::new());
+    let runtime: Arc<dyn RuntimeAdapter> =
+        Arc::new(NativeRuntime::with_hide_window(config.shell.hide_window));
     trace!("[native_ops] build_runtime_tools: tools::ops::all_tools_with_runtime");
     let built = tools::ops::all_tools_with_runtime(
         Arc::new(config.clone()),

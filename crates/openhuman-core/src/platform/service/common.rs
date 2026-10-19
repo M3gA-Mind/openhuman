@@ -107,14 +107,15 @@ pub(crate) fn xml_escape(input: &str) -> String {
 
 /// Suppress conhost allocation for Windows command spawns. Without this,
 /// every `schtasks /Query` polled by service status checks flashes a
-/// console — visible to users (#1475 follow-up to #731 + #1338).
+/// console — visible to users (#1475 follow-up to #731 + #1338). Shared with
+/// the core's other background spawns (#7895).
 #[cfg(windows)]
-fn no_window(cmd: &mut Command) {
+pub(crate) fn no_window(cmd: &mut Command) {
     cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
 }
 
 #[cfg(not(windows))]
-fn no_window(_cmd: &mut Command) {}
+pub(crate) fn no_window(_cmd: &mut Command) {}
 
 pub(crate) fn run_checked(cmd: &mut Command) -> Result<()> {
     no_window(cmd);

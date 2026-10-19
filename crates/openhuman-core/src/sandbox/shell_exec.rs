@@ -332,6 +332,7 @@ pub(crate) async fn run_host(
     meter: Option<super::shell_progress::ShellOutputMeter>,
 ) -> anyhow::Result<SandboxExecResult> {
     let mut shell = NativeShellRun::new(command, cwd, state_dir, timeout);
+    shell.hide_window = config.shell.hide_window;
     shell.meter = meter;
     shell.env = env;
     shell.preserve_pipeline_status = preserve_pipeline_status;

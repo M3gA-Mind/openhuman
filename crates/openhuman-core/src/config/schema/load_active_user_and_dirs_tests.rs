@@ -248,7 +248,7 @@ fn apply_env_overrides_shell_hide_window_parses_truthy_falsy() {
     let _g = env_lock();
     clear_env(&["OPENHUMAN_SHELL_HIDE_WINDOW", "SHELL_HIDE_WINDOW"]);
     let mut cfg = Config::default();
-    assert!(!cfg.shell.hide_window, "default should be off");
+    assert!(cfg.shell.hide_window, "default should be on (#7895)");
 
     unsafe {
         std::env::set_var("OPENHUMAN_SHELL_HIDE_WINDOW", "on");

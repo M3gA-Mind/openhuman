@@ -60,7 +60,9 @@ pub fn all_tools(
     all_tools_with_runtime(
         config,
         security,
-        Arc::new(NativeRuntime::new()),
+        Arc::new(NativeRuntime::with_hide_window(
+            root_config.shell.hide_window,
+        )),
         audit,
         browser_config,
         http_config,
