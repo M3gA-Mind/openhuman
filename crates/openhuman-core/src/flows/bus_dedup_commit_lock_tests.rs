@@ -216,3 +216,98 @@ fn flow_commit_lock_returns_the_same_arc_for_the_same_flow_id_and_differs_across
         "different flow_ids must not contend on the same lock"
     );
 }
+
+// ── settling from the run's own graph (issue #5268) ───────────────
+
+#[tokio::test]
+async fn dedup_commit_settles_the_nodes_the_run_started_with_after_a_mid_run_edit() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let started = flow_with_dedup_node("f-edit", "dd-old");
+    store::upsert_flow(&config, &started).unwrap();
+    snapshot_run_dedup_nodes(&config, "f-edit", "run-edit", &started.graph);
+
+    let namespace = dedup_state_namespace("f-edit");
+    store::kv_set(&config, &namespace, "dedup:dd-old:tentative", &json!(["a"])).unwrap();
+    // The flow is edited while the run is in flight: its dedup node is renamed.
+    store::upsert_flow(&config, &flow_with_dedup_node("f-edit", "dd-new")).unwrap();
+
+    DedupCommitSubscriber::new(config.clone())
+        .handle(&DomainEvent::FlowRunFinished {
+            flow_id: "f-edit".into(),
+            run_id: "run-edit".into(),
+            status: "completed".into(),
+        })
+        .await;
+
+    assert_eq!(
+        store::kv_get(&config, &namespace, "dedup:dd-old:committed").unwrap(),
+        Some(json!(["a"])),
+        "the node the run executed is committed even though the saved graph no longer has it"
+    );
+    assert!(store::kv_get(&config, &namespace, "dedup:dd-old:tentative")
+        .unwrap()
+        .is_none());
+    assert!(store::kv_get(&config, &namespace, "dedup:dd-new:committed")
+        .unwrap()
+        .is_none());
+    assert!(
+        store::kv_get(&config, &namespace, &run_nodes_key("run-edit"))
+            .unwrap()
+            .is_none(),
+        "the snapshot is deleted once the run is settled"
+    );
+}
+
+#[tokio::test]
+async fn dedup_commit_releases_the_run_snapshot_nodes_on_failure() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let started = flow_with_dedup_node("f-edit-fail", "dd-old");
+    store::upsert_flow(&config, &started).unwrap();
+    snapshot_run_dedup_nodes(&config, "f-edit-fail", "run-fail", &started.graph);
+
+    let namespace = dedup_state_namespace("f-edit-fail");
+    store::kv_set(&config, &namespace, "dedup:dd-old:tentative", &json!(["a"])).unwrap();
+    // Deleted mid-run: the saved graph has no dedup node left at all.
+    store::upsert_flow(
+        &config,
+        &flow_with_trigger_config("f-edit-fail", true, json!({})),
+    )
+    .unwrap();
+
+    DedupCommitSubscriber::new(config.clone())
+        .handle(&DomainEvent::FlowRunFinished {
+            flow_id: "f-edit-fail".into(),
+            run_id: "run-fail".into(),
+            status: "failed".into(),
+        })
+        .await;
+
+    assert!(store::kv_get(&config, &namespace, "dedup:dd-old:tentative")
+        .unwrap()
+        .is_none());
+    assert!(store::kv_get(&config, &namespace, "dedup:dd-old:committed")
+        .unwrap()
+        .is_none());
+    assert!(
+        store::kv_get(&config, &namespace, &run_nodes_key("run-fail"))
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn a_graph_without_dedup_nodes_records_no_run_snapshot() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let config = test_config(&tmp);
+    let flow = flow_with_trigger_config("f-plain", true, json!({}));
+    snapshot_run_dedup_nodes(&config, "f-plain", "run-plain", &flow.graph);
+    assert!(store::kv_get(
+        &config,
+        &dedup_state_namespace("f-plain"),
+        &run_nodes_key("run-plain")
+    )
+    .unwrap()
+    .is_none());
+}

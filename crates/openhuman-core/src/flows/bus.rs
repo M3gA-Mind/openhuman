@@ -19,6 +19,7 @@ mod owner;
 mod run_digest;
 mod trigger;
 
+pub(crate) use dedup_commit::snapshot_run_dedup_nodes;
 pub use dedup_commit::DedupCommitSubscriber;
 pub use run_digest::FlowRunDigestSubscriber;
 pub use trigger::FlowTriggerSubscriber;
@@ -33,7 +34,7 @@ use crate::core::events::DomainEvent;
 #[cfg(test)]
 use crate::flows::store;
 #[cfg(test)]
-use dedup_commit::{flow_commit_lock, CommitTestHooks};
+use dedup_commit::{flow_commit_lock, run_nodes_key, CommitTestHooks};
 #[cfg(test)]
 use run_digest::{
     digest_filter, enforce_retention_cap, render_run_digest, truncate_chars, DIGEST_MAX_CHARS,

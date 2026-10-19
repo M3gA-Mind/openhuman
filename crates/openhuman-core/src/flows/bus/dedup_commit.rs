@@ -10,8 +10,8 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 use tinybus::EventHandler;
-use tinyflows::model::NodeKind;
-use tinyflows::nodes::control_flow::dedup_settle::{self, CommitOutcome, Settlement};
+use tinyflows::model::{NodeKind, WorkflowGraph};
+use tinyflows::nodes::control_flow::dedup_settle::{self, CommitOutcome, DedupKv, Settlement};
 
 /// Listens for `DomainEvent::FlowRunFinished` and settles every `dedup` node
 /// in the finished flow's graph — the host half of the commit-on-success
@@ -20,7 +20,8 @@ use tinyflows::nodes::control_flow::dedup_settle::{self, CommitOutcome, Settleme
 /// see `tinyflows::nodes::control_flow::dedup`'s module docs for the full
 /// two-sided contract this subscriber implements).
 ///
-/// For every `dedup` node found in the flow's saved graph:
+/// For every `dedup` node the finished run executed (recorded at run start by
+/// [`snapshot_run_dedup_nodes`], else the flow's saved graph):
 /// - **Success** (`"completed"` / `"completed_with_warnings"`): unions the
 ///   node's `tentative` key set into its `committed` set, then clears
 ///   `tentative`. `completed_with_warnings` counts as success — the run
@@ -36,8 +37,8 @@ use tinyflows::nodes::control_flow::dedup_settle::{self, CommitOutcome, Settleme
 ///
 /// `StateStore` exposes no prefix-scan, so the only way to know which
 /// `dedup:<node_id>:*` keys exist for a flow is to derive `<node_id>` from
-/// the flow's own saved graph — this subscriber loads `flow_id`'s graph on
-/// every event rather than trying to infer node ids from the event itself.
+/// a graph — the run's own, recorded when it started, so a flow edited while
+/// the run was in flight is still settled against the nodes that ran.
 ///
 /// Reuses the exact same per-flow `StateStore` namespace
 /// (`"flow:<flow_id>"`, see `tinyflows::caps::build_capabilities` in
@@ -104,6 +105,67 @@ pub(super) fn flow_commit_lock(flow_id: &str) -> Arc<tokio::sync::Mutex<()>> {
         map.entry(flow_id.to_string())
             .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
     )
+}
+
+/// The `flow:<flow_id>` state key holding the `dedup` node ids run `run_id`
+/// executed (issue #5268). The `dedup::` double colon cannot collide with the
+/// engine's `dedup:<node_id>:*` keys, which would need a node id starting with
+/// `:`.
+pub(super) fn run_nodes_key(run_id: &str) -> String {
+    format!("dedup::run_nodes:{run_id}")
+}
+
+/// Records the `dedup` node ids of `graph`, the graph run `run_id` is about to
+/// execute, so [`DedupCommitSubscriber`] settles that run against them rather
+/// than against the flow's saved graph at finish time, which an edit made
+/// while the run was in flight may have changed (issue #5268). Called by both
+/// run entry points before `FlowRunStarted` is published and before the engine
+/// starts, so the record always exists before the run can finish. A graph with
+/// no `dedup` node writes nothing. Best-effort: a failed write is logged and
+/// settlement falls back to the saved graph.
+pub(crate) fn snapshot_run_dedup_nodes(
+    config: &Config,
+    flow_id: &str,
+    run_id: &str,
+    graph: &WorkflowGraph,
+) {
+    let ids: Vec<&str> = graph
+        .nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Dedup)
+        .map(|n| n.id.as_str())
+        .collect();
+    if ids.is_empty() {
+        return;
+    }
+    let state = FlowState::open(config, format!("flow:{flow_id}"));
+    match state.kv_set(&run_nodes_key(run_id), &serde_json::json!(ids)) {
+        Ok(()) => {
+            tracing::debug!(target: "flows", %flow_id, %run_id, dedup_node_count = ids.len(), "[dedup-commit] recorded the run's dedup nodes")
+        }
+        Err(e) => {
+            tracing::warn!(target: "flows", %flow_id, %run_id, error = %e, "[dedup-commit] failed to record the run's dedup nodes — settlement will use the saved graph")
+        }
+    }
+}
+
+/// The node ids in a [`snapshot_run_dedup_nodes`] record, or `None` when it is
+/// not a non-empty string array: settling nothing would strand the run's
+/// tentative keys, so a malformed record falls back to the saved graph.
+fn parse_run_nodes(value: &serde_json::Value) -> Option<Vec<String>> {
+    let ids: Vec<String> = value
+        .as_array()?
+        .iter()
+        .map(|v| v.as_str().map(str::to_string))
+        .collect::<Option<_>>()?;
+    (!ids.is_empty()).then_some(ids)
+}
+
+/// Deletes a settled run's [`snapshot_run_dedup_nodes`] record.
+fn clear_run_snapshot(state: &FlowState, key: &str, flow_id: &str, run_id: &str) {
+    if let Err(e) = state.kv_delete(key) {
+        tracing::warn!(target: "flows", %flow_id, %run_id, error = %e, "[dedup-commit] failed to delete the run's dedup-node snapshot");
+    }
 }
 
 /// Test-only scheduling/witness hooks for proving [`FLOW_COMMIT_LOCKS`]'
@@ -176,31 +238,11 @@ impl DedupCommitSubscriber {
     /// transient store error, both degrade to "nothing to settle" rather than
     /// panicking the event bus.
     ///
-    /// **Known limitation (issue #5265, Codex "P2" on the dedup engine PR):**
-    /// this reads the flow's CURRENT saved definition at settlement time, not
-    /// a snapshot of the graph the finishing run actually executed. Nothing
-    /// today persists a per-run graph/node-id snapshot — `prepare_flow_run`
-    /// loads `Flow` fresh into the spawned run's own task, and that copy is
-    /// discarded once the run starts; the `FlowRun` row has no `graph` field.
-    /// If a long-running flow is edited (or deleted) while a run is still in
-    /// flight:
-    /// - a `dedup` node the run wrote `tentative` keys under, then deleted or
-    ///   renamed before `FlowRunFinished` fires, is no longer found here — its
-    ///   tentative keys are neither committed nor released, so those items
-    ///   silently retry on the flow's next run (safe-direction: at worst a
-    ///   duplicate, never a lost item, matching this subsystem's existing
-    ///   safe-failure posture — see the module doc's "Best-effort throughout"
-    ///   paragraph);
-    /// - conversely a `dedup` node id newly added to the saved graph after the
-    ///   run started is settled here even though the run never executed it
-    ///   (a harmless no-op: it has no `tentative` keys to commit/release, see
-    ///   `commit`/`release`'s early returns).
-    ///
-    /// Closing this properly means persisting a per-run graph/dedup-node-id
-    /// snapshot at run-start (`start_flow_run_row` or a sibling write) and
-    /// having this method read that snapshot instead of `store::get_flow` —
-    /// a schema + call-site change bigger than this PR's scope; reported as a
-    /// follow-up rather than attempted here.
+    /// Only the fallback for a run with no [`snapshot_run_dedup_nodes`]
+    /// record (one started before that record existed, or whose write
+    /// failed): the saved graph may have been edited since the run started,
+    /// so a `dedup` node deleted or renamed mid-run is not found here and its
+    /// tentative keys stay unsettled (issue #5268).
     pub(super) fn dedup_node_ids(
         &self,
         ctx: &crate::core::runtime::DispatchCtx,
@@ -234,9 +276,27 @@ impl DedupCommitSubscriber {
     ) {
         // As the flow's owner: its own configuration (`super::owner`).
         let config = super::owner::config_for_scope(&ctx, &self.config);
-        let node_ids = self.dedup_node_ids(&ctx, flow_id);
+        let state = FlowState::open(&config, format!("flow:{flow_id}"));
+        let snapshot_key = run_nodes_key(run_id);
+        let snapshot = match state.kv_get(&snapshot_key) {
+            Ok(value) => value,
+            Err(e) => {
+                tracing::warn!(target: "flows", %flow_id, %run_id, error = %e, "[dedup-commit] failed to read the run's dedup-node snapshot — falling back to the saved graph");
+                None
+            }
+        };
+        let node_ids = match snapshot.as_ref().and_then(parse_run_nodes) {
+            Some(ids) => {
+                tracing::trace!(target: "flows", %flow_id, %run_id, "[dedup-commit] settling from the run's dedup-node snapshot");
+                ids
+            }
+            None => self.dedup_node_ids(&ctx, flow_id),
+        };
         if node_ids.is_empty() {
             tracing::trace!(target: "flows", %flow_id, %run_id, %status, "[dedup-commit] no dedup nodes in this flow — nothing to settle");
+            if snapshot.is_some() {
+                clear_run_snapshot(&state, &snapshot_key, flow_id, run_id);
+            }
             return;
         }
 
@@ -258,9 +318,11 @@ impl DedupCommitSubscriber {
         tracing::trace!(target: "flows", %flow_id, %run_id, "[dedup-commit] acquired per-flow commit lock");
         self.maybe_test_delay().await;
 
-        let state = FlowState::open(&config, format!("flow:{flow_id}"));
         for node_id in node_ids {
             self.settle_node(&state, &node_id, success, flow_id, run_id);
+        }
+        if snapshot.is_some() {
+            clear_run_snapshot(&state, &snapshot_key, flow_id, run_id);
         }
 
         drop(lock_guard);

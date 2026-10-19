@@ -44,6 +44,7 @@ pub async fn flows_run(
     // a `running` row that no live run owns (see [`run_flow_body`]'s doc).
     let (cancel_token, run_guard) = run_registry::register(&thread_id);
     start_flow_run_row(config, &thread_id, flow_id);
+    crate::flows::bus::snapshot_run_dedup_nodes(config, flow_id, &thread_id, &prepared.flow.graph);
     publish_flow_run_started(flow_id, &thread_id);
 
     run_flow_body(
@@ -108,6 +109,7 @@ pub async fn flows_run_detached(
     // cancellation arm unwinds it. See [`run_flow_body`]'s doc.
     let (cancel_token, run_guard) = run_registry::register(&thread_id);
     start_flow_run_row(config, &thread_id, flow_id);
+    crate::flows::bus::snapshot_run_dedup_nodes(config, flow_id, &thread_id, &prepared.flow.graph);
     publish_flow_run_started(flow_id, &thread_id);
 
     tracing::info!(
