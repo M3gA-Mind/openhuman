@@ -1,4 +1,6 @@
-use super::{is_session_expired_error, is_unconfirmed_unauthorized_error};
+use super::{
+    is_plan_required_message, is_session_expired_error, is_unconfirmed_unauthorized_error,
+};
 
 #[test]
 fn is_session_expired_error_matches_backend_path_401() {
@@ -225,4 +227,26 @@ fn is_session_expired_error_matches_session_jwt_required() {
     assert!(is_session_expired_error("session JWT required"));
     // Case-insensitive.
     assert!(is_session_expired_error("SESSION JWT REQUIRED"));
+}
+
+#[test]
+fn a_memory_plan_refusal_is_not_session_expiry() {
+    // #8081: memory not in the account's plan must not read as an expired
+    // session, which signs the user out.
+    let plan =
+        "unauthorized: [MEMORY_PLAN_REQUIRED] memory API memory/scopes on api.tinyhumans.ai: \
+                the session expired or the API key was rejected (HTTP 403 Forbidden); \
+                re-authenticate — memory is not included in this account's plan";
+    assert!(is_plan_required_message(plan));
+    assert!(!is_session_expired_error(plan));
+    assert!(!is_plan_required_message(
+        "[USER_INSUFFICIENT_CREDITS] top up"
+    ));
+    // Only the delimited code in a hosted failure head counts, not a mention.
+    assert!(!is_plan_required_message(
+        "backend returned 500: unexpected [MEMORY_PLAN_REQUIRED] token"
+    ));
+    assert!(!is_plan_required_message(
+        "engine error: saw [not a code_PLAN_REQUIRED] memory API x"
+    ));
 }

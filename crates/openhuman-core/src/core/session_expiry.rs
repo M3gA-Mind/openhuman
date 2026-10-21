@@ -41,6 +41,14 @@
 /// directly, so there is no regression if this predicate misses them — the
 /// subscriber is idempotent and a harmless double-publish would still be correct.
 pub fn is_session_expired_error(msg: &str) -> bool {
+    // #8081: TinyMemory's hosted mapping words every 403, including
+    // `[MEMORY_PLAN_REQUIRED]` (memory not in the account's plan), as "the
+    // session expired or the API key was rejected (HTTP 403 …)". A 403 or a
+    // plan refusal never means the session expired, and signing out on one
+    // logged a valid user out on opening a Memory tab.
+    if is_plan_required_message(msg) || msg.contains("(HTTP 403") {
+        return false;
+    }
     // Explicit session-expired markers from the OpenHuman backend / local
     // guards — delegated to the shared observability classifier so both the
     // Sentry expected-error pipeline and the JSON-RPC publish boundary stay
@@ -65,6 +73,25 @@ pub fn is_session_expired_error(msg: &str) -> bool {
     }
     false
 }
+
+/// Whether `msg` is the hosted backend refusing a feature the account's plan
+/// does not include (#8081): a `[…_PLAN_REQUIRED]` code in the head
+/// TinyMemory gives a hosted failure, `[CODE] memory API {route} …`. Matched
+/// as that delimited code, so a description that merely mentions the code
+/// is not a plan refusal.
+pub fn is_plan_required_message(msg: &str) -> bool {
+    // The code runs from the nearest `[` before the head and is all
+    // `A-Z0-9_`, as TinyMemory cleans it.
+    msg.match_indices(PLAN_REQUIRED_HEAD).any(|(at, _)| {
+        msg[..at].rsplit_once('[').is_some_and(|(_, code)| {
+            code.chars()
+                .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        })
+    })
+}
+
+/// What follows a plan code in TinyMemory's hosted failure head.
+const PLAN_REQUIRED_HEAD: &str = "_PLAN_REQUIRED] memory API ";
 
 /// Detect auth-looking failures that are not specific enough to clear the
 /// OpenHuman session. This is only for diagnostics; it must not feed the
