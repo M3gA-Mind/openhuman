@@ -139,36 +139,40 @@ test("ex63 runs the core's unit tests under nextest; hosted keeps cargo's runner
   );
 });
 
-test("a core-only change still installs the node deps rust-core-coverage's mock backend imports", () => {
-  const coreOnly = { ...NONE, rustCore: true };
-  for (const plan of [
-    buildPlan({ profile: "ex63", areas: coreOnly, env: EX63_ENV }),
-    buildPlan({ profile: "hosted", areas: coreOnly }),
+test("a core-only or storage-only change still installs the node deps rust-core-coverage's mock backend imports", () => {
+  // Both areas arm rust-core-coverage, so both must arm the install it needs.
+  for (const [area, only] of [
+    ["core", { ...NONE, rustCore: true }],
+    ["storage", { ...NONE, storage: true }],
   ]) {
-    const checks = new Map(
-      plan.lanes.flatMap((l) =>
-        l.checks.map((c) => [`${l.name}:${c.name}`, c]),
-      ),
-    );
-    const cov = checks.get("rust-cov:rust-core-coverage");
-    const install = cov.needs
-      .map((n) => checks.get(n.includes(":") ? n : `rust-cov:${n}`))
-      .find((c) => c.run === "pnpm install --frozen-lockfile");
-    assert.ok(
-      install,
-      `${plan.profile}: rust-core-coverage needs a pnpm install`,
-    );
-    assert.equal(install.when, true, `${plan.profile}: that install runs`);
-    // Exactly one install per profile: ex63 lanes share one checkout.
-    const installs = [...checks.values()].filter(
-      (c) => c.when && c.run === "pnpm install --frozen-lockfile",
-    );
-    assert.equal(installs.length, 1, plan.profile);
+    for (const plan of [
+      buildPlan({ profile: "ex63", areas: only, env: EX63_ENV }),
+      buildPlan({ profile: "hosted", areas: only }),
+    ]) {
+      const label = `${area}/${plan.profile}`;
+      const checks = new Map(
+        plan.lanes.flatMap((l) =>
+          l.checks.map((c) => [`${l.name}:${c.name}`, c]),
+        ),
+      );
+      const cov = checks.get("rust-cov:rust-core-coverage");
+      assert.equal(cov.when, true, `${label}: rust-core-coverage runs`);
+      const install = cov.needs
+        .map((n) => checks.get(n.includes(":") ? n : `rust-cov:${n}`))
+        .find((c) => c.run === "pnpm install --frozen-lockfile");
+      assert.ok(install, `${label}: rust-core-coverage needs a pnpm install`);
+      assert.equal(install.when, true, `${label}: that install runs`);
+      // Exactly one install per profile: ex63 lanes share one checkout.
+      const installs = [...checks.values()].filter(
+        (c) => c.when && c.run === "pnpm install --frozen-lockfile",
+      );
+      assert.equal(installs.length, 1, label);
+    }
+    const hosted = buildPlan({ profile: "hosted", areas: only });
+    const sub = selectLanes(hosted, ["rust-cov"]);
+    assert.deepEqual(validatePlan(sub), []);
+    assert.deepEqual(orderProblems(sub), []);
   }
-  const hosted = buildPlan({ profile: "hosted", areas: coreOnly });
-  const sub = selectLanes(hosted, ["rust-cov"]);
-  assert.deepEqual(validatePlan(sub), []);
-  assert.deepEqual(orderProblems(sub), []);
 });
 
 test("core doctests remain outside PR coverage; embed doctests and tui tests run on PRs", () => {
