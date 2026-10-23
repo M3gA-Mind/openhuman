@@ -155,3 +155,85 @@ async fn local_only_refuses_a_cloud_tag_named_per_request() {
         .expect_err("a per-request cloud tag must be refused before dispatch");
     assert!(error.to_string().contains("Local-only"), "{error}");
 }
+
+/// The privacy mode is live: a local runtime built for another host under
+/// `Standard` must still stop there once the mode is local-only, before any
+/// request leaves (every local runtime, not only Ollama).
+#[tokio::test]
+async fn local_only_set_after_construction_refuses_a_remote_local_runtime_at_dispatch() {
+    use tinyinference_llm::model::ModelRequest;
+    let _guard = crate::inference::inference_test_guard_async().await;
+    let _env = EnvVarGuard::locked_unset_many_async(ENDPOINT_ENV).await;
+    let _standard = crate::security::live_policy::test_privacy_scope(PrivacyMode::Standard);
+    let (model, _) = create_test_chat_model_from_string(
+        "chat",
+        "local-openai:m",
+        &local_ai_at("https://gpu.example.invalid/v1"),
+    )
+    .expect("Standard builds a remote local runtime");
+
+    let _local_only = crate::security::live_policy::test_privacy_scope(PrivacyMode::LocalOnly);
+    let invoked = model.invoke(&(), ModelRequest::new(Vec::new())).await;
+    let streamed = model.stream(&(), ModelRequest::new(Vec::new())).await;
+    for error in [
+        invoked.map(|_| ()).expect_err("invoke is refused before dispatch"),
+        streamed.map(|_| ()).expect_err("stream is refused before dispatch"),
+    ] {
+        assert!(error.to_string().contains("Local-only"), "{error}");
+    }
+}
+
+/// Outside local-only a per-request `-cloud` tag is allowed, but the prompt
+/// goes to ollama.com: it is disclosed as external egress for the model the
+/// request names, not the local tag the route was built for.
+#[tokio::test]
+async fn a_cloud_tag_named_per_request_is_recorded_as_external_egress() {
+    use crate::core::bus::BUS;
+    use crate::core::events::DomainEvent;
+    use crate::security::egress::EgressDescriptor;
+    use std::time::Duration;
+    use tinyinference_llm::model::ModelRequest;
+
+    let _guard = crate::inference::inference_test_guard_async().await;
+    let _env = EnvVarGuard::locked_unset_many_async(ENDPOINT_ENV).await;
+    let _mode = crate::security::live_policy::test_privacy_scope(PrivacyMode::Standard);
+    crate::core::bus::init().await.expect("bus init");
+    let mut rx = BUS.get().unwrap().receiver();
+
+    let (model, _) = create_test_chat_model_from_string(
+        "chat",
+        "ollama:llama3",
+        &local_ai_at("http://127.0.0.1:9/v1"),
+    )
+    .expect("a local Ollama tag builds");
+    let marker = "egress-per-request-marker-cloud";
+    // Nothing listens on port 9: the request fails after the guard ran.
+    let _ = model
+        .invoke(&(), ModelRequest::new(Vec::new()).with_model(marker))
+        .await;
+
+    let sentinel = "egress-per-request-sentinel";
+    BUS.publish(DomainEvent::ExternalTransferPending {
+        descriptor: EgressDescriptor::network_fetch(sentinel),
+        thread_id: None,
+        client_id: None,
+        request_id: None,
+    });
+    loop {
+        match tokio::time::timeout(Duration::from_secs(3), rx.recv()).await {
+            Ok(Some(DomainEvent::ExternalTransferPending { descriptor, .. })) => {
+                if descriptor.service == marker {
+                    assert!(descriptor.is_external, "{descriptor:?}");
+                    break;
+                }
+                assert_ne!(
+                    descriptor.service, sentinel,
+                    "a per-request cloud tag was not recorded as egress"
+                );
+            }
+            Ok(Some(_)) => continue,
+            Ok(None) => panic!("the bus closed before the sentinel arrived"),
+            Err(_) => panic!("timed out before egress sentinel arrived"),
+        }
+    }
+}
