@@ -384,3 +384,57 @@ async fn an_image_is_refused_when_images_are_disabled() {
     assert!(error.to_string().contains("count exceeds"), "{error}");
     assert!(no_messages(&config).await);
 }
+
+/// A message appends on the backend production opens by default (SQLite),
+/// not only on the in-memory test default. SQLite advertises conditional
+/// stream appends on its stream port alone, and TinyAgents once checked the
+/// document port for it, refusing every append with "unsupported capability
+/// conditional_stream_append".
+#[cfg(feature = "storage-sqlite")]
+#[tokio::test]
+#[allow(clippy::await_holding_lock)] // Serializes the process-wide storage slot.
+async fn a_message_appends_on_a_sqlite_workspace() {
+    // `backend_for` prefers a process-installed backend over the workspace
+    // default; hold the slot so no other test installs one (an in-memory
+    // backend lists every capability and would hide the bug), and prove it.
+    let _storage_slot = crate::storage::test_support::lock_storage_slot();
+    assert!(
+        crate::storage::installed().is_none(),
+        "the append must run on the workspace's SQLite default, not an installed backend"
+    );
+    let temp = tempfile::tempdir().unwrap();
+    let mut config = crate::config::Config::default();
+    config.workspace_dir = temp.path().join("internal");
+    config.action_dir = temp.path().join("acting");
+    std::fs::create_dir_all(&config.workspace_dir).unwrap();
+    crate::storage::local::use_persistent_default_for_test(&config.workspace_dir);
+    conversations::blocking::ensure_thread(
+        crate::core::runtime::DispatchCtx::ambient(),
+        config.workspace_dir.clone(),
+        conversations::CreateConversationThread {
+            id: "uploads".into(),
+            title: "Uploads".into(),
+            created_at: "2026-10-04T00:00:00Z".into(),
+            parent_thread_id: None,
+            labels: None,
+            personality_id: None,
+            working_dir: None,
+        },
+    )
+    .await
+    .unwrap();
+    let plain = AppendConversationMessageRequest {
+        thread_id: "uploads".into(),
+        message: ConversationMessageRecord {
+            id: "m1".into(),
+            content: "hello".into(),
+            message_type: "text".into(),
+            extra_metadata: json!({}),
+            sender: "agent".into(),
+            created_at: "2026-10-04T00:00:00Z".into(),
+        },
+    };
+    append_with_test_config(plain, &config, None)
+        .await
+        .expect("a message appends on a SQLite-backed workspace");
+}
