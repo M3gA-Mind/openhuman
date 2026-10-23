@@ -320,3 +320,67 @@ async fn raw_append_stages_in_the_bound_thread_folder() {
     assert!(folder.join(&files[0].path).is_file());
     assert!(!config.action_dir.join("uploads").exists());
 }
+
+async fn append_one_attachment(
+    config: &crate::config::Config,
+    path: &str,
+    mime: &str,
+    bytes: usize,
+) -> Result<(), ThreadsError> {
+    let file = config.action_dir.join(path);
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, vec![b'x'; bytes]).unwrap();
+    let marker = crate::attachments::Attachment {
+        path: path.into(),
+        name: path.rsplit('/').next().unwrap().into(),
+        mime: mime.into(),
+        size_bytes: bytes,
+    }
+    .marker();
+    let mut upload = request("limit", &marker, "user");
+    upload.message.extra_metadata = json!({});
+    append_with_test_config(upload, config, None)
+        .await
+        .map(|_| ())
+}
+
+async fn no_messages(config: &crate::config::Config) -> bool {
+    conversations::blocking::get_messages(
+        crate::core::runtime::DispatchCtx::ambient(),
+        config.workspace_dir.clone(),
+        "uploads".into(),
+    )
+    .await
+    .unwrap()
+    .is_empty()
+}
+
+#[tokio::test]
+async fn an_attachment_over_the_file_limit_is_never_appended() {
+    let (_temp, mut config) = setup().await;
+    config.multimodal_files.max_file_size_mb = 1;
+    let error = append_one_attachment(&config, "uploads/big.txt", "text/plain", 1024 * 1024 + 1)
+        .await
+        .expect_err("over the file limit");
+    assert!(
+        error.to_string().contains("exceeds configured file limit"),
+        "{error}"
+    );
+    assert!(no_messages(&config).await);
+
+    // At the limit it goes through, so the refusal above is the size cap.
+    append_one_attachment(&config, "uploads/ok.txt", "text/plain", 1024 * 1024)
+        .await
+        .expect("at the file limit");
+}
+
+#[tokio::test]
+async fn an_image_is_refused_when_images_are_disabled() {
+    let (_temp, mut config) = setup().await;
+    config.multimodal.max_images = 0;
+    let error = append_one_attachment(&config, "uploads/a.png", "image/png", 16)
+        .await
+        .expect_err("images disabled");
+    assert!(error.to_string().contains("count exceeds"), "{error}");
+    assert!(no_messages(&config).await);
+}

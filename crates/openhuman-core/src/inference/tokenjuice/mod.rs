@@ -508,7 +508,7 @@ mod tests;
 #[path = "repl_tools_tests.rs"]
 mod repl_tool_tests;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "modules"))]
 #[path = "module_stub_tests.rs"]
 pub(crate) mod module_stub;
 
