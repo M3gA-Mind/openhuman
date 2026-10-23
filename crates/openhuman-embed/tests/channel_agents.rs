@@ -156,6 +156,11 @@ fn a_telegram_message_is_answered_by_the_bound_runtime_agent() {
             // The Bot API base is read when the channel is built.
             std::env::set_var("OPENHUMAN_TELEGRAM_BOT_API_BASE", bot_api.uri());
 
+            // W5 DIAG (scratch only): tracing to stderr and visible panic payloads.
+            let _ = tracing_subscriber::fmt()
+                .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+                .with_writer(std::io::stderr)
+                .try_init();
             let runtime = Runtime::builder()
                 .config(offline_config())
                 .workspace(Workspace::Ephemeral)
@@ -224,6 +229,7 @@ fn a_telegram_message_is_answered_by_the_bound_runtime_agent() {
             assert_eq!(listener.channel(), "telegram");
             assert_eq!(listener.agent_id(), "teeny-chat");
 
+            std::panic::set_hook(Box::new(|info| eprintln!("W5-DIAG PANIC: {info}")));
             let mut sent = Vec::new();
             for _ in 0..240 {
                 sent = sent_texts(&bot_api).await;
