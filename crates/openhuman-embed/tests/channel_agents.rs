@@ -161,8 +161,15 @@ fn a_telegram_message_is_answered_by_the_bound_runtime_agent() {
                 .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
                 .with_writer(std::io::stderr)
                 .try_init();
+            openhuman_embed::modules::register_linked("tinychannels", tinychannels_module::linked_module);
+            let mut config = offline_config();
+            config.modules.allow_download = false;
+            config.modules.overrides.push(openhuman_core::config::schema::ModuleOverride::with_source(
+                "tinychannels",
+                openhuman_core::config::schema::ModuleSourceMode::Linked,
+            ));
             let runtime = Runtime::builder()
-                .config(offline_config())
+                .config(config)
                 .workspace(Workspace::Ephemeral)
                 .backend_url(backend.uri())
                 .api_key("sk-managed-fixture")

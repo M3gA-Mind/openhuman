@@ -123,6 +123,8 @@ tinymcp = { path = "../../vendor/tinymcp/crates/tinymcp", features = ["static-li
 # the dev graph adds no reqwest feature (see the unification note below).
 reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls", "stream", "http2", "multipart", "socks"] }
 wiremock = "0.6"
+# W5 SCRATCH: link tinychannels in-process (tinychannels#150 validation).
+tinychannels-module = { path = "../../vendor/tinychannels/crates/tinychannels-module", default-features = false, features = ["static-link"] }
 tinystoragedrivers-testkit = { git = "https://github.com/tinyhumansai/tinystoragedrivers", rev = "f05fbd230c2c403c8dcdef57316fa55265379039" }
 # Feature unification with openhuman-cli's dev-dependencies. Cargo builds the
 # core once per distinct feature set of its dependencies, and the tests of

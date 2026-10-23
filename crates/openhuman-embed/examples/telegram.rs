@@ -17,8 +17,15 @@ async fn run() -> anyhow::Result<()> {
     // managed provider before any bound agent runs. The core carries no hosted
     // provider, so register one that sends inference to the stub.
     support::PointedInference::install(&format!("{}/v1", provider.uri()));
+    openhuman_embed::modules::register_linked("tinychannels", tinychannels_module::linked_module);
+    let mut config = support::offline_config();
+    config.modules.allow_download = false;
+    config.modules.overrides.push(openhuman_core::config::schema::ModuleOverride::with_source(
+        "tinychannels",
+        openhuman_core::config::schema::ModuleSourceMode::Linked,
+    ));
     let runtime = Runtime::builder()
-        .config(support::offline_config())
+        .config(config)
         .workspace(Workspace::Ephemeral)
         .backend_url(backend.uri())
         .api_key("sk-fixture")
