@@ -125,23 +125,25 @@ fn tinyjuice_reaches_only_its_blob_prefix() {
         "Get",
         json!({"collection": "unrelated.collection", "id": "x"})
     ));
+    // The blob grant is the vendored bus's CCR prefix, and only that prefix.
+    let ccr = tinyjuice_bus::storage::CCR_PREFIX;
     assert!(allowed(
         &grant,
         Object::Blobs,
         "Get",
-        json!({"key": "tinyjuice_ccr/abc"})
+        json!({"key": format!("{ccr}/abc")})
     ));
     assert!(!allowed(
         &grant,
         Object::Blobs,
         "Get",
-        json!({"key": "juice/ccr/abc"})
+        json!({"key": format!("{ccr}x/abc")})
     ));
     assert!(!allowed(
         &grant,
         Object::Blobs,
         "Get",
-        json!({"key": "tinyjuice_ccr/abc"})
+        json!({"key": "unrelated/abc"})
     ));
 }
 
