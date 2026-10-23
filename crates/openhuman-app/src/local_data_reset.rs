@@ -65,6 +65,24 @@ pub async fn reset_local_data(
         paths.active_user_marker_path.display()
     );
 
+    // The paths come from an RPC answer. Refuse, before the core is stopped,
+    // a target whose `remove_dir_all` would reach outside OpenHuman's data.
+    let home = directories::UserDirs::new().map(|dirs| dirs.home_dir().to_path_buf());
+    if !is_safe_reset_target(
+        &paths.current_openhuman_dir,
+        &paths.default_openhuman_dir,
+        home.as_deref(),
+    ) {
+        log::error!(
+            "[core] reset_local_data: refusing unsafe delete target {}",
+            paths.current_openhuman_dir.display()
+        );
+        return Err(format!(
+            "Refusing to clear {}: it is not an OpenHuman user data directory",
+            paths.current_openhuman_dir.display()
+        ));
+    }
+
     // ── 2. Acquire the restart lock ─────────────────────────────────────
     //
     // Prevents a concurrent `restart_core_process` from re-spawning the
@@ -377,6 +395,21 @@ async fn remove_path_if_exists(path: &std::path::Path, label: &str) -> Result<()
 }
 
 /// Remove a directory tree if present. Missing → debug log + Ok.
+/// Whether `current` may be removed as the active user's data directory: never
+/// a filesystem root, the home directory or one of its ancestors, or the shared
+/// OpenHuman root (`default`) or one of its ancestors — each of which would
+/// delete data outside the one user's slice.
+fn is_safe_reset_target(
+    current: &std::path::Path,
+    default: &std::path::Path,
+    home: Option<&std::path::Path>,
+) -> bool {
+    current.is_absolute()
+        && current.parent().is_some()
+        && !default.starts_with(current)
+        && !home.is_some_and(|home| home.starts_with(current))
+}
+
 async fn remove_dir_if_exists(path: &std::path::Path, label: &str) -> Result<(), String> {
     match tokio::fs::remove_dir_all(path).await {
         Ok(()) => {

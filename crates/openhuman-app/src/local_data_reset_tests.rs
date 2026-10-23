@@ -82,3 +82,33 @@ fn reset_local_data_delete_error_reports_reboot_schedule_counts() {
         "missing lock cause: {msg}"
     );
 }
+
+#[test]
+fn reset_refuses_targets_outside_one_users_data_dir() {
+    use std::path::Path;
+    let default = Path::new("/home/ada/.openhuman");
+    let home = Some(Path::new("/home/ada"));
+    assert!(is_safe_reset_target(
+        Path::new("/home/ada/.openhuman/users/u1"),
+        default,
+        home
+    ));
+    // A custom workspace outside the shared root is still one user's data.
+    assert!(is_safe_reset_target(
+        Path::new("/data/openhuman-ws"),
+        default,
+        home
+    ));
+    for unsafe_target in [
+        "/",
+        "/home",
+        "/home/ada",
+        "/home/ada/.openhuman",
+        "relative/users/u1",
+    ] {
+        assert!(
+            !is_safe_reset_target(Path::new(unsafe_target), default, home),
+            "{unsafe_target} must be refused"
+        );
+    }
+}
