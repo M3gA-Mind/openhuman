@@ -163,3 +163,48 @@ fn keychain_read_error_with_undecryptable_json_keeps_the_profile() {
         json_before
     );
 }
+
+fn persisted_entry(store: &AuthProfilesStore, id: &str) -> serde_json::Value {
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(store.path()).unwrap()).unwrap();
+    json["profiles"][id].clone()
+}
+
+#[test]
+fn an_unavailable_keychain_carries_keychain_only_profiles_untouched() {
+    // A keychain that is locked when the store is built turns the keychain off
+    // for that store (`AuthProfilesStore::new`'s availability probe), so its
+    // reads never reach the keychain and a keychain-only OAuth profile resolves
+    // to no access token. It is carried, not purged, through loads and writes.
+    let mut f = locked_keychain_store();
+    f.store.use_keychain = false;
+    let entry_before = persisted_entry(&f.store, &f.oauth_id);
+
+    let data = f.store.load().expect("load without the keychain");
+    assert!(
+        !data.profiles.contains_key(&f.oauth_id),
+        "an unresolved profile is not handed out"
+    );
+    f.store
+        .upsert_profile(
+            AuthProfile::new_token("openrouter", "default", "new-token".into()),
+            false,
+        )
+        .expect("a write without the keychain");
+    assert_eq!(
+        persisted_entry(&f.store, &f.oauth_id),
+        entry_before,
+        "the keychain-only profile was dropped or rewritten"
+    );
+
+    f.store.use_keychain = true;
+    f.keychain.fail_reads.store(false, Ordering::SeqCst);
+    let data = f.store.load().expect("load once the keychain reads");
+    assert_eq!(
+        data.profiles[&f.oauth_id]
+            .token_set
+            .as_ref()
+            .map(|t| t.access_token.as_str()),
+        Some("kc-access")
+    );
+}
