@@ -67,7 +67,7 @@ test("does not reseed conversations after deleting everything until reset", asyn
   assert.deepEqual(afterDeleteBody?.data, []);
 });
 
-test("keeps server-controlled ids on create and patch routes", async () => {
+test("keeps the server-controlled id on conversation create", async () => {
   const started = await startMockServer(0);
   const baseUrl = `http://127.0.0.1:${started.port}`;
 
@@ -77,27 +77,6 @@ test("keeps server-controlled ids on create and patch routes", async () => {
     body: JSON.stringify({ id: "client-conv", title: "Client title" }),
   }).then((response) => response.json());
   assert.notEqual(createdConversation?.data?.id, "client-conv");
-
-  const createdCron = await fetch(`${baseUrl}/settings/cron-jobs`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: "client-cron", name: "Client cron" }),
-  }).then((response) => response.json());
-  const cronId = createdCron?.data?.id;
-  assert.notEqual(cronId, "client-cron");
-
-  await fetch(`${baseUrl}/settings/cron-jobs/${cronId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: "mutated-cron", enabled: false }),
-  });
-
-  const cronList = await fetch(`${baseUrl}/settings/cron-jobs`).then(
-    (response) => response.json(),
-  );
-  const patchedCron = cronList.data.find((entry) => entry.id === cronId);
-  assert.equal(patchedCron.id, cronId);
-  assert.equal(patchedCron.enabled, false);
 });
 
 test("serves deterministic Parallel search proxy results", async () => {

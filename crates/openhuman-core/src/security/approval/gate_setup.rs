@@ -25,6 +25,18 @@ impl ApprovalGate {
         GLOBAL_GATE.get().cloned()
     }
 
+    /// A gate on its own store under `workspace`, for tests outside this
+    /// module that must not install the process-wide gate.
+    #[cfg(test)]
+    pub(crate) fn for_test(workspace: &std::path::Path) -> Self {
+        let config = Config {
+            workspace_dir: workspace.to_path_buf(),
+            ..Config::default()
+        };
+        let session = format!("session-{}", uuid::Uuid::new_v4());
+        Self::new(config, session, DEFAULT_APPROVAL_TTL)
+    }
+
     fn new(config: Config, session_id: String, ttl: Duration) -> Self {
         // Regression guard: the gate's session_id must be the per-launch
         // UUID minted by `bootstrap_core_runtime` (shape:
@@ -93,7 +105,11 @@ impl ApprovalGate {
     /// Whether `tool_name` is on the user's "Always allow" list. Prefers the agent or
     /// process-global live policy (so a grant made this session is seen
     /// immediately) and falls back to the gate's boot-time config snapshot.
-    fn tool_is_auto_approved(&self, ctx: &crate::core::runtime::DispatchCtx, tool_name: &str) -> bool {
+    fn tool_is_auto_approved(
+        &self,
+        ctx: &crate::core::runtime::DispatchCtx,
+        tool_name: &str,
+    ) -> bool {
         if let Some(policy) = crate::security::live_policy::effective_in(ctx) {
             return policy.auto_approve.iter().any(|t| t == tool_name);
         }
