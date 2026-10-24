@@ -143,6 +143,13 @@ async fn composio_ops_mode_is_local_and_trigger_history_reads_the_module_archive
 #[tokio::test]
 async fn composio_action_tool_execute_reports_missing_route_without_network() {
     let _module = crate::CONNECTOR_MODULE_LOCK.lock().await;
+    // Execute reads the toolkit's scope preference from the connector module's
+    // host storage before it needs a route.
+    let env_lock = ENV_LOCK
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await;
+    let _storage = crate::HostStorage::install(&env_lock);
     crate::tinyhumans_boot::boot();
     let tmp = tempfile::tempdir().expect("temp config directory");
     let config = Config {

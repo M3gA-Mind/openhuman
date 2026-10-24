@@ -295,7 +295,7 @@ pub fn schemas(function: &str) -> ControllerSchema {
         "claude_code_settings" => ControllerSchema {
             namespace: "inference",
             function: "claude_code_settings",
-            description: "Read the persisted Claude Code provider settings (currently just the full-access toggle). Self-contained per-install state kept in its own claude_code_settings.json beside config.toml in the OpenHuman config directory — not inside the central config file, and not under the internal workspace dir (config.workspace_dir).",
+            description: "Read the persisted Claude Code provider settings (currently just the full-access toggle). Kept in the workspace's host storage (its own KV namespace), not inside the central config file.",
             inputs: vec![],
             outputs: vec![json_output(
                 "settings",
