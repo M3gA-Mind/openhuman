@@ -212,6 +212,7 @@ fn composio_client_factory_modes_are_deterministic_without_network() {
 
 #[tokio::test]
 async fn composio_controller_registry_and_scope_handlers_cover_validation_edges() {
+    let _ = tracing_subscriber::fmt().with_env_filter("debug").with_writer(std::io::stderr).try_init();
     let env_lock = ENV_LOCK
         .get_or_init(|| tokio::sync::Mutex::new(()))
         .lock()
