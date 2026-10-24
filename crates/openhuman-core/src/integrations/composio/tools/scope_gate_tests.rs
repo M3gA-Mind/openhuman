@@ -218,43 +218,24 @@ async fn a_preference_still_in_the_legacy_file_gates_execution() {
     ));
 }
 
-/// Puts back whatever storage backend the process had when dropped.
-struct RestoreInstalledStorage(Option<std::sync::Arc<dyn crate::storage::StorageBackend>>);
-
-impl Drop for RestoreInstalledStorage {
-    fn drop(&mut self) {
-        crate::storage::clear();
-        if let Some(previous) = self.0.take() {
-            crate::storage::install(previous);
-        }
-    }
-}
-
 /// The wiring, not only the fallback value: when the connector module cannot
 /// read a stored preference, every gate that consults it denies.
 ///
-/// The module caches its link to the host's storage on first use. Saving a
-/// preference while a backend is installed connects that link; removing the
-/// backend then makes the module's next preference read fail (`Unavailable`),
-/// as a storage outage would.
+/// `module_guard` owns the storage slot and installs a memory backend. Saving
+/// a preference into it connects the module's storage link, which the module
+/// caches; removing the backend then makes the module's next preference read
+/// fail (`Unavailable`), as a storage outage would. The guard restores the slot
+/// on drop.
 #[tokio::test]
-#[allow(
-    clippy::await_holding_lock,
-    reason = "the storage-slot guard must cover the whole test; the runtime is current-thread"
-)]
 async fn an_unreadable_preference_denies_at_every_gate() {
     use crate::integrations::composio::module_client::module_guard;
     let _serialised = module_guard().await;
-    let _slot = crate::storage::test_support::lock_storage_slot();
     let ctx = crate::core::runtime::DispatchCtx::ambient();
     let tmp = tempfile::tempdir().unwrap();
     let mut config = Config::default();
     config.workspace_dir = tmp.path().join("workspace");
     config.config_path = tmp.path().join("config.toml");
 
-    let restore = RestoreInstalledStorage(crate::storage::install(
-        crate::storage::test_support::memory_backend(),
-    ));
     crate::integrations::composio::ops::save_user_scope_pref(
         &ctx,
         &config,
@@ -291,5 +272,4 @@ async fn an_unreadable_preference_denies_at_every_gate() {
         ),
         "the execute gate must block a write action on an unreadable pref"
     );
-    drop(restore);
 }
