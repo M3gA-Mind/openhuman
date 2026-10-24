@@ -47,6 +47,7 @@ mcp/server/tools/mod.rs
 modules/mod.rs
 modules/ops_components_tests.rs
 modules/registry_tests.rs
+modules/registry_release_manifest_tests.rs
 modules/runtime.rs
 modules/runtime_tests.rs
 platform/socket/event_handlers.rs

@@ -83,6 +83,14 @@ impl EncryptedFileBackend {
     pub fn new(_workspace_dir: &Path) -> Self {
         Self
     }
+
+    /// Fails closed like every other operation of this adapter.
+    pub fn get_profile_read_only(
+        &self,
+        _namespaced_key: &str,
+    ) -> Result<Option<String>, SecretStorageError> {
+        Err(unavailable())
+    }
 }
 
 impl SecretBackend for EncryptedFileBackend {

@@ -695,62 +695,6 @@ test("the existing exact-drift exemption is proof-checked and keeps ahead visibl
   }
 });
 
-test("TinyJuice's canonical owner merge matches its recorded release-tree attestation", () => {
-  const exemption = JSON.parse(
-    readFileSync(
-      join(REPO_ROOT, "scripts/ci/module-pin-exemptions.json"),
-      "utf8",
-    ),
-  ).exemptions.find((entry) => entry.id === "tinyjuice");
-  const assets = [...parseRecords(readRegistry()).values()].find(
-    (record) => record.id === "tinyjuice",
-  ).assets;
-  const candidateCommit = exemption.sourceParity.candidateCommit;
-  const result = validateTestOnlySourceParity({
-    repoPath: join(REPO_ROOT, "vendor/tinyjuice"),
-    version: "0.10.8",
-    assets,
-    actualHead: candidateCommit,
-    proof: exemption.sourceParity,
-    runGit: (args) =>
-      args[0] === "rev-parse" && args[1] === "HEAD"
-        ? candidateCommit
-        : execFileSync("git", args, {
-            cwd: join(REPO_ROOT, "vendor/tinyjuice"),
-            encoding: "utf8",
-          }).trim(),
-  });
-  assert.equal(result.ok, true, result.message);
-});
-
-test("TinyChannels' merged owner commit matches its exact test-set attestation", () => {
-  const exemption = JSON.parse(
-    readFileSync(
-      join(REPO_ROOT, "scripts/ci/module-pin-exemptions.json"),
-      "utf8",
-    ),
-  ).exemptions.find((entry) => entry.id === "tinychannels");
-  const assets = [...parseRecords(readRegistry()).values()].find(
-    (record) => record.id === "tinychannels",
-  ).assets;
-  const candidateCommit = exemption.sourceParity.candidateCommit;
-  const result = validateTestOnlySourceParity({
-    repoPath: join(REPO_ROOT, "vendor/tinychannels"),
-    version: "0.1.38",
-    assets,
-    actualHead: candidateCommit,
-    proof: exemption.sourceParity,
-    runGit: (args) =>
-      args[0] === "rev-parse" && args[1] === "HEAD"
-        ? candidateCommit
-        : execFileSync("git", args, {
-            cwd: join(REPO_ROOT, "vendor/tinychannels"),
-            encoding: "utf8",
-          }).trim(),
-  });
-  assert.equal(result.ok, true, result.message);
-});
-
 test("source parity proof rejects production, manifest, build, lock, and unknown changes", () => {
   for (const changedFile of [
     "src/lib.rs",

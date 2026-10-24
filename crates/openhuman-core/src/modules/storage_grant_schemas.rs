@@ -22,6 +22,7 @@ use std::sync::Arc;
 use super::storage_grants::StorageGrant;
 use super::storage_queue_manifest::QueueManifest;
 use crate::storage::schema::module_collections;
+use crate::storage::CollectionSpec;
 
 /// One module's row: its registry id, the schema owner that declares its
 /// storage, secret prefixes the schema cannot name, and the queue manifest the
@@ -135,7 +136,14 @@ pub(super) async fn migrate_imported(ctx: &crate::core::runtime::DispatchCtx, mo
 pub(super) fn grant_for(module_id: &str) -> Option<StorageGrant> {
     let row = ROWS.iter().find(|row| row.module == module_id)?;
     let queues = row.queues.and_then(|source| source());
-    let collections = module_collections(row.owner);
+    let mut collections = module_collections(row.owner);
+    // A module may also read collections it does not provision: TinyConnectors'
+    // migration reads its v1 preferences, which its storage needs list.
+    for name in read_collections(row.owner) {
+        if !collections.iter().any(|spec| spec.name == name) {
+            collections.push(CollectionSpec::new(name));
+        }
+    }
     let secret_prefixes: Vec<String> = row.secrets.iter().map(|s| (*s).to_owned()).collect();
     // Collection declarations are now the owner contracts' only published
     // storage inventory. Stream/blob/secret grants remain explicit below
@@ -153,6 +161,13 @@ pub(super) fn grant_for(module_id: &str) -> Option<StorageGrant> {
         queues: queues.as_ref().map(|grant| Arc::clone(&grant.manifest)),
         queue_backend: queues.map(|grant| grant.backend),
     })
+}
+
+fn read_collections(owner: &str) -> Vec<String> {
+    match owner {
+        "connectors" => tinyconnectors_bus::storage::storage_needs().collections,
+        _ => Vec::new(),
+    }
 }
 
 fn stream_prefixes(owner: &str) -> Vec<String> {
