@@ -75,7 +75,8 @@ pub(crate) async fn flow_tool_allowed(
         // A pref that cannot be read admits nothing (fail closed).
         let allowed = load_user_scope_pref(ctx, config, &toolkit)
             .await
-            .is_ok_and(|pref| pref.allows(curated.scope));
+            .unwrap_or_default()
+            .allows(curated.scope);
         tracing::debug!(target: "flows", %slug, %toolkit, allowed, "[flows] tool_call curation: static curated catalog decision");
         return allowed;
     }
@@ -103,7 +104,8 @@ pub(crate) async fn flow_tool_allowed(
     }
     let allowed = load_user_scope_pref(ctx, config, &toolkit)
         .await
-        .is_ok_and(|pref| pref.allows(classify_unknown(slug)));
+        .unwrap_or_default()
+        .allows(classify_unknown(slug));
     tracing::debug!(target: "flows", %slug, %toolkit, allowed, "[flows] tool_call curation: live catalog + scope decision");
     allowed
 }

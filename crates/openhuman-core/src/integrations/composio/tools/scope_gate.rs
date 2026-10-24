@@ -110,7 +110,7 @@ pub(super) async fn evaluate_tool_visibility(
                 toolkit = %toolkit,
                 "[composio][scopes] list_visible_tools failed, failing closed: {error}"
             );
-            decide_visibility(&toolkit, slug, NOTHING_ALLOWED)
+            decide_visibility(&toolkit, slug, UserScopePref::default())
         }
     }
 }
