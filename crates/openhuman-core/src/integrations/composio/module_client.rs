@@ -317,7 +317,17 @@ pub(crate) async fn module_guard() -> tokio::sync::MutexGuard<'static, ()> {
     // Tests that take the module drive its backend mode against a local mock;
     // give this thread the stand-in route a host would register.
     super::test_backend_route::register();
-    MODULE_LOCK.lock().await
+    let guard = MODULE_LOCK.lock().await;
+    // The module keeps its scope preferences in host storage and refuses a
+    // call when the host has none, so stand in for the backend a booted host
+    // always installs.
+    {
+        let _slot = crate::storage::test_support::lock_storage_slot();
+        if crate::storage::installed().is_none() {
+            crate::storage::install(crate::storage::test_support::memory_backend());
+        }
+    }
+    guard
 }
 
 #[cfg(test)]
