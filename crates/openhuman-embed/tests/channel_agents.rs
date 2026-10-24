@@ -243,8 +243,14 @@ fn a_telegram_message_is_answered_by_the_bound_runtime_agent() {
             assert!(
                 matches!(
                     origins.as_slice(),
-                    [Some(AgentTurnOrigin::ExternalChannel { channel, sender: Some(sender), .. })]
-                        if channel == "telegram" && sender == "alice"
+                    // `sender` is the platform's user id; the display name the
+                    // channel gives is `sender_name`.
+                    [Some(AgentTurnOrigin::ExternalChannel {
+                        channel,
+                        sender: Some(sender),
+                        sender_name: Some(name),
+                        ..
+                    })] if channel == "telegram" && sender == "99" && name == "alice"
                 ),
                 "{origins:?}"
             );
