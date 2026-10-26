@@ -175,6 +175,10 @@ pub async fn init() -> tinybus::Result<()> {
 /// Registered once at startup by the channel runtime. It subscribes to every
 /// domain deliberately — its whole purpose is answering "was this event ever
 /// published", which a filtered subscriber cannot.
+///
+/// It logs the variant name and [`DomainEvent::log_detail`], never the event
+/// itself: payloads carry user content (a channel message, a dictated voice
+/// transcript, a committed turn), which must not reach the log at any level.
 pub struct TracingSubscriber;
 
 #[async_trait::async_trait]
@@ -184,7 +188,12 @@ impl tinybus::EventHandler<DomainEvent> for TracingSubscriber {
     }
 
     async fn handle(&self, event: &DomainEvent) {
-        tracing::debug!(domain = event.domain(), "[bus] {event:?}");
+        tracing::debug!(
+            domain = event.domain(),
+            event = event.variant_name(),
+            detail = event.log_detail().as_deref(),
+            "[bus] event published"
+        );
     }
 }
 
