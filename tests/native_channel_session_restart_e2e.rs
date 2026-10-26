@@ -479,7 +479,7 @@ impl Drop for CoreProcess {
             let _ = self.child.kill();
             let _ = self.child.wait();
             if let Ok(log) = std::fs::read_to_string(&self.log_path) {
-                let tail = log.lines().rev().take(80).collect::<Vec<_>>();
+                let tail = log.lines().rev().take(400).collect::<Vec<_>>();
                 eprintln!(
                     "core process was dropped before the test completed; last {} log lines:\n{}",
                     tail.len(),
@@ -515,7 +515,7 @@ fn start_core(
         .env("OPENHUMAN_CORE_TOKEN", RPC_TOKEN)
         .env(
             "RUST_LOG",
-            "tinychannels=debug,tinychannels::remote=debug,tinychannels_module=debug,tinychannels_module::service=debug,tinystoragedrivers=debug,openhuman::storage_host=info,openhuman_core::channels=debug",
+            "debug,hyper=info,h2=info,reqwest=info,rustls=info,tower=info",
         )
         .env("OPENHUMAN_MODEL", "openai:gpt-4o")
         .env("OPENHUMAN_BACKEND_API_KEY", MOCK_API_KEY)

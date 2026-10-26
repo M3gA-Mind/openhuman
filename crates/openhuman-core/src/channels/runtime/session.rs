@@ -117,7 +117,7 @@ where
         let mut session = controller.wait_for_resume().await;
         loop {
             if let Err(error) = run(session.clone()).await {
-                tracing::error!(domain = "channels", operation = "service", error = %error, "channel service generation stopped");
+                tracing::error!(domain = "channels", operation = "service", error = ?error, "channel service generation stopped");
                 // In particular, a failed close must retain ownership and
                 // stop here instead of admitting a second listener against
                 // the still-live generation.
