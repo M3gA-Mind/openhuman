@@ -7890,7 +7890,7 @@ dependencies = [
 
 [[package]]
 name = "tinychannels-bus"
-version = "0.1.44"
+version = "0.1.45"
 dependencies = [
  "base64 0.23.1",
  "schemars 1.2.2",
