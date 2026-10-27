@@ -349,7 +349,26 @@ where
 }
 
 /// Makes `backend` the process's storage backend; returns the previous one.
+
+#[cfg(test)]
+fn main57_log(what: &str) {
+    use std::io::Write as _;
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(std::env::temp_dir().join("main57-slot.log"))
+    {
+        let _ = writeln!(
+            file,
+            "[MAIN57] {what} thread={:?}",
+            std::thread::current().name()
+        );
+    }
+}
+
 pub fn install(backend: Arc<dyn StorageBackend>) -> Option<Arc<dyn StorageBackend>> {
+    #[cfg(test)]
+    main57_log("install");
     set_installed_url(None);
     let previous = BACKEND.install(backend);
     // What was recorded described the previous backend.
@@ -377,6 +396,8 @@ pub fn installed() -> Option<Arc<dyn StorageBackend>> {
 
 /// Removes the installed backend; returns whether there was one.
 pub fn clear() -> bool {
+    #[cfg(test)]
+    main57_log("clear");
     set_installed_url(None);
     agents::reset_recorded();
     BACKEND.clear()
