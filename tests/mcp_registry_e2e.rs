@@ -16,6 +16,11 @@ static STORAGE_SETUP_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_ne
 static TEST_MASTER_KEY: std::sync::Once = std::sync::Once::new();
 
 async fn fresh_workspace_config() -> (tempfile::TempDir, Config) {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_ansi(false)
+        .with_test_writer()
+        .try_init();
     TEST_MASTER_KEY.call_once(|| {
         // This target owns a process-wide module callback and storage slot.
         // Give the module host the same configured secret key as production.
