@@ -134,7 +134,6 @@ impl LateSubagentSink {
         // Everything else is turn-scoped output the finished turn no longer
         // renders.
         let kind = match &event {
-            AgentProgress::SubagentCompleted { task_id, .. } => ("completed", task_id),
             AgentProgress::SubagentFailed { task_id, .. } => ("failed", task_id),
             AgentProgress::SubagentAwaitingUser { task_id, .. } => ("awaiting_user", task_id),
             _ => return,
