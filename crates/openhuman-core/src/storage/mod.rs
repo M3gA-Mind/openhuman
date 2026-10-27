@@ -350,6 +350,11 @@ where
 
 /// Makes `backend` the process's storage backend; returns the previous one.
 pub fn install(backend: Arc<dyn StorageBackend>) -> Option<Arc<dyn StorageBackend>> {
+    #[cfg(test)]
+    eprintln!(
+        "[MAIN57] storage::install thread={:?}",
+        std::thread::current().name()
+    );
     set_installed_url(None);
     let previous = BACKEND.install(backend);
     // What was recorded described the previous backend.
@@ -377,6 +382,11 @@ pub fn installed() -> Option<Arc<dyn StorageBackend>> {
 
 /// Removes the installed backend; returns whether there was one.
 pub fn clear() -> bool {
+    #[cfg(test)]
+    eprintln!(
+        "[MAIN57] storage::clear thread={:?}",
+        std::thread::current().name()
+    );
     set_installed_url(None);
     agents::reset_recorded();
     BACKEND.clear()

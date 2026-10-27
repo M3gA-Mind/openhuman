@@ -231,6 +231,12 @@ async fn initialized_backend(
 /// opened.
 pub fn backend_for(workspace_dir: &Path) -> Result<Arc<dyn StorageBackend>> {
     if let Some(backend) = installed() {
+        #[cfg(test)]
+        eprintln!(
+            "[MAIN57] backend_for served the INSTALLED slot thread={:?} workspace={}",
+            std::thread::current().name(),
+            workspace_dir.display()
+        );
         return Ok(backend);
     }
 
