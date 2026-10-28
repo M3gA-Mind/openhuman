@@ -398,8 +398,26 @@ where
         })
 }
 
+#[cfg(test)]
+fn main57_log(what: &str) {
+    use std::io::Write as _;
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(std::env::temp_dir().join("main57-slot.log"))
+    {
+        let _ = writeln!(
+            file,
+            "[MAIN57] {what} thread={:?}",
+            std::thread::current().name()
+        );
+    }
+}
+
 /// Makes `backend` the process's storage backend; returns the previous one.
 pub fn install(backend: Arc<dyn StorageBackend>) -> Option<Arc<dyn StorageBackend>> {
+    #[cfg(test)]
+    main57_log("install");
     #[cfg(test)]
     set_slot_owner(std::thread::current().name().map(str::to_owned));
     set_installed_url(None);
@@ -433,6 +451,8 @@ pub fn installed() -> Option<Arc<dyn StorageBackend>> {
 
 /// Removes the installed backend; returns whether there was one.
 pub fn clear() -> bool {
+    #[cfg(test)]
+    main57_log("clear");
     set_installed_url(None);
     agents::reset_recorded();
     let cleared = BACKEND.clear();
