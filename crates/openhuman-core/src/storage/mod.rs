@@ -248,7 +248,11 @@ fn set_slot_owner(owner: Option<String>) {
     if let (Some(name), Ok(log)) = (&owner, std::env::var("OPENHUMAN_SLOT_INSTALLERS_LOG")) {
         if is_test_thread(name) {
             use std::io::Write as _;
-            if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(log) {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(log)
+            {
                 let _ = writeln!(file, "{name}");
             }
         }
