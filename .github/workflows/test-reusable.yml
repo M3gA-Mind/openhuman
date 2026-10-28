@@ -273,8 +273,82 @@ jobs:
             cron::documents_port::tests::an_unknown_operation_is_refused_not_guessed
             cron::documents_port::tests::one_object_is_served_per_scope_and_reused
           )
+          # Tests that install the process storage slot (`storage::install`).
+          # While one holds it, the runtime workers of every concurrent test
+          # read that backend too (MAIN-57), so they run together in one serial
+          # process below. The parallel run logs any installer not listed here.
+          SLOT_TESTS=(
+            agent::orchestration::tools::tools_e2e_tests::failed_async_child_is_reported_to_the_parent_without_a_success_result
+            channels::host::tests::typed_channel_projection_uses_scoped_persisted_row_bindings_after_restart
+            channels::providers::relay::ops::tests::a_relayed_turn_runs_as_an_external_channel_and_keeps_its_thread
+            channels::routes::remote_reset_tests::remote_clear_resets_only_the_captured_tenant_session
+            channels::routes::tests::handle_runtime_command_telegram_help_replies_with_remote_command_list
+            channels::routes::tests::handle_runtime_command_telegram_sessions_reports_empty_store
+            channels::routes::tests::handle_runtime_command_telegram_status_replies_without_agent
+            channels::routes::tests::handle_runtime_command_without_target_channel_still_consumes_command
+            channels::routes::tests::telegram::handle_runtime_command_telegram_new_status_and_sessions_round_trip
+            channels::routes::tests::telegram::handle_runtime_command_telegram_new_uses_module_storage
+            channels::runtime::dispatch::host_agent::dispatch_tests::unbound::a_binding_no_agent_answers_is_refused_not_sent_to_the_orchestrator
+            channels::runtime::dispatch::processor::native_media::flow_tests::module_read_failures_and_metadata_mismatches_reject_the_turn
+            channels::runtime::dispatch::processor::native_media::flow_tests::typed_media_is_read_from_the_module_staged_and_converted_to_a_model_message
+            channels::runtime::dispatch::processor::progressive::flow_tests::a_failed_progress_update_closes_the_reply
+            channels::runtime::dispatch::processor::progressive::flow_tests::finishing_a_closed_reply_reports_failure_and_missing_replies_are_noops
+            channels::runtime::dispatch::processor::progressive::flow_tests::native_target_resolves_only_a_configured_account_of_the_envelope_provider
+            channels::runtime::dispatch::processor::progressive::flow_tests::progress_is_streamed_and_the_final_reply_is_delivered_to_the_provider
+            channels::runtime::dispatch::processor::turn::tests::native_inbound_preparation_preserves_image_envelope_for_typed_turns
+            channels::runtime::dispatch::processor::turn::tests::native_typed_preparation_preserves_ordered_voice_and_file_parts
+            channels::runtime::startup::module_providers::tests::compiled_module_hosted_progressive_callback_is_scoped_and_typed
+            channels::runtime::startup::module_providers::tests::dropped_scoped_media_read_lease_aborts_the_compiled_module_handle
+            channels::runtime::startup::module_providers::tests::hosted_tests::hosted_target_projects_to_the_canonical_thread_and_keeps_one_gateway_terminal
+            channels::runtime::startup::module_providers::tests::hosted_tests::hosted_target_projects_typed_media_and_voice_to_web_and_gateway_once
+            channels::runtime::startup::module_providers::tests::prepared_module_handle_keeps_progressive_send_alive
+            channels::tests::host_pipeline::discord_host_pipeline_dispatches_reply_with_thread_context
+            channels::tests::host_pipeline::discord_host_pipeline_keeps_thread_histories_separate
+            channels::tests::host_pipeline::dispatch_harness_default_workspace_does_not_reuse_prior_transcript
+            channels::tests::host_pipeline::dispatch_preserves_supplied_tinychannels_inbound_envelope
+            channels::tests::host_pipeline::dispatch_publishes_tinychannels_inbound_envelope
+            channels::tests::host_pipeline::host_dispatch_preserves_thread_reply_and_reaction_targets
+            channels::tests::runtime_dispatch::dispatch_replies_with_timeout_notice_when_handler_exceeds_deadline
+            channels::tests::runtime_dispatch::process_channel_message_sends_typing_before_the_provider_reply
+            channels::tests::runtime_tool_calls::process_channel_message_handles_models_command_without_llm_call
+            cron::channel_bridge::tests::send_rejects_identities_that_do_not_match_the_trusted_route
+            cron::scheduler::origin_delivery::channel_tests::channel_origin_reply_reaches_the_provider_and_the_durable_session
+            cron::scheduler::tests::announce_delivery_tests::announce_success_is_delivered_through_the_channel_module_to_the_provider
+            cron::scheduler::tests::headless_descendants_tests::scheduled_agent_history_includes_its_spawned_child_result
+            cron::scheduler::tests::headless_descendants_tests::scheduled_agent_timeout_cancels_its_blocked_child_before_history_settles
+            cron::scheduler::tests::headless_descendants_tests::scheduled_cron_child_cannot_run_its_declared_destructive_tool
+            flows::caps_host::agent::tests::headless_child_at_depth_cap_gets_readable_spawn_refusal
+            flows::catalog_storage::tests::catalog_storage_resolves_the_current_backend_and_confines_graph_namespace_queries
+            inference::provider::factory::factory_tests::crate_native_diagnostics_tests::caller_owned_models_build_without_openhuman_session
+            inference::provider::factory::factory_tests::crate_native_tests::cloud_tests::native_claude_turn_routes_disclose_pinned_models
+            inference::provider::factory::factory_tests::crate_native_tests::native_claude_turn_routes_disclose_pinned_models
+            mcp::server::tools::tests::dispatch_tests::call_tool_judges_the_policy_of_the_explicit_context_across_scopes
+            mcp::server::tools::tests::dispatch_tests::call_tool_records_write_argument_rejection
+            mcp::server::tools::tests::dispatch_tests::call_tool_validates_memory_arguments_before_dispatch
+            modules::storage_import_tinymcp::tests::a_live_foreign_claim_is_reported_as_claim_held
+            modules::storage_import_tinywallet::tests::a_live_foreign_claim_keeps_the_ledger_closed
+            profiles::cron::tests::hosted_cron_sweep_runs_trusted_memory_jobs_in_agent_only_profiles
+            profiles::host::tests::a_clean_reopen_does_not_recover_but_a_takeover_does
+            profiles::host::tests::fence_tests::opening_replaces_a_dropped_hosts_fence_before_cron_reconciliation
+            profiles::host::tests::fence_tests::provisioning_with_a_new_root_replaces_a_dead_higher_epoch_fence
+            profiles::host::tests::migration_fence_tests::opening_replaces_a_dropped_hosts_fence_before_cron_reconciliation
+            profiles::host::tests::migration_fence_tests::provisioning_with_a_new_root_replaces_a_dead_higher_epoch_fence
+            security::credentials::ops::tests::credential_local_session_tests::clearing_everything_removes_the_api_key_on_a_storage_backend
+            security::credentials::ops::tests::credential_local_session_tests::clearing_the_session_keeps_the_api_key_on_a_storage_backend
+            security::credentials::ops::tests::credential_per_user_storage_tests::a_failed_carry_on_per_user_storage_says_the_key_must_be_entered_again
+            security::credentials::ops::tests::credential_per_user_storage_tests::a_session_is_stored_in_the_users_own_database
+            security::credentials::ops::tests::credential_per_user_storage_tests::a_session_sign_out_keeps_the_api_key_on_per_user_storage
+            security::credentials::ops::tests::credential_per_user_storage_tests::another_user_signing_in_does_not_get_the_first_users_api_key
+            skills::bundled::flow_authoring::tests::builtin_is_hidden_until_the_legacy_flow_import_completes
+            storage::import::tests::historical_profile_fixture_conversation_survives_layout_copy_and_owner_migration
+            storage::import::tests::profile_fixture_tests::historical_profile_fixture_boots_into_typed_owner_records_without_resurrection
+            storage::scope_move::tests::boot_import_moves_profile_v1_scope_and_keeps_source_unchanged
+            storage::tests::a_test_installed_slot_is_hidden_from_other_test_threads
+            threads::channel_projection::tests::persisted_activity_merges_concurrent_events_for_the_exact_scoped_row
+            threads::store::legacy_import_tests::legacy_tsd_v1_threads_and_messages_are_migrated_before_owner_reads
+          )
           MODULE_TEST_SKIP_ARGS=()
-          for module_test in "${MODULE_TESTS[@]}"; do
+          for module_test in "${MODULE_TESTS[@]}" "${SLOT_TESTS[@]}"; do
             MODULE_TEST_SKIP_ARGS+=(--skip "$module_test")
           done
           STAGED_MODULE_PATH="${OPENHUMAN_MODULE_PATH:-}"
@@ -291,7 +365,23 @@ jobs:
           # attaching the same release, and TinyFlows callbacks can race with
           # another test shutting down the process-global module runtime.
           unset OPENHUMAN_MODULE_PATH
-          bash scripts/ci-cancel-aware.sh cargo test -p openhuman --lib --features "${CORE_FEATURES}" -- "${MODULE_TEST_SKIP_ARGS[@]}"
+          SLOT_LOG="${RUNNER_TEMP:-/tmp}/slot-installers.log"
+          rm -f "$SLOT_LOG"
+          OPENHUMAN_SLOT_INSTALLERS_LOG="$SLOT_LOG" bash scripts/ci-cancel-aware.sh cargo test -p openhuman --lib --features "${CORE_FEATURES}" -- "${MODULE_TEST_SKIP_ARGS[@]}"
+          if [ -s "$SLOT_LOG" ]; then
+            sort -u "$SLOT_LOG" | sed 's/^/::error::installs the storage slot in the parallel run; add it to SLOT_TESTS: /'
+            exit 1
+          fi
+          echo "[test-reusable] serial storage-slot tests: ${#SLOT_TESTS[@]}"
+          slot_test_output="$(bash scripts/ci-cancel-aware.sh cargo test -p openhuman --lib --features "${CORE_FEATURES}" -- --exact --test-threads=1 "${SLOT_TESTS[@]}")"
+          printf '%s\n' "$slot_test_output"
+          case "$slot_test_output" in
+            *"test result: ok. ${#SLOT_TESTS[@]} passed; 0 failed;"*) ;;
+            *)
+              echo "::error::the serial storage-slot run did not pass exactly ${#SLOT_TESTS[@]} tests"
+              exit 1
+              ;;
+          esac
           if [ -n "$STAGED_MODULE_PATH" ]; then
             export OPENHUMAN_MODULE_PATH="$STAGED_MODULE_PATH"
           fi
