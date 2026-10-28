@@ -407,10 +407,12 @@ mod storage_runtime {
 fn a_test_installed_slot_is_hidden_from_other_test_threads() {
     let ready = std::sync::Arc::new(std::sync::Barrier::new(2));
     let done = std::sync::Arc::new(std::sync::Barrier::new(2));
+    // Named after this test, so the CI slot-installer log names a real test.
+    let this_test = std::thread::current().name().unwrap().to_owned();
     let installer = {
         let (ready, done) = (ready.clone(), done.clone());
         std::thread::Builder::new()
-            .name("storage::slot_probe::installer".into())
+            .name(this_test)
             .spawn(move || {
                 let _guard = crate::storage::test_support::install_backend_for_test(
                     crate::storage::test_support::memory_backend(),
