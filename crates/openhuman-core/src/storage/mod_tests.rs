@@ -439,3 +439,18 @@ fn a_test_installed_slot_is_hidden_from_other_test_threads() {
         "another test's thread must not see the installer's backend"
     );
 }
+
+/// The CI drift log names installing tests, one per line, and skips threads
+/// that are not tests (MAIN-57).
+#[test]
+fn the_slot_installer_log_names_test_threads_only() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("slot-installers.log");
+    log_slot_installer("a::tests::one", &log);
+    log_slot_installer("tokio-runtime-worker", &log);
+    log_slot_installer("b::tests::two", &log);
+    assert_eq!(
+        std::fs::read_to_string(&log).unwrap(),
+        "a::tests::one\nb::tests::two\n"
+    );
+}

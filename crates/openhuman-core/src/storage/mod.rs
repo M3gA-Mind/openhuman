@@ -243,23 +243,33 @@ static SLOT_OWNER: Mutex<Option<String>> = Mutex::new(None);
 
 #[cfg(test)]
 fn set_slot_owner(owner: Option<String>) {
-    // CI's drift check: the parallel libtest run sets this, and any test named
-    // here must move to test-reusable.yml's serial SLOT_TESTS (MAIN-57).
-    if let (Some(name), Ok(log)) = (&owner, std::env::var("OPENHUMAN_SLOT_INSTALLERS_LOG")) {
-        if is_test_thread(name) {
-            use std::io::Write as _;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(log)
-            {
-                let _ = writeln!(file, "{name}");
-            }
-        }
+    if let (Some(name), Ok(log)) = (&owner, std::env::var(SLOT_INSTALLERS_LOG)) {
+        log_slot_installer(name, std::path::Path::new(&log));
     }
     *SLOT_OWNER
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = owner;
+}
+
+/// CI's drift check: the parallel libtest run names a file here, and any test
+/// listed in it must move to test-reusable.yml's serial `SLOT_TESTS` (MAIN-57).
+#[cfg(test)]
+const SLOT_INSTALLERS_LOG: &str = "OPENHUMAN_SLOT_INSTALLERS_LOG";
+
+/// Appends the installing test's name to `log`; other threads are skipped.
+#[cfg(test)]
+fn log_slot_installer(name: &str, log: &std::path::Path) {
+    use std::io::Write as _;
+    if !is_test_thread(name) {
+        return;
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log)
+    {
+        let _ = writeln!(file, "{name}");
+    }
 }
 
 /// Whether the installed slot belongs to the calling test. A slot a test
